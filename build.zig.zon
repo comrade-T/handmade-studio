@@ -1,0 +1,18 @@
+.{
+    .name = "communism",
+
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .@"raylib-zig" = .{
+            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
+            .hash = "122007740243696aa1e91f18ee6601046b367af4e19ee031b18e79f10b1dd432e2c2",
+        },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
