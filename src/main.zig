@@ -1,4 +1,5 @@
 const std = @import("std");
+const pretty = @import("pretty");
 const r = @import("raylib");
 
 const GamepadState = struct {
@@ -20,8 +21,8 @@ const GamepadState = struct {
     select: bool = false,
     start: bool = false,
 
-    LT: f32 = 0,
-    RT: f32 = 0,
+    LT: f32 = -1,
+    RT: f32 = -1,
 
     LX: f32 = 0,
     LY: f32 = 0,
@@ -81,6 +82,8 @@ pub fn main() anyerror!void {
         const gamepad = 1;
         const gamepad_state = getGamepadState(gamepad);
 
-        std.debug.print("{any}\n", .{gamepad_state});
+        try pretty.print(std.heap.c_allocator, gamepad_state, .{
+            .struct_max_len = 30,
+        });
     }
 }

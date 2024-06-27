@@ -12,6 +12,9 @@ pub fn build(b: *std.Build) void {
     const raylib_module = raylib_dep.module("raylib"); // main raylib module
     const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
 
+    // Pretty Print
+    const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
+
     // Exe
     const exe = b.addExecutable(.{
         .name = "communism",
@@ -22,6 +25,8 @@ pub fn build(b: *std.Build) void {
 
     exe.linkLibrary(raylib_artifact);
     exe.root_module.addImport("raylib", raylib_module);
+
+    exe.root_module.addImport("pretty", pretty.module("pretty"));
 
     b.installArtifact(exe);
 
