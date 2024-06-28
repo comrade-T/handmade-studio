@@ -2,6 +2,8 @@ const r = @cImport({
     @cInclude("raylib.h");
 });
 
+const StickDirection = enum { N, S, E, W, NE, SE, NW, SW, C };
+
 pub const GamepadState = struct {
     X: bool = false,
     A: bool = false,
@@ -29,6 +31,24 @@ pub const GamepadState = struct {
     RX: f32 = 0,
     RY: f32 = 0,
 };
+
+pub fn getStickDirection(stick_x: f32, stick_y: f32) StickDirection {
+    const threshold = 0.33;
+    const LYisCenter = stick_y > -threshold and stick_y < threshold;
+    const LXisCenter = stick_x > -threshold and stick_x < threshold;
+
+    if (stick_x < -threshold and LYisCenter) return .W;
+    if (stick_x > threshold and LYisCenter) return .E;
+    if (stick_y < -threshold and LXisCenter) return .N;
+    if (stick_y > threshold and LXisCenter) return .S;
+
+    if (stick_y < -threshold and stick_x > threshold) return .NE;
+    if (stick_y > threshold and stick_x > threshold) return .SE;
+    if (stick_y < -threshold and stick_x < -threshold) return .NW;
+    if (stick_y > threshold and stick_x < -threshold) return .SW;
+
+    return .C;
+}
 
 pub fn getGamepadState(gamepad: i32) GamepadState {
     return GamepadState{

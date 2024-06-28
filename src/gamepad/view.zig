@@ -1,3 +1,4 @@
+const std = @import("std");
 const r = @cImport({
     @cInclude("raylib.h");
 });
@@ -66,4 +67,13 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState) void {
     const RT_height = (s.RT + 1) * 50;
     r.DrawRectangle(root_RX + 100, root_RY - 50, 5, @intFromFloat(100), r.RAYWHITE);
     r.DrawRectangle(root_RX + 100, root_RY - 50, 5, @intFromFloat(RT_height), r.SKYBLUE);
+
+    const left_dir = gamepad_state.getStickDirection(s.LX, s.LY);
+    var buf: [256]u8 = undefined;
+    var text = std.fmt.bufPrintZ(&buf, "{s}", .{@tagName(left_dir)}) catch "error";
+    r.DrawText(text, root_LX, root_LY + 150, 40, r.YELLOW);
+
+    const right_dir = gamepad_state.getStickDirection(s.RX, s.RY);
+    text = std.fmt.bufPrintZ(&buf, "{s}", .{@tagName(right_dir)}) catch "error";
+    r.DrawText(text, root_RX, root_RY + 150, 40, r.YELLOW);
 }
