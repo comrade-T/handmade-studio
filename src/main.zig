@@ -4,9 +4,6 @@ const r = @cImport({
     @cInclude("raylib.h");
 });
 
-const gp_state = @import("gamepad/state.zig");
-const gp_view = @import("gamepad/view.zig");
-
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const GameStatePtr = *anyopaque;
@@ -53,10 +50,6 @@ pub fn main() !void {
         r.BeginDrawing();
         gameDraw(game_state);
         r.EndDrawing();
-
-        // const gamepad = 1;
-        // const state = gp_state.getGamepadState(gamepad);
-        // gp_view.drawGamepadState(state);
     }
 }
 

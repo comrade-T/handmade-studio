@@ -3,10 +3,15 @@ const r = @cImport({
     @cInclude("raylib.h");
 });
 
+const gp_state = @import("gamepad/state.zig");
+const gp_view = @import("gamepad/view.zig");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_w = 800;
 const screen_h = 450;
+
+const device_idx = 1;
 
 const GameState = struct {
     allocator: std.mem.Allocator,
@@ -48,6 +53,9 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     const circle_x: f32 = @mod(gs.time * 240.0, screen_w + gs.radius * 2) - gs.radius;
     r.DrawCircleV(.{ .x = circle_x, .y = screen_h - gs.radius - 40 }, gs.radius, r.BLUE);
+
+    const state = gp_state.getGamepadState(device_idx);
+    gp_view.drawGamepadState(state);
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
