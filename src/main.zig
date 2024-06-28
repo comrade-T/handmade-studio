@@ -4,6 +4,8 @@ const r = @cImport({
     @cInclude("raylib.h");
 });
 
+const hot_rest = @import("hot-reload-rest-api.zig");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const GameStatePtr = *anyopaque;
@@ -22,11 +24,14 @@ const failed_to_load_msg = "Faild to load game.dll";
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() !void {
-    r.InitWindow(screen_w, screen_h, "App");
-    defer r.CloseWindow();
+    var checker = hot_rest.HotReloadChecker{};
+    const thread = try std.Thread.spawn(.{}, hot_rest.spawnServer, .{&checker});
+    thread.detach();
 
     loadGameDll() catch @panic(failed_to_load_msg);
 
+    r.InitWindow(screen_w, screen_h, "App");
+    defer r.CloseWindow();
     r.SetTargetFPS(60);
     r.SetExitKey(r.KEY_NULL);
     r.SetConfigFlags(r.FLAG_WINDOW_TRANSPARENT);
@@ -38,12 +43,11 @@ pub fn main() !void {
     const game_state = gameInit(allocator.ptr);
 
     while (!r.WindowShouldClose()) {
-        // if (checker.should_reload()) {
-        if (r.IsKeyPressed(r.KEY_F5)) {
+        if (checker.should_reload()) {
             unloadGameDll() catch unreachable;
             loadGameDll() catch @panic(failed_to_load_msg);
             gameReload(game_state);
-            // checker.set_should_reload_on_next_loop(false);
+            checker.set_should_reload_on_next_loop(false);
         }
 
         gameTick(game_state);

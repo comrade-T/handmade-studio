@@ -6,8 +6,8 @@ const gamepad_state = @import("state.zig");
 pub fn drawGamepadState(state: gamepad_state.GamepadState) void {
     const font_size = 40;
     const lx = 200;
-    const ly = 190;
     const rx = 500;
+    const ly = 190;
     const ry = 190;
 
     const active_color = r.BLUE;
