@@ -1,4 +1,6 @@
-const r = @import("raylib");
+const r = @cImport({
+    @cInclude("raylib.h");
+});
 const gamepad_state = @import("state.zig");
 
 pub fn drawGamepadState(state: gamepad_state.GamepadState) void {
@@ -8,13 +10,16 @@ pub fn drawGamepadState(state: gamepad_state.GamepadState) void {
     const rx = 500;
     const ry = 250;
 
-    r.drawText("N", lx + 50, ly - 50, font_size, if (state.up) r.Color.blue else r.Color.ray_white);
-    r.drawText("S", lx + 50, ly + 50, font_size, if (state.down) r.Color.blue else r.Color.ray_white);
-    r.drawText("E", lx + 100, ly, font_size, if (state.right) r.Color.blue else r.Color.ray_white);
-    r.drawText("W", lx, ly, font_size, if (state.left) r.Color.blue else r.Color.ray_white);
+    const active_color = r.BLUE;
+    const inactive_color = r.RAYWHITE;
 
-    r.drawText("X", rx, ry, font_size, if (state.X) r.Color.blue else r.Color.ray_white);
-    r.drawText("Y", rx + 50, ry - 50, font_size, if (state.Y) r.Color.blue else r.Color.ray_white);
-    r.drawText("A", rx + 50, ry + 50, font_size, if (state.A) r.Color.blue else r.Color.ray_white);
-    r.drawText("B", rx + 100, ry, font_size, if (state.B) r.Color.blue else r.Color.ray_white);
+    r.DrawText("N", lx + 50, ly - 50, font_size, if (state.up) active_color else inactive_color);
+    r.DrawText("S", lx + 50, ly + 50, font_size, if (state.down) active_color else inactive_color);
+    r.DrawText("E", lx + 100, ly, font_size, if (state.right) active_color else inactive_color);
+    r.DrawText("W", lx, ly, font_size, if (state.left) active_color else inactive_color);
+
+    r.DrawText("X", rx, ry, font_size, if (state.X) active_color else inactive_color);
+    r.DrawText("Y", rx + 50, ry - 50, font_size, if (state.Y) active_color else inactive_color);
+    r.DrawText("A", rx + 50, ry + 50, font_size, if (state.A) active_color else inactive_color);
+    r.DrawText("B", rx + 100, ry, font_size, if (state.B) active_color else inactive_color);
 }

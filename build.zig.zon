@@ -4,10 +4,6 @@
     .version = "0.0.0",
 
     .dependencies = .{
-        .@"raylib-zig" = .{
-            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
-            .hash = "122007740243696aa1e91f18ee6601046b367af4e19ee031b18e79f10b1dd432e2c2",
-        },
         .pretty = .{
             .url = "https://github.com/timfayz/pretty/archive/v0.10.2.tar.gz",
             .hash = "12201325c0651a8cc167d1d3bd07a71aa3b87b91065d45a64298a3e1d5716d62ed85",

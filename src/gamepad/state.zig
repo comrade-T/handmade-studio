@@ -1,4 +1,6 @@
-const r = @import("raylib");
+const r = @cImport({
+    @cInclude("raylib.h");
+});
 
 pub const GamepadState = struct {
     X: bool = false,
@@ -30,29 +32,29 @@ pub const GamepadState = struct {
 
 pub fn getGamepadState(gamepad: i32) GamepadState {
     return GamepadState{
-        .X = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_right_face_left),
-        .Y = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_right_face_up),
-        .A = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_right_face_down),
-        .B = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_right_face_right),
+        .X = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_FACE_LEFT),
+        .Y = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_FACE_UP),
+        .A = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_FACE_DOWN),
+        .B = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT),
 
-        .up = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_left_face_up),
-        .down = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_left_face_down),
-        .left = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_left_face_left),
-        .right = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_left_face_right),
+        .up = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_LEFT_FACE_UP),
+        .down = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_LEFT_FACE_DOWN),
+        .left = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_LEFT_FACE_LEFT),
+        .right = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_LEFT_FACE_RIGHT),
 
-        .LB = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_left_trigger_1),
-        .RB = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_right_trigger_1),
-        .L3 = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_left_thumb),
-        .R3 = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_right_thumb),
+        .LB = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_LEFT_TRIGGER_1),
+        .RB = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_TRIGGER_1),
+        .L3 = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_LEFT_THUMB),
+        .R3 = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_THUMB),
 
-        .select = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_middle_left),
-        .start = r.isGamepadButtonDown(gamepad, r.GamepadButton.gamepad_button_middle_right),
+        .select = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_MIDDLE_LEFT),
+        .start = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_MIDDLE_RIGHT),
 
-        .LX = r.getGamepadAxisMovement(gamepad, 0),
-        .LY = r.getGamepadAxisMovement(gamepad, 1),
-        .RX = r.getGamepadAxisMovement(gamepad, 2),
-        .RY = r.getGamepadAxisMovement(gamepad, 3),
-        .LT = r.getGamepadAxisMovement(gamepad, 4),
-        .RT = r.getGamepadAxisMovement(gamepad, 5),
+        .LX = r.GetGamepadAxisMovement(gamepad, 0),
+        .LY = r.GetGamepadAxisMovement(gamepad, 1),
+        .RX = r.GetGamepadAxisMovement(gamepad, 2),
+        .RY = r.GetGamepadAxisMovement(gamepad, 3),
+        .LT = r.GetGamepadAxisMovement(gamepad, 4),
+        .RT = r.GetGamepadAxisMovement(gamepad, 5),
     };
 }

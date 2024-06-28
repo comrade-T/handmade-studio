@@ -1,36 +1,33 @@
 const std = @import("std");
 const pretty = @import("pretty");
-const r = @import("raylib");
+const r = @cImport({
+    @cInclude("raylib.h");
+});
+
 const gp_state = @import("gamepad/state.zig");
 const gp_view = @import("gamepad/view.zig");
 
-pub fn main() anyerror!void {
-    const screenWidth = 800;
-    const screenHeight = 450;
+pub fn main() !void {
+    const screen_w = 800;
+    const screen_h = 450;
 
-    r.initWindow(screenWidth, screenHeight, "App");
-    defer r.closeWindow();
+    r.InitWindow(screen_w, screen_h, "App");
+    defer r.CloseWindow();
 
-    r.setTargetFPS(60);
-    r.setExitKey(r.KeyboardKey.key_null);
-    r.setConfigFlags(.{
-        .window_transparent = true,
-    });
+    r.SetTargetFPS(60);
+    r.SetExitKey(r.KEY_NULL);
+    r.SetConfigFlags(r.FLAG_WINDOW_TRANSPARENT);
 
-    while (!r.windowShouldClose()) {
-        r.beginDrawing();
-        defer r.endDrawing();
+    while (!r.WindowShouldClose()) {
+        r.BeginDrawing();
+        defer r.EndDrawing();
 
-        r.clearBackground(r.Color.blank);
-        r.drawText("Congrats! You created your first window!", 190, 50, 20, r.Color.sky_blue);
+        r.ClearBackground(r.BLANK);
+        r.DrawText("Congrats! You created your first window!", 190, 50, 20, r.SKYBLUE);
 
         const gamepad = 1;
         const state = gp_state.getGamepadState(gamepad);
 
         gp_view.drawGamepadState(state);
-
-        // try pretty.print(std.heap.c_allocator, state, .{
-        //     .struct_max_len = 30,
-        // });
     }
 }
