@@ -29,11 +29,12 @@ pub fn main() !void {
 
     loadGameDll() catch @panic(failed_to_load_msg);
 
-    r.InitWindow(screen_w, screen_h, "App");
-    defer r.CloseWindow();
     r.SetTargetFPS(60);
     r.SetExitKey(r.KEY_NULL);
     r.SetConfigFlags(r.FLAG_WINDOW_TRANSPARENT);
+
+    r.InitWindow(screen_w, screen_h, "Communism");
+    defer r.CloseWindow();
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();

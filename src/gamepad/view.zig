@@ -22,4 +22,15 @@ pub fn drawGamepadState(state: gamepad_state.GamepadState) void {
     r.DrawText("Y", rx + 50, ry - 50, font_size, if (state.Y) active_color else inactive_color);
     r.DrawText("A", rx + 50, ry + 50, font_size, if (state.A) active_color else inactive_color);
     r.DrawText("B", rx + 100, ry, font_size, if (state.B) active_color else inactive_color);
+
+    r.DrawText("_", lx + 50, ly - 150, font_size, if (state.LB) active_color else inactive_color);
+    r.DrawText("_", rx + 50, ry - 150, font_size, if (state.RB) active_color else inactive_color);
+
+    const LT_height = (state.LT + 1) * 50;
+    r.DrawRectangle(lx - 50, ly - 150, 5, @intFromFloat(100), inactive_color);
+    r.DrawRectangle(lx - 50, ly - 150, 5, @intFromFloat(LT_height), active_color);
+
+    const RT_height = (state.RT + 1) * 50;
+    r.DrawRectangle(rx + 200, ry - 150, 5, @intFromFloat(100), inactive_color);
+    r.DrawRectangle(rx + 200, ry - 150, 5, @intFromFloat(RT_height), active_color);
 }

@@ -45,14 +45,15 @@ export fn gameTick(game_state_ptr: *anyopaque) void {
 
 export fn gameDraw(game_state_ptr: *anyopaque) void {
     const gs: *GameState = @ptrCast(@alignCast(game_state_ptr));
+    _ = gs;
     r.ClearBackground(r.BLANK);
 
-    var buf: [256]u8 = undefined;
-    const slice = std.fmt.bufPrintZ(&buf, "radius: {d:.02}, time: {d:.02}", .{ gs.radius, gs.time }) catch "error";
-    r.DrawText(slice, 10, 10, 20, r.RAYWHITE);
+    // var buf: [256]u8 = undefined;
+    // const slice = std.fmt.bufPrintZ(&buf, "radius: {d:.02}, time: {d:.02}", .{ gs.radius, gs.time }) catch "error";
+    // r.DrawText(slice, 10, 10, 20, r.RAYWHITE);
 
-    const circle_x: f32 = @mod(gs.time * 240.0, screen_w + gs.radius * 2) - gs.radius;
-    r.DrawCircleV(.{ .x = circle_x, .y = screen_h - gs.radius - 40 }, gs.radius, r.BLUE);
+    // const circle_x: f32 = @mod(gs.time * 240.0, screen_w + gs.radius * 2) - gs.radius;
+    // r.DrawCircleV(.{ .x = circle_x, .y = screen_h - gs.radius - 40 }, gs.radius, r.BLUE);
 
     const state = gp_state.getGamepadState(device_idx);
     gp_view.drawGamepadState(state);
