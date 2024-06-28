@@ -50,6 +50,22 @@ pub fn getStickDirection(stick_x: f32, stick_y: f32) StickDirection {
     return .C;
 }
 
+const sets = [_][]const u8{ "ABCD", "EFGH", "IJKL", "MNOP", "QRST", "UVWX", "YZ12", "3456", "7890" };
+
+pub fn getCharacterSetFromStickDirection(dir: StickDirection) []const u8 {
+    return switch (dir) {
+        .C => sets[0],
+        .N => sets[1],
+        .NE => sets[2],
+        .E => sets[3],
+        .SE => sets[4],
+        .S => sets[5],
+        .SW => sets[6],
+        .W => sets[7],
+        .NW => sets[8],
+    };
+}
+
 pub fn getGamepadState(gamepad: i32) GamepadState {
     return GamepadState{
         .X = r.IsGamepadButtonDown(gamepad, r.GAMEPAD_BUTTON_RIGHT_FACE_LEFT),
