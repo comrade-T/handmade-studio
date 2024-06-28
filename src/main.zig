@@ -1,5 +1,4 @@
 const std = @import("std");
-const pretty = @import("pretty");
 const r = @cImport({
     @cInclude("raylib.h");
 });
@@ -43,7 +42,7 @@ pub fn main() !void {
     const game_state = gameInit(allocator.ptr);
 
     while (!r.WindowShouldClose()) {
-        if (checker.should_reload()) {
+        if (r.IsKeyPressed(r.KEY_F5) or checker.should_reload()) {
             unloadGameDll() catch unreachable;
             loadGameDll() catch @panic(failed_to_load_msg);
             gameReload(game_state);
