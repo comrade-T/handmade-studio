@@ -3,6 +3,7 @@ const r = @cImport({
     @cInclude("raylib.h");
 });
 const gamepad_state = @import("state.zig");
+const game = @import("../game.zig");
 
 const Button = struct {
     is_active: bool = false,
@@ -36,7 +37,7 @@ const Button = struct {
     }
 };
 
-pub fn drawGamepadState(s: gamepad_state.GamepadState) void {
+pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void {
     const root_LX = 150;
     const root_LY = 100;
     const root_RX = 450;
@@ -63,8 +64,8 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState) void {
     ////////////////////////////////////////////////////////////////////////////////////////////// LT & RT
 
     const LT_height = (s.LT + 1) * 50;
-    r.DrawRectangle(root_LX - 100, root_LY - 50, 5, @intFromFloat(100), r.RAYWHITE);
-    r.DrawRectangle(root_LX - 100, root_LY - 50, 5, @intFromFloat(LT_height), r.SKYBLUE);
+    r.DrawRectangle(root_LX - 85, root_LY - 50, 5, @intFromFloat(100), r.RAYWHITE);
+    r.DrawRectangle(root_LX - 85, root_LY - 50, 5, @intFromFloat(LT_height), r.SKYBLUE);
 
     const RT_height = (s.RT + 1) * 50;
     r.DrawRectangle(root_RX + 100, root_RY - 50, 5, @intFromFloat(100), r.RAYWHITE);
@@ -102,4 +103,21 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState) void {
     const char_a_txt = std.fmt.bufPrintZ(&buf, "{c}", .{char_set[0]}) catch "error";
     var char_a = Button{ .is_active = s.A, .text = char_a_txt, .y = 50, .rx = char_root_x, .ry = char_root_y };
     char_a.display();
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Buffer from Game
+
+    var copy_buf: [1024]u8 = undefined;
+    const copied_scatch_string = std.fmt.bufPrintZ(&copy_buf, "{s}", .{gs.scratch_string}) catch "error";
+
+    if (s.start) gs.scratch_string = "";
+    if (s.A)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[0] }) catch "error";
+    if (s.B)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[1] }) catch "error";
+    if (s.X)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[2] }) catch "error";
+    if (s.Y)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[3] }) catch "error";
+
+    r.DrawText(gs.scratch_string, 300, 300, 30, r.RAYWHITE);
 }

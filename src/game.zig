@@ -13,10 +13,13 @@ const screen_h = 450;
 
 const device_idx = 1;
 
-const GameState = struct {
+pub const GameState = struct {
     allocator: std.mem.Allocator,
     time: f32 = 0,
     radius: f32 = 0,
+
+    scratch_buffer: [1024]u8 = undefined,
+    scratch_string: [*c]const u8 = "",
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,7 +48,6 @@ export fn gameTick(game_state_ptr: *anyopaque) void {
 
 export fn gameDraw(game_state_ptr: *anyopaque) void {
     const gs: *GameState = @ptrCast(@alignCast(game_state_ptr));
-    _ = gs;
     r.ClearBackground(r.BLANK);
 
     // var buf: [256]u8 = undefined;
@@ -56,7 +58,7 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // r.DrawCircleV(.{ .x = circle_x, .y = screen_h - gs.radius - 40 }, gs.radius, r.BLUE);
 
     const state = gp_state.getGamepadState(device_idx);
-    gp_view.drawGamepadState(state);
+    gp_view.drawGamepadState(state, gs);
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
