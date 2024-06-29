@@ -109,15 +109,21 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
     var copy_buf: [1024]u8 = undefined;
     const copied_scatch_string = std.fmt.bufPrintZ(&copy_buf, "{s}", .{gs.scratch_string}) catch "error";
 
+    const ps = gs.previous_gamepad_state;
+
     if (s.start) gs.scratch_string = "";
-    if (s.A)
+    if (s.A and !ps.A)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[0] }) catch "error";
-    if (s.B)
+    if (s.B and !ps.B)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[1] }) catch "error";
-    if (s.X)
+    if (s.X and !ps.X)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[2] }) catch "error";
-    if (s.Y)
+    if (s.Y and !ps.Y)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[3] }) catch "error";
+    if (s.RB and !ps.RB)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s} ", .{copied_scatch_string}) catch "error";
+    if (s.LB and !ps.LB and copied_scatch_string.len > 0)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}", .{copied_scatch_string[0 .. copied_scatch_string.len - 1]}) catch "error";
 
     r.DrawText(gs.scratch_string, 300, 300, 30, r.RAYWHITE);
 }

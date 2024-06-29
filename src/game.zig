@@ -18,6 +18,8 @@ pub const GameState = struct {
     time: f32 = 0,
     radius: f32 = 0,
 
+    previous_gamepad_state: gp_state.GamepadState = undefined,
+
     scratch_buffer: [1024]u8 = undefined,
     scratch_string: [*c]const u8 = "",
 };
@@ -57,8 +59,9 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // const circle_x: f32 = @mod(gs.time * 240.0, screen_w + gs.radius * 2) - gs.radius;
     // r.DrawCircleV(.{ .x = circle_x, .y = screen_h - gs.radius - 40 }, gs.radius, r.BLUE);
 
-    const state = gp_state.getGamepadState(device_idx);
-    gp_view.drawGamepadState(state, gs);
+    const new_gamepad_state = gp_state.getGamepadState(device_idx);
+    gp_view.drawGamepadState(new_gamepad_state, gs);
+    gs.previous_gamepad_state = new_gamepad_state;
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
