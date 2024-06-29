@@ -52,6 +52,28 @@ pub fn getStickDirection(stick_x: f32, stick_y: f32) StickDirection {
 
 const lowercase_sets = [_][]const u8{ "abcd", "efgh", "ijkl", "mnop", "qrst", "uvwx", "yz12", "3456", "7890" };
 const uppercase_sets = [_][]const u8{ "ABCD", "EFGH", "IJKL", "MNOP", "QRST", "UVWX", "YZ!@", "#$%^", "&*()" };
+const R3_lowercase_set = "-=[]\\;',.";
+const R3_uppercase_set = "_+{}|:\"<>";
+
+pub const L3_character = "/";
+pub const L3_uppercase_character = "?";
+pub const L3_R3_character = "`";
+pub const L3_R3_uppercase_character = "~";
+
+pub fn getSymbolCharacterFromStickDirection(dir: StickDirection, uppercase: bool) u8 {
+    const set = if (uppercase) R3_uppercase_set else R3_lowercase_set;
+    return switch (dir) {
+        .C => set[0],
+        .N => set[1],
+        .NE => set[2],
+        .E => set[3],
+        .SE => set[4],
+        .S => set[5],
+        .SW => set[6],
+        .W => set[7],
+        .NW => set[8],
+    };
+}
 
 pub fn getCharacterSetFromStickDirection(dir: StickDirection, uppercase: bool) []const u8 {
     const sets = if (uppercase) uppercase_sets else lowercase_sets;

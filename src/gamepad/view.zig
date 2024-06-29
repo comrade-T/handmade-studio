@@ -84,7 +84,9 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Character Sets
 
-    const char_set = gamepad_state.getCharacterSetFromStickDirection(left_dir, s.LT > 0.1);
+    const LT_is_down = s.LT > 0.1;
+
+    const char_set = gamepad_state.getCharacterSetFromStickDirection(left_dir, LT_is_down);
     const char_root_x = root_RX;
     const char_root_y = root_RY;
 
@@ -104,6 +106,19 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
     var char_a = Button{ .is_active = s.A, .text = char_a_txt, .y = 50, .rx = char_root_x, .ry = char_root_y };
     char_a.display();
 
+    const L3_char = if (s.LT > 0.1) gamepad_state.L3_uppercase_character else gamepad_state.L3_character;
+    const char_L3_txt = std.fmt.bufPrintZ(&buf, "{s}", .{L3_char}) catch "error";
+    var char_L3 = Button{ .is_active = s.L3, .text = char_L3_txt, .rx = root_LX, .ry = root_LY };
+    char_L3.display();
+
+    var R3_char = gamepad_state.getSymbolCharacterFromStickDirection(left_dir, LT_is_down);
+    if (s.L3 and !LT_is_down) R3_char = gamepad_state.L3_R3_character[0];
+    if (s.L3 and LT_is_down) R3_char = gamepad_state.L3_R3_uppercase_character[0];
+
+    const char_R3_txt = std.fmt.bufPrintZ(&buf, "{c}", .{R3_char}) catch "error";
+    var char_R3 = Button{ .is_active = s.R3, .text = char_R3_txt, .rx = char_root_x, .ry = char_root_y };
+    char_R3.display();
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Buffer from Game
 
     var copy_buf: [1024]u8 = undefined;
@@ -112,6 +127,7 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
     const ps = gs.previous_gamepad_state;
 
     if (s.start) gs.scratch_string = "";
+
     if (s.A and !ps.A)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[0] }) catch "error";
     if (s.B and !ps.B)
@@ -122,8 +138,16 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ copied_scatch_string, char_set[3] }) catch "error";
     if (s.RB and !ps.RB)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s} ", .{copied_scatch_string}) catch "error";
+
     if (s.LB and !ps.LB and copied_scatch_string.len > 0)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}", .{copied_scatch_string[0 .. copied_scatch_string.len - 1]}) catch "error";
+
+    if (s.L3 and !ps.L3)
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{s}", .{ copied_scatch_string, L3_char }) catch "error";
+    if (s.R3 and !ps.R3) {
+        const old_string = if (s.L3 and copied_scatch_string.len > 0) copied_scatch_string[0 .. copied_scatch_string.len - 1] else copied_scatch_string;
+        gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}{c}", .{ old_string, R3_char }) catch "error";
+    }
 
     r.DrawText(gs.scratch_string, 50, 300, 30, r.RAYWHITE);
 }
