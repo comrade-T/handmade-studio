@@ -84,7 +84,7 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Character Sets
 
-    const char_set = gamepad_state.getCharacterSetFromStickDirection(left_dir);
+    const char_set = gamepad_state.getCharacterSetFromStickDirection(left_dir, s.LT > 0.1);
     const char_root_x = root_RX;
     const char_root_y = root_RY;
 
@@ -125,5 +125,5 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
     if (s.LB and !ps.LB and copied_scatch_string.len > 0)
         gs.scratch_string = std.fmt.bufPrintZ(&gs.scratch_buffer, "{s}", .{copied_scatch_string[0 .. copied_scatch_string.len - 1]}) catch "error";
 
-    r.DrawText(gs.scratch_string, 300, 300, 30, r.RAYWHITE);
+    r.DrawText(gs.scratch_string, 50, 300, 30, r.RAYWHITE);
 }

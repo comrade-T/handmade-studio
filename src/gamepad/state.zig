@@ -50,9 +50,11 @@ pub fn getStickDirection(stick_x: f32, stick_y: f32) StickDirection {
     return .C;
 }
 
-const sets = [_][]const u8{ "ABCD", "EFGH", "IJKL", "MNOP", "QRST", "UVWX", "YZ12", "3456", "7890" };
+const lowercase_sets = [_][]const u8{ "abcd", "efgh", "ijkl", "mnop", "qrst", "uvwx", "yz12", "3456", "7890" };
+const uppercase_sets = [_][]const u8{ "ABCD", "EFGH", "IJKL", "MNOP", "QRST", "UVWX", "YZ!@", "#$%^", "&*()" };
 
-pub fn getCharacterSetFromStickDirection(dir: StickDirection) []const u8 {
+pub fn getCharacterSetFromStickDirection(dir: StickDirection, uppercase: bool) []const u8 {
+    const sets = if (uppercase) uppercase_sets else lowercase_sets;
     return switch (dir) {
         .C => sets[0],
         .N => sets[1],
