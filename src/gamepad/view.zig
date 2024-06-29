@@ -108,16 +108,18 @@ pub fn drawGamepadState(s: gamepad_state.GamepadState, gs: *game.GameState) void
 
     const L3_char = if (s.LT > 0.1) gamepad_state.L3_uppercase_character else gamepad_state.L3_character;
     const char_L3_txt = std.fmt.bufPrintZ(&buf, "{s}", .{L3_char}) catch "error";
-    var char_L3 = Button{ .is_active = s.L3, .text = char_L3_txt, .rx = root_LX, .ry = root_LY };
+    var char_L3 = Button{ .is_active = s.L3, .text = char_L3_txt, .x = 100, .y = 150, .rx = root_LX, .ry = root_LY };
     char_L3.display();
 
     var R3_char = gamepad_state.getSymbolCharacterFromStickDirection(left_dir, LT_is_down);
     if (s.L3 and !LT_is_down) R3_char = gamepad_state.L3_R3_character[0];
     if (s.L3 and LT_is_down) R3_char = gamepad_state.L3_R3_uppercase_character[0];
-
     const char_R3_txt = std.fmt.bufPrintZ(&buf, "{c}", .{R3_char}) catch "error";
-    var char_R3 = Button{ .is_active = s.R3, .text = char_R3_txt, .rx = char_root_x, .ry = char_root_y };
+    var char_R3 = Button{ .is_active = s.R3, .text = char_R3_txt, .x = -100, .y = 150, .rx = char_root_x, .ry = char_root_y };
     char_R3.display();
+
+    // TODO: make this more readable
+    // TODO: roll & click on the same stick, not the opposite stick
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Buffer from Game
 
