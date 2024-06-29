@@ -6,6 +6,8 @@ const r = @cImport({
 const gp_state = @import("gamepad/state.zig");
 const gp_view = @import("gamepad/view.zig");
 
+const kbs = @import("keyboard/state.zig");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_w = 800;
@@ -24,6 +26,7 @@ pub const GameState = struct {
     gamepad_string: [*c]const u8 = "",
 
     // keyboard experiment
+    keyboard_state: kbs.KeyboardState = kbs.KeyboardState{},
     keyboard_buffer: [1024]u8 = undefined,
     keyboard_string: [*c]const u8 = "",
 };
@@ -54,7 +57,6 @@ export fn gameTick(game_state_ptr: *anyopaque) void {
 
 export fn gameDraw(game_state_ptr: *anyopaque) void {
     const gs: *GameState = @ptrCast(@alignCast(game_state_ptr));
-    _ = gs;
     r.ClearBackground(r.BLANK);
 
     // var buf: [256]u8 = undefined;
@@ -67,6 +69,10 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // const new_gamepad_state = gp_state.getGamepadState(device_idx);
     // gp_view.drawGamepadState(new_gamepad_state, gs);
     // gs.previous_gamepad_state = new_gamepad_state;
+
+    const keyboard_state = kbs.getKeyboardState();
+    // TODO:
+    gs.keyboard_state = keyboard_state;
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
