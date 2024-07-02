@@ -127,7 +127,9 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
     };
 }
 
-pub fn updateKeyMap(map: *std.AutoHashMap(c_int, KeyDownEvent)) !void {
+const KeyMap = std.AutoHashMap(c_int, KeyDownEvent);
+
+pub fn updateKeyMap(map: *KeyMap) !void {
     for (codes) |c| {
         if (r.IsKeyUp(c)) _ = map.remove(c);
         if (r.IsKeyDown(c) and !map.contains(c)) try map.put(
@@ -145,7 +147,7 @@ fn cmpKeyDownEvent(_: void, a: KeyDownEvent, b: KeyDownEvent) bool {
     return a.time_ms < b.time_ms;
 }
 
-pub fn printKeyMap(a: std.mem.Allocator, map: *std.AutoHashMap(c_int, KeyDownEvent)) !void {
+pub fn printKeyMap(a: std.mem.Allocator, map: *KeyMap) !void {
     var arena = std.heap.ArenaAllocator.init(a);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -161,4 +163,14 @@ pub fn printKeyMap(a: std.mem.Allocator, map: *std.AutoHashMap(c_int, KeyDownEve
 
     for (slice) |item| std.debug.print("{s} ", .{item.char});
     if (slice.len > 0) std.debug.print("\n", .{});
+}
+
+test "build a unit" {
+    const a = std.testing.allocator;
+
+    var map = std.AutoHashMap(c_int, KeyDownEvent).init(a);
+
+    try map.put(r.KEY_D, .{ .code = r.KEY_D, .char = "d", .time_ms = 0 });
+
+    // TODO: we might need a "previous_key_map"
 }
