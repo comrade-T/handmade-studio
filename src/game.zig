@@ -70,13 +70,7 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // gs.previous_gamepad_state = new_gamepad_state;
 
     kbs.updateKeyMap(&gs.key_map) catch @panic("Error in kbs.updateKeyMap()");
-
-    var iterator = gs.key_map.iterator();
-    while (iterator.next()) |entry| {
-        std.debug.print("{d}:{any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-    }
-
-    // TODO: but, instead of using bool as value, we have a custom structure that also store timestamp and string char
+    kbs.printKeyMap(gs.allocator, &gs.key_map) catch @panic("Error in kbs.printKeyMap()");
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {

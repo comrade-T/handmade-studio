@@ -130,7 +130,7 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
 pub fn updateKeyMap(map: *std.AutoHashMap(c_int, KeyDownEvent)) !void {
     for (codes) |c| {
         if (r.IsKeyUp(c)) _ = map.remove(c);
-        if (r.IsKeyDown(c)) try map.put(
+        if (r.IsKeyDown(c) and !map.contains(c)) try map.put(
             c,
             KeyDownEvent{
                 .code = c,
@@ -139,4 +139,26 @@ pub fn updateKeyMap(map: *std.AutoHashMap(c_int, KeyDownEvent)) !void {
             },
         );
     }
+}
+
+fn cmpKeyDownEvent(_: void, a: KeyDownEvent, b: KeyDownEvent) bool {
+    return a.time_ms < b.time_ms;
+}
+
+pub fn printKeyMap(a: std.mem.Allocator, map: *std.AutoHashMap(c_int, KeyDownEvent)) !void {
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var list = std.ArrayList(KeyDownEvent).init(allocator);
+    var iterator = map.iterator();
+    while (iterator.next()) |entry| {
+        try list.append(entry.value_ptr.*);
+    }
+
+    const slice = try list.toOwnedSlice();
+    std.mem.sort(KeyDownEvent, slice, {}, cmpKeyDownEvent);
+
+    for (slice) |item| std.debug.print("{s} ", .{item.char});
+    if (slice.len > 0) std.debug.print("\n", .{});
 }
