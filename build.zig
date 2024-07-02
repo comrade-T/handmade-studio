@@ -19,6 +19,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
 
+        // game_lib.root_module.addImport("pretty", pretty.module("pretty"));
+
         game_lib.linkSystemLibrary("raylib");
         game_lib.linkLibC();
         b.installArtifact(game_lib);

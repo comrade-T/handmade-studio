@@ -26,8 +26,7 @@ pub const GameState = struct {
     gamepad_string: [*c]const u8 = "",
 
     // keyboard experiment
-    previous_key_map: std.AutoHashMap(c_int, bool),
-    current_key_map: std.AutoHashMap(c_int, bool),
+    key_map: std.AutoHashMap(c_int, bool),
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -36,14 +35,10 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
     const allocator: *std.mem.Allocator = @ptrCast(@alignCast(allocator_ptr));
     const gs = allocator.create(GameState) catch @panic("Out of memory.");
 
-    const previous_key_map = std.AutoHashMap(c_int, bool).init(allocator.*);
-    const current_key_map = std.AutoHashMap(c_int, bool).init(allocator.*);
-
     gs.* = GameState{
         .allocator = allocator.*,
         .radius = readRadiusConfig(allocator.*),
-        .previous_key_map = previous_key_map,
-        .current_key_map = current_key_map,
+        .key_map = std.AutoHashMap(c_int, bool).init(allocator.*),
     };
 
     return gs;
@@ -74,8 +69,12 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // gp_view.drawGamepadState(new_gamepad_state, gs);
     // gs.previous_gamepad_state = new_gamepad_state;
 
-    // TODO:
-    _ = gs;
+    kbs.updateKeyMap(&gs.key_map) catch @panic("Error in kbs.updateKeyMap()");
+
+    var iterator = gs.key_map.iterator();
+    while (iterator.next()) |entry| {
+        std.debug.print("{d}:{any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {

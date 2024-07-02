@@ -35,3 +35,14 @@ const codes = [_]c_int{
     r.KEY_Y,
     r.KEY_Z,
 };
+
+pub fn updateKeyMap(map: *std.AutoHashMap(c_int, bool)) !void {
+    for (codes) |code| {
+        if (r.IsKeyDown(code)) {
+            try map.put(code, true);
+        }
+        if (r.IsKeyUp(code)) {
+            _ = map.remove(code);
+        }
+    }
+}
