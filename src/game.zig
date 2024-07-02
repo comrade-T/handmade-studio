@@ -75,6 +75,8 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     while (iterator.next()) |entry| {
         std.debug.print("{d}:{any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
+
+    // TODO: but, instead of using bool as value, we have a custom structure that also store timestamp and string char
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
