@@ -7,6 +7,12 @@ const game = @import("../game.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub const KeyDownEvent = struct {
+    code: c_int = 0,
+    char: []const u8 = "",
+    time_ms: i64 = 0,
+};
+
 const codes = [_]c_int{
     r.KEY_A,
     r.KEY_B,
@@ -121,9 +127,16 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
     };
 }
 
-pub fn updateKeyMap(map: *std.AutoHashMap(c_int, bool)) !void {
+pub fn updateKeyMap(map: *std.AutoHashMap(c_int, KeyDownEvent)) !void {
     for (codes) |c| {
-        if (r.IsKeyDown(c)) try map.put(c, true);
         if (r.IsKeyUp(c)) _ = map.remove(c);
+        if (r.IsKeyDown(c)) try map.put(
+            c,
+            KeyDownEvent{
+                .code = c,
+                .char = getStringRepresentationOfKeyCode(c),
+                .time_ms = std.time.milliTimestamp(),
+            },
+        );
     }
 }

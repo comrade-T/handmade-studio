@@ -26,7 +26,7 @@ pub const GameState = struct {
     gamepad_string: [*c]const u8 = "",
 
     // keyboard experiment
-    key_map: std.AutoHashMap(c_int, bool),
+    key_map: std.AutoHashMap(c_int, kbs.KeyDownEvent),
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -38,7 +38,7 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
     gs.* = GameState{
         .allocator = allocator.*,
         .radius = readRadiusConfig(allocator.*),
-        .key_map = std.AutoHashMap(c_int, bool).init(allocator.*),
+        .key_map = std.AutoHashMap(c_int, kbs.KeyDownEvent).init(allocator.*),
     };
 
     return gs;
