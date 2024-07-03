@@ -165,12 +165,29 @@ pub fn printKeyMap(a: std.mem.Allocator, map: *KeyMap) !void {
     if (slice.len > 0) std.debug.print("\n", .{});
 }
 
+const Unit = union(enum) {
+    single: c_int,
+    combo: []c_int,
+
+    fn create(old: KeyMap, new: KeyMap) Unit {
+        _ = old;
+        _ = new;
+        return Unit{ .single = 0 };
+    }
+};
+
 test "build a unit" {
     const a = std.testing.allocator;
 
-    var map = std.AutoHashMap(c_int, KeyDownEvent).init(a);
+    var old = std.AutoHashMap(c_int, KeyDownEvent).init(a);
+    defer old.deinit();
 
-    try map.put(r.KEY_D, .{ .code = r.KEY_D, .char = "d", .time_ms = 0 });
+    var new = std.AutoHashMap(c_int, KeyDownEvent).init(a);
+    defer new.deinit();
 
-    // TODO: we might need a "previous_key_map"
+    try new.put(r.KEY_D, .{ .code = r.KEY_D, .char = "d", .time_ms = 0 });
+
+    const unit = Unit.create(old, new);
+
+    try std.testing.expectEqual(Unit{ .single = 0 }, unit);
 }
