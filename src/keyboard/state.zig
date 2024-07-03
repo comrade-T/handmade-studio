@@ -13,7 +13,7 @@ pub const KeyDownEvent = struct {
     time_ms: i64 = 0,
 };
 
-const codes = [_]c_int{
+const supported_key_codes = [_]c_int{
     r.KEY_A,
     r.KEY_B,
     r.KEY_C,
@@ -127,67 +127,35 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
     };
 }
 
-const KeyMap = std.AutoHashMap(c_int, KeyDownEvent);
+pub const EventList = std.ArrayList(c_int);
 
-pub fn updateKeyMap(map: *KeyMap) !void {
-    for (codes) |c| {
-        if (r.IsKeyUp(c)) _ = map.remove(c);
-        if (r.IsKeyDown(c) and !map.contains(c)) try map.put(
-            c,
-            KeyDownEvent{
-                .code = c,
-                .char = getStringRepresentationOfKeyCode(c),
-                .time_ms = std.time.milliTimestamp(),
-            },
-        );
+pub fn updateEventList(list: *EventList) !void {
+    for (supported_key_codes) |c| {
+        if (r.IsKeyDown(c)) {
+            var matched = false;
+            for (list.items) |item| {
+                if (item == c) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                try list.append(c);
+            }
+            continue;
+        }
+        for (list.items, 0..) |item, i| {
+            if (item == c) {
+                _ = list.orderedRemove(i);
+                break;
+            }
+        }
     }
 }
 
-fn cmpKeyDownEvent(_: void, a: KeyDownEvent, b: KeyDownEvent) bool {
-    return a.time_ms < b.time_ms;
-}
-
-pub fn printKeyMap(a: std.mem.Allocator, map: *KeyMap) !void {
-    var arena = std.heap.ArenaAllocator.init(a);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var list = std.ArrayList(KeyDownEvent).init(allocator);
-    var iterator = map.iterator();
-    while (iterator.next()) |entry| {
-        try list.append(entry.value_ptr.*);
+pub fn printEventList(list: *EventList) !void {
+    for (list.items) |item| {
+        std.debug.print("{s} ", .{getStringRepresentationOfKeyCode(item)});
     }
-
-    const slice = try list.toOwnedSlice();
-    std.mem.sort(KeyDownEvent, slice, {}, cmpKeyDownEvent);
-
-    for (slice) |item| std.debug.print("{s} ", .{item.char});
-    if (slice.len > 0) std.debug.print("\n", .{});
-}
-
-const Unit = union(enum) {
-    single: c_int,
-    combo: []c_int,
-
-    fn create(old: KeyMap, new: KeyMap) Unit {
-        _ = old;
-        _ = new;
-        return Unit{ .single = 0 };
-    }
-};
-
-test "build a unit" {
-    const a = std.testing.allocator;
-
-    var old = std.AutoHashMap(c_int, KeyDownEvent).init(a);
-    defer old.deinit();
-
-    var new = std.AutoHashMap(c_int, KeyDownEvent).init(a);
-    defer new.deinit();
-
-    try new.put(r.KEY_D, .{ .code = r.KEY_D, .char = "d", .time_ms = 0 });
-
-    const unit = Unit.create(old, new);
-
-    try std.testing.expectEqual(Unit{ .single = 0 }, unit);
+    std.debug.print("\n", .{});
 }

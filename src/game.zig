@@ -26,8 +26,8 @@ pub const GameState = struct {
     gamepad_string: [*c]const u8 = "",
 
     // keyboard experiment
-    old_key_map: std.AutoHashMap(c_int, kbs.KeyDownEvent),
-    new_key_map: std.AutoHashMap(c_int, kbs.KeyDownEvent),
+    old_event_list: kbs.EventList,
+    new_event_list: kbs.EventList,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,8 +39,8 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
     gs.* = GameState{
         .allocator = allocator.*,
         .radius = readRadiusConfig(allocator.*),
-        .new_key_map = std.AutoHashMap(c_int, kbs.KeyDownEvent).init(allocator.*),
-        .old_key_map = std.AutoHashMap(c_int, kbs.KeyDownEvent).init(allocator.*),
+        .old_event_list = std.ArrayList(c_int).init(allocator.*),
+        .new_event_list = std.ArrayList(c_int).init(allocator.*),
     };
 
     return gs;
@@ -71,15 +71,11 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // gp_view.drawGamepadState(new_gamepad_state, gs);
     // gs.previous_gamepad_state = new_gamepad_state;
 
-    kbs.updateKeyMap(&gs.new_key_map) catch @panic("Error in kbs.updateKeyMap(&gs.new_key_map)");
+    kbs.updateEventList(&gs.new_event_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
 
-    // do something with prev_key_map and key_map ////////////////////////////////////////////////
+    kbs.printEventList(&gs.new_event_list) catch @panic("Error in kbs.printEventList()");
 
-    kbs.printKeyMap(gs.allocator, &gs.new_key_map) catch @panic("Error in kbs.printKeyMap()");
-
-    /////////////////////////////////////////////////////////////////////////////////////////////
-
-    kbs.updateKeyMap(&gs.old_key_map) catch @panic("Error in kbs.updateKeyMap(&gs.old_key_map)");
+    kbs.updateEventList(&gs.old_event_list) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
