@@ -56,10 +56,28 @@ pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn mayInvokeKeyUp(old: *EventList, new: *EventList) bool {
-    if (old.items.len < new.items.len) return false;
-    for (0..old.items.len) |i| if (old.items[i] != new.items[i]) return false;
+fn mayInvokeKeyUp(old: []c_int, new: []c_int) bool {
+    if (old.len < new.len) return false;
+    for (0..new.len) |i| if (old[i] != new[i]) return false;
     return true;
+}
+
+test mayInvokeKeyUp {
+    var old1 = [_]c_int{ 1, 2, 3 };
+    var new1 = [_]c_int{ 1, 2 };
+    try std.testing.expect(mayInvokeKeyUp(&old1, &new1));
+
+    var old2 = [_]c_int{ 1, 2, 3 };
+    var new2 = [_]c_int{ 1, 2, 3, 4 };
+    try std.testing.expect(!mayInvokeKeyUp(&old2, &new2));
+
+    var old3 = [_]c_int{ 1, 2, 3 };
+    var new3 = [_]c_int{1};
+    try std.testing.expect(mayInvokeKeyUp(&old3, &new3));
+
+    var old4 = [_]c_int{ 1, 2, 3 };
+    var new4 = [_]c_int{ 2, 3 };
+    try std.testing.expect(!mayInvokeKeyUp(&old4, &new4));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
