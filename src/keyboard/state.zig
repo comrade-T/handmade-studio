@@ -9,6 +9,7 @@ const game = @import("../game.zig");
 
 pub const EventArray = [400]bool;
 pub const EventList = std.ArrayList(c_int);
+pub const EventSlice = []c_int;
 
 pub fn updateEventList(arr: *EventArray, list: *EventList) !void {
     for (list.items, 0..) |code, i| {
@@ -26,10 +27,10 @@ pub fn updateEventList(arr: *EventArray, list: *EventList) !void {
     }
 }
 
-fn eventListToStr(allocator: std.mem.Allocator, e_list: *EventList) ![]const u8 {
+fn eventListToStr(allocator: std.mem.Allocator, e_list: EventSlice) ![]const u8 {
     var str_list = std.ArrayList(u8).init(allocator);
     errdefer str_list.deinit();
-    for (e_list.items, 0..) |code, i| {
+    for (e_list, 0..) |code, i| {
         const str = getStringRepresentationOfKeyCode(code);
         if (i > 0) try str_list.appendSlice(" ");
         try str_list.appendSlice(str);
@@ -39,45 +40,44 @@ fn eventListToStr(allocator: std.mem.Allocator, e_list: *EventList) ![]const u8 
 
 test "eventListToStr" {
     const allocator = std.testing.allocator;
-    var list = std.ArrayList(c_int).init(allocator);
-    defer list.deinit();
-    try list.append(r.KEY_D);
-    try list.append(r.KEY_J);
-    const result = try eventListToStr(allocator, &list);
+    var arr = [_]c_int{ r.KEY_D, r.KEY_J };
+    const result = try eventListToStr(std.testing.allocator, &arr);
     defer allocator.free(result);
     try std.testing.expectEqualStrings("d j", result);
 }
 
 pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
-    const str = try eventListToStr(allocator, list);
+    const str = try eventListToStr(allocator, list.items);
     defer allocator.free(str);
     std.debug.print("{s}\n", .{str});
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn mayInvokeKeyUp(old: []c_int, new: []c_int) bool {
+///////////////////////////// canConsiderInvokeKeyUp
+
+fn canConsiderInvokeKeyUp(old: EventSlice, new: EventSlice) bool {
     if (old.len < new.len) return false;
     for (0..new.len) |i| if (old[i] != new[i]) return false;
     return true;
 }
 
-test mayInvokeKeyUp {
+test canConsiderInvokeKeyUp {
     var old1 = [_]c_int{ 1, 2, 3 };
     var new1 = [_]c_int{ 1, 2 };
-    try std.testing.expect(mayInvokeKeyUp(&old1, &new1));
+    try std.testing.expect(canConsiderInvokeKeyUp(&old1, &new1));
 
     var old2 = [_]c_int{ 1, 2, 3 };
     var new2 = [_]c_int{ 1, 2, 3, 4 };
-    try std.testing.expect(!mayInvokeKeyUp(&old2, &new2));
+    try std.testing.expect(!canConsiderInvokeKeyUp(&old2, &new2));
 
     var old3 = [_]c_int{ 1, 2, 3 };
     var new3 = [_]c_int{1};
-    try std.testing.expect(mayInvokeKeyUp(&old3, &new3));
+    try std.testing.expect(canConsiderInvokeKeyUp(&old3, &new3));
 
     var old4 = [_]c_int{ 1, 2, 3 };
     var new4 = [_]c_int{ 2, 3 };
-    try std.testing.expect(!mayInvokeKeyUp(&old4, &new4));
+    try std.testing.expect(!canConsiderInvokeKeyUp(&old4, &new4));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
