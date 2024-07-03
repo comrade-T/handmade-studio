@@ -54,6 +54,16 @@ pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
     std.debug.print("{s}\n", .{str});
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn mayInvokeKeyUp(old: *EventList, new: *EventList) bool {
+    if (old.items.len < new.items.len) return false;
+    for (0..old.items.len) |i| if (old.items[i] != new.items[i]) return false;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const supported_key_codes = [_]c_int{
     r.KEY_A,
     r.KEY_B,
