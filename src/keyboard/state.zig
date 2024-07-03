@@ -37,6 +37,17 @@ fn eventListToStr(allocator: std.mem.Allocator, e_list: *EventList) ![]const u8 
     return str_list.toOwnedSlice();
 }
 
+test "eventListToStr" {
+    const allocator = std.testing.allocator;
+    var list = std.ArrayList(c_int).init(allocator);
+    defer list.deinit();
+    try list.append(r.KEY_D);
+    try list.append(r.KEY_J);
+    const result = try eventListToStr(allocator, &list);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("d j", result);
+}
+
 pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
     const str = try eventListToStr(allocator, list);
     defer allocator.free(str);
