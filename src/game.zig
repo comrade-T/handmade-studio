@@ -26,6 +26,8 @@ pub const GameState = struct {
     gamepad_string: [*c]const u8 = "",
 
     // keyboard experiment
+    old_event_array: kbs.EventArray = [_]bool{false} ** 400,
+    new_event_array: kbs.EventArray = [_]bool{false} ** 400,
     old_event_list: kbs.EventList,
     new_event_list: kbs.EventList,
 };
@@ -71,11 +73,14 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // gp_view.drawGamepadState(new_gamepad_state, gs);
     // gs.previous_gamepad_state = new_gamepad_state;
 
-    kbs.updateEventList(&gs.new_event_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
+    std.debug.print("----------------------------\n", .{});
 
+    kbs.updateEventList(&gs.new_event_array, &gs.new_event_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
+
+    kbs.printEventList(&gs.old_event_list) catch @panic("Error in kbs.printEventList()");
     kbs.printEventList(&gs.new_event_list) catch @panic("Error in kbs.printEventList()");
 
-    kbs.updateEventList(&gs.old_event_list) catch @panic("Error in kbs.updateEventList(old_event_list)");
+    kbs.updateEventList(&gs.old_event_array, &gs.old_event_list) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {

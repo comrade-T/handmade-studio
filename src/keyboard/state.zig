@@ -127,28 +127,21 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
     };
 }
 
+pub const EventArray = [400]bool;
 pub const EventList = std.ArrayList(c_int);
 
-pub fn updateEventList(list: *EventList) !void {
-    for (supported_key_codes) |c| {
-        if (r.IsKeyDown(c)) {
-            var matched = false;
-            for (list.items) |item| {
-                if (item == c) {
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) {
-                try list.append(c);
-            }
-            continue;
+pub fn updateEventList(arr: *EventArray, list: *EventList) !void {
+    for (list.items, 0..) |code, i| {
+        if (r.IsKeyUp(code)) {
+            _ = list.orderedRemove(i);
+            arr[@intCast(code)] = false;
         }
-        for (list.items, 0..) |item, i| {
-            if (item == c) {
-                _ = list.orderedRemove(i);
-                break;
-            }
+    }
+    for (supported_key_codes) |code| {
+        if (r.IsKeyDown(code)) {
+            if (arr[@intCast(code)]) continue;
+            try list.append(code);
+            arr[@intCast(code)] = true;
         }
     }
 }
