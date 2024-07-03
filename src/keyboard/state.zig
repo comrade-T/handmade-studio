@@ -7,11 +7,41 @@ const game = @import("../game.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const KeyDownEvent = struct {
-    code: c_int = 0,
-    char: []const u8 = "",
-    time_ms: i64 = 0,
-};
+pub const EventArray = [400]bool;
+pub const EventList = std.ArrayList(c_int);
+
+pub fn updateEventList(arr: *EventArray, list: *EventList) !void {
+    for (list.items, 0..) |code, i| {
+        if (r.IsKeyUp(code)) {
+            _ = list.orderedRemove(i);
+            arr[@intCast(code)] = false;
+        }
+    }
+    for (supported_key_codes) |code| {
+        if (r.IsKeyDown(code)) {
+            if (arr[@intCast(code)]) continue;
+            try list.append(code);
+            arr[@intCast(code)] = true;
+        }
+    }
+}
+
+fn eventListToStr(allocator: std.mem.Allocator, e_list: *EventList) ![]const u8 {
+    var str_list = std.ArrayList(u8).init(allocator);
+    errdefer str_list.deinit();
+    for (e_list.items, 0..) |code, i| {
+        const str = getStringRepresentationOfKeyCode(code);
+        if (i > 0) try str_list.appendSlice(" ");
+        try str_list.appendSlice(str);
+    }
+    return str_list.toOwnedSlice();
+}
+
+pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
+    const str = try eventListToStr(allocator, list);
+    defer allocator.free(str);
+    std.debug.print("{s}\n", .{str});
+}
 
 const supported_key_codes = [_]c_int{
     r.KEY_A,
@@ -125,30 +155,4 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
 
         else => "",
     };
-}
-
-pub const EventArray = [400]bool;
-pub const EventList = std.ArrayList(c_int);
-
-pub fn updateEventList(arr: *EventArray, list: *EventList) !void {
-    for (list.items, 0..) |code, i| {
-        if (r.IsKeyUp(code)) {
-            _ = list.orderedRemove(i);
-            arr[@intCast(code)] = false;
-        }
-    }
-    for (supported_key_codes) |code| {
-        if (r.IsKeyDown(code)) {
-            if (arr[@intCast(code)]) continue;
-            try list.append(code);
-            arr[@intCast(code)] = true;
-        }
-    }
-}
-
-pub fn printEventList(list: *EventList) !void {
-    for (list.items) |item| {
-        std.debug.print("{s} ", .{getStringRepresentationOfKeyCode(item)});
-    }
-    std.debug.print("\n", .{});
 }

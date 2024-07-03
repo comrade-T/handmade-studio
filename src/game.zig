@@ -77,8 +77,8 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     kbs.updateEventList(&gs.new_event_array, &gs.new_event_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
 
-    kbs.printEventList(&gs.old_event_list) catch @panic("Error in kbs.printEventList()");
-    kbs.printEventList(&gs.new_event_list) catch @panic("Error in kbs.printEventList()");
+    kbs.printEventList(gs.allocator, &gs.old_event_list) catch @panic("Error in kbs.printEventList()");
+    kbs.printEventList(gs.allocator, &gs.new_event_list) catch @panic("Error in kbs.printEventList()");
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }
