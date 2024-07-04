@@ -102,8 +102,10 @@ fn createPrefixMapForTesting(allocator: std.mem.Allocator) !WIPMap {
 
 fn getTriggerStatus(allocator: std.mem.Allocator, slice: EventSlice, map: *WIPMap) !struct { mapped: bool, trigger: []const u8 } {
     const trigger = try eventListToStr(allocator, slice);
-    defer allocator.free(trigger);
-    _ = map.get(trigger) orelse return .{ .mapped = false, .trigger = "" };
+    _ = map.get(trigger) orelse {
+        defer allocator.free(trigger);
+        return .{ .mapped = false, .trigger = "" };
+    };
     return .{ .mapped = true, .trigger = trigger };
 }
 
@@ -129,10 +131,12 @@ test "isMapped & isPrefix" {
 
     var trigger1 = [_]c_int{ r.KEY_D, r.KEY_J };
     const trigger1_status = try getTriggerStatus(allocator, &trigger1, &trigger_map);
+    defer allocator.free(trigger1_status.trigger);
     try std.testing.expect(trigger1_status.mapped);
 
     var trigger2 = [_]c_int{ r.KEY_D, r.KEY_Z };
     const trigger2_status = try getTriggerStatus(allocator, &trigger2, &trigger_map);
+    defer allocator.free(trigger2_status.trigger);
     try std.testing.expect(!trigger2_status.mapped);
 
     var prefix1 = [_]c_int{r.KEY_D};
@@ -176,16 +180,27 @@ fn getInvokableTrigger(
 }
 
 test getInvokableTrigger {
-    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     var trigger_map = try createTriggerMapForTesting(allocator);
     defer trigger_map.deinit();
     var prefix_map = try createPrefixMapForTesting(allocator);
     defer prefix_map.deinit();
 
-    var old1 = [_]c_int{};
-    var new1 = [_]c_int{r.KEY_D};
-    const result1 = try getInvokableTrigger(allocator, &old1, &new1, &trigger_map, &prefix_map);
-    try std.testing.expectEqual(null, result1);
+    var nothingness = [_]c_int{};
+    var d_down = [_]c_int{r.KEY_D};
+    const d_down_result = try getInvokableTrigger(allocator, &nothingness, &d_down, &trigger_map, &prefix_map);
+    try std.testing.expectEqual(null, d_down_result);
+
+    var d_still_down = [_]c_int{r.KEY_D};
+    const d_still_down_result = try getInvokableTrigger(allocator, &d_down, &d_still_down, &trigger_map, &prefix_map);
+    try std.testing.expectEqual(null, d_still_down_result);
+
+    var d_up = [_]c_int{};
+    const d_up_result = try getInvokableTrigger(allocator, &d_still_down, &d_up, &trigger_map, &prefix_map);
+    try std.testing.expectEqualStrings("d", d_up_result.?);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
