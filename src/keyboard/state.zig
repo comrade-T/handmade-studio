@@ -40,23 +40,24 @@ pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
 
 ///////////////////////////// HashMaps for testing
 
-const WIPMap = std.StringHashMap(bool);
+pub const TriggerMap = std.StringHashMap([]const u8);
+pub const PrefixMap = std.StringHashMap(bool);
 
-fn createTriggerMapForTesting(allocator: std.mem.Allocator) !WIPMap {
-    var map = std.StringHashMap(bool).init(allocator);
-    try map.put("z", true);
-    try map.put("d", true);
-    try map.put("d j", true);
-    try map.put("d j l", true);
-    try map.put("d j k", true);
-    try map.put("d l", true);
+pub fn createTriggerMapForTesting(allocator: std.mem.Allocator) !TriggerMap {
+    var map = std.StringHashMap([]const u8).init(allocator);
+    try map.put("z", "Zed");
+    try map.put("d", "Dee");
+    try map.put("d j", "DJ");
+    try map.put("d j l", "DJ's Life");
+    try map.put("d j k", "DJ Kick");
+    try map.put("d l", "Download");
 
-    try map.put("d k", true);
-    try map.put("d k l", true);
+    try map.put("d k", "DecK");
+    try map.put("d k l", "D & K & L");
     return map;
 }
 
-fn createPrefixMapForTesting(allocator: std.mem.Allocator) !WIPMap {
+pub fn createPrefixMapForTesting(allocator: std.mem.Allocator) !PrefixMap {
     var map = std.StringHashMap(bool).init(allocator);
     try map.put("d", true);
     try map.put("d j", true);
@@ -124,7 +125,7 @@ test canConsiderInvokeKeyUp {
 
 ///////////////////////////// getTriggerStatus
 
-fn getTriggerStatus(allocator: std.mem.Allocator, slice: EventSlice, map: *WIPMap) !struct { mapped: bool, trigger: []const u8 } {
+fn getTriggerStatus(allocator: std.mem.Allocator, slice: EventSlice, map: *TriggerMap) !struct { mapped: bool, trigger: []const u8 } {
     const trigger = try eventListToStr(allocator, slice);
     _ = map.get(trigger) orelse {
         defer allocator.free(trigger);
@@ -156,7 +157,7 @@ test getTriggerStatus {
 
 ///////////////////////////// isPrefix
 
-fn isPrefix(allocator: std.mem.Allocator, slice: EventSlice, map: *WIPMap) !bool {
+fn isPrefix(allocator: std.mem.Allocator, slice: EventSlice, map: *PrefixMap) !bool {
     if (slice.len == 0) return false;
     const needle = try eventListToStr(allocator, slice);
     defer allocator.free(needle);
@@ -181,13 +182,13 @@ test isPrefix {
 
 ///////////////////////////// Invoker
 
-const Invoker = struct {
+pub const Invoker = struct {
     allocator: std.mem.Allocator,
-    trigger_map: *WIPMap,
-    prefix_map: *WIPMap,
+    trigger_map: *TriggerMap,
+    prefix_map: *PrefixMap,
     latest_trigger: EventList,
 
-    fn init(allocator: std.mem.Allocator, trigger_map: *WIPMap, prefix_map: *WIPMap) !*Invoker {
+    pub fn init(allocator: std.mem.Allocator, trigger_map: *TriggerMap, prefix_map: *PrefixMap) !*Invoker {
         const invoker = try allocator.create(Invoker);
         invoker.* = .{
             .allocator = allocator,
@@ -202,7 +203,7 @@ const Invoker = struct {
         try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
     }
 
-    fn getTrigger(self: *Invoker, old: EventSlice, new: EventSlice) !?[]const u8 {
+    pub fn getTrigger(self: *Invoker, old: EventSlice, new: EventSlice) !?[]const u8 {
         ///////////////////////////// may invoke on key down
 
         const new_status = try getTriggerStatus(self.allocator, new, self.trigger_map);

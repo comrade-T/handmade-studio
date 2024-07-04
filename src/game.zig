@@ -31,6 +31,10 @@ pub const GameState = struct {
     old_event_list: kbs.EventList,
     new_event_list: kbs.EventList,
     event_time_list: kbs.EventTimeList,
+
+    trigger_map: kbs.TriggerMap,
+    prefix_map: kbs.PrefixMap,
+    invoker: *kbs.Invoker,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,6 +49,9 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .old_event_list = std.ArrayList(c_int).init(allocator.*),
         .new_event_list = std.ArrayList(c_int).init(allocator.*),
         .event_time_list = std.ArrayList(i64).init(allocator.*),
+        .trigger_map = kbs.createTriggerMapForTesting(allocator.*) catch @panic("can't createTriggerMapForTesting"),
+        .prefix_map = kbs.createPrefixMapForTesting(allocator.*) catch @panic("can't createPrefixMapForTesting"),
+        .invoker = kbs.Invoker.init(allocator.*, &gs.trigger_map, &gs.prefix_map) catch @panic("can't init() Invoker"),
     };
 
     return gs;
@@ -75,12 +82,17 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     // gp_view.drawGamepadState(new_gamepad_state, gs);
     // gs.previous_gamepad_state = new_gamepad_state;
 
-    std.debug.print("----------------------------\n", .{});
-
     kbs.updateEventList(&gs.new_event_array, &gs.new_event_list, &gs.event_time_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
 
-    kbs.printEventList(gs.allocator, &gs.old_event_list) catch @panic("Error in kbs.printEventList()");
-    kbs.printEventList(gs.allocator, &gs.new_event_list) catch @panic("Error in kbs.printEventList()");
+    // kbs.printEventList(gs.allocator, &gs.old_event_list) catch @panic("Error in kbs.printEventList()");
+    // kbs.printEventList(gs.allocator, &gs.new_event_list) catch @panic("Error in kbs.printEventList()");
+
+    const maybe_trigger = gs.invoker.getTrigger(gs.old_event_list.items, gs.new_event_list.items) catch @panic("can't invoker.getTrigger");
+    if (maybe_trigger) |trigger| {
+        if (gs.trigger_map.get(trigger)) |value| {
+            std.debug.print("{s}\n", .{value});
+        }
+    }
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }
