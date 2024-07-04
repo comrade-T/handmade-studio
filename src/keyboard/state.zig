@@ -86,6 +86,7 @@ const WIPMap = std.StringHashMap(bool);
 
 fn createTriggerMapForTesting(allocator: std.mem.Allocator) !WIPMap {
     var map = std.StringHashMap(bool).init(allocator);
+    try map.put("z", true);
     try map.put("d", true);
     try map.put("d j", true);
     try map.put("d j l", true);
@@ -191,9 +192,15 @@ test getInvokableTrigger {
     var prefix_map = try createPrefixMapForTesting(allocator);
     defer prefix_map.deinit();
 
-    ///////////////////////////// `d` mapped, is prefix
+    ///////////////////////////// `z` mapped, not prefix, should trigger immediately on key down
 
     var nothingness = [_]c_int{};
+
+    var z_down = [_]c_int{r.KEY_Z};
+    const z_down_result = try getInvokableTrigger(allocator, &nothingness, &z_down, &trigger_map, &prefix_map);
+    try std.testing.expectEqualStrings("z", z_down_result.?);
+
+    ///////////////////////////// `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
 
     var d_down = [_]c_int{r.KEY_D};
     const d_down_result = try getInvokableTrigger(allocator, &nothingness, &d_down, &trigger_map, &prefix_map);
@@ -207,11 +214,17 @@ test getInvokableTrigger {
     const d_up_result = try getInvokableTrigger(allocator, &d_still_down, &d_up, &trigger_map, &prefix_map);
     try std.testing.expectEqualStrings("d", d_up_result.?);
 
-    ///////////////////////////// `d l` mapped, not prefix
+    ///////////////////////////// `d l` mapped, not prefix, should trigger immediately on key down
 
-    var d_down_l_down = [_]c_int{ r.KEY_D, r.KEY_L };
-    const d_down_l_down_result = try getInvokableTrigger(allocator, &d_still_down, &d_down_l_down, &trigger_map, &prefix_map);
-    try std.testing.expectEqualStrings("d l", d_down_l_down_result.?);
+    var d_l = [_]c_int{ r.KEY_D, r.KEY_L };
+    const d_l_result = try getInvokableTrigger(allocator, &d_still_down, &d_l, &trigger_map, &prefix_map);
+    try std.testing.expectEqualStrings("d l", d_l_result.?);
+
+    ///////////////////////////// `d l k` not mapped, shouldn't trigger
+
+    var d_l_k = [_]c_int{ r.KEY_D, r.KEY_L, r.KEY_K };
+    const d_l_k_result = try getInvokableTrigger(allocator, &d_l, &d_l_k, &trigger_map, &prefix_map);
+    try std.testing.expectEqual(null, d_l_k_result);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
