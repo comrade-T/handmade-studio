@@ -204,13 +204,14 @@ pub const Invoker = struct {
     }
 
     pub fn getTrigger(self: *Invoker, old: EventSlice, new: EventSlice) !?[]const u8 {
+        if (std.mem.eql(c_int, old, new)) return null;
+
         ///////////////////////////// may invoke on key down
 
         const new_status = try getTriggerStatus(self.allocator, new, self.trigger_map);
         const new_is_prefix = try isPrefix(self.allocator, new, self.prefix_map);
 
         if (new_status.mapped and !new_is_prefix) {
-            if (std.mem.eql(c_int, new, self.latest_trigger.items)) return null;
             try self.setLatestTrigger(new);
             return new_status.trigger;
         }
@@ -358,6 +359,14 @@ test Invoker {
     try eq(null, try iv.getTrigger(&d_j_l, &j_l));
     try eq(null, try iv.getTrigger(&j_l, &j));
     try eq(null, try iv.getTrigger(&j, &nothingness));
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Prevent Repeating Test
+
+    try eq(null, try iv.getTrigger(&nothingness, &nothingness));
+    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eq(null, try iv.getTrigger(&d, &d));
+    try eq(null, try iv.getTrigger(&d, &d));
+    try eq(null, try iv.getTrigger(&d, &d));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
