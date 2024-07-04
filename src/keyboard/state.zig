@@ -192,6 +192,10 @@ const Invoker = struct {
         return invoker;
     }
 
+    fn setLastTrigger(self: *Invoker, old: EventSlice) !void {
+        try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
+    }
+
     fn getTrigger(self: *Invoker, old: EventSlice, new: EventSlice) !?[]const u8 {
         ///////////////////////////// may invoke on key down
 
@@ -200,10 +204,15 @@ const Invoker = struct {
 
         if (new_status.mapped and !new_is_prefix) {
             if (std.mem.eql(c_int, new, self.latest_trigger.items)) return null;
-            try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, new);
+            try self.setLastTrigger(new);
             return new_status.trigger;
         }
-        if (new_status.mapped and new_is_prefix) return null;
+        if (new_status.mapped and new_is_prefix) {
+            if (new.len > old.len or new.len < self.latest_trigger.items.len) {
+                try self.setLastTrigger(old);
+                return null;
+            }
+        }
 
         ///////////////////////////// may invoke on key up
 
@@ -214,10 +223,10 @@ const Invoker = struct {
 
         if (old_status.mapped and old_is_prefix) {
             if (old.len < self.latest_trigger.items.len) {
-                try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
+                try self.setLastTrigger(old);
                 return null;
             }
-            try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
+            try self.setLastTrigger(old);
             return old_status.trigger;
         }
 
@@ -293,6 +302,17 @@ test Invoker {
     try std.testing.expectEqual(null, try invoker.getTrigger(&d_j, &d));
 
     // `dj` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
+    try std.testing.expectEqualDeep(&d, invoker.latest_trigger.items);
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
+    try std.testing.expectEqualStrings("d j", (try invoker.getTrigger(&d_j, &d)).?);
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_k));
+    try std.testing.expectEqualStrings("d k", (try invoker.getTrigger(&d_k, &d)).?);
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d_k, &d));
     try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
 }
 
