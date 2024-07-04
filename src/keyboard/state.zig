@@ -80,6 +80,35 @@ test canConsiderInvokeKeyUp {
     try std.testing.expect(!canConsiderInvokeKeyUp(&old4, &new4));
 }
 
+///////////////////////////// ...
+
+const TestTriggerMap = std.StringHashMap(bool);
+
+fn createTriggerMapForTesting(allocator: std.mem.Allocator) !TestTriggerMap {
+    var map = std.StringHashMap(bool).init(allocator);
+    try map.put("d", true);
+    try map.put("d j", true);
+    try map.put("d j l", true);
+    try map.put("d l", true);
+    return map;
+}
+
+fn isMapped(allocator: std.mem.Allocator, slice: EventSlice, map: TestTriggerMap) !bool {
+    const trigger = try eventListToStr(allocator, slice);
+    defer allocator.free(trigger);
+    _ = map.get(trigger) orelse return false;
+    return true;
+}
+
+test isMapped {
+    const allocator = std.testing.allocator;
+    var trigger_map = try createTriggerMapForTesting(allocator);
+    defer trigger_map.deinit();
+
+    var arr = [_]c_int{ r.KEY_D, r.KEY_J };
+    try std.testing.expect(try isMapped(allocator, &arr, trigger_map));
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const supported_key_codes = [_]c_int{
