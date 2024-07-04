@@ -93,20 +93,39 @@ fn createTriggerMapForTesting(allocator: std.mem.Allocator) !TestTriggerMap {
     return map;
 }
 
-fn isMapped(allocator: std.mem.Allocator, slice: EventSlice, map: TestTriggerMap) !bool {
-    const trigger = try eventListToStr(allocator, slice);
-    defer allocator.free(trigger);
-    _ = map.get(trigger) orelse return false;
+fn createPrefixMapForTesting(allocator: std.mem.Allocator) !TestTriggerMap {
+    var map = std.StringHashMap(bool).init(allocator);
+    try map.put("d", true);
+    try map.put("d j", true);
+    try map.put("d j", true);
+    return map;
+}
+
+fn isInMap(allocator: std.mem.Allocator, slice: EventSlice, map: TestTriggerMap) !bool {
+    const needle = try eventListToStr(allocator, slice);
+    defer allocator.free(needle);
+    _ = map.get(needle) orelse return false;
     return true;
 }
 
-test isMapped {
+test isInMap {
     const allocator = std.testing.allocator;
     var trigger_map = try createTriggerMapForTesting(allocator);
     defer trigger_map.deinit();
+    var prefix_map = try createPrefixMapForTesting(allocator);
+    defer prefix_map.deinit();
 
-    var arr = [_]c_int{ r.KEY_D, r.KEY_J };
-    try std.testing.expect(try isMapped(allocator, &arr, trigger_map));
+    var trigger1 = [_]c_int{ r.KEY_D, r.KEY_J };
+    try std.testing.expect(try isInMap(allocator, &trigger1, trigger_map));
+
+    var trigger2 = [_]c_int{ r.KEY_D, r.KEY_Z };
+    try std.testing.expect(!try isInMap(allocator, &trigger2, trigger_map));
+
+    var prefix1 = [_]c_int{ r.KEY_D, r.KEY_J };
+    try std.testing.expect(try isInMap(allocator, &prefix1, prefix_map));
+
+    var prefix2 = [_]c_int{ r.KEY_D, r.KEY_Z };
+    try std.testing.expect(!try isInMap(allocator, &prefix2, prefix_map));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
