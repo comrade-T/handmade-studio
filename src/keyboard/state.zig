@@ -243,99 +243,104 @@ test Invoker {
     var trigger_map = try createTriggerMapForTesting(allocator);
     var prefix_map = try createPrefixMapForTesting(allocator);
 
+    var iv = try Invoker.init(allocator, &trigger_map, &prefix_map);
+
+    const eq = std.testing.expectEqual;
+    const eqStr = std.testing.expectEqualStrings;
+    const eqDeep = std.testing.expectEqualDeep;
+
     ///////////////////////////// Initialize invoker with nothingness
 
     var nothingness = [_]c_int{};
-    var invoker = try Invoker.init(allocator, &trigger_map, &prefix_map);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &nothingness));
-    try std.testing.expectEqualDeep(&nothingness, invoker.latest_trigger.items);
+    try eq(null, try iv.getTrigger(&nothingness, &nothingness));
+    try eqDeep(&nothingness, iv.latest_trigger.items);
 
     // `z` mapped, not prefix, should trigger immediately on key down
     var z = [_]c_int{r.KEY_Z};
-    try std.testing.expectEqualStrings("z", (try invoker.getTrigger(&nothingness, &z)).?);
-    try std.testing.expectEqualDeep(&z, invoker.latest_trigger.items);
+    try eqStr("z", (try iv.getTrigger(&nothingness, &z)).?);
+    try eqDeep(&z, iv.latest_trigger.items);
 
     // `z` mapped, not prefix, but already invoked, so shouldn't repeat here
-    try std.testing.expectEqual(null, try invoker.getTrigger(&z, &z));
+    try eq(null, try iv.getTrigger(&z, &z));
 
     // `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
     var d = [_]c_int{r.KEY_D};
-    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
-    try std.testing.expectEqualStrings("d", (try invoker.getTrigger(&d, &nothingness)).?);
-    try std.testing.expectEqualDeep(&d, invoker.latest_trigger.items);
+    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eqStr("d", (try iv.getTrigger(&d, &nothingness)).?);
+    try eqDeep(&d, iv.latest_trigger.items);
 
     // `d l` mapped, not prefix, should trigger immediately on key down
     var d_l = [_]c_int{ r.KEY_D, r.KEY_L };
-    try std.testing.expectEqualStrings("d l", (try invoker.getTrigger(&d, &d_l)).?);
-    try std.testing.expectEqualDeep(&d_l, invoker.latest_trigger.items);
+    try eqStr("d l", (try iv.getTrigger(&d, &d_l)).?);
+    try eqDeep(&d_l, iv.latest_trigger.items);
 
     // `d l k` not mapped, shouldn't trigger
     var d_l_k = [_]c_int{ r.KEY_D, r.KEY_L, r.KEY_K };
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_l, &d_l_k));
+    try eq(null, try iv.getTrigger(&d_l, &d_l_k));
 
     // `d l k` not mapped, not prefix, should do nothing here
     var d_k = [_]c_int{ r.KEY_D, r.KEY_K };
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_l_k, &d_k));
+    try eq(null, try iv.getTrigger(&d_l_k, &d_k));
 
     // `d k` is mapped, is prefix, but shouldn't trigger here
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_k, &d));
+    try eq(null, try iv.getTrigger(&d_k, &d));
 
     // `d` is mapped, is prefix, but shouldn't trigger here
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
+    try eq(null, try iv.getTrigger(&d, &nothingness));
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
+    try eq(null, try iv.getTrigger(&nothingness, &d));
 
     // `d j` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
-    var d_j = [_]c_int{ r.KEY_D, r.KEY_J };
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
+    var dj = [_]c_int{ r.KEY_D, r.KEY_J };
+    try eq(null, try iv.getTrigger(&d, &dj));
 
     // `d j l` mapped, not prefix, should trigger immediately on key down
-    var d_j_l = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_L };
-    try std.testing.expectEqualStrings("d j l", (try invoker.getTrigger(&d_j, &d_j_l)).?);
-    try std.testing.expectEqualDeep(&d_j_l, invoker.latest_trigger.items);
+    var djl = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_L };
+    try eqStr("d j l", (try iv.getTrigger(&dj, &djl)).?);
+    try eqDeep(&djl, iv.latest_trigger.items);
 
     // `d j l` mapped, not prefix, should not trigger on key up
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j_l, &d_j));
+    try eq(null, try iv.getTrigger(&djl, &dj));
 
     // `d j` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j, &d));
+    try eq(null, try iv.getTrigger(&dj, &d));
 
     // `d` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
-    try std.testing.expectEqualDeep(&d, invoker.latest_trigger.items);
+    try eq(null, try iv.getTrigger(&d, &nothingness));
+    try eqDeep(&d, iv.latest_trigger.items);
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
-    try std.testing.expectEqualStrings("d j", (try invoker.getTrigger(&d_j, &d)).?);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_k));
-    try std.testing.expectEqualStrings("d k", (try invoker.getTrigger(&d_k, &d)).?);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_k, &d));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
+    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eq(null, try iv.getTrigger(&d, &dj));
+    try eqStr("d j", (try iv.getTrigger(&dj, &d)).?);
+    try eq(null, try iv.getTrigger(&d, &d_k));
+    try eqStr("d k", (try iv.getTrigger(&d_k, &d)).?);
+    try eq(null, try iv.getTrigger(&d_k, &d));
+    try eq(null, try iv.getTrigger(&d, &nothingness));
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     var d_j_k = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_K };
     var d_k_l = [_]c_int{ r.KEY_D, r.KEY_K, r.KEY_L };
-    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
-    try std.testing.expectEqualStrings("d j l", (try invoker.getTrigger(&d_j, &d_j_l)).?);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j_l, &d_j_l));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j_l, &d_j));
-    try std.testing.expectEqualStrings("d j k", (try invoker.getTrigger(&d_j, &d_j_k)).?);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j_k, &d_j_k));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j_k, &d_k));
-    try std.testing.expectEqualStrings("d k l", (try invoker.getTrigger(&d_k, &d_k_l)).?);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_k_l, &d_k));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_k, &d));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
-    try std.testing.expectEqualStrings("d j", (try invoker.getTrigger(&d_j, &d)).?);
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j, &d));
-    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
+    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eq(null, try iv.getTrigger(&d, &dj));
+    try eqStr("d j l", (try iv.getTrigger(&dj, &djl)).?);
+    try eq(null, try iv.getTrigger(&djl, &djl));
+    try eq(null, try iv.getTrigger(&djl, &dj));
+    try eqStr("d j k", (try iv.getTrigger(&dj, &d_j_k)).?);
+    try eq(null, try iv.getTrigger(&d_j_k, &d_j_k));
+    try eq(null, try iv.getTrigger(&d_j_k, &d_k));
+    try eqStr("d k l", (try iv.getTrigger(&d_k, &d_k_l)).?);
+    try eq(null, try iv.getTrigger(&d_k_l, &d_k));
+    try eq(null, try iv.getTrigger(&d_k, &d));
+    try eq(null, try iv.getTrigger(&d, &dj));
+    try eq(null, try iv.getTrigger(&d, &dj));
+    try eqStr("d j", (try iv.getTrigger(&dj, &d)).?);
+    try eq(null, try iv.getTrigger(&dj, &d));
+    try eq(null, try iv.getTrigger(&d, &nothingness));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
