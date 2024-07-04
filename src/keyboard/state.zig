@@ -193,7 +193,7 @@ const Invoker = struct {
         return invoker;
     }
 
-    fn setLastTrigger(self: *Invoker, old: EventSlice) !void {
+    fn setLatestTrigger(self: *Invoker, old: EventSlice) !void {
         try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
     }
 
@@ -205,12 +205,12 @@ const Invoker = struct {
 
         if (new_status.mapped and !new_is_prefix) {
             if (std.mem.eql(c_int, new, self.latest_trigger.items)) return null;
-            try self.setLastTrigger(new);
+            try self.setLatestTrigger(new);
             return new_status.trigger;
         }
         if (new_status.mapped and new_is_prefix) {
             if (new.len > old.len or new.len < self.latest_trigger.items.len) {
-                try self.setLastTrigger(old);
+                try self.setLatestTrigger(old);
                 return null;
             }
         }
@@ -224,10 +224,10 @@ const Invoker = struct {
 
         if (old_status.mapped and old_is_prefix) {
             if (old.len < self.latest_trigger.items.len) {
-                try self.setLastTrigger(old);
+                try self.setLatestTrigger(old);
                 return null;
             }
-            try self.setLastTrigger(old);
+            try self.setLatestTrigger(old);
             return old_status.trigger;
         }
 
@@ -293,19 +293,19 @@ test Invoker {
     try eq(null, try iv.getTrigger(&nothingness, &d));
 
     // `d j` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
-    var dj = [_]c_int{ r.KEY_D, r.KEY_J };
-    try eq(null, try iv.getTrigger(&d, &dj));
+    var d_j = [_]c_int{ r.KEY_D, r.KEY_J };
+    try eq(null, try iv.getTrigger(&d, &d_j));
 
     // `d j l` mapped, not prefix, should trigger immediately on key down
-    var djl = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_L };
-    try eqStr("d j l", (try iv.getTrigger(&dj, &djl)).?);
-    try eqDeep(&djl, iv.latest_trigger.items);
+    var d_j_l = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_L };
+    try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
+    try eqDeep(&d_j_l, iv.latest_trigger.items);
 
     // `d j l` mapped, not prefix, should not trigger on key up
-    try eq(null, try iv.getTrigger(&djl, &dj));
+    try eq(null, try iv.getTrigger(&d_j_l, &d_j));
 
     // `d j` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
-    try eq(null, try iv.getTrigger(&dj, &d));
+    try eq(null, try iv.getTrigger(&d_j, &d));
 
     // `d` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
     try eq(null, try iv.getTrigger(&d, &nothingness));
@@ -314,8 +314,8 @@ test Invoker {
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eq(null, try iv.getTrigger(&d, &dj));
-    try eqStr("d j", (try iv.getTrigger(&dj, &d)).?);
+    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eqStr("d j", (try iv.getTrigger(&d_j, &d)).?);
     try eq(null, try iv.getTrigger(&d, &d_k));
     try eqStr("d k", (try iv.getTrigger(&d_k, &d)).?);
     try eq(null, try iv.getTrigger(&d_k, &d));
@@ -326,21 +326,32 @@ test Invoker {
     var d_j_k = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_K };
     var d_k_l = [_]c_int{ r.KEY_D, r.KEY_K, r.KEY_L };
     try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eq(null, try iv.getTrigger(&d, &dj));
-    try eqStr("d j l", (try iv.getTrigger(&dj, &djl)).?);
-    try eq(null, try iv.getTrigger(&djl, &djl));
-    try eq(null, try iv.getTrigger(&djl, &dj));
-    try eqStr("d j k", (try iv.getTrigger(&dj, &d_j_k)).?);
+    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
+    try eq(null, try iv.getTrigger(&d_j_l, &d_j_l));
+    try eq(null, try iv.getTrigger(&d_j_l, &d_j));
+    try eqStr("d j k", (try iv.getTrigger(&d_j, &d_j_k)).?);
     try eq(null, try iv.getTrigger(&d_j_k, &d_j_k));
     try eq(null, try iv.getTrigger(&d_j_k, &d_k));
     try eqStr("d k l", (try iv.getTrigger(&d_k, &d_k_l)).?);
     try eq(null, try iv.getTrigger(&d_k_l, &d_k));
     try eq(null, try iv.getTrigger(&d_k, &d));
-    try eq(null, try iv.getTrigger(&d, &dj));
-    try eq(null, try iv.getTrigger(&d, &dj));
-    try eqStr("d j", (try iv.getTrigger(&dj, &d)).?);
-    try eq(null, try iv.getTrigger(&dj, &d));
+    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eqStr("d j", (try iv.getTrigger(&d_j, &d)).?);
+    try eq(null, try iv.getTrigger(&d_j, &d));
     try eq(null, try iv.getTrigger(&d, &nothingness));
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    var j = [_]c_int{r.KEY_J};
+    var j_l = [_]c_int{ r.KEY_J, r.KEY_L };
+    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
+    try eq(null, try iv.getTrigger(&d_j_l, &j_l));
+    try eq(null, try iv.getTrigger(&j_l, &j));
+    try eq(null, try iv.getTrigger(&j, &nothingness));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
