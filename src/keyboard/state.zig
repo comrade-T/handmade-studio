@@ -30,6 +30,42 @@ pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*Event
     }
 }
 
+pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
+    const str = try eventListToStr(allocator, list.items);
+    defer allocator.free(str);
+    std.debug.print("{s}\n", .{str});
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////// HashMaps for testing
+
+const WIPMap = std.StringHashMap(bool);
+
+fn createTriggerMapForTesting(allocator: std.mem.Allocator) !WIPMap {
+    var map = std.StringHashMap(bool).init(allocator);
+    try map.put("z", true);
+    try map.put("d", true);
+    try map.put("d j", true);
+    try map.put("d j l", true);
+    try map.put("d j k", true);
+    try map.put("d l", true);
+
+    try map.put("d k", true);
+    try map.put("d k l", true);
+    return map;
+}
+
+fn createPrefixMapForTesting(allocator: std.mem.Allocator) !WIPMap {
+    var map = std.StringHashMap(bool).init(allocator);
+    try map.put("d", true);
+    try map.put("d j", true);
+    try map.put("d k", true);
+    return map;
+}
+
+///////////////////////////// eventListToStr
+
 fn eventListToStr(allocator: std.mem.Allocator, e_list: EventSlice) ![]const u8 {
     var str_list = std.ArrayList(u8).init(allocator);
     errdefer str_list.deinit();
@@ -60,14 +96,6 @@ test eventListToStr {
     try std.testing.expectEqualStrings("z", result3);
 }
 
-pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
-    const str = try eventListToStr(allocator, list.items);
-    defer allocator.free(str);
-    std.debug.print("{s}\n", .{str});
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 ///////////////////////////// canConsiderInvokeKeyUp
 
 fn canConsiderInvokeKeyUp(old: EventSlice, new: EventSlice) bool {
@@ -92,32 +120,6 @@ test canConsiderInvokeKeyUp {
     var old4 = [_]c_int{ 1, 2, 3 };
     var new4 = [_]c_int{ 2, 3 };
     try std.testing.expect(!canConsiderInvokeKeyUp(&old4, &new4));
-}
-
-///////////////////////////// HashMaps for testing
-
-const WIPMap = std.StringHashMap(bool);
-
-fn createTriggerMapForTesting(allocator: std.mem.Allocator) !WIPMap {
-    var map = std.StringHashMap(bool).init(allocator);
-    try map.put("z", true);
-    try map.put("d", true);
-    try map.put("d j", true);
-    try map.put("d j l", true);
-    try map.put("d j k", true);
-    try map.put("d l", true);
-
-    try map.put("d k", true);
-    try map.put("d k l", true);
-    return map;
-}
-
-fn createPrefixMapForTesting(allocator: std.mem.Allocator) !WIPMap {
-    var map = std.StringHashMap(bool).init(allocator);
-    try map.put("d", true);
-    try map.put("d j", true);
-    try map.put("d k", true);
-    return map;
 }
 
 ///////////////////////////// getTriggerStatus
