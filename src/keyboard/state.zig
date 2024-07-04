@@ -9,19 +9,22 @@ const game = @import("../game.zig");
 
 pub const EventArray = [400]bool;
 pub const EventList = std.ArrayList(c_int);
+pub const EventTimeList = std.ArrayList(i64);
 pub const EventSlice = []c_int;
 
-pub fn updateEventList(arr: *EventArray, list: *EventList) !void {
-    for (list.items, 0..) |code, i| {
+pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*EventTimeList) !void {
+    for (e_list.items, 0..) |code, i| {
         if (r.IsKeyUp(code)) {
-            _ = list.orderedRemove(i);
+            _ = e_list.orderedRemove(i);
             arr[@intCast(code)] = false;
+            if (may_t_list) |t_list| _ = t_list.orderedRemove(i);
         }
     }
     for (supported_key_codes) |code| {
         if (r.IsKeyDown(code)) {
             if (arr[@intCast(code)]) continue;
-            try list.append(code);
+            try e_list.append(code);
+            if (may_t_list) |t_list| try t_list.append(std.time.milliTimestamp());
             arr[@intCast(code)] = true;
         }
     }

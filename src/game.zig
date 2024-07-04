@@ -30,6 +30,7 @@ pub const GameState = struct {
     new_event_array: kbs.EventArray = [_]bool{false} ** 400,
     old_event_list: kbs.EventList,
     new_event_list: kbs.EventList,
+    event_time_list: kbs.EventTimeList,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,6 +44,7 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .radius = readRadiusConfig(allocator.*),
         .old_event_list = std.ArrayList(c_int).init(allocator.*),
         .new_event_list = std.ArrayList(c_int).init(allocator.*),
+        .event_time_list = std.ArrayList(i64).init(allocator.*),
     };
 
     return gs;
@@ -75,12 +77,12 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     std.debug.print("----------------------------\n", .{});
 
-    kbs.updateEventList(&gs.new_event_array, &gs.new_event_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
+    kbs.updateEventList(&gs.new_event_array, &gs.new_event_list, &gs.event_time_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
 
     kbs.printEventList(gs.allocator, &gs.old_event_list) catch @panic("Error in kbs.printEventList()");
     kbs.printEventList(gs.allocator, &gs.new_event_list) catch @panic("Error in kbs.printEventList()");
 
-    kbs.updateEventList(&gs.old_event_array, &gs.old_event_list) catch @panic("Error in kbs.updateEventList(old_event_list)");
+    kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }
 
 fn readRadiusConfig(allocator: std.mem.Allocator) f32 {
