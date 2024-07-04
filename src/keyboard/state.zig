@@ -100,20 +100,20 @@ fn createPrefixMapForTesting(allocator: std.mem.Allocator) !WIPMap {
     return map;
 }
 
-fn isMapped(allocator: std.mem.Allocator, slice: EventSlice, map: WIPMap) !bool {
-    const needle = try eventListToStr(allocator, slice);
-    defer allocator.free(needle);
-    _ = map.get(needle) orelse return false;
-    return true;
+fn getTriggerStatus(allocator: std.mem.Allocator, slice: EventSlice, map: *WIPMap) !struct { mapped: bool, trigger: []const u8 } {
+    const trigger = try eventListToStr(allocator, slice);
+    defer allocator.free(trigger);
+    _ = map.get(trigger) orelse return .{ .mapped = false, .trigger = "" };
+    return .{ .mapped = true, .trigger = trigger };
 }
 
-fn isPrefix(allocator: std.mem.Allocator, slice: EventSlice, map: WIPMap) !bool {
+fn isPrefix(allocator: std.mem.Allocator, slice: EventSlice, map: *WIPMap) !bool {
     if (slice.len == 0) return false;
 
     const needle = if (slice.len == 1)
         try eventListToStr(allocator, slice)
     else
-        try eventListToStr(slice[0 .. slice.len - 1]);
+        try eventListToStr(allocator, slice[0 .. slice.len - 1]);
     defer allocator.free(needle);
 
     _ = map.get(needle) orelse return false;
@@ -128,45 +128,65 @@ test "isMapped & isPrefix" {
     defer prefix_map.deinit();
 
     var trigger1 = [_]c_int{ r.KEY_D, r.KEY_J };
-    try std.testing.expect(try isMapped(allocator, &trigger1, trigger_map));
+    const trigger1_status = try getTriggerStatus(allocator, &trigger1, &trigger_map);
+    try std.testing.expect(trigger1_status.mapped);
 
     var trigger2 = [_]c_int{ r.KEY_D, r.KEY_Z };
-    try std.testing.expect(!try isMapped(allocator, &trigger2, trigger_map));
+    const trigger2_status = try getTriggerStatus(allocator, &trigger2, &trigger_map);
+    try std.testing.expect(!trigger2_status.mapped);
 
     var prefix1 = [_]c_int{r.KEY_D};
-    try std.testing.expect(try isMapped(allocator, &prefix1, prefix_map));
+    try std.testing.expect(try isPrefix(allocator, &prefix1, &prefix_map));
 
     var prefix2 = [_]c_int{r.KEY_Z};
-    try std.testing.expect(!try isMapped(allocator, &prefix2, prefix_map));
+    try std.testing.expect(!try isPrefix(allocator, &prefix2, &prefix_map));
 }
 
 ///////////////////////////// ...
 
-// fn something(
-//     allocator: std.mem.Allocator,
-//     old: EventSlice,
-//     new: EventSlice,
-//     trigger_map: *WIPMap,
-//     prefix_map: *WIPMap,
-// ) ?[]const u8 {
-//     const new_is_mapped = isMapped(allocator, new, trigger_map);
-//     const new_is_prefix = isPrefix(allocator, new, prefix_map);
-//
-//     return null;
-// }
-//
-// test "..." {
-//     const allocator = std.testing.allocator;
-//     var trigger_map = try createTriggerMapForTesting(allocator);
-//     defer trigger_map.deinit();
-//     var prefix_map = try createPrefixMapForTesting(allocator);
-//     defer prefix_map.deinit();
-//
-//     var old1 = [_]c_int{};
-//     var new1 = [_]c_int{r.KEY_D};
-//     const result1 = something(allocator, &old1, &new1, &trigger_map, &prefix_map);
-//     try std.testing.expectEqual(null, result1);
-// }
+fn getInvokableTrigger(
+    allocator: std.mem.Allocator,
+    old_slice: EventSlice,
+    new_slice: EventSlice,
+    trigger_map: *WIPMap,
+    prefix_map: *WIPMap,
+) !?[]const u8 {
+    ///////////////////////////// may invoke new
+
+    const new = try getTriggerStatus(allocator, new_slice, trigger_map);
+    const new_is_prefix = try isPrefix(allocator, new_slice, prefix_map);
+
+    if (new.mapped and !new_is_prefix) {
+        // if (alreadyInvoked(new, last_invoked_trigger)) return null;
+        return new.trigger;
+    }
+    if (new.mapped and new_is_prefix) return null;
+
+    ///////////////////////////// may invoke old
+
+    const can_consider_invoke_key_up = canConsiderInvokeKeyUp(old_slice, new_slice);
+    if (!can_consider_invoke_key_up) return null;
+
+    const old = try getTriggerStatus(allocator, old_slice, trigger_map);
+    const old_is_prefix = try isPrefix(allocator, old_slice, prefix_map);
+
+    if (old.mapped and old_is_prefix) return old.trigger;
+
+    return null;
+}
+
+test getInvokableTrigger {
+    const allocator = std.testing.allocator;
+    var trigger_map = try createTriggerMapForTesting(allocator);
+    defer trigger_map.deinit();
+    var prefix_map = try createPrefixMapForTesting(allocator);
+    defer prefix_map.deinit();
+
+    var old1 = [_]c_int{};
+    var new1 = [_]c_int{r.KEY_D};
+    const result1 = try getInvokableTrigger(allocator, &old1, &new1, &trigger_map, &prefix_map);
+    try std.testing.expectEqual(null, result1);
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
