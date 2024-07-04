@@ -102,6 +102,9 @@ fn createTriggerMapForTesting(allocator: std.mem.Allocator) !WIPMap {
     try map.put("d j", true);
     try map.put("d j l", true);
     try map.put("d l", true);
+
+    try map.put("d k", true);
+    try map.put("d k l", true);
     return map;
 }
 
@@ -109,6 +112,7 @@ fn createPrefixMapForTesting(allocator: std.mem.Allocator) !WIPMap {
     var map = std.StringHashMap(bool).init(allocator);
     try map.put("d", true);
     try map.put("d j", true);
+    try map.put("d k", true);
     return map;
 }
 
@@ -188,27 +192,34 @@ const Invoker = struct {
         return invoker;
     }
 
-    fn trigger(self: *Invoker, old: EventSlice, new: EventSlice) !?[]const u8 {
-        ///////////////////////////// may invoke new
+    fn getTrigger(self: *Invoker, old: EventSlice, new: EventSlice) !?[]const u8 {
+        ///////////////////////////// may invoke on key down
 
         const new_status = try getTriggerStatus(self.allocator, new, self.trigger_map);
         const new_is_prefix = try isPrefix(self.allocator, new, self.prefix_map);
 
         if (new_status.mapped and !new_is_prefix) {
-            // if (alreadyInvoked(new, last_invoked_trigger)) return null;
+            if (std.mem.eql(c_int, new, self.latest_trigger.items)) return null;
+            try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, new);
             return new_status.trigger;
         }
         if (new_status.mapped and new_is_prefix) return null;
 
-        ///////////////////////////// may invoke old
+        ///////////////////////////// may invoke on key up
 
-        const can_consider_invoke_key_up = canConsiderInvokeKeyUp(old, new);
-        if (!can_consider_invoke_key_up) return null;
+        if (!canConsiderInvokeKeyUp(old, new)) return null;
 
         const old_status = try getTriggerStatus(self.allocator, old, self.trigger_map);
         const old_is_prefix = try isPrefix(self.allocator, old, self.prefix_map);
 
-        if (old_status.mapped and old_is_prefix) return old_status.trigger;
+        if (old_status.mapped and old_is_prefix) {
+            if (old.len < self.latest_trigger.items.len) {
+                try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
+                return null;
+            }
+            try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
+            return old_status.trigger;
+        }
 
         return null;
     }
@@ -220,40 +231,69 @@ test Invoker {
     const allocator = arena.allocator();
 
     var trigger_map = try createTriggerMapForTesting(allocator);
-    defer trigger_map.deinit();
     var prefix_map = try createPrefixMapForTesting(allocator);
-    defer prefix_map.deinit();
 
     ///////////////////////////// Initialize invoker with nothingness
 
     var nothingness = [_]c_int{};
     var invoker = try Invoker.init(allocator, &trigger_map, &prefix_map);
-    try std.testing.expectEqual(null, try invoker.trigger(&nothingness, &nothingness));
+    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &nothingness));
+    try std.testing.expectEqualDeep(&nothingness, invoker.latest_trigger.items);
 
-    ///////////////////////////// `z` mapped, not prefix, should trigger immediately on key down
+    // `z` mapped, not prefix, should trigger immediately on key down
+    var z = [_]c_int{r.KEY_Z};
+    try std.testing.expectEqualStrings("z", (try invoker.getTrigger(&nothingness, &z)).?);
+    try std.testing.expectEqualDeep(&z, invoker.latest_trigger.items);
 
-    var z_down = [_]c_int{r.KEY_Z};
-    try std.testing.expectEqualStrings("z", (try invoker.trigger(&nothingness, &z_down)).?);
+    // `z` mapped, not prefix, but already invoked, so shouldn't repeat here
+    try std.testing.expectEqual(null, try invoker.getTrigger(&z, &z));
 
-    ///////////////////////////// `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
+    // `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
+    var d = [_]c_int{r.KEY_D};
+    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
+    try std.testing.expectEqualStrings("d", (try invoker.getTrigger(&d, &nothingness)).?);
+    try std.testing.expectEqualDeep(&d, invoker.latest_trigger.items);
 
-    var d_down = [_]c_int{r.KEY_D};
-    try std.testing.expectEqual(null, try invoker.trigger(&nothingness, &d_down));
-    try std.testing.expectEqualStrings("d", (try invoker.trigger(&d_down, &nothingness)).?);
-
-    ///////////////////////////// `d l` mapped, not prefix, should trigger immediately on key down
-
+    // `d l` mapped, not prefix, should trigger immediately on key down
     var d_l = [_]c_int{ r.KEY_D, r.KEY_L };
-    try std.testing.expectEqualStrings("d l", (try invoker.trigger(&d_down, &d_l)).?);
+    try std.testing.expectEqualStrings("d l", (try invoker.getTrigger(&d, &d_l)).?);
+    try std.testing.expectEqualDeep(&d_l, invoker.latest_trigger.items);
 
-    ///////////////////////////// `d l k` not mapped, shouldn't trigger
-
+    // `d l k` not mapped, shouldn't trigger
     var d_l_k = [_]c_int{ r.KEY_D, r.KEY_L, r.KEY_K };
-    try std.testing.expectEqual(null, try invoker.trigger(&d_l, &d_l_k));
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d_l, &d_l_k));
 
-    ///////////////////////////// `d l` mapped, but `d l k` already triggered, so `d l` shouldn't trigger
+    // `d l k` not mapped, not prefix, should do nothing here
+    var d_k = [_]c_int{ r.KEY_D, r.KEY_K };
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d_l_k, &d_k));
 
-    try std.testing.expectEqual(null, try invoker.trigger(&d_l_k, &d_l));
+    // `d k` is mapped, is prefix, but shouldn't trigger here
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d_k, &d));
+
+    // `d` is mapped, is prefix, but shouldn't trigger here
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    try std.testing.expectEqual(null, try invoker.getTrigger(&nothingness, &d));
+
+    // `d j` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
+    var d_j = [_]c_int{ r.KEY_D, r.KEY_J };
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &d_j));
+
+    // `d j l` mapped, not prefix, should trigger immediately on key down
+    var d_j_l = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_L };
+    try std.testing.expectEqualStrings("d j l", (try invoker.getTrigger(&d_j, &d_j_l)).?);
+    try std.testing.expectEqualDeep(&d_j_l, invoker.latest_trigger.items);
+
+    // `d j l` mapped, not prefix, should not trigger on key up
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j_l, &d_j));
+
+    // `d j` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d_j, &d));
+
+    // `dj` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
+    try std.testing.expectEqual(null, try invoker.getTrigger(&d, &nothingness));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
