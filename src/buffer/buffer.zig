@@ -12,6 +12,13 @@ const eqDeep = std.testing.expectEqualDeep;
 const Node = union(enum) {
     node: Branch,
     leaf: Leaf,
+
+    fn weights_sum(self: *const Node) Weights {
+        return switch (self.*) {
+            .node => |*n| n.weights_sum,
+            .leaf => |*l| l.weights(),
+        };
+    }
 };
 
 pub const Branch = struct {
@@ -69,6 +76,21 @@ pub const Weights = struct {
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+test "Node.weights_sum()" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const _empty_leaf = try Leaf.new(a, "", false, false);
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, _empty_leaf.weights_sum());
+
+    const hello_bol = try Leaf.new(a, "hello", true, false);
+    try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, hello_bol.weights_sum());
+
+    const hello_bol_eol = try Leaf.new(a, "hello", true, true);
+    try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello_bol_eol.weights_sum());
+}
 
 test "Leaf.new()" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
