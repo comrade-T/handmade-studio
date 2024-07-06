@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const eqDeep = std.testing.expectEqualDeep;
 const eqStr = std.testing.expectEqualStrings;
@@ -104,6 +105,19 @@ const Node = union(enum) {
 
         node.* = .{ .node = .{ .left = l, .right = r, .weights = left_ws, .weights_sum = ws } };
         return node;
+    }
+
+    pub fn store(self: *const Node, writer: anytype) !void {
+        switch (self.*) {
+            .node => |*node| {
+                try node.left.store(writer);
+                try node.right.store(writer);
+            },
+            .leaf => |*leaf| {
+                _ = try writer.write(leaf.buf);
+                if (leaf.eol) _ = try writer.write("\n");
+            },
+        }
     }
 
     fn merge_in_place(a: Allocator, leaves: []const Node) !Root {
@@ -240,6 +254,26 @@ test "Node.new()" {
 
     const empty_node = try Node.new(a, &empty_leaf, &empty_leaf);
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weights_sum());
+}
+
+fn testNodeStore(a: std.mem.Allocator, buffer: *Buffer, expected: []const u8) !void {
+    const root = try buffer.load_from_string(expected);
+    var s = try ArrayList(u8).initCapacity(a, root.weights_sum().len);
+    defer s.deinit();
+    try root.store(s.writer());
+    try eqStr(expected, s.items);
+}
+
+test "Node.store()" {
+    const a = std.testing.allocator;
+    const buffer = try Buffer.create(a, a);
+    defer buffer.deinit();
+
+    {
+        try testNodeStore(a, buffer, "hello\nworld");
+        try testNodeStore(a, buffer, "one two");
+        try testNodeStore(a, buffer, &[_]u8{ 'A', 'A', 'A', 10 } ** 1_000);
+    }
 }
 
 test "Node.merge_in_place()" {
