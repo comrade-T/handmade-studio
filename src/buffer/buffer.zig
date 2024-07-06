@@ -231,14 +231,20 @@ test "Node.weights_sum()" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    const _empty_leaf = try Leaf.new(a, "", false, false);
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, _empty_leaf.weights_sum());
+    {
+        const leaf = try Leaf.new(a, "", false, false);
+        try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, leaf.weights_sum());
+    }
 
-    const hello_bol = try Leaf.new(a, "hello", true, false);
-    try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, hello_bol.weights_sum());
+    {
+        const leaf = try Leaf.new(a, "hello", true, false);
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, leaf.weights_sum());
+    }
 
-    const hello_bol_eol = try Leaf.new(a, "hello", true, true);
-    try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello_bol_eol.weights_sum());
+    {
+        const leaf = try Leaf.new(a, "hello", true, true);
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, leaf.weights_sum());
+    }
 }
 
 test "Leaf.new()" {
@@ -246,37 +252,53 @@ test "Leaf.new()" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    const _empty_leaf = try Leaf.new(a, "", false, false);
-    try eqDeep(&Node{ .leaf = .{ .buf = "", .bol = false, .eol = false } }, _empty_leaf);
+    {
+        const leaf = try Leaf.new(a, "", false, false);
+        try eqDeep(&Node{ .leaf = .{ .buf = "", .bol = false, .eol = false } }, leaf);
+    }
 
-    const hello_leaf = try Leaf.new(a, "hello", true, true);
-    try eqDeep(&Node{ .leaf = .{ .buf = "hello", .bol = true, .eol = true } }, hello_leaf);
+    {
+        const leaf = try Leaf.new(a, "hello", true, true);
+        try eqDeep(&Node{ .leaf = .{ .buf = "hello", .bol = true, .eol = true } }, leaf);
+    }
 }
 
 test "Leaf.weights()" {
-    const l_empty = Leaf{ .buf = "", .bol = false, .eol = false };
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, l_empty.weights());
+    {
+        const leaf = Leaf{ .buf = "", .bol = false, .eol = false };
+        try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, leaf.weights());
+    }
 
-    const l1 = Leaf{ .buf = "hello", .bol = true, .eol = true };
-    try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, l1.weights());
+    {
+        const leaf = Leaf{ .buf = "hello", .bol = true, .eol = true };
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, leaf.weights());
+    }
 
-    const l2 = Leaf{ .buf = "hello", .bol = true, .eol = false };
-    try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, l2.weights());
+    {
+        const leaf = Leaf{ .buf = "hello", .bol = true, .eol = false };
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, leaf.weights());
+    }
 }
 
 test "Weights.add()" {
-    var empty_1 = Weights{};
-    const empty_2 = Weights{};
-    empty_1.add(empty_2);
-    try eqDeep(Weights{}, empty_1);
+    {
+        var w1 = Weights{};
+        const w2 = Weights{};
+        w1.add(w2);
+        try eqDeep(Weights{}, w1);
+    }
 
-    var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
-    const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 1 };
-    w1.add(w2);
-    try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 1 }, w1);
+    {
+        var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
+        const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 1 };
+        w1.add(w2);
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 1 }, w1);
+    }
 
-    var w3 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
-    const w4 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 2 };
-    w3.add(w4);
-    try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 2 }, w3);
+    {
+        var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
+        const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 2 };
+        w1.add(w2);
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 2 }, w1);
+    }
 }
