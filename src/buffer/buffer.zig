@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const Allocator = std.mem.Allocator;
 const eqDeep = std.testing.expectEqualDeep;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -18,6 +19,20 @@ const Node = union(enum) {
             .node => |*n| n.weights_sum,
             .leaf => |*l| l.weights(),
         };
+    }
+
+    fn new(a: Allocator, l: *const Node, r: *const Node) !*const Node {
+        const node = try a.create(Node);
+        const left_ws = l.weights_sum();
+        const right_ws = r.weights_sum();
+
+        var ws = Weights{};
+        ws.add(left_ws);
+        ws.add(right_ws);
+        ws.depth += 1;
+
+        node.* = .{ .node = .{ .left = l, .right = r, .weights = left_ws, .weights_sum = ws } };
+        return node;
     }
 };
 
@@ -38,7 +53,7 @@ pub const Leaf = struct {
     bol: bool = true,
     eol: bool = true,
 
-    fn new(a: std.mem.Allocator, piece: []const u8, bol: bool, eol: bool) !*const Node {
+    fn new(a: Allocator, piece: []const u8, bol: bool, eol: bool) !*const Node {
         if (piece.len == 0) {
             if (!bol and !eol) return &empty_leaf;
             if (bol and !eol) return &empty_bol_leaf;
@@ -90,6 +105,15 @@ test "Node.weights_sum()" {
 
     const hello_bol_eol = try Leaf.new(a, "hello", true, true);
     try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello_bol_eol.weights_sum());
+}
+
+test "Node.new()" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const empty_node = try Node.new(a, &empty_leaf, &empty_leaf);
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weights_sum());
 }
 
 test "Leaf.new()" {
