@@ -70,7 +70,7 @@ pub const Weights = struct {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test Leaf {
+test "Leaf.new()" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -80,6 +80,17 @@ test Leaf {
 
     const hello_leaf = try Leaf.new(a, "hello", true, true);
     try eqDeep(&Node{ .leaf = .{ .buf = "hello", .bol = true, .eol = true } }, hello_leaf);
+}
+
+test "Leaf.weights()" {
+    const l_empty = Leaf{ .buf = "", .bol = false, .eol = false };
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, l_empty.weights());
+
+    const l1 = Leaf{ .buf = "hello", .bol = true, .eol = true };
+    try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, l1.weights());
+
+    const l2 = Leaf{ .buf = "hello", .bol = true, .eol = false };
+    try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, l2.weights());
 }
 
 test "Weights.add()" {
