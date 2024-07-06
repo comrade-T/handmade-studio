@@ -84,9 +84,6 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     kbs.updateEventList(&gs.new_event_array, &gs.new_event_list, &gs.event_time_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
 
-    // kbs.printEventList(gs.allocator, &gs.old_event_list) catch @panic("Error in kbs.printEventList()");
-    // kbs.printEventList(gs.allocator, &gs.new_event_list) catch @panic("Error in kbs.printEventList()");
-
     const maybe_trigger = gs.invoker.getTrigger(gs.old_event_list.items, gs.new_event_list.items) catch @panic("can't invoker.getTrigger");
     if (maybe_trigger) |trigger| {
         if (gs.trigger_map.get(trigger)) |value| {

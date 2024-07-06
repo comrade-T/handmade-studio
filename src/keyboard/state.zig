@@ -10,7 +10,6 @@ const game = @import("../game.zig");
 pub const EventArray = [400]bool;
 pub const EventList = std.ArrayList(c_int);
 pub const EventTimeList = std.ArrayList(i64);
-pub const EventSlice = []c_int;
 
 pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*EventTimeList) !void {
     for (e_list.items, 0..) |code, i| {
@@ -30,15 +29,7 @@ pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*Event
     }
 }
 
-pub fn printEventList(allocator: std.mem.Allocator, list: *EventList) !void {
-    const str = try eventListToStr(allocator, list.items);
-    defer allocator.free(str);
-    std.debug.print("{s}\n", .{str});
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-///////////////////////////// HashMaps for testing
 
 pub const TriggerMap = std.StringHashMap([]const u8);
 pub const PrefixMap = std.StringHashMap(bool);
@@ -65,121 +56,6 @@ pub fn createPrefixMapForTesting(allocator: std.mem.Allocator) !PrefixMap {
     return map;
 }
 
-///////////////////////////// eventListToStr
-
-fn eventListToStr(allocator: std.mem.Allocator, e_list: EventSlice) ![]const u8 {
-    var str_list = std.ArrayList(u8).init(allocator);
-    errdefer str_list.deinit();
-    for (e_list, 0..) |code, i| {
-        const str = getStringRepresentationOfKeyCode(code);
-        if (i > 0) try str_list.appendSlice(" ");
-        try str_list.appendSlice(str);
-    }
-    return str_list.toOwnedSlice();
-}
-
-test eventListToStr {
-    const allocator = std.testing.allocator;
-
-    var arr = [_]c_int{ r.KEY_D, r.KEY_J };
-    const result = try eventListToStr(std.testing.allocator, &arr);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("d j", result);
-
-    var arr2 = [_]c_int{};
-    const result2 = try eventListToStr(std.testing.allocator, &arr2);
-    defer allocator.free(result2);
-    try std.testing.expectEqualStrings("", result2);
-
-    var arr3 = [_]c_int{r.KEY_Z};
-    const result3 = try eventListToStr(std.testing.allocator, &arr3);
-    defer allocator.free(result3);
-    try std.testing.expectEqualStrings("z", result3);
-}
-
-///////////////////////////// canConsiderInvokeKeyUp
-
-fn canConsiderInvokeKeyUp(old: EventSlice, new: EventSlice) bool {
-    if (old.len < new.len) return false;
-    for (0..new.len) |i| if (old[i] != new[i]) return false;
-    return true;
-}
-
-test canConsiderInvokeKeyUp {
-    var old1 = [_]c_int{ 1, 2, 3 };
-    var new1 = [_]c_int{ 1, 2 };
-    try std.testing.expect(canConsiderInvokeKeyUp(&old1, &new1));
-
-    var old2 = [_]c_int{ 1, 2, 3 };
-    var new2 = [_]c_int{ 1, 2, 3, 4 };
-    try std.testing.expect(!canConsiderInvokeKeyUp(&old2, &new2));
-
-    var old3 = [_]c_int{ 1, 2, 3 };
-    var new3 = [_]c_int{1};
-    try std.testing.expect(canConsiderInvokeKeyUp(&old3, &new3));
-
-    var old4 = [_]c_int{ 1, 2, 3 };
-    var new4 = [_]c_int{ 2, 3 };
-    try std.testing.expect(!canConsiderInvokeKeyUp(&old4, &new4));
-}
-
-///////////////////////////// getTriggerStatus
-
-fn getTriggerStatus(allocator: std.mem.Allocator, slice: EventSlice, map: *TriggerMap) !struct { mapped: bool, trigger: []const u8 } {
-    const trigger = try eventListToStr(allocator, slice);
-    _ = map.get(trigger) orelse {
-        defer allocator.free(trigger);
-        return .{ .mapped = false, .trigger = "" };
-    };
-    return .{ .mapped = true, .trigger = trigger };
-}
-
-test getTriggerStatus {
-    const allocator = std.testing.allocator;
-    var trigger_map = try createTriggerMapForTesting(allocator);
-    defer trigger_map.deinit();
-
-    var trigger1 = [_]c_int{ r.KEY_D, r.KEY_J };
-    const trigger1_status = try getTriggerStatus(allocator, &trigger1, &trigger_map);
-    defer allocator.free(trigger1_status.trigger);
-    try std.testing.expect(trigger1_status.mapped);
-
-    var trigger2 = [_]c_int{ r.KEY_D, r.KEY_Z };
-    const trigger2_status = try getTriggerStatus(allocator, &trigger2, &trigger_map);
-    defer allocator.free(trigger2_status.trigger);
-    try std.testing.expect(!trigger2_status.mapped);
-
-    var trigger3 = [_]c_int{r.KEY_Z};
-    const trigger3_status = try getTriggerStatus(allocator, &trigger3, &trigger_map);
-    defer allocator.free(trigger3_status.trigger);
-    try std.testing.expect(trigger3_status.mapped);
-}
-
-///////////////////////////// isPrefix
-
-fn isPrefix(allocator: std.mem.Allocator, slice: EventSlice, map: *PrefixMap) !bool {
-    if (slice.len == 0) return false;
-    const needle = try eventListToStr(allocator, slice);
-    defer allocator.free(needle);
-    _ = map.get(needle) orelse return false;
-    return true;
-}
-
-test isPrefix {
-    const allocator = std.testing.allocator;
-    var prefix_map = try createPrefixMapForTesting(allocator);
-    defer prefix_map.deinit();
-
-    var prefix1 = [_]c_int{r.KEY_D};
-    try std.testing.expect(try isPrefix(allocator, &prefix1, &prefix_map));
-
-    var prefix2 = [_]c_int{r.KEY_Z};
-    try std.testing.expect(!try isPrefix(allocator, &prefix2, &prefix_map));
-
-    var prefix3 = [_]c_int{ r.KEY_D, r.KEY_L };
-    try std.testing.expect(!try isPrefix(allocator, &prefix3, &prefix_map));
-}
-
 ///////////////////////////// Invoker
 
 pub const Invoker = struct {
@@ -187,6 +63,88 @@ pub const Invoker = struct {
     trigger_map: *TriggerMap,
     prefix_map: *PrefixMap,
     latest_trigger: EventList,
+
+    const EventSlice = []const c_int;
+
+    fn eventListToStr(allocator: std.mem.Allocator, e_slice: EventSlice) ![]const u8 {
+        var str_list = std.ArrayList(u8).init(allocator);
+        errdefer str_list.deinit();
+        for (e_slice, 0..) |code, i| {
+            const str = getStringRepresentationOfKeyCode(code);
+            if (i > 0) try str_list.appendSlice(" ");
+            try str_list.appendSlice(str);
+        }
+        return str_list.toOwnedSlice();
+    }
+
+    fn testEventListToStr(allocator: std.mem.Allocator, want: []const u8, slice: EventSlice) !void {
+        const result = try eventListToStr(std.testing.allocator, slice);
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings(want, result);
+    }
+
+    test eventListToStr {
+        try testEventListToStr(std.testing.allocator, "d j", &[_]c_int{ r.KEY_D, r.KEY_J });
+        try testEventListToStr(std.testing.allocator, "", &[_]c_int{});
+        try testEventListToStr(std.testing.allocator, "z", &[_]c_int{r.KEY_Z});
+    }
+
+    fn getTriggerStatus(allocator: std.mem.Allocator, slice: EventSlice, map: *TriggerMap) !struct { mapped: bool, trigger: []const u8 } {
+        const trigger = try eventListToStr(allocator, slice);
+        _ = map.get(trigger) orelse {
+            defer allocator.free(trigger);
+            return .{ .mapped = false, .trigger = "" };
+        };
+        return .{ .mapped = true, .trigger = trigger };
+    }
+
+    fn testGetTriggerStatus(a: std.mem.Allocator, trigger_map: *TriggerMap, mapped: bool, trigger: []const u8, slice: EventSlice) !void {
+        const status = try getTriggerStatus(a, slice, trigger_map);
+        defer a.free(status.trigger);
+        try std.testing.expectEqual(mapped, status.mapped);
+        try std.testing.expectEqualStrings(trigger, status.trigger);
+    }
+
+    test getTriggerStatus {
+        const a = std.testing.allocator;
+        var tm: TriggerMap = try createTriggerMapForTesting(a);
+        defer tm.deinit();
+
+        try testGetTriggerStatus(a, &tm, true, "d j", &[_]c_int{ r.KEY_D, r.KEY_J });
+        try testGetTriggerStatus(a, &tm, false, "", &[_]c_int{});
+        try testGetTriggerStatus(a, &tm, true, "z", &[_]c_int{r.KEY_Z});
+    }
+
+    fn isPrefix(allocator: std.mem.Allocator, slice: EventSlice, map: *PrefixMap) !bool {
+        if (slice.len == 0) return false;
+        const needle = try eventListToStr(allocator, slice);
+        defer allocator.free(needle);
+        _ = map.get(needle) orelse return false;
+        return true;
+    }
+
+    test isPrefix {
+        const allocator = std.testing.allocator;
+        var prefix_map = try createPrefixMapForTesting(allocator);
+        defer prefix_map.deinit();
+
+        try std.testing.expect(try isPrefix(allocator, &[_]c_int{r.KEY_D}, &prefix_map));
+        try std.testing.expect(!try isPrefix(allocator, &[_]c_int{r.KEY_Z}, &prefix_map));
+        try std.testing.expect(!try isPrefix(allocator, &[_]c_int{ r.KEY_D, r.KEY_L }, &prefix_map));
+    }
+
+    fn canConsiderInvokeKeyUp(old: EventSlice, new: EventSlice) bool {
+        if (old.len < new.len) return false;
+        for (0..new.len) |i| if (old[i] != new[i]) return false;
+        return true;
+    }
+
+    test canConsiderInvokeKeyUp {
+        try std.testing.expect(canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{ 1, 2 }));
+        try std.testing.expect(!canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{ 1, 2, 3, 4 }));
+        try std.testing.expect(canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{1}));
+        try std.testing.expect(!canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{ 2, 3 }));
+    }
 
     pub fn init(allocator: std.mem.Allocator, trigger_map: *TriggerMap, prefix_map: *PrefixMap) !*Invoker {
         const invoker = try allocator.create(Invoker);
