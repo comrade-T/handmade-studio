@@ -10,6 +10,31 @@ const eqDeep = std.testing.expectEqualDeep;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const Buffer = struct {
+    external_allocator: Allocator,
+    arena: std.heap.ArenaAllocator,
+    a: Allocator,
+    root: Root,
+
+    pub fn create(external_allocator: Allocator, child_allocator: ?Allocator) !*Buffer {
+        const self = try external_allocator.create(Buffer);
+        self.* = .{
+            .external_allocator = external_allocator,
+            .arena = std.heap.ArenaAllocator.init(child_allocator orelse std.heap.page_allocator),
+            .a = self.arena.allocator(),
+            .root = try Node.new(self.a, &empty_leaf, &empty_leaf),
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *Buffer) void {
+        self.arena.deinit();
+        self.external_allocator.destroy(self);
+    }
+};
+
+const Root = *const Node;
+
 const Node = union(enum) {
     node: Branch,
     leaf: Leaf,
@@ -91,6 +116,13 @@ pub const Weights = struct {
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+test Buffer {
+    const empty_buffer = try Buffer.create(std.testing.allocator, std.testing.allocator);
+    defer empty_buffer.deinit();
+
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_buffer.root.weights_sum());
+}
 
 test "Node.weights_sum()" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
