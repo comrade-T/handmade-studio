@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 const eqDeep = std.testing.expectEqualDeep;
+const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +32,11 @@ const Buffer = struct {
         self.arena.deinit();
         self.external_allocator.destroy(self);
     }
+
+    pub fn load_from_string(self: *const Buffer, s: []const u8) !Root {
+        var stream = std.io.fixedBufferStream(s);
+        return self.load(stream.reader(), s.len);
+    }
 };
 
 const Root = *const Node;
@@ -58,6 +64,13 @@ const Node = union(enum) {
 
         node.* = .{ .node = .{ .left = l, .right = r, .weights = left_ws, .weights_sum = ws } };
         return node;
+    }
+
+    fn merge_in_place(a: Allocator, leaves: []const Node) !Root {
+        if (leaves.len == 1) return &leaves[0];
+        if (leaves.len == 2) return Node.new(a, &leaves[0], &leaves[1]);
+        const mid = leaves.len / 2;
+        return Node.new(a, try merge_in_place(a, leaves[0..mid]), try merge_in_place(a, leaves[mid..]));
     }
 };
 
@@ -122,6 +135,95 @@ test Buffer {
     defer empty_buffer.deinit();
 
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_buffer.root.weights_sum());
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.left.weights_sum());
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.right.weights_sum());
+}
+
+test "Node.new()" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const empty_node = try Node.new(a, &empty_leaf, &empty_leaf);
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weights_sum());
+}
+
+test "Node.merge_in_place()" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const leaves = [_]Node{
+            Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = true } },
+        };
+
+        const root = try Node.merge_in_place(a, &leaves);
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.weights_sum());
+    }
+
+    {
+        const leaves = [_]Node{
+            Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = true } },
+            Node{ .leaf = Leaf{ .buf = "mars", .bol = true, .eol = true } },
+        };
+
+        const root = try Node.merge_in_place(a, &leaves);
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 11, .depth = 2 }, root.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.weights_sum());
+    }
+
+    {
+        const leaves = [_]Node{
+            Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = true } },
+            Node{ .leaf = Leaf{ .buf = "from", .bol = true, .eol = true } },
+            Node{ .leaf = Leaf{ .buf = "mars", .bol = true, .eol = true } },
+        };
+
+        const root = try Node.merge_in_place(a, &leaves);
+        try eqDeep(Weights{ .bols = 3, .eols = 3, .len = 16, .depth = 3 }, root.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weights_sum());
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 10, .depth = 2 }, root.node.right.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.node.left.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.node.right.weights_sum());
+        try eqStr("hello", root.node.left.leaf.buf);
+        try eqStr("from", root.node.right.node.left.leaf.buf);
+        try eqStr("mars", root.node.right.node.right.leaf.buf);
+    }
+
+    {
+        const leaves = [_]Node{
+            Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = true } },
+            Node{ .leaf = Leaf{ .buf = "from", .bol = true, .eol = true } },
+            Node{ .leaf = Leaf{ .buf = "the", .bol = true, .eol = true } },
+            Node{ .leaf = Leaf{ .buf = "other side", .bol = true, .eol = true } },
+        };
+
+        const root = try Node.merge_in_place(a, &leaves);
+        try eqDeep(Weights{ .bols = 4, .eols = 4, .len = 26, .depth = 3 }, root.weights_sum());
+
+        const root_left = root.node.left;
+        const root_right = root.node.right;
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 11, .depth = 2 }, root_left.weights_sum());
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 15, .depth = 2 }, root_right.weights_sum());
+
+        const hello = root_left.node.left;
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello.weights_sum());
+        try eqStr("hello", hello.leaf.buf);
+
+        const from = root_left.node.right;
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, from.weights_sum());
+        try eqStr("from", from.leaf.buf);
+
+        const the = root_right.node.left;
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 4, .depth = 1 }, the.weights_sum());
+        try eqStr("the", the.leaf.buf);
+
+        const other_side = root_right.node.right;
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 11, .depth = 1 }, other_side.weights_sum());
+        try eqStr("other side", other_side.leaf.buf);
+    }
 }
 
 test "Node.weights_sum()" {
@@ -137,15 +239,6 @@ test "Node.weights_sum()" {
 
     const hello_bol_eol = try Leaf.new(a, "hello", true, true);
     try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello_bol_eol.weights_sum());
-}
-
-test "Node.new()" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    const empty_node = try Node.new(a, &empty_leaf, &empty_leaf);
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weights_sum());
 }
 
 test "Leaf.new()" {
