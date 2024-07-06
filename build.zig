@@ -24,6 +24,8 @@ pub fn build(b: *std.Build) void {
     kb_state.compile.linkSystemLibrary("raylib");
     kb_state.compile.linkLibC();
 
+    _ = addTestableModule(&bops, "src/buffer/buffer.zig", &.{}, zig_build_test_step);
+
     ////////////////////////////////////////////////////////////////////////////// Game
 
     {
