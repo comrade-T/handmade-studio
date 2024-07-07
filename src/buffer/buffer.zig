@@ -216,6 +216,65 @@ const Node = union(enum) {
             .leaf => |*l| return f(ctx, l),
         }
     }
+
+    fn walk_line_mut(self: *const Node, a: Allocator, line: usize, f: WalkerMut.F, ctx: *anyopaque) WalkerMut {
+        switch (self.*) {
+            .node => |*node| {
+                const left_bols = node.weights.bols;
+                if (line >= left_bols) {
+                    const right = node.right.walk_line_mut(a, line - left_bols, f, ctx);
+                    if (right.replace) |replacement| {
+                        return WalkerMut{
+                            .err = right.err,
+                            .found = right.found,
+                            .keep_walking = right.keep_walking,
+                            .replace = if (replacement.is_empty())
+                                node.left
+                            else
+                                Node.new(a, node.left, replacement) catch |e| return .{ .err = e },
+                        };
+                    }
+                    return right;
+                }
+                const left = node.left.walk_line_mut(a, line, f, ctx);
+                const right = if (left.found and left.keep_walking) node.right.walk_mut(a, f, ctx) else WalkerMut{};
+                return node.merge_results(a, left, right);
+            },
+            .leaf => |*l| {
+                if (line == 0) {
+                    var result = f(ctx, l);
+                    if (result.err) |_| {
+                        result.replace = null;
+                        return result;
+                    }
+                    result.found = true;
+                    return result;
+                }
+                return WalkerMut.keep_walking;
+            },
+        }
+    }
+
+    fn walk_mut(self: *const Node, a: Allocator, f: WalkerMut.F, ctx: *anyopaque) WalkerMut {
+        switch (self.*) {
+            .node => |*node| {
+                const left = node.left.walk_mut(a, f, ctx);
+                if (!left.keep_walking) {
+                    return WalkerMut{
+                        .err = left.err,
+                        .found = left.found,
+                        .replace = if (left.replace) |replacement|
+                            Node.new(a, replacement, node.right) catch |e| return .{ .err = e }
+                        else
+                            null,
+                    };
+                }
+                const right = node.right.walk_mut(a, f, ctx);
+                return node.merge_results(a, left, right);
+            },
+            .leaf => |*l| return f(ctx, l),
+        }
+    }
 };
 
 const Branch = struct {
@@ -233,12 +292,12 @@ const Branch = struct {
     }
 
     fn merge_walk_results_mut(self: *const Branch, a: Allocator, left: WalkerMut, right: WalkerMut) WalkerMut {
-        var result = WalkerMut{};
-        result.err = if (left.err) |_| left.err else right.err;
-        result.keep_walking = left.keep_walking and right.keep_walking;
-        result.found = left.found or right.found;
-        result.replace = self._merge_replacements(a, left, right) catch |e| return .{ .err = e };
-        return result;
+        return WalkerMut{
+            .err = if (left.err) |_| left.err else right.err,
+            .keep_walking = left.keep_walking and right.keep_walking,
+            .found = left.found or right.found,
+            .replace = self._merge_replacements(a, left, right) catch |e| return .{ .err = e },
+        };
     }
 
     fn _merge_replacements(self: *const Branch, a: std.mem.Allocator, left: WalkerMut, right: WalkerMut) !*const Node {
