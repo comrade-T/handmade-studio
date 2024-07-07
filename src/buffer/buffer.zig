@@ -97,6 +97,107 @@ pub const Buffer = struct {
         if (walk_result.err) |e| return e;
         return if (!walk_result.found) error.NotFound;
     }
+
+    const InsertCharsCtx = struct {
+        a: Allocator,
+        col: usize,
+        s: []const u8,
+        eol: bool,
+
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkerMut {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            const leaf_num_of_chars = num_of_chars(leaf.buf);
+
+            if (ctx.col == 0) {
+                const left = Leaf.new(ctx.a, ctx.s, leaf.bol, ctx.eol) catch |e| return .{ .err = e };
+                const right = Leaf.new(ctx.a, leaf.buf, ctx.eol, leaf.eol) catch |e| return .{ .err = e };
+                return WalkerMut{ .replace = Node.new(ctx.a, left, right) catch |e| return .{ .err = e } };
+            }
+
+            if (ctx.col == leaf_num_of_chars) {
+                if (leaf.eol and ctx.eol and ctx.s.len == 0) {
+                    const left = Leaf.new(ctx.a, leaf.buf, leaf.bol, true) catch |e| return .{ .err = e };
+                    const right = Leaf.new(ctx.a, ctx.s, true, true) catch |e| return .{ .err = e };
+                    return WalkerMut{ .replace = Node.new(ctx.a, left, right) catch |e| return .{ .err = e } };
+                }
+
+                const left = Leaf.new(ctx.a, leaf.buf, leaf.bol, false) catch |e| return .{ .err = e };
+
+                if (ctx.eol) {
+                    const middle = Leaf.new(ctx.a, ctx.s, false, ctx.eol) catch |e| return .{ .err = e };
+                    const right = Leaf.new(ctx.a, "", ctx.eol, leaf.eol) catch |e| return .{ .err = e };
+                    const middle_right = Node.new(ctx.a, middle, right) catch |e| return .{ .err = e };
+                    return WalkerMut{ .replace = Node.new(ctx.a, left, middle_right) catch |e| return .{ .err = e } };
+                }
+
+                const right = Leaf.new(ctx.a, ctx.s, false, leaf.eol) catch |e| return .{ .err = e };
+                return WalkerMut{ .replace = Node.new(ctx.a, left, right) catch |e| return .{ .err = e } };
+            }
+
+            if (ctx.col < leaf_num_of_chars) {
+                const pos = byte_count_for_range(leaf.buf, 0, ctx.col);
+
+                if (ctx.eol and ctx.s.len == 0) {
+                    const left = Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol) catch |e| return .{ .err = e };
+                    const right = Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol) catch |e| return .{ .err = e };
+                    return WalkerMut{ .replace = Node.new(ctx.a, left, right) catch |e| return .{ .err = e } };
+                }
+
+                const left = Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, false) catch |e| return .{ .err = e };
+                const middle = Leaf.new(ctx.a, ctx.s, false, ctx.eol) catch |e| return .{ .err = e };
+                const right = Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol) catch |e| return .{ .err = e };
+                const middle_right = Node.new(ctx.a, middle, right) catch |e| return .{ .err = e };
+                return WalkerMut{ .replace = Node.new(ctx.a, left, middle_right) catch |e| return .{ .err = e } };
+            }
+
+            ctx.col -= leaf_num_of_chars;
+            return if (leaf.eol) WalkerMut.stop else WalkerMut.keep_walking;
+        }
+    };
+
+    pub fn insert_chars(
+        self: *const Buffer,
+        a: Allocator,
+        line_: usize,
+        col_: usize,
+        s: []const u8,
+    ) !struct { usize, usize, Root } {
+        if (s.len == 0) return error.Stop;
+
+        var root = self.root;
+        var rest = try a.dupe(u8, s);
+        var chunk = rest;
+        var line = line_;
+        var col = col_;
+        var need_eol = false;
+
+        while (rest.len > 0) {
+            if (std.mem.indexOfScalar(u8, rest, '\n')) |eol| {
+                chunk = rest[0..eol];
+                rest = rest[eol + 1 ..];
+                need_eol = true;
+            } else {
+                chunk = rest;
+                rest = &[_]u8{};
+                need_eol = false;
+            }
+
+            var ctx: InsertCharsCtx = .{ .a = a, .col = col, .s = chunk, .eol = need_eol };
+            const walk_result = root.walk_line_mut(a, line, InsertCharsCtx.walker, &ctx);
+            if (walk_result.err) |e| return e;
+            if (!walk_result.found) return error.NotFound;
+            if (walk_result.replace) |new_root| root = new_root;
+
+            if (need_eol) {
+                line += 1;
+                col = 0;
+            } else {
+                col += num_of_chars(chunk);
+            }
+        }
+
+        return .{ line, col, root };
+    }
 };
 
 const Walker = struct {
@@ -238,7 +339,7 @@ const Node = union(enum) {
                 }
                 const left = node.left.walk_line_mut(a, line, f, ctx);
                 const right = if (left.found and left.keep_walking) node.right.walk_mut(a, f, ctx) else WalkerMut{};
-                return node.merge_results(a, left, right);
+                return node.merge_walk_results_mut(a, left, right);
             },
             .leaf => |*l| {
                 if (line == 0) {
@@ -270,7 +371,7 @@ const Node = union(enum) {
                     };
                 }
                 const right = node.right.walk_mut(a, f, ctx);
-                return node.merge_results(a, left, right);
+                return node.merge_walk_results_mut(a, left, right);
             },
             .leaf => |*l| return f(ctx, l),
         }
@@ -296,13 +397,14 @@ const Branch = struct {
             .err = if (left.err) |_| left.err else right.err,
             .keep_walking = left.keep_walking and right.keep_walking,
             .found = left.found or right.found,
-            .replace = self._merge_replacements(a, left, right) catch |e| return WalkerMut{ .err = e },
+            .replace = if (left.replace == null and right.replace == null)
+                null
+            else
+                self._merge_replacements(a, left, right) catch |e| return WalkerMut{ .err = e },
         };
     }
 
     fn _merge_replacements(self: *const Branch, a: std.mem.Allocator, left: WalkerMut, right: WalkerMut) !*const Node {
-        if (left.replace == null and right.replace == null) return null;
-
         const new_left = if (left.replace) |p| p else self.left;
         const new_right = if (right.replace) |p| p else self.right;
 
@@ -348,24 +450,6 @@ const Leaf = struct {
     inline fn is_empty(self: *const Leaf) bool {
         return self.buf.len == 0 and !self.bol and !self.eol;
     }
-
-    fn num_of_chars(self: *const Leaf) usize {
-        var iter = code_point.Iterator{ .bytes = self.buf };
-        var num_chars: usize = 0;
-        while (iter.next()) |_| num_chars += 1;
-        return num_chars;
-    }
-
-    fn byte_count_for_range(self: *const Leaf, start: usize, end: usize) usize {
-        var iter = code_point.Iterator{ .bytes = self.buf };
-        var byte_count: usize = 0;
-        var i: usize = 0;
-        while (iter.next()) |cp| {
-            if (i >= start and i < end) byte_count += cp.len;
-            i += 1;
-        }
-        return byte_count;
-    }
 };
 
 const Weights = struct {
@@ -381,6 +465,24 @@ const Weights = struct {
         self.depth = @max(self.depth, other.depth);
     }
 };
+
+fn num_of_chars(str: []const u8) usize {
+    var iter = code_point.Iterator{ .bytes = str };
+    var num_chars: usize = 0;
+    while (iter.next()) |_| num_chars += 1;
+    return num_chars;
+}
+
+fn byte_count_for_range(str: []const u8, start: usize, end: usize) usize {
+    var iter = code_point.Iterator{ .bytes = str };
+    var byte_count: usize = 0;
+    var i: usize = 0;
+    while (iter.next()) |cp| {
+        if (i >= start and i < end) byte_count += cp.len;
+        i += 1;
+    }
+    return byte_count;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -415,6 +517,23 @@ test "Buffer.get_line()" {
         try testBufferGetLine(a, buf, 0, "hello");
         try testBufferGetLine(a, buf, 1, "world");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
+    }
+}
+
+test "Buffer.insert_chars()" {
+    const a = std.testing.allocator;
+    const buf = try Buffer.create(a, a);
+    defer buf.deinit();
+
+    {
+        buf.root = try buf.load_from_string("B");
+        try testBufferGetLine(a, buf, 0, "B");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 0, "1");
+        try testBufferGetLine(a, buf, 0, "1B");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 1, "2");
+        try testBufferGetLine(a, buf, 0, "12B");
     }
 }
 
@@ -692,41 +811,28 @@ test "Leaf.is_empty()" {
     }
 }
 
-test "Leaf.num_of_chars()" {
-    {
-        const leaf = Leaf{ .buf = "hello", .bol = true, .eol = true };
-        try eq(5, leaf.num_of_chars());
-    }
-
-    {
-        const leaf = Leaf{ .buf = "hello 👋", .bol = true, .eol = true };
-        try eq(7, leaf.num_of_chars());
-        try eq(10, leaf.buf.len);
-    }
-
-    {
-        const leaf = Leaf{ .buf = "안녕", .bol = true, .eol = true };
-        try eq(2, leaf.num_of_chars());
-        try eq(6, leaf.buf.len);
-    }
+test num_of_chars {
+    try eq(5, num_of_chars("hello"));
+    try eq(7, num_of_chars("hello 👋"));
+    try eq(2, num_of_chars("안녕"));
 }
 
-test "Leaf.byte_count_for_range()" {
-    const leaf = Leaf{ .buf = "안녕! hello there 👋!", .bol = true, .eol = true };
+test byte_count_for_range {
+    const str = "안녕! hello there 👋!";
     {
-        const result = leaf.byte_count_for_range(0, 2);
+        const result = byte_count_for_range(str, 0, 2);
         try eq(6, result);
-        try eqStr("안녕", leaf.buf[0..result]);
+        try eqStr("안녕", str[0..result]);
     }
     {
-        const result = leaf.byte_count_for_range(0, 3);
+        const result = byte_count_for_range(str, 0, 3);
         try eq(7, result);
-        try eqStr("안녕!", leaf.buf[0..result]);
+        try eqStr("안녕!", str[0..result]);
     }
     {
-        const result = leaf.byte_count_for_range(4, leaf.buf.len);
+        const result = byte_count_for_range(str, 4, str.len);
         try eq(17, result);
-        try eqStr("hello there 👋!", leaf.buf[leaf.buf.len - result ..]);
+        try eqStr("hello there 👋!", str[str.len - result ..]);
     }
 }
 
