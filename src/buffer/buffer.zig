@@ -82,16 +82,17 @@ pub const Buffer = struct {
         return leaves;
     }
 
-    fn get_line(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
-        const GetLineCtx = struct {
-            result_list: *ArrayList(u8),
-            fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                ctx.result_list.appendSlice(leaf.buf) catch |e| return Walker{ .err = e };
-                return if (!leaf.eol) Walker.keep_walking else Walker.stop;
-            }
-        };
+    const GetLineCtx = struct {
+        result_list: *ArrayList(u8),
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            ctx.result_list.appendSlice(leaf.buf) catch |e| return Walker{ .err = e };
+            return if (!leaf.eol) Walker.keep_walking else Walker.stop;
+        }
+    };
 
+    fn get_line(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
+        if (line + 1 > self.root.weights_sum().bols) return error.NotFound;
         var walk_ctx: GetLineCtx = .{ .result_list = result_list };
         const walk_result = self.root.walk_line(line, GetLineCtx.walker, &walk_ctx);
         if (walk_result.err) |e| return e;
@@ -197,6 +198,109 @@ pub const Buffer = struct {
         }
 
         return .{ line, col, root };
+    }
+
+    const DeleteCharsCtx = struct {
+        a: Allocator,
+        col: usize,
+        count: usize,
+        delete_next_bol: bool = false,
+
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkerMut {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            var result = WalkerMut.keep_walking;
+
+            if (ctx.delete_next_bol and ctx.count == 0) {
+                result.replace = Leaf.new(ctx.a, leaf.buf, false, leaf.eol) catch |e| return .{ .err = e };
+                result.keep_walking = false;
+                ctx.delete_next_bol = false;
+                return result;
+            }
+
+            const leaf_num_of_chars = num_of_chars(leaf.buf);
+            const leaf_bol = leaf.bol and !ctx.delete_next_bol;
+            ctx.delete_next_bol = false;
+
+            // next node
+            if (ctx.col > leaf_num_of_chars) {
+                ctx.col -= leaf_num_of_chars;
+                if (leaf.eol) ctx.col -= 1;
+                return result;
+            }
+
+            // this node
+            if (ctx.col == 0) {
+                if (ctx.count > leaf_num_of_chars) {
+                    ctx.count -= leaf_num_of_chars;
+                    result.replace = Leaf.new(ctx.a, "", leaf_bol, false) catch |e| return .{ .err = e };
+                    if (leaf.eol) {
+                        ctx.count -= 1;
+                        ctx.delete_next_bol = true;
+                    }
+
+                    if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+                    return result;
+                }
+
+                if (ctx.count == leaf_num_of_chars) {
+                    result.replace = Leaf.new(ctx.a, "", leaf_bol, leaf.eol) catch |e| return .{ .err = e };
+                    ctx.count = 0;
+
+                    if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+                    return result;
+                }
+
+                const pos = byte_count_for_range(leaf.buf, 0, ctx.count);
+                result.replace = Leaf.new(ctx.a, leaf.buf[pos..], leaf_bol, leaf.eol) catch |e| return .{ .err = e };
+                ctx.count = 0;
+
+                if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+                return result;
+            }
+
+            if (ctx.col == leaf_num_of_chars) {
+                if (leaf.eol) {
+                    ctx.count -= 1;
+                    result.replace = Leaf.new(ctx.a, leaf.buf, leaf_bol, false) catch |e| return .{ .err = e };
+                    ctx.delete_next_bol = true;
+                }
+                ctx.col -= leaf_num_of_chars;
+
+                if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+                return result;
+            }
+
+            if (ctx.col + ctx.count >= leaf_num_of_chars) {
+                ctx.count -= leaf_num_of_chars - ctx.col;
+                const pos = byte_count_for_range(leaf.buf, 0, ctx.col);
+                const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
+                    ctx.count -= 1;
+                    ctx.delete_next_bol = true;
+                    break :leaf_eol false;
+                } else leaf.eol;
+                result.replace = Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, leaf_eol) catch |e| return .{ .err = e };
+                ctx.col = 0;
+
+                if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+                return result;
+            }
+
+            const pos = byte_count_for_range(leaf.buf, 0, ctx.col);
+            const pos_end = byte_count_for_range(leaf.buf, 0, ctx.col + ctx.count);
+            const left = Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, false) catch |e| return .{ .err = e };
+            const right = Leaf.new(ctx.a, leaf.buf[pos_end..], false, leaf.eol) catch |e| return .{ .err = e };
+            result.replace = Node.new(ctx.a, left, right) catch |e| return .{ .err = e };
+            ctx.count = 0;
+
+            if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+            return result;
+        }
+    };
+
+    pub fn delete_chars(self: *const Buffer, a: Allocator, line: usize, col: usize, count: usize) !Root {
+        var ctx: DeleteCharsCtx = .{ .a = a, .col = col, .count = count };
+        const result = self.root.walk_line_mut(a, line, DeleteCharsCtx.walker, &ctx);
+        return if (result.found) (if (result.replace) |r| r else error.Stop) else error.NotFound;
     }
 };
 
@@ -510,6 +614,7 @@ test "Buffer.get_line()" {
     {
         buf.root = try buf.load_from_string("ayaya");
         try testBufferGetLine(a, buf, 0, "ayaya");
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, ""));
     }
 
     {
@@ -517,6 +622,72 @@ test "Buffer.get_line()" {
         try testBufferGetLine(a, buf, 0, "hello");
         try testBufferGetLine(a, buf, 1, "world");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
+    }
+}
+
+test "Buffer.delete_chars()" {
+    const a = std.testing.allocator;
+    const buf = try Buffer.create(a, a);
+    defer buf.deinit();
+
+    {
+        buf.root = try buf.load_from_string("hello world");
+        try testBufferGetLine(a, buf, 0, "hello world");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 0, 1);
+        try testBufferGetLine(a, buf, 0, "ello world");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 0, 5);
+        try testBufferGetLine(a, buf, 0, "world");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 4, 1);
+        try testBufferGetLine(a, buf, 0, "worl");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 2, 2);
+        try testBufferGetLine(a, buf, 0, "wo");
+    }
+
+    {
+        buf.root = try buf.load_from_string("hello\nworld");
+        try testBufferGetLine(a, buf, 0, "hello");
+        try testBufferGetLine(a, buf, 1, "world");
+        {
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .buf = "hello", .bol = true, .eol = true }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "world", .bol = true, .eol = false }, leaves[1].*);
+        }
+
+        buf.root = try buf.delete_chars(buf.a, 0, 0, 1);
+        try testBufferGetLine(a, buf, 0, "ello");
+        try testBufferGetLine(a, buf, 1, "world");
+        {
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .buf = "ello", .bol = true, .eol = true }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "world", .bol = true, .eol = false }, leaves[1].*);
+        }
+
+        buf.root = try buf.delete_chars(buf.a, 0, 3, 1);
+        try testBufferGetLine(a, buf, 0, "ell");
+        try testBufferGetLine(a, buf, 1, "world");
+        {
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .buf = "ell", .bol = true, .eol = true }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "world", .bol = true, .eol = false }, leaves[1].*);
+        }
+
+        buf.root = try buf.delete_chars(buf.a, 0, 3, 1);
+        try testBufferGetLine(a, buf, 0, "ellworld");
+        {
+            try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 8, .depth = 2 }, buf.root.weights_sum());
+            try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 3, .depth = 1 }, buf.root.node.left.weights_sum());
+            try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 5, .depth = 1 }, buf.root.node.right.weights_sum());
+            try eqDeep(Leaf{ .buf = "ell", .bol = true, .eol = false }, buf.root.node.left.leaf);
+            try eqDeep(Leaf{ .buf = "world", .bol = false, .eol = false }, buf.root.node.right.leaf);
+        }
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, "world"));
     }
 }
 
@@ -530,7 +701,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "B");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(1, leaves.len);
             try eqDeep(Leaf{ .buf = "B", .bol = true, .eol = false }, leaves[0].*);
         }
@@ -539,7 +710,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "1B");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(2, leaves.len);
             try eqDeep(Leaf{ .buf = "1", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "B", .bol = false, .eol = false }, leaves[1].*);
@@ -549,7 +720,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "12B");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(3, leaves.len);
             try eqDeep(Leaf{ .buf = "1", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "2", .bol = false, .eol = false }, leaves[1].*);
@@ -562,7 +733,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(1, leaves.len);
             try eqDeep(Leaf{ .buf = "", .bol = true, .eol = false }, leaves[0].*);
         }
@@ -571,7 +742,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "안녕");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(2, leaves.len);
             try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "", .bol = false, .eol = false }, leaves[1].*);
@@ -581,7 +752,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "안녕!");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(2, leaves.len);
             try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
@@ -591,7 +762,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "안녕! Hello there!");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(3, leaves.len);
             try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
@@ -602,7 +773,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "안녕! Hello there 👋!");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(5, leaves.len);
             try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
@@ -615,7 +786,7 @@ test "Buffer.insert_chars()" {
         try testBufferGetLine(a, buf, 0, "안녕하세요! Hello there 👋!");
 
         {
-            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
             try eq(6, leaves.len);
             try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
             try eqDeep(Leaf{ .buf = "하세요", .bol = false, .eol = false }, leaves[1].*);
@@ -710,7 +881,7 @@ test "Node.store()" {
     }
 }
 
-fn walkThroughNodeToGetLeaves(a: Allocator, node: Root) ![]*const Leaf {
+fn walkThroughNodeToGetAllLeaves(a: Allocator, node: Root) ![]*const Leaf {
     const Ctx = struct {
         list: *ArrayList(*const Leaf),
         fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
@@ -735,7 +906,7 @@ test "Node.walk()" {
 
     {
         const root = try buffer.load_from_string("hello\nfrom\nthe\nother\nside");
-        const leaves = try walkThroughNodeToGetLeaves(a, root);
+        const leaves = try walkThroughNodeToGetAllLeaves(a, root);
         defer a.free(leaves);
 
         try eqDeep(Leaf{ .buf = "hello", .bol = true, .eol = true }, leaves[0].*);
