@@ -351,9 +351,20 @@ const Leaf = struct {
 
     fn num_of_chars(self: *const Leaf) usize {
         var iter = code_point.Iterator{ .bytes = self.buf };
-        var result: usize = 0;
-        while (iter.next()) |_| result += 1;
-        return result;
+        var num_chars: usize = 0;
+        while (iter.next()) |_| num_chars += 1;
+        return num_chars;
+    }
+
+    fn byte_count_for_range(self: *const Leaf, start: usize, end: usize) usize {
+        var iter = code_point.Iterator{ .bytes = self.buf };
+        var byte_count: usize = 0;
+        var i: usize = 0;
+        while (iter.next()) |cp| {
+            if (i >= start and i < end) byte_count += cp.len;
+            i += 1;
+        }
+        return byte_count;
     }
 };
 
@@ -690,11 +701,32 @@ test "Leaf.num_of_chars()" {
     {
         const leaf = Leaf{ .buf = "hello 👋", .bol = true, .eol = true };
         try eq(7, leaf.num_of_chars());
+        try eq(10, leaf.buf.len);
     }
 
     {
         const leaf = Leaf{ .buf = "안녕", .bol = true, .eol = true };
         try eq(2, leaf.num_of_chars());
+        try eq(6, leaf.buf.len);
+    }
+}
+
+test "Leaf.byte_count_for_range()" {
+    const leaf = Leaf{ .buf = "안녕! hello there 👋!", .bol = true, .eol = true };
+    {
+        const result = leaf.byte_count_for_range(0, 2);
+        try eq(6, result);
+        try eqStr("안녕", leaf.buf[0..result]);
+    }
+    {
+        const result = leaf.byte_count_for_range(0, 3);
+        try eq(7, result);
+        try eqStr("안녕!", leaf.buf[0..result]);
+    }
+    {
+        const result = leaf.byte_count_for_range(4, leaf.buf.len);
+        try eq(17, result);
+        try eqStr("hello there 👋!", leaf.buf[leaf.buf.len - result ..]);
     }
 }
 
