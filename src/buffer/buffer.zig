@@ -34,6 +34,21 @@ pub const Buffer = struct {
         self.external_allocator.destroy(self);
     }
 
+    fn get_line(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
+        const GetLineCtx = struct {
+            result_list: *ArrayList(u8),
+            fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                ctx.result_list.appendSlice(leaf.buf) catch |e| return .{ .err = e };
+                return if (!leaf.eol) Walker.keep_walking else Walker.stop;
+            }
+        };
+        var ctx: GetLineCtx = .{ .result_list = result_list };
+        const walk_result = self.root.walk_line(line, GetLineCtx.walker, &ctx);
+        if (walk_result.err) |e| return e;
+        return if (!walk_result.found) error.NotFound;
+    }
+
     fn load_from_string(self: *const Buffer, s: []const u8) !Root {
         var stream = std.io.fixedBufferStream(s);
         return self.load(stream.reader(), s.len);
@@ -80,6 +95,18 @@ pub const Buffer = struct {
     }
 };
 
+const Walker = struct {
+    keep_walking: bool = false,
+    found: bool = false,
+    err: ?anyerror = null,
+
+    const keep_walking = Walker{ .keep_walking = true };
+    const stop = Walker{ .keep_walking = false };
+    const found = Walker{ .found = true };
+
+    const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) Walker;
+};
+
 const Root = *const Node;
 
 const Node = union(enum) {
@@ -88,8 +115,8 @@ const Node = union(enum) {
 
     fn weights_sum(self: *const Node) Weights {
         return switch (self.*) {
-            .node => |*n| n.weights_sum,
-            .leaf => |*l| l.weights(),
+            .node => |*branch| branch.weights_sum,
+            .leaf => |*leaf| leaf.weights(),
         };
     }
 
@@ -107,11 +134,11 @@ const Node = union(enum) {
         return node;
     }
 
-    pub fn store(self: *const Node, writer: anytype) !void {
+    fn store(self: *const Node, writer: anytype) !void {
         switch (self.*) {
-            .node => |*node| {
-                try node.left.store(writer);
-                try node.right.store(writer);
+            .node => |*branch| {
+                try branch.left.store(writer);
+                try branch.right.store(writer);
             },
             .leaf => |*leaf| {
                 _ = try writer.write(leaf.buf);
@@ -126,6 +153,45 @@ const Node = union(enum) {
         const mid = leaves.len / 2;
         return Node.new(a, try merge_in_place(a, leaves[0..mid]), try merge_in_place(a, leaves[mid..]));
     }
+
+    fn walk_line(self: *const Node, line: usize, f: Walker.F, ctx: *anyopaque) Walker {
+        switch (self.*) {
+            .node => |*node| {
+                const left_bols = node.weights.bols;
+                if (line >= left_bols)
+                    return node.right.walk_line(line - left_bols, f, ctx);
+                const left_result = node.left.walk_line(line, f, ctx);
+                const right_result = if (left_result.found and left_result.keep_walking) node.right.walk(f, ctx) else Walker{};
+                return node.merge_walk_results(left_result, right_result);
+            },
+            .leaf => |*l| {
+                if (line == 0) {
+                    var result = f(ctx, l);
+                    if (result.err) |_| return result;
+                    result.found = true;
+                    return result;
+                }
+                return Walker.keep_walking;
+            },
+        }
+    }
+
+    fn walk(self: *const Node, f: Walker.F, ctx: *anyopaque) Walker {
+        switch (self.*) {
+            .node => |*branch| {
+                const left = branch.left.walk(f, ctx);
+                if (!left.keep_walking) {
+                    var result = Walker{};
+                    result.err = left.err;
+                    result.found = left.found;
+                    return result;
+                }
+                const right = branch.right.walk(f, ctx);
+                return branch.merge_walk_results(left, right);
+            },
+            .leaf => |*l| return f(ctx, l),
+        }
+    }
 };
 
 const Branch = struct {
@@ -133,6 +199,14 @@ const Branch = struct {
     right: *const Node,
     weights: Weights,
     weights_sum: Weights,
+
+    fn merge_walk_results(_: *const Branch, left: Walker, right: Walker) Walker {
+        var result = Walker{};
+        result.err = if (left.err) |_| left.err else right.err;
+        result.keep_walking = left.keep_walking and right.keep_walking;
+        result.found = left.found or right.found;
+        return result;
+    }
 };
 
 const empty_leaf: Node = .{ .leaf = .{ .buf = "", .bol = false, .eol = false } };
@@ -191,6 +265,30 @@ test "Buffer.create() & Buffer.deinit()" {
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_buffer.root.weights_sum());
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.left.weights_sum());
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.right.weights_sum());
+}
+
+fn testBufferGetLine(a: std.mem.Allocator, buf: *Buffer, line: usize, expected: []const u8) !void {
+    var result = ArrayList(u8).init(a);
+    defer result.deinit();
+    try buf.get_line(line, &result);
+    try std.testing.expectEqualStrings(expected, result.items);
+}
+
+test "Buffer.get_line()" {
+    const a = std.testing.allocator;
+    var buf = try Buffer.create(a, a);
+    defer buf.deinit();
+
+    {
+        buf.root = try buf.load_from_string("ayaya");
+        try testBufferGetLine(a, buf, 0, "ayaya");
+    }
+
+    {
+        buf.root = try buf.load_from_string("hello\nworld");
+        try testBufferGetLine(a, buf, 0, "hello");
+        try testBufferGetLine(a, buf, 1, "world");
+    }
 }
 
 test "Buffer.load_from_string()" {
