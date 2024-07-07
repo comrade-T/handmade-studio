@@ -37,22 +37,6 @@ pub const Buffer = struct {
         self.external_allocator.destroy(self);
     }
 
-    fn get_line(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
-        const GetLineCtx = struct {
-            result_list: *ArrayList(u8),
-            fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                ctx.result_list.appendSlice(leaf.buf) catch |e| return .{ .err = e };
-                return if (!leaf.eol) Walker.keep_walking else Walker.stop;
-            }
-        };
-
-        var walk_ctx: GetLineCtx = .{ .result_list = result_list };
-        const walk_result = self.root.walk_line(line, GetLineCtx.walker, &walk_ctx);
-        if (walk_result.err) |e| return e;
-        return if (!walk_result.found) error.NotFound;
-    }
-
     fn load_from_string(self: *const Buffer, s: []const u8) !Root {
         var stream = std.io.fixedBufferStream(s);
         return self.load(stream.reader(), s.len);
@@ -96,6 +80,22 @@ pub const Buffer = struct {
 
         if (leaves.len != cur_leaf + 1) return error.Unexpected;
         return leaves;
+    }
+
+    fn get_line(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
+        const GetLineCtx = struct {
+            result_list: *ArrayList(u8),
+            fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                ctx.result_list.appendSlice(leaf.buf) catch |e| return Walker{ .err = e };
+                return if (!leaf.eol) Walker.keep_walking else Walker.stop;
+            }
+        };
+
+        var walk_ctx: GetLineCtx = .{ .result_list = result_list };
+        const walk_result = self.root.walk_line(line, GetLineCtx.walker, &walk_ctx);
+        if (walk_result.err) |e| return e;
+        return if (!walk_result.found) error.NotFound;
     }
 };
 
@@ -231,7 +231,7 @@ const Node = union(enum) {
                             .replace = if (replacement.is_empty())
                                 node.left
                             else
-                                Node.new(a, node.left, replacement) catch |e| return .{ .err = e },
+                                Node.new(a, node.left, replacement) catch |e| return WalkerMut{ .err = e },
                         };
                     }
                     return right;
@@ -264,7 +264,7 @@ const Node = union(enum) {
                         .err = left.err,
                         .found = left.found,
                         .replace = if (left.replace) |replacement|
-                            Node.new(a, replacement, node.right) catch |e| return .{ .err = e }
+                            Node.new(a, replacement, node.right) catch |e| return WalkerMut{ .err = e }
                         else
                             null,
                     };
@@ -296,7 +296,7 @@ const Branch = struct {
             .err = if (left.err) |_| left.err else right.err,
             .keep_walking = left.keep_walking and right.keep_walking,
             .found = left.found or right.found,
-            .replace = self._merge_replacements(a, left, right) catch |e| return .{ .err = e },
+            .replace = self._merge_replacements(a, left, right) catch |e| return WalkerMut{ .err = e },
         };
     }
 
@@ -338,7 +338,7 @@ const Leaf = struct {
     inline fn weights(self: *const Leaf) Weights {
         var len = self.buf.len;
         if (self.eol) len += 1;
-        return .{
+        return Weights{
             .bols = if (self.bol) 1 else 0,
             .eols = if (self.eol) 1 else 0,
             .len = @intCast(len),
@@ -487,6 +487,43 @@ test "Node.store()" {
         try testNodeStore(a, buffer, "hello\nworld");
         try testNodeStore(a, buffer, "one two");
         try testNodeStore(a, buffer, &[_]u8{ 'A', 'A', 'A', 10 } ** 1_000);
+    }
+}
+
+fn walkThroughNodeToGetLeaves(a: Allocator, buffer: *Buffer, source: []const u8) ![]*const Leaf {
+    const Ctx = struct {
+        list: *ArrayList(*const Leaf),
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            ctx.list.append(leaf) catch |e| return Walker{ .err = e };
+            return Walker.keep_walking;
+        }
+    };
+
+    const root = try buffer.load_from_string(source);
+
+    var list = std.ArrayList(*const Leaf).init(a);
+    var walk_ctx: Ctx = .{ .list = &list };
+    const walk_result = root.walk(Ctx.walker, &walk_ctx);
+
+    if (walk_result.err) |e| return e;
+    return try list.toOwnedSlice();
+}
+
+test "Node.walk()" {
+    const a = std.testing.allocator;
+    const buffer = try Buffer.create(a, a);
+    defer buffer.deinit();
+
+    {
+        const leaves = try walkThroughNodeToGetLeaves(a, buffer, "hello\nfrom\nthe\nother\nside");
+        defer a.free(leaves);
+
+        try eqDeep(Leaf{ .buf = "hello", .bol = true, .eol = true }, leaves[0].*);
+        try eqDeep(Leaf{ .buf = "from", .bol = true, .eol = true }, leaves[1].*);
+        try eqDeep(Leaf{ .buf = "the", .bol = true, .eol = true }, leaves[2].*);
+        try eqDeep(Leaf{ .buf = "other", .bol = true, .eol = true }, leaves[3].*);
+        try eqDeep(Leaf{ .buf = "side", .bol = true, .eol = false }, leaves[4].*);
     }
 }
 
