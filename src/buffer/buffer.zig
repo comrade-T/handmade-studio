@@ -688,6 +688,38 @@ test "Buffer.delete_chars()" {
             try eqDeep(Leaf{ .buf = "world", .bol = false, .eol = false }, buf.root.node.right.leaf);
         }
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, "world"));
+        try testNodeStore(a, buf.root, "ellworld");
+    }
+
+    {
+        buf.root = try buf.load_from_string("hello\nworld");
+        try testNodeStore(a, buf.root, "hello\nworld");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 2, 7);
+        try testBufferGetLine(a, buf, 0, "held");
+        try testNodeStore(a, buf.root, "held");
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, ""));
+    }
+
+    {
+        buf.root = try buf.load_from_string("hello\nworld\nand\nvenus");
+        try testNodeStore(a, buf.root, "hello\nworld\nand\nvenus");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 1, 11);
+        try testBufferGetLine(a, buf, 0, "hand");
+        try testBufferGetLine(a, buf, 1, "venus");
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
+        try testNodeStore(a, buf.root, "hand\nvenus");
+    }
+
+    {
+        buf.root = try buf.load_from_string("hello\nworld\nand\nvenus");
+        try testNodeStore(a, buf.root, "hello\nworld\nand\nvenus");
+
+        buf.root = try buf.delete_chars(buf.a, 0, 2, 17);
+        try testBufferGetLine(a, buf, 0, "heus");
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, ""));
+        try testNodeStore(a, buf.root, "heus");
     }
 }
 
@@ -861,8 +893,7 @@ test "Node.new()" {
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weights_sum());
 }
 
-fn testNodeStore(a: std.mem.Allocator, buffer: *Buffer, expected: []const u8) !void {
-    const root = try buffer.load_from_string(expected);
+fn testNodeStore(a: std.mem.Allocator, root: Root, expected: []const u8) !void {
     var s = try ArrayList(u8).initCapacity(a, root.weights_sum().len);
     defer s.deinit();
     try root.store(s.writer());
@@ -875,9 +906,19 @@ test "Node.store()" {
     defer buffer.deinit();
 
     {
-        try testNodeStore(a, buffer, "hello\nworld");
-        try testNodeStore(a, buffer, "one two");
-        try testNodeStore(a, buffer, &[_]u8{ 'A', 'A', 'A', 10 } ** 1_000);
+        const content = "hello\nworld";
+        const root = try buffer.load_from_string(content);
+        try testNodeStore(a, root, content);
+    }
+    {
+        const content = "one two";
+        const root = try buffer.load_from_string(content);
+        try testNodeStore(a, root, content);
+    }
+    {
+        const content = [_]u8{ 'A', 'A', 'A', 10 } ** 1_000;
+        const root = try buffer.load_from_string(&content);
+        try testNodeStore(a, root, &content);
     }
 }
 
