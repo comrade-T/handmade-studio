@@ -191,9 +191,9 @@ pub const Buffer = struct {
             if (need_eol) {
                 line += 1;
                 col = 0;
-            } else {
-                col += num_of_chars(chunk);
+                continue;
             }
+            col += num_of_chars(chunk);
         }
 
         return .{ line, col, root };
@@ -529,31 +529,101 @@ test "Buffer.insert_chars()" {
         buf.root = try buf.load_from_string("B");
         try testBufferGetLine(a, buf, 0, "B");
 
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(1, leaves.len);
+            try eqDeep(Leaf{ .buf = "B", .bol = true, .eol = false }, leaves[0].*);
+        }
+
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 0, "1");
         try testBufferGetLine(a, buf, 0, "1B");
 
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .buf = "1", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "B", .bol = false, .eol = false }, leaves[1].*);
+        }
+
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 1, "2");
         try testBufferGetLine(a, buf, 0, "12B");
+
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(3, leaves.len);
+            try eqDeep(Leaf{ .buf = "1", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "2", .bol = false, .eol = false }, leaves[1].*);
+            try eqDeep(Leaf{ .buf = "B", .bol = false, .eol = false }, leaves[2].*);
+        }
     }
 
     {
         buf.root = try buf.load_from_string("");
         try testBufferGetLine(a, buf, 0, "");
 
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(1, leaves.len);
+            try eqDeep(Leaf{ .buf = "", .bol = true, .eol = false }, leaves[0].*);
+        }
+
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 0, "안녕");
         try testBufferGetLine(a, buf, 0, "안녕");
+
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "", .bol = false, .eol = false }, leaves[1].*);
+        }
 
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 2, "!");
         try testBufferGetLine(a, buf, 0, "안녕!");
 
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
+        }
+
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 3, " Hello there!");
         try testBufferGetLine(a, buf, 0, "안녕! Hello there!");
+
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(3, leaves.len);
+            try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
+            try eqDeep(Leaf{ .buf = " Hello there!", .bol = false, .eol = false }, leaves[2].*);
+        }
 
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 15, " 👋");
         try testBufferGetLine(a, buf, 0, "안녕! Hello there 👋!");
 
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(5, leaves.len);
+            try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
+            try eqDeep(Leaf{ .buf = " Hello there", .bol = false, .eol = false }, leaves[2].*);
+            try eqDeep(Leaf{ .buf = " 👋", .bol = false, .eol = false }, leaves[3].*);
+            try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[4].*);
+        }
+
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 2, "하세요");
         try testBufferGetLine(a, buf, 0, "안녕하세요! Hello there 👋!");
+
+        {
+            const leaves = try walkThroughNodeToGetLeaves(buf.a, buf.root);
+            try eq(6, leaves.len);
+            try eqDeep(Leaf{ .buf = "안녕", .bol = true, .eol = false }, leaves[0].*);
+            try eqDeep(Leaf{ .buf = "하세요", .bol = false, .eol = false }, leaves[1].*);
+            try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[2].*);
+            try eqDeep(Leaf{ .buf = " Hello there", .bol = false, .eol = false }, leaves[3].*);
+            try eqDeep(Leaf{ .buf = " 👋", .bol = false, .eol = false }, leaves[4].*);
+            try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[5].*);
+        }
     }
 }
 
@@ -640,7 +710,7 @@ test "Node.store()" {
     }
 }
 
-fn walkThroughNodeToGetLeaves(a: Allocator, buffer: *Buffer, source: []const u8) ![]*const Leaf {
+fn walkThroughNodeToGetLeaves(a: Allocator, node: Root) ![]*const Leaf {
     const Ctx = struct {
         list: *ArrayList(*const Leaf),
         fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
@@ -650,11 +720,9 @@ fn walkThroughNodeToGetLeaves(a: Allocator, buffer: *Buffer, source: []const u8)
         }
     };
 
-    const root = try buffer.load_from_string(source);
-
     var list = std.ArrayList(*const Leaf).init(a);
     var walk_ctx: Ctx = .{ .list = &list };
-    const walk_result = root.walk(Ctx.walker, &walk_ctx);
+    const walk_result = node.walk(Ctx.walker, &walk_ctx);
 
     if (walk_result.err) |e| return e;
     return try list.toOwnedSlice();
@@ -666,7 +734,8 @@ test "Node.walk()" {
     defer buffer.deinit();
 
     {
-        const leaves = try walkThroughNodeToGetLeaves(a, buffer, "hello\nfrom\nthe\nother\nside");
+        const root = try buffer.load_from_string("hello\nfrom\nthe\nother\nside");
+        const leaves = try walkThroughNodeToGetLeaves(a, root);
         defer a.free(leaves);
 
         try eqDeep(Leaf{ .buf = "hello", .bol = true, .eol = true }, leaves[0].*);
