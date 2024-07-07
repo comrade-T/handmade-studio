@@ -535,6 +535,26 @@ test "Buffer.insert_chars()" {
         _, _, buf.root = try buf.insert_chars(buf.a, 0, 1, "2");
         try testBufferGetLine(a, buf, 0, "12B");
     }
+
+    {
+        buf.root = try buf.load_from_string("");
+        try testBufferGetLine(a, buf, 0, "");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 0, "안녕");
+        try testBufferGetLine(a, buf, 0, "안녕");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 2, "!");
+        try testBufferGetLine(a, buf, 0, "안녕!");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 3, " Hello there!");
+        try testBufferGetLine(a, buf, 0, "안녕! Hello there!");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 15, " 👋");
+        try testBufferGetLine(a, buf, 0, "안녕! Hello there 👋!");
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 2, "하세요");
+        try testBufferGetLine(a, buf, 0, "안녕하세요! Hello there 👋!");
+    }
 }
 
 test "Buffer.load_from_string()" {
