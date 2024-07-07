@@ -138,6 +138,13 @@ const Node = union(enum) {
         return node;
     }
 
+    fn is_empty(self: *const Node) bool {
+        return switch (self.*) {
+            .node => |*branch| branch.left.is_empty() and branch.right.is_empty(),
+            .leaf => |*l| if (self == &empty_leaf) true else l.is_empty(),
+        };
+    }
+
     fn store(self: *const Node, writer: anytype) !void {
         switch (self.*) {
             .node => |*branch| {
@@ -242,6 +249,10 @@ const Leaf = struct {
             .eols = if (self.eol) 1 else 0,
             .len = @intCast(len),
         };
+    }
+
+    inline fn is_empty(self: *const Leaf) bool {
+        return self.buf.len == 0 and !self.bol and !self.eol;
     }
 
     fn num_of_chars(self: *const Leaf) usize {
@@ -514,6 +525,28 @@ test "Leaf.weights()" {
     {
         const leaf = Leaf{ .buf = "hello", .bol = true, .eol = false };
         try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, leaf.weights());
+    }
+}
+
+test "Leaf.is_empty()" {
+    {
+        const leaf = Leaf{ .buf = "", .bol = false, .eol = false };
+        try eq(true, leaf.is_empty());
+    }
+
+    {
+        const leaf = Leaf{ .buf = "hi!", .bol = false, .eol = false };
+        try eq(false, leaf.is_empty());
+    }
+
+    {
+        const leaf = Leaf{ .buf = "", .bol = true, .eol = false };
+        try eq(false, leaf.is_empty());
+    }
+
+    {
+        const leaf = Leaf{ .buf = "", .bol = false, .eol = true };
+        try eq(false, leaf.is_empty());
     }
 }
 
