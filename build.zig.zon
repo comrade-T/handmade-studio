@@ -4,9 +4,13 @@
     .version = "0.0.0",
 
     .dependencies = .{
-        .pretty = .{
-            .url = "https://github.com/timfayz/pretty/archive/v0.10.2.tar.gz",
-            .hash = "12201325c0651a8cc167d1d3bd07a71aa3b87b91065d45a64298a3e1d5716d62ed85",
+        // .pretty = .{
+        //     .url = "https://github.com/timfayz/pretty/archive/v0.10.2.tar.gz",
+        //     .hash = "12201325c0651a8cc167d1d3bd07a71aa3b87b91065d45a64298a3e1d5716d62ed85",
+        // },
+        .zg = .{
+            .url = "https://codeberg.org/dude_the_builder/zg/archive/v0.13.2.tar.gz",
+            .hash = "122055beff332830a391e9895c044d33b15ea21063779557024b46169fb1984c6e40",
         },
     },
 

@@ -1,9 +1,12 @@
 const std = @import("std");
+const code_point = @import("code_point");
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
+const eq = std.testing.expectEqual;
 const eqDeep = std.testing.expectEqualDeep;
 const eqStr = std.testing.expectEqualStrings;
+const shouldErr = std.testing.expectError;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -43,8 +46,9 @@ pub const Buffer = struct {
                 return if (!leaf.eol) Walker.keep_walking else Walker.stop;
             }
         };
-        var ctx: GetLineCtx = .{ .result_list = result_list };
-        const walk_result = self.root.walk_line(line, GetLineCtx.walker, &ctx);
+
+        var walk_ctx: GetLineCtx = .{ .result_list = result_list };
+        const walk_result = self.root.walk_line(line, GetLineCtx.walker, &walk_ctx);
         if (walk_result.err) |e| return e;
         return if (!walk_result.found) error.NotFound;
     }
@@ -156,17 +160,16 @@ const Node = union(enum) {
 
     fn walk_line(self: *const Node, line: usize, f: Walker.F, ctx: *anyopaque) Walker {
         switch (self.*) {
-            .node => |*node| {
-                const left_bols = node.weights.bols;
-                if (line >= left_bols)
-                    return node.right.walk_line(line - left_bols, f, ctx);
-                const left_result = node.left.walk_line(line, f, ctx);
-                const right_result = if (left_result.found and left_result.keep_walking) node.right.walk(f, ctx) else Walker{};
-                return node.merge_walk_results(left_result, right_result);
+            .node => |*branch| {
+                const left_bols = branch.weights.bols;
+                if (line >= left_bols) return branch.right.walk_line(line - left_bols, f, ctx);
+                const left_result = branch.left.walk_line(line, f, ctx);
+                const right_result = if (left_result.found and left_result.keep_walking) branch.right.walk(f, ctx) else Walker{};
+                return branch.merge_walk_results(left_result, right_result);
             },
-            .leaf => |*l| {
+            .leaf => |*leaf| {
                 if (line == 0) {
-                    var result = f(ctx, l);
+                    var result = f(ctx, leaf);
                     if (result.err) |_| return result;
                     result.found = true;
                     return result;
@@ -240,6 +243,13 @@ const Leaf = struct {
             .len = @intCast(len),
         };
     }
+
+    fn num_of_chars(self: *const Leaf) usize {
+        var iter = code_point.Iterator{ .bytes = self.buf };
+        var result: usize = 0;
+        while (iter.next()) |_| result += 1;
+        return result;
+    }
 };
 
 const Weights = struct {
@@ -288,6 +298,7 @@ test "Buffer.get_line()" {
         buf.root = try buf.load_from_string("hello\nworld");
         try testBufferGetLine(a, buf, 0, "hello");
         try testBufferGetLine(a, buf, 1, "world");
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
     }
 }
 
@@ -503,6 +514,23 @@ test "Leaf.weights()" {
     {
         const leaf = Leaf{ .buf = "hello", .bol = true, .eol = false };
         try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, leaf.weights());
+    }
+}
+
+test "Leaf.num_of_chars()" {
+    {
+        const leaf = Leaf{ .buf = "hello", .bol = true, .eol = true };
+        try eq(5, leaf.num_of_chars());
+    }
+
+    {
+        const leaf = Leaf{ .buf = "hello 👋", .bol = true, .eol = true };
+        try eq(7, leaf.num_of_chars());
+    }
+
+    {
+        const leaf = Leaf{ .buf = "안녕", .bol = true, .eol = true };
+        try eq(2, leaf.num_of_chars());
     }
 }
 

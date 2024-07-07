@@ -18,13 +18,16 @@ pub fn build(b: *std.Build) void {
 
     // const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
 
+    const zg = b.dependency("zg", .{});
+
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
     var kb_state = addTestableModule(&bops, "src/keyboard/state.zig", &.{}, zig_build_test_step);
     kb_state.compile.linkSystemLibrary("raylib");
     kb_state.compile.linkLibC();
 
-    _ = addTestableModule(&bops, "src/buffer/buffer.zig", &.{}, zig_build_test_step);
+    var buffer = addTestableModule(&bops, "src/buffer/buffer.zig", &.{}, zig_build_test_step);
+    buffer.compile.root_module.addImport("code_point", zg.module("code_point"));
 
     ////////////////////////////////////////////////////////////////////////////// Game
 
