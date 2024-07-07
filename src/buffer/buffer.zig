@@ -111,6 +111,20 @@ const Walker = struct {
     const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) Walker;
 };
 
+pub const WalkerMut = struct {
+    keep_walking: bool = false,
+    found: bool = false,
+    err: ?anyerror = null,
+
+    replace: ?Root = null,
+
+    pub const keep_walking = WalkerMut{ .keep_walking = true };
+    pub const stop = WalkerMut{ .keep_walking = false };
+    pub const found = WalkerMut{ .found = true };
+
+    const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkerMut;
+};
+
 const Root = *const Node;
 
 const Node = union(enum) {
@@ -216,6 +230,27 @@ const Branch = struct {
         result.keep_walking = left.keep_walking and right.keep_walking;
         result.found = left.found or right.found;
         return result;
+    }
+
+    fn merge_walk_results_mut(self: *const Branch, a: Allocator, left: WalkerMut, right: WalkerMut) WalkerMut {
+        var result = WalkerMut{};
+        result.err = if (left.err) |_| left.err else right.err;
+        result.keep_walking = left.keep_walking and right.keep_walking;
+        result.found = left.found or right.found;
+        result.replace = self._merge_replacements(a, left, right) catch |e| return .{ .err = e };
+        return result;
+    }
+
+    fn _merge_replacements(self: *const Branch, a: std.mem.Allocator, left: WalkerMut, right: WalkerMut) !*const Node {
+        if (left.replace == null and right.replace == null) return null;
+
+        const new_left = if (left.replace) |p| p else self.left;
+        const new_right = if (right.replace) |p| p else self.right;
+
+        if (new_left.is_empty()) return new_right;
+        if (new_right.is_empty()) return new_left;
+
+        return Node.new(a, new_left, new_right);
     }
 };
 
