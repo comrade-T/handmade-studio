@@ -8,7 +8,7 @@ const gp_view = @import("gamepad/view.zig");
 
 const kbs = @import("keyboard/state.zig");
 const Buffer = @import("buffer").Buffer;
-const exp_m = @import("keyboard/experimental_mappings.zig");
+const eM = @import("keyboard/experimental_mappings.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -18,6 +18,7 @@ const screen_h = 450;
 const device_idx = 1;
 
 const TestInvoker = kbs.GenericInvoker(kbs.TestTriggerMap, kbs.TestPrefixMap);
+const InsertCharInvoker = kbs.GenericInvoker(eM.InsertCharTriggerMap, eM.InsertCharPrefixMap);
 
 pub const GameState = struct {
     allocator: std.mem.Allocator,
@@ -37,9 +38,9 @@ pub const GameState = struct {
 
     // text buffer
     text_buffer: *Buffer,
-    insert_char_callback_map: std.StringHashMap(exp_m.InsertCharCtx),
-    insert_char_prefix_map: std.StringHashMap(bool),
-    // insert_char_invoker: *kbs.Invoker,
+    insert_char_trigger_map: eM.InsertCharTriggerMap,
+    insert_char_prefix_map: eM.InsertCharPrefixMap,
+    insert_char_invoker: *InsertCharInvoker,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -62,9 +63,9 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .test_invoker = TestInvoker.init(a.*, &gs.test_trigger_map, &gs.test_prefix_map) catch @panic("can't init() Invoker"),
 
         .text_buffer = Buffer.create(a.*, a.*) catch @panic("can't create buffer"),
-        .insert_char_callback_map = exp_m.createInsertCharCallbackMap(a.*) catch @panic("can't createInsertCharCallbackMap()"),
-        .insert_char_prefix_map = exp_m.createEmptyPrefixMap(a.*),
-        // .insert_char_invoker = kbs.Invoker.init(a.*, &gs.insert_char_callback_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
+        .insert_char_trigger_map = eM.createInsertCharCallbackMap(a.*) catch @panic("can't createInsertCharCallbackMap()"),
+        .insert_char_prefix_map = eM.InsertCharPrefixMap.init(a.*),
+        .insert_char_invoker = InsertCharInvoker.init(a.*, &gs.insert_char_trigger_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
     };
 
     gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("") catch
@@ -110,7 +111,12 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     }
 
     {
-        // TODO:
+        const maybe_trigger = gs.insert_char_invoker.getTrigger(gs.old_event_list.items, gs.new_event_list.items) catch @panic("can't invoker.getTrigger");
+        if (maybe_trigger) |trigger| {
+            if (gs.insert_char_trigger_map.get(trigger)) |*ctx| {
+                ctx.callback();
+            }
+        }
     }
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");

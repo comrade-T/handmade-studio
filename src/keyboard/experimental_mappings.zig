@@ -2,22 +2,19 @@ const std = @import("std");
 
 pub const InsertCharCtx = struct {
     trigger: []const u8,
-    pub fn callback(ctx_: *anyopaque) void {
-        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-        std.debug.print("{s}\n", .{ctx.trigger});
+    pub fn callback(self: *const @This()) void {
+        std.debug.print("AYA: {s}\n", .{self.trigger});
     }
 };
 
-pub fn createInsertCharCallbackMap(a: std.mem.Allocator) !std.StringHashMap(InsertCharCtx) {
+pub const InsertCharTriggerMap = std.StringHashMap(InsertCharCtx);
+pub const InsertCharPrefixMap = std.StringHashMap(bool);
+
+pub fn createInsertCharCallbackMap(a: std.mem.Allocator) !InsertCharTriggerMap {
     var map = std.StringHashMap(InsertCharCtx).init(a);
 
     try map.put("j", InsertCharCtx{ .trigger = "j" });
     try map.put("k", InsertCharCtx{ .trigger = "k" });
 
-    return map;
-}
-
-pub fn createEmptyPrefixMap(a: std.mem.Allocator) std.StringHashMap(bool) {
-    const map = std.StringHashMap(bool).init(a);
     return map;
 }
