@@ -119,9 +119,11 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
         }
     }
 
-    const text = gs.text_buffer.to_string() catch @panic("can't to_string()");
-    defer gs.text_buffer.a.free(text);
-    r.DrawText(@as([*c]const u8, @ptrCast(text)), 100, 100, 30, r.RAYWHITE);
+    // FIXME: this is extremely inefficient, since we're walking the tree and writing memory 60 times per second.
+    // TODO: cache the buffer to prevent this inefficiency.
+    const text = gs.text_buffer.toArrayList(gs.a) catch @panic("can't to_string()");
+    defer text.deinit();
+    r.DrawText(@as([*c]const u8, @ptrCast(text.items)), 100, 100, 30, r.RAYWHITE);
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }

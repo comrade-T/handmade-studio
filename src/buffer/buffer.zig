@@ -37,11 +37,10 @@ pub const Buffer = struct {
         self.external_allocator.destroy(self);
     }
 
-    pub fn to_string(self: *Buffer) ![]const u8 {
-        var s = try ArrayList(u8).initCapacity(self.a, self.root.weights_sum().len);
-        defer s.deinit();
+    pub fn toArrayList(self: *Buffer, a: Allocator) !ArrayList(u8) {
+        var s = try ArrayList(u8).initCapacity(a, self.root.weights_sum().len);
         try self.root.store(s.writer());
-        return try s.toOwnedSlice();
+        return s;
     }
 
     pub fn load_from_string(self: *const Buffer, s: []const u8) !Root {
