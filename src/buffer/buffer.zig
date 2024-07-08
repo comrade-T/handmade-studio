@@ -88,6 +88,10 @@ pub const Buffer = struct {
         return leaves;
     }
 
+    pub fn num_of_lines(self: *const Buffer) usize {
+        return self.root.weights_sum().bols;
+    }
+
     const GetLineCtx = struct {
         result_list: *ArrayList(u8),
         fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
@@ -628,6 +632,25 @@ test "Buffer.get_line()" {
         try testBufferGetLine(a, buf, 0, "hello");
         try testBufferGetLine(a, buf, 1, "world");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
+    }
+}
+
+test "Buffer.num_of_lines()" {
+    const a = std.testing.allocator;
+    const buf = try Buffer.create(a, a);
+    defer buf.deinit();
+
+    {
+        buf.root = try buf.load_from_string("hello world");
+        try eq(1, buf.num_of_lines());
+    }
+    {
+        buf.root = try buf.load_from_string("hello\nworld");
+        try eq(2, buf.num_of_lines());
+    }
+    {
+        buf.root = try buf.load_from_string(&[_]u8{ 'A', 'A', 'A', '\n' } ** 1_000);
+        try eq(1001, buf.num_of_lines());
     }
 }
 
