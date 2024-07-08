@@ -109,6 +109,24 @@ pub const Buffer = struct {
         return if (!walk_result.found) error.NotFound;
     }
 
+    const NumOfCharsInLineCtx = struct {
+        result: *usize,
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            ctx.result.* += num_of_chars(leaf.buf);
+            return if (!leaf.eol) Walker.keep_walking else Walker.stop;
+        }
+    };
+
+    fn num_of_chars_in_line(self: *const Buffer, line: usize) !usize {
+        if (line + 1 > self.root.weights_sum().bols) return error.NotFound;
+        var result: usize = 0;
+        var ctx: NumOfCharsInLineCtx = .{ .result = &result };
+        const walk_result = self.root.walk_line(line, NumOfCharsInLineCtx.walker, &ctx);
+        if (walk_result.err) |e| return e;
+        return if (walk_result.found) result else error.NotFound;
+    }
+
     const InsertCharsCtx = struct {
         a: Allocator,
         col: usize,
@@ -652,6 +670,26 @@ test "Buffer.num_of_lines()" {
         buf.root = try buf.load_from_string(&[_]u8{ 'A', 'A', 'A', '\n' } ** 1_000);
         try eq(1001, buf.num_of_lines());
     }
+}
+
+test "Buffer.num_of_chars_in_line()" {
+    const a = std.testing.allocator;
+    const buf = try Buffer.create(a, a);
+    defer buf.deinit();
+
+    buf.root = try buf.load_from_string(
+        \\hello
+        \\안녕
+        \\👋
+        \\
+        \\안녕! Hello there 👋!
+    );
+
+    try eq(5, try buf.num_of_chars_in_line(0));
+    try eq(2, try buf.num_of_chars_in_line(1));
+    try eq(1, try buf.num_of_chars_in_line(2));
+    try eq(0, try buf.num_of_chars_in_line(3));
+    try eq(18, try buf.num_of_chars_in_line(4));
 }
 
 test "Buffer.delete_chars()" {
