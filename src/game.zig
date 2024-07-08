@@ -41,6 +41,7 @@ pub const GameState = struct {
     insert_char_trigger_map: eM.InsertCharTriggerMap,
     insert_char_prefix_map: eM.InsertCharPrefixMap,
     insert_char_invoker: *InsertCharInvoker,
+    cached_contents: std.ArrayList(u8),
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -66,10 +67,13 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .insert_char_trigger_map = eM.createInsertCharCallbackMap(a.*) catch @panic("can't createInsertCharCallbackMap()"),
         .insert_char_prefix_map = eM.InsertCharPrefixMap.init(a.*),
         .insert_char_invoker = InsertCharInvoker.init(a.*, &gs.insert_char_trigger_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
+        .cached_contents = undefined,
     };
 
     gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("hi there!") catch
         @panic("can't buffer.load_from_string()");
+
+    gs.*.cached_contents = gs.text_buffer.toArrayList(a.*) catch @panic("can't gs.text_buffer.toArrayList()");
 
     return gs;
 }
@@ -121,9 +125,7 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     // FIXME: this is extremely inefficient, since we're walking the tree and writing memory 60 times per second.
     // TODO: cache the buffer to prevent this inefficiency.
-    const text = gs.text_buffer.toArrayList(gs.a) catch @panic("can't to_string()");
-    defer text.deinit();
-    r.DrawText(@as([*c]const u8, @ptrCast(text.items)), 100, 100, 30, r.RAYWHITE);
+    r.DrawText(@as([*c]const u8, @ptrCast(gs.cached_contents.items)), 100, 100, 30, r.RAYWHITE);
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }

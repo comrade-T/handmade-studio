@@ -8,6 +8,8 @@ pub const InsertCharCtx = struct {
         const line = 0;
         const col = 0;
         _, _, buf.root = try buf.insert_chars(buf.a, line, col, self.chars);
+        gs.cached_contents.deinit();
+        gs.cached_contents = try gs.text_buffer.toArrayList(gs.a);
     }
 };
 
