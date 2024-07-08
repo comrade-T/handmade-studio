@@ -8,6 +8,7 @@ const gp_view = @import("gamepad/view.zig");
 
 const kbs = @import("keyboard/state.zig");
 const Buffer = @import("buffer").Buffer;
+const exp_m = @import("keyboard/experimental_mappings.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -15,6 +16,8 @@ const screen_w = 800;
 const screen_h = 450;
 
 const device_idx = 1;
+
+const TestInvoker = kbs.GenericInvoker(kbs.TestTriggerMap, kbs.TestPrefixMap);
 
 pub const GameState = struct {
     allocator: std.mem.Allocator,
@@ -28,12 +31,15 @@ pub const GameState = struct {
     new_event_list: kbs.EventList,
     event_time_list: kbs.EventTimeList,
 
-    trigger_map: kbs.TriggerMap,
-    prefix_map: kbs.PrefixMap,
-    invoker: *kbs.Invoker,
+    test_trigger_map: kbs.TestTriggerMap,
+    test_prefix_map: kbs.TestPrefixMap,
+    test_invoker: *TestInvoker,
 
     // text buffer
     text_buffer: *Buffer,
+    insert_char_callback_map: std.StringHashMap(exp_m.InsertCharCtx),
+    insert_char_prefix_map: std.StringHashMap(bool),
+    // insert_char_invoker: *kbs.Invoker,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,14 +50,21 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
 
     gs.* = GameState{
         .allocator = a.*,
+
         .radius = readRadiusConfig(a.*),
+
         .old_event_list = std.ArrayList(c_int).init(a.*),
         .new_event_list = std.ArrayList(c_int).init(a.*),
         .event_time_list = std.ArrayList(i64).init(a.*),
-        .trigger_map = kbs.createTriggerMapForTesting(a.*) catch @panic("can't createTriggerMapForTesting"),
-        .prefix_map = kbs.createPrefixMapForTesting(a.*) catch @panic("can't createPrefixMapForTesting"),
-        .invoker = kbs.Invoker.init(a.*, &gs.trigger_map, &gs.prefix_map) catch @panic("can't init() Invoker"),
+
+        .test_trigger_map = kbs.createTriggerMapForTesting(a.*) catch @panic("can't createTriggerMapForTesting"),
+        .test_prefix_map = kbs.createPrefixMapForTesting(a.*) catch @panic("can't createPrefixMapForTesting"),
+        .test_invoker = TestInvoker.init(a.*, &gs.test_trigger_map, &gs.test_prefix_map) catch @panic("can't init() Invoker"),
+
         .text_buffer = Buffer.create(a.*, a.*) catch @panic("can't create buffer"),
+        .insert_char_callback_map = exp_m.createInsertCharCallbackMap(a.*) catch @panic("can't createInsertCharCallbackMap()"),
+        .insert_char_prefix_map = exp_m.createEmptyPrefixMap(a.*),
+        // .insert_char_invoker = kbs.Invoker.init(a.*, &gs.insert_char_callback_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
     };
 
     gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("") catch
@@ -87,11 +100,17 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     kbs.updateEventList(&gs.new_event_array, &gs.new_event_list, &gs.event_time_list) catch @panic("Error in kbs.updateEventList(new_event_list)");
 
-    const maybe_trigger = gs.invoker.getTrigger(gs.old_event_list.items, gs.new_event_list.items) catch @panic("can't invoker.getTrigger");
-    if (maybe_trigger) |trigger| {
-        if (gs.trigger_map.get(trigger)) |value| {
-            std.debug.print("{s}\n", .{value});
+    {
+        const maybe_trigger = gs.test_invoker.getTrigger(gs.old_event_list.items, gs.new_event_list.items) catch @panic("can't invoker.getTrigger");
+        if (maybe_trigger) |trigger| {
+            if (gs.test_trigger_map.get(trigger)) |value| {
+                std.debug.print("{s}\n", .{value});
+            }
         }
+    }
+
+    {
+        // TODO:
     }
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
