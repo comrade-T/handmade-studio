@@ -3,8 +3,6 @@ const r = @cImport({
     @cInclude("raylib.h");
 });
 
-const game = @import("../game.zig");
-
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const eqDeep = std.testing.expectEqualDeep;
@@ -396,7 +394,7 @@ const supported_key_codes = [_]c_int{
     r.KEY_F11,
     r.KEY_F12,
 
-    r.KEY_ENTER,
+    r.KEY_TAB,
     r.KEY_SPACE,
     // ...
 };
@@ -429,6 +427,9 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
         r.KEY_X => "x",
         r.KEY_Y => "y",
         r.KEY_Z => "z",
+
+        r.KEY_TAB => "tab",
+        r.KEY_SPACE => "space",
 
         r.KEY_ONE => "1",
         r.KEY_TWO => "2",

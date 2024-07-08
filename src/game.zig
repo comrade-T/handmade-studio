@@ -68,7 +68,7 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .insert_char_invoker = InsertCharInvoker.init(a.*, &gs.insert_char_trigger_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
     };
 
-    gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("") catch
+    gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("hi there!") catch
         @panic("can't buffer.load_from_string()");
 
     return gs;
@@ -114,10 +114,13 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
         const maybe_trigger = gs.insert_char_invoker.getTrigger(gs.old_event_list.items, gs.new_event_list.items) catch @panic("can't invoker.getTrigger");
         if (maybe_trigger) |trigger| {
             if (gs.insert_char_trigger_map.get(trigger)) |*ctx| {
-                ctx.callback();
+                ctx.callback(gs) catch @panic("can't run callback");
             }
         }
     }
+
+    const text = gs.text_buffer.to_string() catch @panic("can't to_string()");
+    r.DrawText(@as([*c]const u8, @ptrCast(text)), 100, 100, 30, r.RAYWHITE);
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }

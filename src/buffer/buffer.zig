@@ -37,6 +37,13 @@ pub const Buffer = struct {
         self.external_allocator.destroy(self);
     }
 
+    pub fn to_string(self: *Buffer) ![]const u8 {
+        var s = try ArrayList(u8).initCapacity(self.a, self.root.weights_sum().len);
+        defer s.deinit();
+        try self.root.store(s.writer());
+        return try s.toOwnedSlice();
+    }
+
     pub fn load_from_string(self: *const Buffer, s: []const u8) !Root {
         var stream = std.io.fixedBufferStream(s);
         return self.load(stream.reader(), s.len);

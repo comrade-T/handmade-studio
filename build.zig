@@ -26,8 +26,9 @@ pub fn build(b: *std.Build) void {
     kb_state.compile.linkSystemLibrary("raylib");
     kb_state.compile.linkLibC();
 
-    var buffer = addTestableModule(&bops, "src/buffer/buffer.zig", &.{}, zig_build_test_step);
-    buffer.compile.root_module.addImport("code_point", zg.module("code_point"));
+    const buffer = addTestableModule(&bops, "src/buffer/buffer.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/buffer/cursor.zig", &.{}, zig_build_test_step);
 
