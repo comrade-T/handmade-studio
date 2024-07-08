@@ -7,6 +7,7 @@ const gp_state = @import("gamepad/state.zig");
 const gp_view = @import("gamepad/view.zig");
 
 const kbs = @import("keyboard/state.zig");
+const Buffer = @import("buffer").Buffer;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -20,11 +21,6 @@ pub const GameState = struct {
     time: f32 = 0,
     radius: f32 = 0,
 
-    // gamepad experiment
-    previous_gamepad_state: gp_state.GamepadState = undefined,
-    gamepad_buffer: [1024]u8 = undefined,
-    gamepad_string: [*c]const u8 = "",
-
     // keyboard experiment
     old_event_array: kbs.EventArray = [_]bool{false} ** 400,
     new_event_array: kbs.EventArray = [_]bool{false} ** 400,
@@ -35,24 +31,31 @@ pub const GameState = struct {
     trigger_map: kbs.TriggerMap,
     prefix_map: kbs.PrefixMap,
     invoker: *kbs.Invoker,
+
+    // text buffer
+    text_buffer: *Buffer,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
-    const allocator: *std.mem.Allocator = @ptrCast(@alignCast(allocator_ptr));
-    const gs = allocator.create(GameState) catch @panic("Out of memory.");
+    const a: *std.mem.Allocator = @ptrCast(@alignCast(allocator_ptr));
+    const gs = a.create(GameState) catch @panic("Out of memory.");
 
     gs.* = GameState{
-        .allocator = allocator.*,
-        .radius = readRadiusConfig(allocator.*),
-        .old_event_list = std.ArrayList(c_int).init(allocator.*),
-        .new_event_list = std.ArrayList(c_int).init(allocator.*),
-        .event_time_list = std.ArrayList(i64).init(allocator.*),
-        .trigger_map = kbs.createTriggerMapForTesting(allocator.*) catch @panic("can't createTriggerMapForTesting"),
-        .prefix_map = kbs.createPrefixMapForTesting(allocator.*) catch @panic("can't createPrefixMapForTesting"),
-        .invoker = kbs.Invoker.init(allocator.*, &gs.trigger_map, &gs.prefix_map) catch @panic("can't init() Invoker"),
+        .allocator = a.*,
+        .radius = readRadiusConfig(a.*),
+        .old_event_list = std.ArrayList(c_int).init(a.*),
+        .new_event_list = std.ArrayList(c_int).init(a.*),
+        .event_time_list = std.ArrayList(i64).init(a.*),
+        .trigger_map = kbs.createTriggerMapForTesting(a.*) catch @panic("can't createTriggerMapForTesting"),
+        .prefix_map = kbs.createPrefixMapForTesting(a.*) catch @panic("can't createPrefixMapForTesting"),
+        .invoker = kbs.Invoker.init(a.*, &gs.trigger_map, &gs.prefix_map) catch @panic("can't init() Invoker"),
+        .text_buffer = Buffer.create(a.*, a.*) catch @panic("can't create buffer"),
     };
+
+    gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("") catch
+        @panic("can't buffer.load_from_string()");
 
     return gs;
 }

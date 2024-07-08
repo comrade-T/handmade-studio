@@ -4,6 +4,11 @@ const r = @cImport({
 
 const StickDirection = enum { N, S, E, W, NE, SE, NW, SW, C };
 
+// // previously in game.zig's GameState struct
+// previous_gamepad_state: gp_state.GamepadState = undefined,
+// gamepad_buffer: [1024]u8 = undefined,
+// gamepad_string: [*c]const u8 = "",
+
 pub const GamepadState = struct {
     X: bool = false,
     A: bool = false,

@@ -37,7 +37,7 @@ pub const Buffer = struct {
         self.external_allocator.destroy(self);
     }
 
-    fn load_from_string(self: *const Buffer, s: []const u8) !Root {
+    pub fn load_from_string(self: *const Buffer, s: []const u8) !Root {
         var stream = std.io.fixedBufferStream(s);
         return self.load(stream.reader(), s.len);
     }
@@ -316,16 +316,16 @@ const Walker = struct {
     const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) Walker;
 };
 
-pub const WalkerMut = struct {
+const WalkerMut = struct {
     keep_walking: bool = false,
     found: bool = false,
     err: ?anyerror = null,
 
     replace: ?Root = null,
 
-    pub const keep_walking = WalkerMut{ .keep_walking = true };
-    pub const stop = WalkerMut{ .keep_walking = false };
-    pub const found = WalkerMut{ .found = true };
+    const keep_walking = WalkerMut{ .keep_walking = true };
+    const stop = WalkerMut{ .keep_walking = false };
+    const found = WalkerMut{ .found = true };
 
     const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkerMut;
 };

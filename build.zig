@@ -43,6 +43,8 @@ pub fn build(b: *std.Build) void {
 
         // game_lib.root_module.addImport("pretty", pretty.module("pretty"));
 
+        game_lib.root_module.addImport("buffer", buffer.module);
+
         game_lib.linkSystemLibrary("raylib");
         game_lib.linkLibC();
         b.installArtifact(game_lib);
