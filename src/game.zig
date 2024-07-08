@@ -21,7 +21,7 @@ const TestInvoker = kbs.GenericInvoker(kbs.TestTriggerMap, kbs.TestPrefixMap);
 const InsertCharInvoker = kbs.GenericInvoker(eM.InsertCharTriggerMap, eM.InsertCharPrefixMap);
 
 pub const GameState = struct {
-    allocator: std.mem.Allocator,
+    a: std.mem.Allocator,
     time: f32 = 0,
     radius: f32 = 0,
 
@@ -50,7 +50,7 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
     const gs = a.create(GameState) catch @panic("Out of memory.");
 
     gs.* = GameState{
-        .allocator = a.*,
+        .a = a.*,
 
         .radius = readRadiusConfig(a.*),
 
@@ -76,7 +76,7 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
 
 export fn gameReload(game_state_ptr: *anyopaque) void {
     var gs: *GameState = @ptrCast(@alignCast(game_state_ptr));
-    gs.radius = readRadiusConfig(gs.allocator);
+    gs.radius = readRadiusConfig(gs.a);
 }
 
 export fn gameTick(game_state_ptr: *anyopaque) void {
@@ -120,6 +120,7 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
     }
 
     const text = gs.text_buffer.to_string() catch @panic("can't to_string()");
+    defer gs.text_buffer.a.free(text);
     r.DrawText(@as([*c]const u8, @ptrCast(text)), 100, 100, 30, r.RAYWHITE);
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
