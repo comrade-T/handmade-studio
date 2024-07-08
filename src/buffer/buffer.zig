@@ -828,6 +828,17 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[5].*);
         }
     }
+
+    {
+        buf.root = try buf.load_from_string("");
+        try testNodeStore(a, buf.root, "");
+
+        for (0..10) |i| _, _, buf.root = try buf.insert_chars(buf.a, 0, i, "j");
+        try testNodeStore(a, buf.root, "jjjjjjjjjj");
+
+        const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);
+        try eq(10, leaves.len); // TODO: room for improvement
+    }
 }
 
 test "Buffer.load_from_string()" {

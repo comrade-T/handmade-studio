@@ -29,6 +29,8 @@ pub fn build(b: *std.Build) void {
     var buffer = addTestableModule(&bops, "src/buffer/buffer.zig", &.{}, zig_build_test_step);
     buffer.compile.root_module.addImport("code_point", zg.module("code_point"));
 
+    _ = addTestableModule(&bops, "src/buffer/cursor.zig", &.{}, zig_build_test_step);
+
     ////////////////////////////////////////////////////////////////////////////// Game
 
     {
