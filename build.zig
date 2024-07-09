@@ -21,9 +21,9 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
-    var kb_state = addTestableModule(&bops, "src/keyboard/state.zig", &.{}, zig_build_test_step);
-    kb_state.compile.linkSystemLibrary("raylib");
-    kb_state.compile.linkLibC();
+    _ = addTestableModule(&bops, "src/keyboard/state.zig", &.{
+        .{ .name = "raylib", .module = raylib.module("raylib") },
+    }, zig_build_test_step);
 
     const buffer = addTestableModule(&bops, "src/buffer/buffer.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },

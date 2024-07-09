@@ -1,31 +1,33 @@
 const std = @import("std");
-const r = @cImport({
-    @cInclude("raylib.h");
-});
+const rl = @import("raylib");
 
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const eqDeep = std.testing.expectEqualDeep;
+const expect = std.testing.expect;
 const Allocator = std.mem.Allocator;
+const Key = rl.KeyboardKey;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub const EventArray = [400]bool;
-pub const EventList = std.ArrayList(c_int);
+pub const EventList = std.ArrayList(rl.KeyboardKey);
 pub const EventTimeList = std.ArrayList(i64);
 
 pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*EventTimeList) !void {
-    for (e_list.items, 0..) |code, i| {
-        if (r.IsKeyUp(code)) {
+    for (e_list.items, 0..) |key, i| {
+        if (rl.isKeyUp(key)) {
             _ = e_list.orderedRemove(i);
-            arr.*[@intCast(code)] = false;
+            arr.*[@intCast(@intFromEnum(key))] = false;
             if (may_t_list) |t_list| _ = t_list.orderedRemove(i);
         }
     }
-    for (supported_key_codes) |code| {
-        if (r.IsKeyDown(code)) {
+
+    for (supported_keys) |key| {
+        const code = @intFromEnum(key);
+        if (rl.isKeyDown(key)) {
             if (arr[@intCast(code)]) continue;
-            try e_list.append(code);
+            try e_list.append(key);
             if (may_t_list) |t_list| try t_list.append(std.time.milliTimestamp());
             arr[@intCast(code)] = true;
         }
@@ -38,7 +40,7 @@ pub const TestTriggerMap = std.StringHashMap([]const u8);
 pub const TestPrefixMap = std.StringHashMap(bool);
 
 pub fn createTriggerMapForTesting(a: Allocator) !TestTriggerMap {
-    var map = std.StringHashMap([]const u8).init(a);
+    var map = TestTriggerMap.init(a);
     try map.put("z", "Zed");
     try map.put("d", "Dee");
     try map.put("d j", "DJ");
@@ -52,7 +54,7 @@ pub fn createTriggerMapForTesting(a: Allocator) !TestTriggerMap {
 }
 
 pub fn createPrefixMapForTesting(a: Allocator) !TestPrefixMap {
-    var map = std.StringHashMap(bool).init(a);
+    var map = TestPrefixMap.init(a);
     try map.put("d", true);
     try map.put("d j", true);
     try map.put("d k", true);
@@ -68,7 +70,7 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
         prefix_map: *prefix_map_type,
         latest_trigger: EventList,
 
-        const EventSlice = []const c_int;
+        const EventSlice = []const rl.KeyboardKey;
 
         ///////////////////////////// eventListToStr
 
@@ -76,7 +78,7 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
             var str_list = std.ArrayList(u8).init(a);
             errdefer str_list.deinit();
             for (e_slice, 0..) |code, i| {
-                const str = getStringRepresentationOfKeyCode(code);
+                const str = getStringRepresentationOfKey(code);
                 if (i > 0) try str_list.appendSlice(" ");
                 try str_list.appendSlice(str);
             }
@@ -86,14 +88,14 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
         fn testEventListToStr(a: Allocator, want: []const u8, slice: EventSlice) !void {
             const result = try eventListToStr(std.testing.allocator, slice);
             defer a.free(result);
-            try std.testing.expectEqualStrings(want, result);
+            try eqStr(want, result);
         }
 
         test eventListToStr {
             const a = std.testing.allocator;
-            try testEventListToStr(a, "d j", &[_]c_int{ r.KEY_D, r.KEY_J });
-            try testEventListToStr(a, "", &[_]c_int{});
-            try testEventListToStr(a, "z", &[_]c_int{r.KEY_Z});
+            try testEventListToStr(a, "d j", &[_]Key{ Key.key_d, Key.key_j });
+            try testEventListToStr(a, "", &[_]Key{});
+            try testEventListToStr(a, "z", &[_]Key{Key.key_z});
         }
 
         ///////////////////////////// getTriggerStatus
@@ -110,8 +112,8 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
         fn testGetTriggerStatus(a: Allocator, trigger_map: *trigger_map_type, mapped: bool, trigger: []const u8, slice: EventSlice) !void {
             const status = try getTriggerStatus(a, slice, trigger_map);
             defer a.free(status.trigger);
-            try std.testing.expectEqual(mapped, status.mapped);
-            try std.testing.expectEqualStrings(trigger, status.trigger);
+            try eq(mapped, status.mapped);
+            try eqStr(trigger, status.trigger);
         }
 
         test getTriggerStatus {
@@ -119,9 +121,9 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
             var tm: TestTriggerMap = try createTriggerMapForTesting(a);
             defer tm.deinit();
 
-            try testGetTriggerStatus(a, &tm, true, "d j", &[_]c_int{ r.KEY_D, r.KEY_J });
-            try testGetTriggerStatus(a, &tm, false, "", &[_]c_int{});
-            try testGetTriggerStatus(a, &tm, true, "z", &[_]c_int{r.KEY_Z});
+            try testGetTriggerStatus(a, &tm, true, "d j", &[_]Key{ Key.key_d, Key.key_j });
+            try testGetTriggerStatus(a, &tm, false, "", &[_]Key{});
+            try testGetTriggerStatus(a, &tm, true, "z", &[_]Key{Key.key_z});
         }
 
         ///////////////////////////// isPrefix
@@ -139,9 +141,9 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
             var prefix_map = try createPrefixMapForTesting(a);
             defer prefix_map.deinit();
 
-            try std.testing.expect(try isPrefix(a, &[_]c_int{r.KEY_D}, &prefix_map));
-            try std.testing.expect(!try isPrefix(a, &[_]c_int{r.KEY_Z}, &prefix_map));
-            try std.testing.expect(!try isPrefix(a, &[_]c_int{ r.KEY_D, r.KEY_L }, &prefix_map));
+            try expect(try isPrefix(a, &[_]Key{Key.key_d}, &prefix_map));
+            try expect(!try isPrefix(a, &[_]Key{Key.key_z}, &prefix_map));
+            try expect(!try isPrefix(a, &[_]Key{ Key.key_d, Key.key_z }, &prefix_map));
         }
 
         ///////////////////////////// canConsiderInvokeKeyUp
@@ -153,10 +155,10 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
         }
 
         test canConsiderInvokeKeyUp {
-            try std.testing.expect(canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{ 1, 2 }));
-            try std.testing.expect(!canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{ 1, 2, 3, 4 }));
-            try std.testing.expect(canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{1}));
-            try std.testing.expect(!canConsiderInvokeKeyUp(&[_]c_int{ 1, 2, 3 }, &[_]c_int{ 2, 3 }));
+            try expect(canConsiderInvokeKeyUp(&[_]Key{ Key.key_a, Key.key_b, Key.key_c }, &[_]Key{ Key.key_a, Key.key_b }));
+            try expect(!canConsiderInvokeKeyUp(&[_]Key{ Key.key_a, Key.key_b, Key.key_c }, &[_]Key{ Key.key_a, Key.key_b, Key.key_c, Key.key_d }));
+            try expect(canConsiderInvokeKeyUp(&[_]Key{ Key.key_a, Key.key_b, Key.key_c }, &[_]Key{Key.key_a}));
+            try expect(!canConsiderInvokeKeyUp(&[_]Key{ Key.key_a, Key.key_b, Key.key_c }, &[_]Key{ Key.key_b, Key.key_c }));
         }
 
         ///////////////////////////// init
@@ -167,7 +169,7 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
                 .a = a,
                 .trigger_map = trigger_map,
                 .prefix_map = prefix_map,
-                .latest_trigger = std.ArrayList(c_int).init(a),
+                .latest_trigger = std.ArrayList(Key).init(a),
             };
             return invoker;
         }
@@ -177,7 +179,7 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
         }
 
         pub fn getTrigger(self: *@This(), old: EventSlice, new: EventSlice) !?[]const u8 {
-            if (std.mem.eql(c_int, old, new)) return null;
+            if (std.mem.eql(Key, old, new)) return null;
 
             ///////////////////////////// may invoke on key down
 
@@ -229,12 +231,12 @@ test GenericInvoker {
 
     ///////////////////////////// Initialize invoker with nothingness
 
-    var nothingness = [_]c_int{};
+    var nothingness = [_]Key{};
     try eq(null, try iv.getTrigger(&nothingness, &nothingness));
     try eqDeep(&nothingness, iv.latest_trigger.items);
 
     // `z` mapped, not prefix, should trigger immediately on key down
-    var z = [_]c_int{r.KEY_Z};
+    var z = [_]Key{Key.key_z};
     try eqStr("z", (try iv.getTrigger(&nothingness, &z)).?);
     try eqDeep(&z, iv.latest_trigger.items);
 
@@ -242,22 +244,22 @@ test GenericInvoker {
     try eq(null, try iv.getTrigger(&z, &z));
 
     // `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
-    var d = [_]c_int{r.KEY_D};
+    var d = [_]Key{Key.key_d};
     try eq(null, try iv.getTrigger(&nothingness, &d));
     try eqStr("d", (try iv.getTrigger(&d, &nothingness)).?);
     try eqDeep(&d, iv.latest_trigger.items);
 
     // `d l` mapped, not prefix, should trigger immediately on key down
-    var d_l = [_]c_int{ r.KEY_D, r.KEY_L };
+    var d_l = [_]Key{ Key.key_d, Key.key_l };
     try eqStr("d l", (try iv.getTrigger(&d, &d_l)).?);
     try eqDeep(&d_l, iv.latest_trigger.items);
 
     // `d l k` not mapped, shouldn't trigger
-    var d_l_k = [_]c_int{ r.KEY_D, r.KEY_L, r.KEY_K };
+    var d_l_k = [_]Key{ Key.key_d, Key.key_l, Key.key_r };
     try eq(null, try iv.getTrigger(&d_l, &d_l_k));
 
     // `d l k` not mapped, not prefix, should do nothing here
-    var d_k = [_]c_int{ r.KEY_D, r.KEY_K };
+    var d_k = [_]Key{ Key.key_d, Key.key_k };
     try eq(null, try iv.getTrigger(&d_l_k, &d_k));
 
     // `d k` is mapped, is prefix, but shouldn't trigger here
@@ -271,11 +273,11 @@ test GenericInvoker {
     try eq(null, try iv.getTrigger(&nothingness, &d));
 
     // `d j` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
-    var d_j = [_]c_int{ r.KEY_D, r.KEY_J };
+    var d_j = [_]Key{ Key.key_d, Key.key_j };
     try eq(null, try iv.getTrigger(&d, &d_j));
 
     // `d j l` mapped, not prefix, should trigger immediately on key down
-    var d_j_l = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_L };
+    var d_j_l = [_]Key{ Key.key_d, Key.key_j, Key.key_l };
     try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
     try eqDeep(&d_j_l, iv.latest_trigger.items);
 
@@ -301,8 +303,8 @@ test GenericInvoker {
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    var d_j_k = [_]c_int{ r.KEY_D, r.KEY_J, r.KEY_K };
-    var d_k_l = [_]c_int{ r.KEY_D, r.KEY_K, r.KEY_L };
+    var d_j_k = [_]Key{ Key.key_d, Key.key_j, Key.key_k };
+    var d_k_l = [_]Key{ Key.key_d, Key.key_k, Key.key_l };
     try eq(null, try iv.getTrigger(&nothingness, &d));
     try eq(null, try iv.getTrigger(&d, &d_j));
     try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
@@ -322,8 +324,8 @@ test GenericInvoker {
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    var j = [_]c_int{r.KEY_J};
-    var j_l = [_]c_int{ r.KEY_J, r.KEY_L };
+    var j = [_]Key{Key.key_j};
+    var j_l = [_]Key{ Key.key_j, Key.key_l };
     try eq(null, try iv.getTrigger(&nothingness, &d));
     try eq(null, try iv.getTrigger(&d, &d_j));
     try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
@@ -342,142 +344,86 @@ test GenericInvoker {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const supported_key_codes = [_]c_int{
-    r.KEY_A,
-    r.KEY_B,
-    r.KEY_C,
-    r.KEY_D,
-    r.KEY_E,
-    r.KEY_F,
-    r.KEY_G,
-    r.KEY_H,
-    r.KEY_I,
-    r.KEY_J,
-    r.KEY_K,
-    r.KEY_L,
-    r.KEY_M,
-    r.KEY_N,
-    r.KEY_O,
-    r.KEY_P,
-    r.KEY_Q,
-    r.KEY_R,
-    r.KEY_S,
-    r.KEY_T,
-    r.KEY_U,
-    r.KEY_V,
-    r.KEY_W,
-    r.KEY_X,
-    r.KEY_Y,
-    r.KEY_Z,
-
-    r.KEY_ONE,
-    r.KEY_TWO,
-    r.KEY_THREE,
-    r.KEY_FOUR,
-    r.KEY_FIVE,
-    r.KEY_SIX,
-    r.KEY_SEVEN,
-    r.KEY_EIGHT,
-    r.KEY_NINE,
-    r.KEY_ZERO,
-
-    r.KEY_F1,
-    r.KEY_F2,
-    r.KEY_F3,
-    r.KEY_F4,
-    r.KEY_F5,
-    r.KEY_F6,
-    r.KEY_F7,
-    r.KEY_F8,
-    r.KEY_F9,
-    r.KEY_F10,
-    r.KEY_F11,
-    r.KEY_F12,
-
-    r.KEY_TAB,
-    r.KEY_SPACE,
-    r.KEY_ENTER,
-
-    r.KEY_HOME,
-    r.KEY_END,
-
-    r.KEY_BACKSPACE,
-    r.KEY_DELETE,
-
-    r.KEY_DOWN,
-    r.KEY_UP,
-    r.KEY_LEFT,
-    r.KEY_RIGHT,
-    // ...
+const supported_keys = [_]Key{
+    Key.key_a,      Key.key_b,     Key.key_c,     Key.key_d,     Key.key_e,     Key.key_f,
+    Key.key_g,      Key.key_h,     Key.key_i,     Key.key_j,     Key.key_k,     Key.key_l,
+    Key.key_m,      Key.key_n,     Key.key_o,     Key.key_p,     Key.key_q,     Key.key_r,
+    Key.key_s,      Key.key_t,     Key.key_u,     Key.key_v,     Key.key_w,     Key.key_x,
+    Key.key_y,      Key.key_z,     Key.key_tab,   Key.key_space, Key.key_enter, Key.key_backspace,
+    Key.key_delete, Key.key_down,  Key.key_up,    Key.key_left,  Key.key_right, Key.key_home,
+    Key.key_end,    Key.key_one,   Key.key_two,   Key.key_three, Key.key_four,  Key.key_five,
+    Key.key_six,    Key.key_seven, Key.key_eight, Key.key_nine,  Key.key_zero,  Key.key_f1,
+    Key.key_f2,     Key.key_f3,    Key.key_f4,    Key.key_f5,    Key.key_f6,    Key.key_f7,
+    Key.key_f8,     Key.key_f9,    Key.key_f10,   Key.key_f11,   Key.key_f12,
 };
 
-fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
-    return switch (c) {
-        r.KEY_A => "a",
-        r.KEY_B => "b",
-        r.KEY_C => "c",
-        r.KEY_D => "d",
-        r.KEY_E => "e",
-        r.KEY_F => "f",
-        r.KEY_G => "g",
-        r.KEY_H => "h",
-        r.KEY_I => "i",
-        r.KEY_J => "j",
-        r.KEY_K => "k",
-        r.KEY_L => "l",
-        r.KEY_M => "m",
-        r.KEY_N => "n",
-        r.KEY_O => "o",
-        r.KEY_P => "p",
-        r.KEY_Q => "q",
-        r.KEY_R => "r",
-        r.KEY_S => "s",
-        r.KEY_T => "t",
-        r.KEY_U => "u",
-        r.KEY_V => "v",
-        r.KEY_W => "w",
-        r.KEY_X => "x",
-        r.KEY_Y => "y",
-        r.KEY_Z => "z",
+fn getStringRepresentationOfKey(key: Key) []const u8 {
+    return switch (key) {
+        Key.key_a => "a",
+        Key.key_b => "b",
+        Key.key_c => "c",
+        Key.key_d => "d",
+        Key.key_e => "e",
+        Key.key_f => "f",
+        Key.key_g => "g",
+        Key.key_h => "h",
+        Key.key_i => "i",
+        Key.key_j => "j",
+        Key.key_k => "k",
+        Key.key_l => "l",
+        Key.key_m => "m",
+        Key.key_n => "n",
+        Key.key_o => "o",
+        Key.key_p => "p",
+        Key.key_q => "q",
+        Key.key_r => "r",
+        Key.key_s => "s",
+        Key.key_t => "t",
+        Key.key_u => "u",
+        Key.key_v => "v",
+        Key.key_w => "w",
+        Key.key_x => "x",
+        Key.key_y => "y",
+        Key.key_z => "z",
 
-        r.KEY_TAB => "tab",
-        r.KEY_SPACE => "space",
-        r.KEY_ENTER => "enter",
+        Key.key_tab => "tab",
+        Key.key_space => "space",
+        Key.key_enter => "enter",
 
-        r.KEY_BACKSPACE => "backspace",
-        r.KEY_DELETE => "delete",
+        Key.key_backspace => "backspace",
+        Key.key_delete => "delete",
 
-        r.KEY_DOWN => "down",
-        r.KEY_UP => "up",
-        r.KEY_LEFT => "left",
-        r.KEY_RIGHT => "right",
+        Key.key_down => "down",
+        Key.key_up => "up",
+        Key.key_left => "left",
+        Key.key_right => "right",
 
-        r.KEY_HOME => "home",
-        r.KEY_END => "end",
+        Key.key_home => "home",
+        Key.key_end => "end",
 
-        r.KEY_ONE => "1",
-        r.KEY_TWO => "2",
-        r.KEY_THREE => "3",
-        r.KEY_FOUR => "4",
-        r.KEY_FIVE => "5",
-        r.KEY_SIX => "6",
-        r.KEY_SEVEN => "7",
-        r.KEY_EIGHT => "8",
-        r.KEY_NINE => "9",
-        r.KEY_ZERO => "0",
+        Key.key_one => "1",
+        Key.key_two => "2",
+        Key.key_three => "3",
+        Key.key_four => "4",
+        Key.key_five => "5",
+        Key.key_six => "6",
+        Key.key_seven => "7",
+        Key.key_eight => "8",
+        Key.key_nine => "9",
+        Key.key_zero => "0",
 
-        r.KEY_F1 => "<F1>",
-        r.KEY_F2 => "<F2>",
-        r.KEY_F3 => "<F3>",
-        r.KEY_F4 => "<F4>",
-        r.KEY_F5 => "<F5>",
-        r.KEY_F6 => "<F6>",
-        r.KEY_F7 => "<F7>",
-        r.KEY_F8 => "<F8>",
-        r.KEY_F9 => "<F9>",
-        r.KEY_F10 => "<F10>",
-        r.KEY_F11 => "<F11>",
-        r.KEY_F12 => "<F12>",
+        Key.key_f1 => "<f1>",
+        Key.key_f2 => "<f2>",
+        Key.key_f3 => "<f3>",
+        Key.key_f4 => "<f4>",
+        Key.key_f5 => "<f5>",
+        Key.key_f6 => "<f6>",
+        Key.key_f7 => "<f7>",
+        Key.key_f8 => "<f8>",
+        Key.key_f9 => "<f9>",
+        Key.key_f10 => "<f10>",
+        Key.key_f11 => "<f11>",
+        Key.key_f12 => "<f12>",
 
         else => "",
     };
