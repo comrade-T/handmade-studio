@@ -77,7 +77,7 @@ pub fn main() anyerror!void {
         try kbs.updateEventList(&new_event_array, &new_event_list, &event_time_list);
 
         {
-            const maybe_trigger = try insert_char_invoker.getTrigger(old_event_list.items, new_event_list.items);
+            const maybe_trigger = try insert_char_invoker.getTriggerCandidate(old_event_list.items, new_event_list.items);
             if (maybe_trigger) |trigger| {
                 defer insert_char_invoker.a.free(trigger);
 

@@ -12,6 +12,7 @@ const Key = rl.KeyboardKey;
 
 pub const EventArray = [400]bool;
 pub const EventList = std.ArrayList(rl.KeyboardKey);
+pub const EventSlice = []const rl.KeyboardKey;
 pub const EventTimeList = std.ArrayList(i64);
 
 pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*EventTimeList) !void {
@@ -61,7 +62,33 @@ pub fn createPrefixMapForTesting(a: Allocator) !TestPrefixMap {
     return map;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// GenericInvoker
+////////////////////////////////////////////////////////////////////////////////////////////// Shared Functions
+
+fn eventListToStr(a: Allocator, e_slice: EventSlice) ![]const u8 {
+    var str_list = std.ArrayList(u8).init(a);
+    errdefer str_list.deinit();
+    for (e_slice, 0..) |code, i| {
+        const str = getStringRepresentationOfKey(code);
+        if (i > 0) try str_list.appendSlice(" ");
+        try str_list.appendSlice(str);
+    }
+    return str_list.toOwnedSlice();
+}
+
+fn testEventListToStr(a: Allocator, want: []const u8, slice: EventSlice) !void {
+    const result = try eventListToStr(std.testing.allocator, slice);
+    defer a.free(result);
+    try eqStr(want, result);
+}
+
+test eventListToStr {
+    const a = std.testing.allocator;
+    try testEventListToStr(a, "d j", &[_]Key{ Key.key_d, Key.key_j });
+    try testEventListToStr(a, "", &[_]Key{});
+    try testEventListToStr(a, "z", &[_]Key{Key.key_z});
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// GenericTriggerComposer
 
 pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_map_type: type) type {
     return struct {
@@ -69,34 +96,6 @@ pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_m
         trigger_map: *trigger_map_type,
         prefix_map: *prefix_map_type,
         latest_trigger: EventList,
-
-        const EventSlice = []const rl.KeyboardKey;
-
-        ///////////////////////////// eventListToStr
-
-        fn eventListToStr(a: Allocator, e_slice: EventSlice) ![]const u8 {
-            var str_list = std.ArrayList(u8).init(a);
-            errdefer str_list.deinit();
-            for (e_slice, 0..) |code, i| {
-                const str = getStringRepresentationOfKey(code);
-                if (i > 0) try str_list.appendSlice(" ");
-                try str_list.appendSlice(str);
-            }
-            return str_list.toOwnedSlice();
-        }
-
-        fn testEventListToStr(a: Allocator, want: []const u8, slice: EventSlice) !void {
-            const result = try eventListToStr(std.testing.allocator, slice);
-            defer a.free(result);
-            try eqStr(want, result);
-        }
-
-        test eventListToStr {
-            const a = std.testing.allocator;
-            try testEventListToStr(a, "d j", &[_]Key{ Key.key_d, Key.key_j });
-            try testEventListToStr(a, "", &[_]Key{});
-            try testEventListToStr(a, "z", &[_]Key{Key.key_z});
-        }
 
         ///////////////////////////// getTriggerStatus
 
@@ -184,7 +183,7 @@ pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_m
             try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
         }
 
-        pub fn getTrigger(self: *@This(), old: EventSlice, new: EventSlice) !?[]const u8 {
+        pub fn getTriggerCandidate(self: *@This(), old: EventSlice, new: EventSlice) !?[]const u8 {
             if (std.mem.eql(Key, old, new)) return null;
 
             ///////////////////////////// may invoke on key down
@@ -238,164 +237,198 @@ test GenericTriggerComposer {
     defer prefix_map.deinit();
 
     const TestComposer = GenericTriggerComposer(TestTriggerMap, TestPrefixMap);
-    var iv = try TestComposer.init(allocator, &trigger_map, &prefix_map);
-    defer iv.deinit();
+    var composer = try TestComposer.init(allocator, &trigger_map, &prefix_map);
+    defer composer.deinit();
 
     ///////////////////////////// Start the session with nothingness
 
     var nothingness = [_]Key{};
-    try eq(null, try iv.getTrigger(&nothingness, &nothingness));
-    try eqDeep(&nothingness, iv.latest_trigger.items);
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &nothingness));
+    try eqDeep(&nothingness, composer.latest_trigger.items);
 
     // `z` mapped, not prefix, should trigger immediately on key down
     var z = [_]Key{Key.key_z};
     {
-        const result = (try iv.getTrigger(&nothingness, &z)).?;
+        const result = (try composer.getTriggerCandidate(&nothingness, &z)).?;
         defer allocator.free(result);
         try eqStr("z", result);
-        try eqDeep(&z, iv.latest_trigger.items);
+        try eqDeep(&z, composer.latest_trigger.items);
     }
 
     // `z` mapped, not prefix, but already invoked, so shouldn't repeat here
-    try eq(null, try iv.getTrigger(&z, &z));
+    try eq(null, try composer.getTriggerCandidate(&z, &z));
 
     // `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
     var d = [_]Key{Key.key_d};
-    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
     {
-        const result = (try iv.getTrigger(&d, &nothingness)).?;
+        const result = (try composer.getTriggerCandidate(&d, &nothingness)).?;
         defer allocator.free(result);
         try eqStr("d", result);
     }
-    try eqDeep(&d, iv.latest_trigger.items);
+    try eqDeep(&d, composer.latest_trigger.items);
 
     // `d l` mapped, not prefix, should trigger immediately on key down
     var d_l = [_]Key{ Key.key_d, Key.key_l };
     {
-        const result = (try iv.getTrigger(&d, &d_l)).?;
+        const result = (try composer.getTriggerCandidate(&d, &d_l)).?;
         defer allocator.free(result);
         try eqStr("d l", result);
     }
-    try eqDeep(&d_l, iv.latest_trigger.items);
+    try eqDeep(&d_l, composer.latest_trigger.items);
 
     // `d l k` not mapped, shouldn't trigger
     var d_l_k = [_]Key{ Key.key_d, Key.key_l, Key.key_r };
-    try eq(null, try iv.getTrigger(&d_l, &d_l_k));
+    try eq(null, try composer.getTriggerCandidate(&d_l, &d_l_k));
 
     // `d l k` not mapped, not prefix, should do nothing here
     var d_k = [_]Key{ Key.key_d, Key.key_k };
-    try eq(null, try iv.getTrigger(&d_l_k, &d_k));
+    try eq(null, try composer.getTriggerCandidate(&d_l_k, &d_k));
 
     // `d k` is mapped, is prefix, but shouldn't trigger here
-    try eq(null, try iv.getTrigger(&d_k, &d));
+    try eq(null, try composer.getTriggerCandidate(&d_k, &d));
 
     // `d` is mapped, is prefix, but shouldn't trigger here
-    try eq(null, try iv.getTrigger(&d, &nothingness));
+    try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////
 
-    try eq(null, try iv.getTrigger(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
 
     // `d j` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
     var d_j = [_]Key{ Key.key_d, Key.key_j };
-    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_j));
 
     // `d j l` mapped, not prefix, should trigger immediately on key down
     var d_j_l = [_]Key{ Key.key_d, Key.key_j, Key.key_l };
     {
-        const result = (try iv.getTrigger(&d_j, &d_j_l)).?;
+        const result = (try composer.getTriggerCandidate(&d_j, &d_j_l)).?;
         defer allocator.free(result);
         try eqStr("d j l", result);
     }
-    try eqDeep(&d_j_l, iv.latest_trigger.items);
+    try eqDeep(&d_j_l, composer.latest_trigger.items);
 
     // `d j l` mapped, not prefix, should not trigger on key up
-    try eq(null, try iv.getTrigger(&d_j_l, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&d_j_l, &d_j));
 
     // `d j` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
-    try eq(null, try iv.getTrigger(&d_j, &d));
+    try eq(null, try composer.getTriggerCandidate(&d_j, &d));
 
     // `d` mapped, is prefix, should not trigger on key up here due to `d j l` aready been invoked
-    try eq(null, try iv.getTrigger(&d, &nothingness));
-    try eqDeep(&d, iv.latest_trigger.items);
+    try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
+    try eqDeep(&d, composer.latest_trigger.items);
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////
 
-    try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
-        const result = (try iv.getTrigger(&d_j, &d)).?;
+        const result = (try composer.getTriggerCandidate(&d_j, &d)).?;
         defer allocator.free(result);
         try eqStr("d j", result);
     }
-    try eq(null, try iv.getTrigger(&d, &d_k));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_k));
     {
-        const result = (try iv.getTrigger(&d_k, &d)).?;
+        const result = (try composer.getTriggerCandidate(&d_k, &d)).?;
         defer allocator.free(result);
         try eqStr("d k", result);
     }
-    try eq(null, try iv.getTrigger(&d_k, &d));
-    try eq(null, try iv.getTrigger(&d, &nothingness));
+    try eq(null, try composer.getTriggerCandidate(&d_k, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////
 
     var d_j_k = [_]Key{ Key.key_d, Key.key_j, Key.key_k };
     var d_k_l = [_]Key{ Key.key_d, Key.key_k, Key.key_l };
-    try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
-        const result = (try iv.getTrigger(&d_j, &d_j_l)).?;
+        const result = (try composer.getTriggerCandidate(&d_j, &d_j_l)).?;
         defer allocator.free(result);
         try eqStr("d j l", result);
     }
-    try eq(null, try iv.getTrigger(&d_j_l, &d_j_l));
-    try eq(null, try iv.getTrigger(&d_j_l, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&d_j_l, &d_j_l));
+    try eq(null, try composer.getTriggerCandidate(&d_j_l, &d_j));
     {
-        const result = (try iv.getTrigger(&d_j, &d_j_k)).?;
+        const result = (try composer.getTriggerCandidate(&d_j, &d_j_k)).?;
         defer allocator.free(result);
         try eqStr("d j k", result);
     }
-    try eq(null, try iv.getTrigger(&d_j_k, &d_j_k));
-    try eq(null, try iv.getTrigger(&d_j_k, &d_k));
+    try eq(null, try composer.getTriggerCandidate(&d_j_k, &d_j_k));
+    try eq(null, try composer.getTriggerCandidate(&d_j_k, &d_k));
     {
-        const result = (try iv.getTrigger(&d_k, &d_k_l)).?;
+        const result = (try composer.getTriggerCandidate(&d_k, &d_k_l)).?;
         defer allocator.free(result);
         try eqStr("d k l", result);
     }
-    try eq(null, try iv.getTrigger(&d_k_l, &d_k));
-    try eq(null, try iv.getTrigger(&d_k, &d));
-    try eq(null, try iv.getTrigger(&d, &d_j));
-    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&d_k_l, &d_k));
+    try eq(null, try composer.getTriggerCandidate(&d_k, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
-        const result = (try iv.getTrigger(&d_j, &d)).?;
+        const result = (try composer.getTriggerCandidate(&d_j, &d)).?;
         defer allocator.free(result);
         try eqStr("d j", result);
     }
-    try eq(null, try iv.getTrigger(&d_j, &d));
-    try eq(null, try iv.getTrigger(&d, &nothingness));
+    try eq(null, try composer.getTriggerCandidate(&d_j, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////
 
     var j = [_]Key{Key.key_j};
     var j_l = [_]Key{ Key.key_j, Key.key_l };
-    try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eq(null, try iv.getTrigger(&d, &d_j));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
-        const result = (try iv.getTrigger(&d_j, &d_j_l)).?;
+        const result = (try composer.getTriggerCandidate(&d_j, &d_j_l)).?;
         defer allocator.free(result);
         try eqStr("d j l", result);
     }
-    try eq(null, try iv.getTrigger(&d_j_l, &j_l));
-    try eq(null, try iv.getTrigger(&j_l, &j));
-    try eq(null, try iv.getTrigger(&j, &nothingness));
+    try eq(null, try composer.getTriggerCandidate(&d_j_l, &j_l));
+    try eq(null, try composer.getTriggerCandidate(&j_l, &j));
+    try eq(null, try composer.getTriggerCandidate(&j, &nothingness));
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// Prevent Repeating Test
+    ///////////////////////////// Prevent Repeating Test
 
-    try eq(null, try iv.getTrigger(&nothingness, &nothingness));
-    try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eq(null, try iv.getTrigger(&d, &d));
-    try eq(null, try iv.getTrigger(&d, &d));
-    try eq(null, try iv.getTrigger(&d, &d));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &nothingness));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Invoker
+
+fn getInsertModeTrigger(a: std.mem.Allocator, keys: EventSlice, timestamps: []const i64, threshold: i64, candidate: []const u8) !union(enum) {
+    candidate: []const u8,
+    last_key: []const u8,
+} {
+    if (keys.len != timestamps.len) unreachable;
+    if (keys.len < 2) return error.LengthLessthan2;
+    if (timestamps[1] -| timestamps[0] < threshold) return .{ .last_key = try eventListToStr(a, keys[keys.len - 1 ..]) };
+    return .{ .candidate = candidate };
+}
+
+test getInsertModeTrigger {
+    const a = std.testing.allocator;
+    const threshold = 100;
+
+    {
+        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 105 }, threshold, "d j");
+        try eqDeep("d j", got.candidate);
+    }
+
+    {
+        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 40 }, threshold, "d j");
+        defer a.free(got.last_key);
+        try eqStr("j", got.last_key);
+    }
+
+    {
+        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j, Key.key_l }, &[_]i64{ 0, 20, 80 }, threshold, "d j l");
+        defer a.free(got.last_key);
+        try eqStr("l", got.last_key);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
