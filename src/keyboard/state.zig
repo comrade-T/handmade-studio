@@ -63,7 +63,7 @@ pub fn createPrefixMapForTesting(a: Allocator) !TestPrefixMap {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// GenericInvoker
 
-pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type: type) type {
+pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_map_type: type) type {
     return struct {
         a: Allocator,
         trigger_map: *trigger_map_type,
@@ -165,14 +165,14 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
         ///////////////////////////// init
 
         pub fn init(a: Allocator, trigger_map: *trigger_map_type, prefix_map: *prefix_map_type) !*@This() {
-            const invoker = try a.create(@This());
-            invoker.* = .{
+            const composer = try a.create(@This());
+            composer.* = .{
                 .a = a,
                 .trigger_map = trigger_map,
                 .prefix_map = prefix_map,
                 .latest_trigger = std.ArrayList(Key).init(a),
             };
-            return invoker;
+            return composer;
         }
 
         pub fn deinit(self: *@This()) void {
@@ -229,30 +229,7 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
     };
 }
 
-test "GenericInvoker_memory_leak_check" {
-    const a = std.testing.allocator;
-
-    var trigger_map = try createTriggerMapForTesting(a);
-    defer trigger_map.deinit();
-    var prefix_map = try createPrefixMapForTesting(a);
-    defer prefix_map.deinit();
-
-    const TestInvoker = GenericInvoker(TestTriggerMap, TestPrefixMap);
-    var iv = try TestInvoker.init(a, &trigger_map, &prefix_map);
-    defer iv.deinit();
-
-    var nothingness = [_]Key{};
-    var z = [_]Key{Key.key_z};
-    var d = [_]Key{Key.key_d};
-
-    const result = (try iv.getTrigger(&nothingness, &z)).?;
-    defer a.free(result);
-    try eqStr("z", result);
-
-    try eq(null, try iv.getTrigger(&nothingness, &d));
-}
-
-test GenericInvoker {
+test GenericTriggerComposer {
     const allocator = std.testing.allocator;
 
     var trigger_map = try createTriggerMapForTesting(allocator);
@@ -260,11 +237,11 @@ test GenericInvoker {
     var prefix_map = try createPrefixMapForTesting(allocator);
     defer prefix_map.deinit();
 
-    const TestInvoker = GenericInvoker(TestTriggerMap, TestPrefixMap);
-    var iv = try TestInvoker.init(allocator, &trigger_map, &prefix_map);
+    const TestComposer = GenericTriggerComposer(TestTriggerMap, TestPrefixMap);
+    var iv = try TestComposer.init(allocator, &trigger_map, &prefix_map);
     defer iv.deinit();
 
-    ///////////////////////////// Initialize invoker with nothingness
+    ///////////////////////////// Start the session with nothingness
 
     var nothingness = [_]Key{};
     try eq(null, try iv.getTrigger(&nothingness, &nothingness));

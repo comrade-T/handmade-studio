@@ -21,7 +21,7 @@ pub fn main() anyerror!void {
     defer rl.closeWindow();
 
     rl.setTargetFPS(60);
-    // rl.setExitKey(rl.KeyboardKey.key_null);
+    rl.setExitKey(rl.KeyboardKey.key_null);
 
     ///////////////////////////// Game State
 
@@ -41,13 +41,6 @@ pub fn main() anyerror!void {
     var event_time_list = kbs.EventTimeList.init(gpa);
     defer event_time_list.deinit();
 
-    ///////////////////////////// Test Invoker
-
-    // var test_trigger_map = try kbs.createTriggerMapForTesting(c_allocator);
-    // var test_prefix_map = try kbs.createPrefixMapForTesting(c_allocator);
-    // const TestInvoker = kbs.GenericInvoker(kbs.TestTriggerMap, kbs.TestPrefixMap);
-    // const test_invoker = try TestInvoker.init(c_allocator, &test_trigger_map, &test_prefix_map);
-
     ///////////////////////////// Text Buffer
 
     var insert_char_trigger_map = try exp.createInsertCharTriggerMap(gpa);
@@ -56,8 +49,8 @@ pub fn main() anyerror!void {
     var insert_char_prefix_map = exp.ExperimentalPrefixMap.init(gpa);
     defer insert_char_prefix_map.deinit();
 
-    const InsertCharInvoker = kbs.GenericInvoker(exp.ExperimentalTriggerMap, exp.ExperimentalPrefixMap);
-    var insert_char_invoker = try InsertCharInvoker.init(gpa, &insert_char_trigger_map, &insert_char_prefix_map);
+    const TriggerComposer = kbs.GenericTriggerComposer(exp.ExperimentalTriggerMap, exp.ExperimentalPrefixMap);
+    var insert_char_invoker = try TriggerComposer.init(gpa, &insert_char_trigger_map, &insert_char_prefix_map);
     defer insert_char_invoker.deinit();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -82,15 +75,6 @@ pub fn main() anyerror!void {
         defer rl.endDrawing();
 
         try kbs.updateEventList(&new_event_array, &new_event_list, &event_time_list);
-
-        // {
-        //     const maybe_trigger = try test_invoker.getTrigger(old_event_list.items, new_event_list.items);
-        //     if (maybe_trigger) |trigger| {
-        //         if (test_trigger_map.get(trigger)) |value| {
-        //             std.debug.print("{s}\n", .{value});
-        //         }
-        //     }
-        // }
 
         {
             const maybe_trigger = try insert_char_invoker.getTrigger(old_event_list.items, new_event_list.items);
