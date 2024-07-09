@@ -102,8 +102,9 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
 
         fn getTriggerStatus(a: Allocator, slice: EventSlice, map: *trigger_map_type) !struct { mapped: bool, trigger: []const u8 } {
             const trigger = try eventListToStr(a, slice);
+            errdefer a.free(trigger);
             _ = map.get(trigger) orelse {
-                defer a.free(trigger);
+                a.free(trigger);
                 return .{ .mapped = false, .trigger = "" };
             };
             return .{ .mapped = true, .trigger = trigger };
@@ -174,6 +175,11 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
             return invoker;
         }
 
+        pub fn deinit(self: *@This()) void {
+            self.latest_trigger.deinit();
+            self.a.destroy(self);
+        }
+
         fn setLatestTrigger(self: *@This(), old: EventSlice) !void {
             try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
         }
@@ -193,11 +199,14 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
             if (new_status.mapped and new_is_prefix) {
                 if (new.len > old.len or new.len < self.latest_trigger.items.len) {
                     try self.setLatestTrigger(old);
+                    self.a.free(new_status.trigger);
                     return null;
                 }
             }
 
             ///////////////////////////// may invoke on key up
+
+            self.a.free(new_status.trigger);
 
             if (!canConsiderInvokeKeyUp(old, new)) return null;
 
@@ -207,27 +216,53 @@ pub fn GenericInvoker(comptime trigger_map_type: type, comptime prefix_map_type:
             if (old_status.mapped and old_is_prefix) {
                 if (old.len < self.latest_trigger.items.len) {
                     try self.setLatestTrigger(old);
+                    self.a.free(old_status.trigger);
                     return null;
                 }
                 try self.setLatestTrigger(old);
                 return old_status.trigger;
             }
 
+            self.a.free(old_status.trigger);
             return null;
         }
     };
 }
 
+test "GenericInvoker_memory_leak_check" {
+    const a = std.testing.allocator;
+
+    var trigger_map = try createTriggerMapForTesting(a);
+    defer trigger_map.deinit();
+    var prefix_map = try createPrefixMapForTesting(a);
+    defer prefix_map.deinit();
+
+    const TestInvoker = GenericInvoker(TestTriggerMap, TestPrefixMap);
+    var iv = try TestInvoker.init(a, &trigger_map, &prefix_map);
+    defer iv.deinit();
+
+    var nothingness = [_]Key{};
+    var z = [_]Key{Key.key_z};
+    var d = [_]Key{Key.key_d};
+
+    const result = (try iv.getTrigger(&nothingness, &z)).?;
+    defer a.free(result);
+    try eqStr("z", result);
+
+    try eq(null, try iv.getTrigger(&nothingness, &d));
+}
+
 test GenericInvoker {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    const allocator = std.testing.allocator;
 
     var trigger_map = try createTriggerMapForTesting(allocator);
+    defer trigger_map.deinit();
     var prefix_map = try createPrefixMapForTesting(allocator);
+    defer prefix_map.deinit();
 
     const TestInvoker = GenericInvoker(TestTriggerMap, TestPrefixMap);
     var iv = try TestInvoker.init(allocator, &trigger_map, &prefix_map);
+    defer iv.deinit();
 
     ///////////////////////////// Initialize invoker with nothingness
 
@@ -237,8 +272,12 @@ test GenericInvoker {
 
     // `z` mapped, not prefix, should trigger immediately on key down
     var z = [_]Key{Key.key_z};
-    try eqStr("z", (try iv.getTrigger(&nothingness, &z)).?);
-    try eqDeep(&z, iv.latest_trigger.items);
+    {
+        const result = (try iv.getTrigger(&nothingness, &z)).?;
+        defer allocator.free(result);
+        try eqStr("z", result);
+        try eqDeep(&z, iv.latest_trigger.items);
+    }
 
     // `z` mapped, not prefix, but already invoked, so shouldn't repeat here
     try eq(null, try iv.getTrigger(&z, &z));
@@ -246,12 +285,20 @@ test GenericInvoker {
     // `d` mapped, is prefix, should trigger on key up, IF NOTHING ELSE TRIGGERS ON TOP OF IT
     var d = [_]Key{Key.key_d};
     try eq(null, try iv.getTrigger(&nothingness, &d));
-    try eqStr("d", (try iv.getTrigger(&d, &nothingness)).?);
+    {
+        const result = (try iv.getTrigger(&d, &nothingness)).?;
+        defer allocator.free(result);
+        try eqStr("d", result);
+    }
     try eqDeep(&d, iv.latest_trigger.items);
 
     // `d l` mapped, not prefix, should trigger immediately on key down
     var d_l = [_]Key{ Key.key_d, Key.key_l };
-    try eqStr("d l", (try iv.getTrigger(&d, &d_l)).?);
+    {
+        const result = (try iv.getTrigger(&d, &d_l)).?;
+        defer allocator.free(result);
+        try eqStr("d l", result);
+    }
     try eqDeep(&d_l, iv.latest_trigger.items);
 
     // `d l k` not mapped, shouldn't trigger
@@ -278,7 +325,11 @@ test GenericInvoker {
 
     // `d j l` mapped, not prefix, should trigger immediately on key down
     var d_j_l = [_]Key{ Key.key_d, Key.key_j, Key.key_l };
-    try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
+    {
+        const result = (try iv.getTrigger(&d_j, &d_j_l)).?;
+        defer allocator.free(result);
+        try eqStr("d j l", result);
+    }
     try eqDeep(&d_j_l, iv.latest_trigger.items);
 
     // `d j l` mapped, not prefix, should not trigger on key up
@@ -295,9 +346,17 @@ test GenericInvoker {
 
     try eq(null, try iv.getTrigger(&nothingness, &d));
     try eq(null, try iv.getTrigger(&d, &d_j));
-    try eqStr("d j", (try iv.getTrigger(&d_j, &d)).?);
+    {
+        const result = (try iv.getTrigger(&d_j, &d)).?;
+        defer allocator.free(result);
+        try eqStr("d j", result);
+    }
     try eq(null, try iv.getTrigger(&d, &d_k));
-    try eqStr("d k", (try iv.getTrigger(&d_k, &d)).?);
+    {
+        const result = (try iv.getTrigger(&d_k, &d)).?;
+        defer allocator.free(result);
+        try eqStr("d k", result);
+    }
     try eq(null, try iv.getTrigger(&d_k, &d));
     try eq(null, try iv.getTrigger(&d, &nothingness));
 
@@ -307,18 +366,34 @@ test GenericInvoker {
     var d_k_l = [_]Key{ Key.key_d, Key.key_k, Key.key_l };
     try eq(null, try iv.getTrigger(&nothingness, &d));
     try eq(null, try iv.getTrigger(&d, &d_j));
-    try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
+    {
+        const result = (try iv.getTrigger(&d_j, &d_j_l)).?;
+        defer allocator.free(result);
+        try eqStr("d j l", result);
+    }
     try eq(null, try iv.getTrigger(&d_j_l, &d_j_l));
     try eq(null, try iv.getTrigger(&d_j_l, &d_j));
-    try eqStr("d j k", (try iv.getTrigger(&d_j, &d_j_k)).?);
+    {
+        const result = (try iv.getTrigger(&d_j, &d_j_k)).?;
+        defer allocator.free(result);
+        try eqStr("d j k", result);
+    }
     try eq(null, try iv.getTrigger(&d_j_k, &d_j_k));
     try eq(null, try iv.getTrigger(&d_j_k, &d_k));
-    try eqStr("d k l", (try iv.getTrigger(&d_k, &d_k_l)).?);
+    {
+        const result = (try iv.getTrigger(&d_k, &d_k_l)).?;
+        defer allocator.free(result);
+        try eqStr("d k l", result);
+    }
     try eq(null, try iv.getTrigger(&d_k_l, &d_k));
     try eq(null, try iv.getTrigger(&d_k, &d));
     try eq(null, try iv.getTrigger(&d, &d_j));
     try eq(null, try iv.getTrigger(&d, &d_j));
-    try eqStr("d j", (try iv.getTrigger(&d_j, &d)).?);
+    {
+        const result = (try iv.getTrigger(&d_j, &d)).?;
+        defer allocator.free(result);
+        try eqStr("d j", result);
+    }
     try eq(null, try iv.getTrigger(&d_j, &d));
     try eq(null, try iv.getTrigger(&d, &nothingness));
 
@@ -328,7 +403,11 @@ test GenericInvoker {
     var j_l = [_]Key{ Key.key_j, Key.key_l };
     try eq(null, try iv.getTrigger(&nothingness, &d));
     try eq(null, try iv.getTrigger(&d, &d_j));
-    try eqStr("d j l", (try iv.getTrigger(&d_j, &d_j_l)).?);
+    {
+        const result = (try iv.getTrigger(&d_j, &d_j_l)).?;
+        defer allocator.free(result);
+        try eqStr("d j l", result);
+    }
     try eq(null, try iv.getTrigger(&d_j_l, &j_l));
     try eq(null, try iv.getTrigger(&j_l, &j));
     try eq(null, try iv.getTrigger(&j, &nothingness));
