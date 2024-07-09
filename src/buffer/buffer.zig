@@ -598,7 +598,7 @@ const Weights = struct {
     }
 };
 
-fn num_of_chars(str: []const u8) usize {
+pub fn num_of_chars(str: []const u8) usize {
     var iter = code_point.Iterator{ .bytes = str };
     var num_chars: usize = 0;
     while (iter.next()) |_| num_chars += 1;

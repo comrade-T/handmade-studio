@@ -3,7 +3,8 @@ const rl = @import("raylib");
 
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
-const Buffer = @import("buffer").Buffer;
+const buffer_module = @import("buffer");
+const Buffer = buffer_module.Buffer;
 const Cursor = @import("buffer/cursor.zig").Cursor;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -177,5 +178,5 @@ fn insert_chars(
         cursor.set(line, col);
         return;
     }
-    cursor.right(1, try buf.num_of_chars_in_line(cursor.line));
+    cursor.right(buffer_module.num_of_chars(chars), try buf.num_of_chars_in_line(cursor.line));
 }
