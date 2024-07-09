@@ -24,6 +24,11 @@ pub const Cursor = struct {
     pub fn left(self: *Cursor, by: usize) void {
         self.col = self.col -| by;
     }
+
+    pub fn set(self: *Cursor, line: usize, col: usize) void {
+        self.line = line;
+        self.col = col;
+    }
 };
 
 test Cursor {

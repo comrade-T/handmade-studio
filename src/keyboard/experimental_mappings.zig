@@ -21,6 +21,12 @@ pub const ExperimentalCallbackCtx = struct {
         gs.cached_contents.deinit();
         gs.cached_contents = try gs.text_buffer.toArrayList(gs.a);
 
+        if (eql(u8, chars, "\n")) {
+            const line = gs.cursor.line + 1;
+            const col = 0;
+            gs.cursor.set(line, col);
+            return;
+        }
         gs.cursor.right(1, try gs.text_buffer.num_of_chars_in_line(gs.cursor.line));
     }
 
@@ -32,6 +38,10 @@ pub const ExperimentalCallbackCtx = struct {
 
         if (eql(u8, self.trigger, "space")) return try insert_chars(gs, " ");
         if (eql(u8, self.trigger, "tab")) return try insert_chars(gs, "    ");
+
+        if (eql(u8, self.trigger, "enter")) {
+            return try insert_chars(gs, "\n");
+        }
 
         if (eql(u8, self.trigger, "up")) gs.cursor.up(1);
         if (eql(u8, self.trigger, "left")) gs.cursor.left(1);
@@ -66,7 +76,10 @@ pub fn createInsertCharCallbackMap(a: std.mem.Allocator) !ExperimentalTriggerMap
 
     for (letters_and_numbers) |char| try map.put(char, ExperimentalCallbackCtx{ .trigger = char });
 
-    const other_keys = [_][]const u8{ "space", "tab", "up", "down", "left", "right", "backspace", "delete" };
+    const other_keys = [_][]const u8{
+        "space",     "tab",    "enter", "up",  "down", "left", "right",
+        "backspace", "delete", "home",  "end",
+    };
     for (other_keys) |trigger| try map.put(trigger, ExperimentalCallbackCtx{ .trigger = trigger });
 
     return map;

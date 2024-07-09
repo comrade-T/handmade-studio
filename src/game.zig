@@ -44,6 +44,8 @@ pub const GameState = struct {
     insert_char_invoker: *InsertCharInvoker,
     cached_contents: std.ArrayList(u8),
     cursor: Cursor,
+
+    font: r.struct_Font,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -71,6 +73,8 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .insert_char_invoker = InsertCharInvoker.init(a.*, &gs.insert_char_trigger_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
         .cached_contents = undefined,
         .cursor = Cursor{},
+
+        .font = r.LoadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null, 0),
     };
 
     gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("") catch @panic("can't buffer.load_from_string()");
@@ -124,17 +128,18 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
         }
     }
 
-    // display cursor position
-    {
+    { // display cursor position
         var buf: [64]u8 = undefined;
         const slice = std.fmt.bufPrintZ(&buf, "({d}, {d})", .{ gs.cursor.line, gs.cursor.col }) catch "error";
         r.DrawText(slice, 700, 390, 20, r.RAYWHITE);
     }
 
-    // FIXME: this is extremely inefficient, since we're walking the tree and writing memory 60 times per second.
-    // TODO: cache the buffer to prevent this inefficiency.
-    if (gs.cached_contents.items.len > 0)
-        r.DrawText(@as([*c]const u8, @ptrCast(gs.cached_contents.items)), 100, 100, 30, r.RAYWHITE);
+    { // display text_buffer
+        if (gs.cached_contents.items.len > 0) {
+            const text = @as([*c]const u8, @ptrCast(gs.cached_contents.items));
+            r.DrawTextEx(gs.font, text, .{ .x = 100, .y = 100 }, 40, 0, r.RAYWHITE);
+        }
+    }
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }

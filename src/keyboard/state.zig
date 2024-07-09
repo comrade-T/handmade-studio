@@ -18,7 +18,7 @@ pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*Event
     for (e_list.items, 0..) |code, i| {
         if (r.IsKeyUp(code)) {
             _ = e_list.orderedRemove(i);
-            arr[@intCast(code)] = false;
+            arr.*[@intCast(code)] = false;
             if (may_t_list) |t_list| _ = t_list.orderedRemove(i);
         }
     }
@@ -396,6 +396,10 @@ const supported_key_codes = [_]c_int{
 
     r.KEY_TAB,
     r.KEY_SPACE,
+    r.KEY_ENTER,
+
+    r.KEY_HOME,
+    r.KEY_END,
 
     r.KEY_BACKSPACE,
     r.KEY_DELETE,
@@ -438,6 +442,7 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
 
         r.KEY_TAB => "tab",
         r.KEY_SPACE => "space",
+        r.KEY_ENTER => "enter",
 
         r.KEY_BACKSPACE => "backspace",
         r.KEY_DELETE => "delete",
@@ -446,6 +451,9 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
         r.KEY_UP => "up",
         r.KEY_LEFT => "left",
         r.KEY_RIGHT => "right",
+
+        r.KEY_HOME => "home",
+        r.KEY_END => "end",
 
         r.KEY_ONE => "1",
         r.KEY_TWO => "2",
