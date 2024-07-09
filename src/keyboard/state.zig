@@ -399,14 +399,15 @@ test GenericTriggerComposer {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
 
-fn getInsertModeTrigger(a: std.mem.Allocator, keys: EventSlice, timestamps: []const i64, threshold: i64, candidate: []const u8) !union(enum) {
+pub fn getInsertModeTrigger(a: std.mem.Allocator, keys: EventSlice, timestamps: []const i64, threshold: i64, candidate: ?[]const u8) !union(enum) {
     candidate: []const u8,
     last_key: []const u8,
 } {
     if (keys.len != timestamps.len) unreachable;
-    if (keys.len < 2) return error.LengthLessthan2;
+    if (keys.len == 0) return error.LengthZero;
     if (timestamps[1] -| timestamps[0] < threshold) return .{ .last_key = try eventListToStr(a, keys[keys.len - 1 ..]) };
-    return .{ .candidate = candidate };
+    if (candidate) |trigger| return .{ .candidate = trigger };
+    return .{ .last_key = try eventListToStr(a, keys[keys.len - 1 ..]) };
 }
 
 test getInsertModeTrigger {
@@ -414,8 +415,17 @@ test getInsertModeTrigger {
     const threshold = 100;
 
     {
+        try std.testing.expectError(error.LengthZero, getInsertModeTrigger(a, &[_]Key{}, &[_]i64{}, threshold, null));
+    }
+
+    {
         const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 105 }, threshold, "d j");
         try eqDeep("d j", got.candidate);
+    }
+
+    {
+        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_f }, &[_]i64{ 0, 105 }, threshold, "d f k");
+        try eqDeep("d f k", got.candidate);
     }
 
     {
@@ -428,6 +438,12 @@ test getInsertModeTrigger {
         const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j, Key.key_l }, &[_]i64{ 0, 20, 80 }, threshold, "d j l");
         defer a.free(got.last_key);
         try eqStr("l", got.last_key);
+    }
+
+    {
+        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 105 }, threshold, null);
+        defer a.free(got.last_key);
+        try eqStr("j", got.last_key);
     }
 }
 
