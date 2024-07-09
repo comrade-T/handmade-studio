@@ -90,7 +90,13 @@ test eventListToStr {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// GenericTriggerComposer
 
-pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_map_type: type) type {
+const Candidate = struct {
+    trigger: []const u8,
+    up: bool = false,
+    last: bool = false,
+};
+
+pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime prefix_map_type: type) type {
     return struct {
         a: Allocator,
         trigger_map: *trigger_map_type,
@@ -183,7 +189,7 @@ pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_m
             try self.latest_trigger.replaceRange(0, self.latest_trigger.items.len, old);
         }
 
-        pub fn getTriggerCandidate(self: *@This(), old: EventSlice, new: EventSlice) !?[]const u8 {
+        pub fn getTriggerCandidate(self: *@This(), old: EventSlice, new: EventSlice) !?Candidate {
             if (std.mem.eql(Key, old, new)) return null;
 
             ///////////////////////////// may invoke on key down
@@ -193,7 +199,7 @@ pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_m
 
             if (new_status.mapped and !new_is_prefix) {
                 try self.setLatestTrigger(new);
-                return new_status.trigger;
+                return .{ .trigger = new_status.trigger };
             }
             if (new_status.mapped and new_is_prefix) {
                 if (new.len > old.len or new.len < self.latest_trigger.items.len) {
@@ -219,7 +225,7 @@ pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_m
                     return null;
                 }
                 try self.setLatestTrigger(old);
-                return old_status.trigger;
+                return .{ .trigger = old_status.trigger, .up = true };
             }
 
             self.a.free(old_status.trigger);
@@ -228,7 +234,7 @@ pub fn GenericTriggerComposer(comptime trigger_map_type: type, comptime prefix_m
     };
 }
 
-test GenericTriggerComposer {
+test GenericTriggerCandidateComposer {
     const allocator = std.testing.allocator;
 
     var trigger_map = try createTriggerMapForTesting(allocator);
@@ -236,7 +242,7 @@ test GenericTriggerComposer {
     var prefix_map = try createPrefixMapForTesting(allocator);
     defer prefix_map.deinit();
 
-    const TestComposer = GenericTriggerComposer(TestTriggerMap, TestPrefixMap);
+    const TestComposer = GenericTriggerCandidateComposer(TestTriggerMap, TestPrefixMap);
     var composer = try TestComposer.init(allocator, &trigger_map, &prefix_map);
     defer composer.deinit();
 
@@ -250,8 +256,8 @@ test GenericTriggerComposer {
     var z = [_]Key{Key.key_z};
     {
         const result = (try composer.getTriggerCandidate(&nothingness, &z)).?;
-        defer allocator.free(result);
-        try eqStr("z", result);
+        defer allocator.free(result.trigger);
+        try eqDeep("z", result.trigger);
         try eqDeep(&z, composer.latest_trigger.items);
     }
 
@@ -263,8 +269,8 @@ test GenericTriggerComposer {
     try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
     {
         const result = (try composer.getTriggerCandidate(&d, &nothingness)).?;
-        defer allocator.free(result);
-        try eqStr("d", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d", result.trigger);
     }
     try eqDeep(&d, composer.latest_trigger.items);
 
@@ -272,8 +278,8 @@ test GenericTriggerComposer {
     var d_l = [_]Key{ Key.key_d, Key.key_l };
     {
         const result = (try composer.getTriggerCandidate(&d, &d_l)).?;
-        defer allocator.free(result);
-        try eqStr("d l", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d l", result.trigger);
     }
     try eqDeep(&d_l, composer.latest_trigger.items);
 
@@ -303,8 +309,8 @@ test GenericTriggerComposer {
     var d_j_l = [_]Key{ Key.key_d, Key.key_j, Key.key_l };
     {
         const result = (try composer.getTriggerCandidate(&d_j, &d_j_l)).?;
-        defer allocator.free(result);
-        try eqStr("d j l", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d j l", result.trigger);
     }
     try eqDeep(&d_j_l, composer.latest_trigger.items);
 
@@ -324,14 +330,14 @@ test GenericTriggerComposer {
     try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
         const result = (try composer.getTriggerCandidate(&d_j, &d)).?;
-        defer allocator.free(result);
-        try eqStr("d j", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d j", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d, &d_k));
     {
         const result = (try composer.getTriggerCandidate(&d_k, &d)).?;
-        defer allocator.free(result);
-        try eqStr("d k", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d k", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d_k, &d));
     try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
@@ -344,22 +350,22 @@ test GenericTriggerComposer {
     try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
         const result = (try composer.getTriggerCandidate(&d_j, &d_j_l)).?;
-        defer allocator.free(result);
-        try eqStr("d j l", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d j l", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d_j_l, &d_j_l));
     try eq(null, try composer.getTriggerCandidate(&d_j_l, &d_j));
     {
         const result = (try composer.getTriggerCandidate(&d_j, &d_j_k)).?;
-        defer allocator.free(result);
-        try eqStr("d j k", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d j k", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d_j_k, &d_j_k));
     try eq(null, try composer.getTriggerCandidate(&d_j_k, &d_k));
     {
         const result = (try composer.getTriggerCandidate(&d_k, &d_k_l)).?;
-        defer allocator.free(result);
-        try eqStr("d k l", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d k l", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d_k_l, &d_k));
     try eq(null, try composer.getTriggerCandidate(&d_k, &d));
@@ -367,8 +373,8 @@ test GenericTriggerComposer {
     try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
         const result = (try composer.getTriggerCandidate(&d_j, &d)).?;
-        defer allocator.free(result);
-        try eqStr("d j", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d j", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d_j, &d));
     try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
@@ -381,8 +387,8 @@ test GenericTriggerComposer {
     try eq(null, try composer.getTriggerCandidate(&d, &d_j));
     {
         const result = (try composer.getTriggerCandidate(&d_j, &d_j_l)).?;
-        defer allocator.free(result);
-        try eqStr("d j l", result);
+        defer allocator.free(result.trigger);
+        try eqStr("d j l", result.trigger);
     }
     try eq(null, try composer.getTriggerCandidate(&d_j_l, &j_l));
     try eq(null, try composer.getTriggerCandidate(&j_l, &j));
@@ -399,51 +405,118 @@ test GenericTriggerComposer {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
 
-pub fn getInsertModeTrigger(a: std.mem.Allocator, keys: EventSlice, timestamps: []const i64, threshold: i64, candidate: ?[]const u8) !union(enum) {
-    candidate: []const u8,
-    last_key: []const u8,
-} {
-    if (keys.len != timestamps.len) unreachable;
-    if (keys.len == 0) return error.LengthZero;
-    if (timestamps[1] -| timestamps[0] < threshold) return .{ .last_key = try eventListToStr(a, keys[keys.len - 1 ..]) };
-    if (candidate) |trigger| return .{ .candidate = trigger };
-    return .{ .last_key = try eventListToStr(a, keys[keys.len - 1 ..]) };
-}
+pub const InsertModeTriggerPicker = struct {
+    a: Allocator,
+    new: *EventList,
+    time: *EventTimeList,
+    latest_trigger: ?Candidate = null,
+    threshold: i64 = 100,
 
-test getInsertModeTrigger {
+    pub fn init(a: std.mem.Allocator, new: *EventList, time: *EventTimeList) !*@This() {
+        const picker = try a.create(@This());
+        picker.* = .{
+            .a = a,
+            .new = new,
+            .time = time,
+        };
+        return picker;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        if (self.latest_trigger) |latest| self.a.free(latest.trigger);
+        self.a.destroy(self);
+    }
+
+    fn getTrigger(self: *@This(), candidate: ?Candidate) !?Candidate {
+        const new = self.new.items;
+        const time = self.time.items;
+
+        if (new.len == 0) {
+            if (candidate) |c| self.a.free(c.trigger);
+            return null;
+        }
+
+        if (new.len > 1 and time[1] -| time[0] < self.threshold) {
+            if (candidate) |c| self.a.free(c.trigger);
+            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+        }
+
+        if (candidate) |c| return c;
+
+        if (candidate) |c| self.a.free(c.trigger);
+        return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+    }
+
+    fn updateLatestToFinalCandidate(self: *@This(), final_candidate: ?Candidate) !void {
+        if (self.latest_trigger) |latest| self.a.free(latest.trigger);
+        if (final_candidate) |fc| {
+            self.latest_trigger = .{
+                .last = fc.last,
+                .up = fc.up,
+                .trigger = try self.a.dupe(u8, fc.trigger),
+            };
+            return;
+        }
+        self.latest_trigger = null;
+    }
+
+    pub fn getFinalTrigger(self: *@This(), candidate: ?Candidate) !?[]const u8 {
+        var final_candidate = try self.getTrigger(candidate);
+
+        if (final_candidate == null) {
+            try self.updateLatestToFinalCandidate(final_candidate);
+            return null;
+        }
+
+        if (self.latest_trigger) |latest| {
+            if (std.mem.eql(u8, latest.trigger, final_candidate.?.trigger) or (latest.last and final_candidate.?.up)) {
+                self.a.free(final_candidate.?.trigger);
+                final_candidate = null;
+            }
+        }
+
+        if (final_candidate) |_| {
+            try self.updateLatestToFinalCandidate(final_candidate);
+        }
+
+        return if (final_candidate) |fc| fc.trigger else null;
+    }
+};
+
+test InsertModeTriggerPicker {
     const a = std.testing.allocator;
-    const threshold = 100;
+
+    var e_list = EventList.init(a);
+    defer e_list.deinit();
+
+    var t_list = EventTimeList.init(a);
+    defer t_list.deinit();
+
+    var picker = try InsertModeTriggerPicker.init(a, &e_list, &t_list);
+    defer picker.deinit();
+
+    /////////////////////////////
 
     {
-        try std.testing.expectError(error.LengthZero, getInsertModeTrigger(a, &[_]Key{}, &[_]i64{}, threshold, null));
-    }
-
-    {
-        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 105 }, threshold, "d j");
-        try eqDeep("d j", got.candidate);
-    }
-
-    {
-        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_f }, &[_]i64{ 0, 105 }, threshold, "d f k");
-        try eqDeep("d f k", got.candidate);
-    }
-
-    {
-        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 40 }, threshold, "d j");
-        defer a.free(got.last_key);
-        try eqStr("j", got.last_key);
-    }
-
-    {
-        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j, Key.key_l }, &[_]i64{ 0, 20, 80 }, threshold, "d j l");
-        defer a.free(got.last_key);
-        try eqStr("l", got.last_key);
-    }
-
-    {
-        const got = try getInsertModeTrigger(a, &[_]Key{ Key.key_d, Key.key_j }, &[_]i64{ 0, 105 }, threshold, null);
-        defer a.free(got.last_key);
-        try eqStr("j", got.last_key);
+        try e_list.append(Key.key_d);
+        try t_list.append(0);
+        { // d down
+            const trigger = try std.fmt.allocPrint(a, "d", .{});
+            const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger });
+            defer a.free(result.?);
+            try eqStr("d", result.?);
+        }
+        { // d hold
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+        _ = e_list.orderedRemove(0);
+        _ = t_list.orderedRemove(0);
+        { // d up
+            const trigger = try std.fmt.allocPrint(a, "d", .{});
+            const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger, .up = true });
+            try eq(null, result);
+        }
     }
 }
 

@@ -41,17 +41,20 @@ pub fn main() anyerror!void {
     var event_time_list = kbs.EventTimeList.init(gpa);
     defer event_time_list.deinit();
 
+    var trigger_map = try exp.createInsertCharTriggerMap(gpa);
+    defer trigger_map.deinit();
+
+    var prefix_map = exp.ExperimentalPrefixMap.init(gpa);
+    defer prefix_map.deinit();
+
+    const TriggerCandidateComposer = kbs.GenericTriggerCandidateComposer(exp.ExperimentalTriggerMap, exp.ExperimentalPrefixMap);
+    var candidate_maker = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
+    defer candidate_maker.deinit();
+
+    var insert_mode_trigger_picker = try kbs.InsertModeTriggerPicker.init(gpa, &new_event_list, &event_time_list);
+    defer insert_mode_trigger_picker.deinit();
+
     ///////////////////////////// Text Buffer
-
-    var insert_char_trigger_map = try exp.createInsertCharTriggerMap(gpa);
-    defer insert_char_trigger_map.deinit();
-
-    var insert_char_prefix_map = exp.ExperimentalPrefixMap.init(gpa);
-    defer insert_char_prefix_map.deinit();
-
-    const TriggerComposer = kbs.GenericTriggerComposer(exp.ExperimentalTriggerMap, exp.ExperimentalPrefixMap);
-    var insert_char_invoker = try TriggerComposer.init(gpa, &insert_char_trigger_map, &insert_char_prefix_map);
-    defer insert_char_invoker.deinit();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -77,11 +80,29 @@ pub fn main() anyerror!void {
         try kbs.updateEventList(&new_event_array, &new_event_list, &event_time_list);
 
         {
-            const maybe_trigger = try insert_char_invoker.getTriggerCandidate(old_event_list.items, new_event_list.items);
-            if (maybe_trigger) |trigger| {
-                defer insert_char_invoker.a.free(trigger);
+            const insert_mode_active = true;
 
-                if (insert_char_trigger_map.get(trigger)) |_| {
+            const candidate = try candidate_maker.getTriggerCandidate(old_event_list.items, new_event_list.items);
+
+            var trigger: []const u8 = "";
+            if (!insert_mode_active) {
+                if (candidate) |t| switch (t) {
+                    .down => trigger = t.down,
+                    .up => trigger = t.up,
+                };
+            }
+            if (insert_mode_active) {
+                const may_trigger = try insert_mode_trigger_picker.getFinalTrigger(candidate);
+                if (may_trigger) |t| {
+                    trigger = t;
+                }
+            }
+
+            if (!eql(u8, trigger, "")) {
+                defer insert_mode_trigger_picker.a.free(trigger);
+                std.debug.print("trigger: {s}\n", .{trigger});
+
+                if (trigger_map.get(trigger)) |_| {
                     if (trigger.len == 1)
                         for (exp.letters_and_numbers) |chars|
                             if (eql(u8, chars, trigger))
