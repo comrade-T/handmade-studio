@@ -12,6 +12,10 @@
             .url = "https://codeberg.org/dude_the_builder/zg/archive/v0.13.2.tar.gz",
             .hash = "122055beff332830a391e9895c044d33b15ea21063779557024b46169fb1984c6e40",
         },
+        .@"raylib-zig" = .{
+            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
+            .hash = "1220608d53a1e0e295f8367be3aa7b1439d044af1551ae64cf5ae6ce9edb05858e73",
+        },
     },
 
     .paths = .{
