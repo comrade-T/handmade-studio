@@ -3,7 +3,7 @@ const std = @import("std");
 const eq = std.testing.expectEqual;
 const eqDeep = std.testing.expectEqualDeep;
 
-const Cursor = struct {
+pub const Cursor = struct {
     line: usize = 0,
     col: usize = 0,
 
@@ -18,7 +18,7 @@ const Cursor = struct {
 
     pub fn right(self: *Cursor, by: usize, line_width: usize) void {
         const target = self.col + by;
-        self.col = if (self.col + by < line_width - 1) target else line_width - 1;
+        self.col = if (self.col + by < line_width) target else line_width;
     }
 
     pub fn left(self: *Cursor, by: usize) void {
@@ -55,12 +55,12 @@ test Cursor {
         try eqDeep(Cursor{ .line = 5, .col = 1 }, c);
 
         c.right(100, line_5_width);
-        try eqDeep(Cursor{ .line = 5, .col = 9 }, c);
+        try eqDeep(Cursor{ .line = 5, .col = 10 }, c);
     }
 
     {
         c.left(1);
-        try eqDeep(Cursor{ .line = 5, .col = 8 }, c);
+        try eqDeep(Cursor{ .line = 5, .col = 9 }, c);
 
         c.left(100);
         try eqDeep(Cursor{ .line = 5, .col = 0 }, c);
