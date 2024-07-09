@@ -9,6 +9,7 @@ const gp_view = @import("gamepad/view.zig");
 const kbs = @import("keyboard/state.zig");
 const Buffer = @import("buffer").Buffer;
 const eM = @import("keyboard/experimental_mappings.zig");
+const Cursor = @import("buffer/cursor.zig").Cursor;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -18,7 +19,7 @@ const screen_h = 450;
 const device_idx = 1;
 
 const TestInvoker = kbs.GenericInvoker(kbs.TestTriggerMap, kbs.TestPrefixMap);
-const InsertCharInvoker = kbs.GenericInvoker(eM.InsertCharTriggerMap, eM.InsertCharPrefixMap);
+const InsertCharInvoker = kbs.GenericInvoker(eM.ExperimentalTriggerMap, eM.ExperimentalPrefixMap);
 
 pub const GameState = struct {
     a: std.mem.Allocator,
@@ -38,10 +39,11 @@ pub const GameState = struct {
 
     // text buffer
     text_buffer: *Buffer,
-    insert_char_trigger_map: eM.InsertCharTriggerMap,
-    insert_char_prefix_map: eM.InsertCharPrefixMap,
+    insert_char_trigger_map: eM.ExperimentalTriggerMap,
+    insert_char_prefix_map: eM.ExperimentalPrefixMap,
     insert_char_invoker: *InsertCharInvoker,
     cached_contents: std.ArrayList(u8),
+    cursor: Cursor,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -65,9 +67,10 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
 
         .text_buffer = Buffer.create(a.*, a.*) catch @panic("can't create buffer"),
         .insert_char_trigger_map = eM.createInsertCharCallbackMap(a.*) catch @panic("can't createInsertCharCallbackMap()"),
-        .insert_char_prefix_map = eM.InsertCharPrefixMap.init(a.*),
+        .insert_char_prefix_map = eM.ExperimentalPrefixMap.init(a.*),
         .insert_char_invoker = InsertCharInvoker.init(a.*, &gs.insert_char_trigger_map, &gs.insert_char_prefix_map) catch @panic("can't init() Invoker"),
         .cached_contents = undefined,
+        .cursor = Cursor{},
     };
 
     gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("hi there!") catch
@@ -121,6 +124,13 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
                 ctx.callback(gs) catch @panic("can't run callback");
             }
         }
+    }
+
+    // display cursor position
+    {
+        var buf: [64]u8 = undefined;
+        const slice = std.fmt.bufPrintZ(&buf, "({d}, {d})", .{ gs.cursor.line, gs.cursor.col }) catch "error";
+        r.DrawText(slice, 700, 390, 20, r.RAYWHITE);
     }
 
     // FIXME: this is extremely inefficient, since we're walking the tree and writing memory 60 times per second.

@@ -396,6 +396,11 @@ const supported_key_codes = [_]c_int{
 
     r.KEY_TAB,
     r.KEY_SPACE,
+
+    r.KEY_DOWN,
+    r.KEY_UP,
+    r.KEY_LEFT,
+    r.KEY_RIGHT,
     // ...
 };
 
@@ -430,6 +435,11 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
 
         r.KEY_TAB => "tab",
         r.KEY_SPACE => "space",
+
+        r.KEY_DOWN => "down",
+        r.KEY_UP => "up",
+        r.KEY_LEFT => "left",
+        r.KEY_RIGHT => "right",
 
         r.KEY_ONE => "1",
         r.KEY_TWO => "2",
