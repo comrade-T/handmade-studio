@@ -397,6 +397,9 @@ const supported_key_codes = [_]c_int{
     r.KEY_TAB,
     r.KEY_SPACE,
 
+    r.KEY_BACKSPACE,
+    r.KEY_DELETE,
+
     r.KEY_DOWN,
     r.KEY_UP,
     r.KEY_LEFT,
@@ -435,6 +438,9 @@ fn getStringRepresentationOfKeyCode(c: c_int) []const u8 {
 
         r.KEY_TAB => "tab",
         r.KEY_SPACE => "space",
+
+        r.KEY_BACKSPACE => "backspace",
+        r.KEY_DELETE => "delete",
 
         r.KEY_DOWN => "down",
         r.KEY_UP => "up",

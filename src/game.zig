@@ -73,9 +73,7 @@ export fn gameInit(allocator_ptr: *anyopaque) *anyopaque {
         .cursor = Cursor{},
     };
 
-    gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("hi there!") catch
-        @panic("can't buffer.load_from_string()");
-
+    gs.*.text_buffer.root = gs.*.text_buffer.load_from_string("") catch @panic("can't buffer.load_from_string()");
     gs.*.cached_contents = gs.text_buffer.toArrayList(a.*) catch @panic("can't gs.text_buffer.toArrayList()");
 
     return gs;
@@ -135,7 +133,8 @@ export fn gameDraw(game_state_ptr: *anyopaque) void {
 
     // FIXME: this is extremely inefficient, since we're walking the tree and writing memory 60 times per second.
     // TODO: cache the buffer to prevent this inefficiency.
-    r.DrawText(@as([*c]const u8, @ptrCast(gs.cached_contents.items)), 100, 100, 30, r.RAYWHITE);
+    if (gs.cached_contents.items.len > 0)
+        r.DrawText(@as([*c]const u8, @ptrCast(gs.cached_contents.items)), 100, 100, 30, r.RAYWHITE);
 
     kbs.updateEventList(&gs.old_event_array, &gs.old_event_list, null) catch @panic("Error in kbs.updateEventList(old_event_list)");
 }
