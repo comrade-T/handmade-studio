@@ -118,7 +118,7 @@ pub const Buffer = struct {
         }
     };
 
-    fn num_of_chars_in_line(self: *const Buffer, line: usize) !usize {
+    pub fn num_of_chars_in_line(self: *const Buffer, line: usize) !usize {
         if (line + 1 > self.root.weights_sum().bols) return error.NotFound;
         var result: usize = 0;
         var ctx: NumOfCharsInLineCtx = .{ .result = &result };
@@ -825,6 +825,9 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "2", .bol = false, .eol = false }, leaves[1].*);
             try eqDeep(Leaf{ .buf = "B", .bol = false, .eol = false }, leaves[2].*);
         }
+
+        _, _, buf.root = try buf.insert_chars(buf.a, 0, 3, "_");
+        try testBufferGetLine(a, buf, 0, "12B_");
     }
 
     {
