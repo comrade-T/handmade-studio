@@ -456,12 +456,12 @@ test GenericTriggerCandidateComposer {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
 
-pub const InsertModeTriggerPicker = struct {
+pub const TriggerPicker = struct {
     a: Allocator,
     new: *EventList,
     old: *EventList,
     time: *EventTimeList,
-    latest_trigger: ?Candidate = null,
+    previous_trigger: ?Candidate = null,
     threshold: i64 = 100,
 
     pub fn init(a: std.mem.Allocator, old: *EventList, new: *EventList, time: *EventTimeList) !*@This() {
@@ -476,71 +476,69 @@ pub const InsertModeTriggerPicker = struct {
     }
 
     pub fn deinit(self: *@This()) void {
-        if (self.latest_trigger) |latest| self.a.free(latest.trigger);
+        if (self.previous_trigger) |latest| self.a.free(latest.trigger);
         self.a.destroy(self);
     }
 
-    fn getTrigger(self: *@This(), candidate: ?Candidate) !?Candidate {
-        const old = self.old.items;
-        const new = self.new.items;
-        const time = self.time.items;
-
-        if (new.len == 0) {
-            if (candidate) |c| self.a.free(c.trigger);
-            return null;
-        }
-
-        if (new.len > 1 and time[1] -| time[0] < self.threshold) {
-            if (candidate) |c| self.a.free(c.trigger);
-            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
-        }
-
-        if (candidate) |c| return c;
-
-        if (new.len == 1 and old.len == 0) {
-            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
-        }
-
-        return null;
-    }
-
-    fn updateLatestToFinalCandidate(self: *@This(), final_candidate: ?Candidate) !void {
-        if (self.latest_trigger) |latest| self.a.free(latest.trigger);
+    fn updatePreviousTrigger(self: *@This(), final_candidate: ?Candidate) !void {
+        if (self.previous_trigger) |latest| self.a.free(latest.trigger);
         if (final_candidate) |fc| {
-            self.latest_trigger = .{
+            self.previous_trigger = .{
                 .last = fc.last,
                 .up = fc.up,
                 .trigger = try self.a.dupe(u8, fc.trigger),
             };
             return;
         }
-        self.latest_trigger = null;
+        self.previous_trigger = null;
     }
 
-    pub fn getFinalTrigger(self: *@This(), candidate: ?Candidate) !?[]const u8 {
-        var final_candidate = try self.getTrigger(candidate);
+    fn process(self: *@This(), candidate: ?Candidate) !?Candidate {
+        const old, const new, const time = .{ self.old.items, self.new.items, self.time.items };
 
-        if (final_candidate == null) {
-            try self.updateLatestToFinalCandidate(final_candidate);
+        if (new.len == 0) { // return null and clean up candidate
+            if (candidate) |c| self.a.free(c.trigger);
             return null;
         }
 
-        if (self.latest_trigger) |latest| {
-            if (std.mem.eql(u8, latest.trigger, final_candidate.?.trigger)) {
-                self.a.free(final_candidate.?.trigger);
-                final_candidate = null;
+        if (new.len > 1 and time[1] -| time[0] < self.threshold) { // timing in threshold, clean up candidate and return last key
+            if (candidate) |c| self.a.free(c.trigger);
+            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+        }
+
+        if (candidate) |c| return c; // return non-null candidate
+
+        if (new.len == 1 and old.len == 0) { // single key down
+            // a trigger for this key might exist, but it might be a prefix as well.
+            // if it's a prefix, candidate will be null.
+            // since we're in Insert Mode, we want to emit it right away on key down despite it being a prefix
+            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+        }
+
+        return null;
+    }
+
+    pub fn getFinalTrigger(self: *@This(), potential_candidate: ?Candidate) !?[]const u8 {
+        const final = try self.process(potential_candidate);
+
+        if (final == null) {
+            try self.updatePreviousTrigger(null);
+            return null;
+        }
+
+        if (self.previous_trigger) |latest| { // prevent repeating previous trigger
+            if (std.mem.eql(u8, latest.trigger, final.?.trigger)) {
+                self.a.free(final.?.trigger);
+                return null;
             }
         }
 
-        if (final_candidate) |_| {
-            try self.updateLatestToFinalCandidate(final_candidate);
-        }
-
-        return if (final_candidate) |fc| fc.trigger else null;
+        try self.updatePreviousTrigger(final.?);
+        return final.?.trigger;
     }
 };
 
-test InsertModeTriggerPicker {
+test TriggerPicker {
     const a = std.testing.allocator;
 
     var old = EventList.init(a);
@@ -552,7 +550,7 @@ test InsertModeTriggerPicker {
     var time = EventTimeList.init(a);
     defer time.deinit();
 
-    var picker = try InsertModeTriggerPicker.init(a, &old, &new, &time);
+    var picker = try TriggerPicker.init(a, &old, &new, &time);
     defer picker.deinit();
 
     // single key case

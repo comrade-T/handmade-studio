@@ -51,7 +51,7 @@ pub fn main() anyerror!void {
     var candidate_maker = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
     defer candidate_maker.deinit();
 
-    var insert_mode_trigger_picker = try kbs.InsertModeTriggerPicker.init(gpa, &old_event_list, &new_event_list, &event_time_list);
+    var insert_mode_trigger_picker = try kbs.TriggerPicker.init(gpa, &old_event_list, &new_event_list, &event_time_list);
     defer insert_mode_trigger_picker.deinit();
 
     ///////////////////////////// Text Buffer
