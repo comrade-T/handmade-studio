@@ -98,7 +98,6 @@ const Candidate = struct {
     trigger: []const u8,
     up: bool = false,
     last: bool = false,
-    is_candidate: bool = true,
 };
 
 pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime prefix_map_type: type) type {
@@ -468,13 +467,13 @@ pub const InsertModeTriggerPicker = struct {
 
         if (new.len > 1 and time[1] -| time[0] < self.threshold) {
             if (candidate) |c| self.a.free(c.trigger);
-            return .{ .is_candidate = false, .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
         }
 
         if (candidate) |c| return c;
 
         if (new.len == 1 and old.len == 0) {
-            return .{ .is_candidate = false, .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
         }
 
         return null;
