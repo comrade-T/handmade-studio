@@ -516,76 +516,96 @@ pub const InsertModeTriggerPicker = struct {
     }
 };
 
-// test InsertModeTriggerPicker {
-//     const a = std.testing.allocator;
-//
-//     var e_list = EventList.init(a);
-//     defer e_list.deinit();
-//
-//     var t_list = EventTimeList.init(a);
-//     defer t_list.deinit();
-//
-//     var picker = try InsertModeTriggerPicker.init(a, &e_list, &t_list);
-//     defer picker.deinit();
-//
-//     /////////////////////////////
-//
-//     {
-//         try e_list.append(Key.key_d);
-//         try t_list.append(0);
-//         { // d down
-//             const trigger = try std.fmt.allocPrint(a, "d", .{});
-//             const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger });
-//             defer a.free(result.?);
-//             try eqStr("d", result.?);
-//         }
-//         { // d hold
-//             const result = try picker.getFinalTrigger(null);
-//             try eq(null, result);
-//         }
-//         _ = e_list.orderedRemove(0);
-//         _ = t_list.orderedRemove(0);
-//         { // d up
-//             const trigger = try std.fmt.allocPrint(a, "d", .{});
-//             const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger, .up = true });
-//             try eq(null, result);
-//         }
-//     }
-//
-//     // s is mapped, and also is prefix
-//     {
-//         try e_list.append(Key.key_s);
-//         try t_list.append(0);
-//         { // s down
-//             const result = try picker.getFinalTrigger(null);
-//             defer a.free(result.?);
-//             try eqStr("s", result.?);
-//         }
-//         { // s hold
-//             const result = try picker.getFinalTrigger(null);
-//             try eq(null, result);
-//         }
-//
-//         try e_list.append(Key.key_o);
-//         try t_list.append(200);
-//         { // o down, `s o` is trigger, not prefix
-//             const result = try picker.getFinalTrigger(Candidate{ .trigger = "s o", .up = true });
-//             defer a.free(result.?);
-//             try eqStr("s o", result.?);
-//         }
-//         { // o hold
-//             const result = try picker.getFinalTrigger(null);
-//             try eq(null, result);
-//         }
-//
-//         _ = e_list.orderedRemove(1);
-//         _ = t_list.orderedRemove(1);
-//         { // o up
-//             const result = try picker.getFinalTrigger(null);
-//             try eq(null, result);
-//         }
-//     }
-// }
+test InsertModeTriggerPicker {
+    const a = std.testing.allocator;
+
+    var old = EventList.init(a);
+    defer old.deinit();
+
+    var new = EventList.init(a);
+    defer new.deinit();
+
+    var time = EventTimeList.init(a);
+    defer time.deinit();
+
+    var picker = try InsertModeTriggerPicker.init(a, &old, &new, &time);
+    defer picker.deinit();
+
+    // single key case
+    {
+        try new.append(Key.key_d);
+        try time.append(0);
+        { // d down
+            const trigger = try std.fmt.allocPrint(a, "d", .{});
+            const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger });
+            defer a.free(result.?);
+            try eqStr("d", result.?);
+        }
+        try old.append(Key.key_d);
+
+        { // d hold
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+
+        _ = new.orderedRemove(0);
+        _ = time.orderedRemove(0);
+        { // d up
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+        _ = old.orderedRemove(0);
+    }
+
+    // single combo case
+    {
+        try new.append(Key.key_s);
+        try time.append(0);
+        { // s down
+            const result = try picker.getFinalTrigger(null);
+            defer a.free(result.?);
+            try eqStr("s", result.?);
+        }
+        try old.append(Key.key_s);
+
+        { // s hold
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+
+        try new.append(Key.key_o);
+        try time.append(200);
+        { // `s o` down
+            const trigger = try std.fmt.allocPrint(a, "s o", .{});
+            const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger });
+            defer a.free(result.?);
+            try eqStr("s o", result.?);
+        }
+        try old.append(Key.key_o);
+
+        { // `s o` hold
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+
+        _ = new.orderedRemove(1);
+        _ = time.orderedRemove(1);
+        { // o up
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+        _ = old.orderedRemove(1);
+
+        _ = new.orderedRemove(0);
+        _ = time.orderedRemove(0);
+        {
+            // s up
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
+        _ = old.orderedRemove(0);
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
