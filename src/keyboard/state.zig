@@ -52,6 +52,8 @@ pub fn createTriggerMapForTesting(a: Allocator) !TestTriggerMap {
     try map.put("d k", "DecK");
     try map.put("d k l", "D & K & L");
 
+    try map.put("i", "i");
+
     try map.put("s", "s");
     try map.put("s o", "so so");
     return map;
@@ -201,7 +203,7 @@ pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime
             const new_status = try getTriggerStatus(self.a, new, self.trigger_map);
             const new_is_prefix = try isPrefix(self.a, new, self.prefix_map);
 
-            if (new_status.mapped and !new_is_prefix) {
+            if (new_status.mapped and !new_is_prefix and !std.mem.eql(Key, new, self.latest_trigger.items)) {
                 try self.setLatestTrigger(new);
                 return .{ .trigger = new_status.trigger };
             }
@@ -427,6 +429,29 @@ test GenericTriggerCandidateComposer {
     try eq(null, try composer.getTriggerCandidate(&s, &s));
     try eq(null, try composer.getTriggerCandidate(&s, &s));
     try eq(null, try composer.getTriggerCandidate(&s, &nothingness));
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &nothingness));
+
+    /////////////////////////////
+
+    var i = [_]Key{Key.key_i};
+    var i_s = [_]Key{ Key.key_i, Key.key_s };
+
+    {
+        const result = (try composer.getTriggerCandidate(&nothingness, &i)).?;
+        defer allocator.free(result.trigger);
+        try eqStr("i", result.trigger);
+    }
+    try eq(null, try composer.getTriggerCandidate(&i, &i));
+    try eq(null, try composer.getTriggerCandidate(&i, &i));
+    try eq(null, try composer.getTriggerCandidate(&i, &i));
+    try eq(null, try composer.getTriggerCandidate(&i, &i_s));
+    try eq(null, try composer.getTriggerCandidate(&i_s, &i_s));
+    try eq(null, try composer.getTriggerCandidate(&i_s, &i_s));
+    try eq(null, try composer.getTriggerCandidate(&i_s, &i_s));
+    try eq(null, try composer.getTriggerCandidate(&i_s, &i));
+    try eq(null, try composer.getTriggerCandidate(&i, &i));
+    try eq(null, try composer.getTriggerCandidate(&i, &i));
+    try eq(null, try composer.getTriggerCandidate(&i, &nothingness));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
