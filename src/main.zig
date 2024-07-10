@@ -48,11 +48,11 @@ pub fn main() anyerror!void {
     defer prefix_map.deinit();
 
     const TriggerCandidateComposer = kbs.GenericTriggerCandidateComposer(exp.TriggerMap, exp.PrefixMap);
-    var candidate_maker = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
-    defer candidate_maker.deinit();
+    var composer = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
+    defer composer.deinit();
 
-    var insert_mode_trigger_picker = try kbs.TriggerPicker.init(gpa, &old_event_list, &new_event_list, &event_time_list);
-    defer insert_mode_trigger_picker.deinit();
+    var picker = try kbs.TriggerPicker.init(gpa, &old_event_list, &new_event_list, &event_time_list);
+    defer picker.deinit();
 
     ///////////////////////////// Text Buffer
 
@@ -81,55 +81,45 @@ pub fn main() anyerror!void {
 
         {
             const insert_mode_active = true;
-
-            const candidate = try candidate_maker.getTriggerCandidate(old_event_list.items, new_event_list.items);
-
             var trigger: []const u8 = "";
+
+            const candidate = try composer.getTriggerCandidate(old_event_list.items, new_event_list.items);
             if (!insert_mode_active) {
-                if (candidate) |t| switch (t) {
-                    .down => trigger = t.down,
-                    .up => trigger = t.up,
-                };
+                if (candidate) |c| trigger = c;
             }
             if (insert_mode_active) {
-                const may_trigger = try insert_mode_trigger_picker.getFinalTrigger(candidate);
-                if (may_trigger) |t| {
-                    trigger = t;
-                }
+                const may_final_trigger = try picker.getFinalTrigger(candidate);
+                if (may_final_trigger) |t| trigger = t;
             }
 
             if (!eql(u8, trigger, "")) {
-                defer insert_mode_trigger_picker.a.free(trigger);
+                defer picker.a.free(trigger);
                 std.debug.print("trigger: {s}\n", .{trigger});
 
-                if (trigger_map.get(trigger)) |_| {
-                    if (trigger.len == 1)
-                        for (exp.letters_and_numbers) |chars|
-                            if (eql(u8, chars, trigger))
-                                try insert_chars(gpa, trigger, text_buffer, &cursor, &cached_contents);
+                for (exp.letters_and_numbers) |chars|
+                    if (eql(u8, chars, trigger)) try insert_chars(gpa, trigger, text_buffer, &cursor, &cached_contents);
 
-                    if (eql(u8, trigger, "space")) try insert_chars(gpa, " ", text_buffer, &cursor, &cached_contents);
-                    if (eql(u8, trigger, "tab")) try insert_chars(gpa, "    ", text_buffer, &cursor, &cached_contents);
-                    if (eql(u8, trigger, "enter")) try insert_chars(gpa, "\n", text_buffer, &cursor, &cached_contents);
+                if (eql(u8, trigger, "space")) try insert_chars(gpa, " ", text_buffer, &cursor, &cached_contents);
+                if (eql(u8, trigger, "tab")) try insert_chars(gpa, "    ", text_buffer, &cursor, &cached_contents);
+                if (eql(u8, trigger, "enter")) try insert_chars(gpa, "\n", text_buffer, &cursor, &cached_contents);
 
-                    if (eql(u8, trigger, "up")) cursor.up(1);
-                    if (eql(u8, trigger, "left")) cursor.left(1);
-                    if (eql(u8, trigger, "down")) {
-                        cursor.down(1, text_buffer.num_of_lines());
-                        return;
-                    }
-                    if (eql(u8, trigger, "right")) {
-                        const line_width = try text_buffer.num_of_chars_in_line(cursor.line);
-                        cursor.right(1, line_width);
-                    }
+                if (eql(u8, trigger, "up")) cursor.up(1);
+                if (eql(u8, trigger, "left")) cursor.left(1);
+                if (eql(u8, trigger, "down")) {
+                    cursor.down(1, text_buffer.num_of_lines());
+                    return;
+                }
+                if (eql(u8, trigger, "right")) {
+                    const line_width = try text_buffer.num_of_chars_in_line(cursor.line);
+                    cursor.right(1, line_width);
+                }
 
-                    if (eql(u8, trigger, "backspace")) {
-                        text_buffer.root = try text_buffer.delete_chars(text_buffer.a, cursor.line, cursor.col -| 1, 1);
-                        cursor.left(1);
+                if (eql(u8, trigger, "backspace")) {
+                    text_buffer.root = try text_buffer.delete_chars(text_buffer.a, cursor.line, cursor.col -| 1, 1);
+                    cursor.left(1);
 
-                        cached_contents.deinit();
-                        cached_contents = try text_buffer.toArrayList(gpa);
-                    }
+                    cached_contents.deinit();
+                    cached_contents = try text_buffer.toArrayList(gpa);
                 }
             }
         }
