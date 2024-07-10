@@ -6,11 +6,11 @@ pub const letters_and_numbers = [_][]const u8{
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
 };
 
-pub const ExperimentalTriggerMap = std.StringHashMap(bool);
-pub const ExperimentalPrefixMap = std.StringHashMap(bool);
+pub const TriggerMap = std.StringHashMap(bool);
+pub const PrefixMap = std.StringHashMap(bool);
 
-pub fn createInsertCharTriggerMap(a: std.mem.Allocator) !ExperimentalTriggerMap {
-    var map = ExperimentalTriggerMap.init(a);
+pub fn createTriggerMap(a: std.mem.Allocator) !TriggerMap {
+    var map = TriggerMap.init(a);
 
     for (letters_and_numbers) |char| try map.put(char, true);
 
@@ -19,6 +19,16 @@ pub fn createInsertCharTriggerMap(a: std.mem.Allocator) !ExperimentalTriggerMap 
         "backspace", "delete", "home",  "end",
     };
     for (other_keys) |trigger| try map.put(trigger, true);
+
+    try map.put("s o", true);
+
+    return map;
+}
+
+pub fn createPrefixMap(a: std.mem.Allocator) !PrefixMap {
+    var map = PrefixMap.init(a);
+
+    try map.put("s", true);
 
     return map;
 }

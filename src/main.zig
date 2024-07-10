@@ -41,17 +41,17 @@ pub fn main() anyerror!void {
     var event_time_list = kbs.EventTimeList.init(gpa);
     defer event_time_list.deinit();
 
-    var trigger_map = try exp.createInsertCharTriggerMap(gpa);
+    var trigger_map = try exp.createTriggerMap(gpa);
     defer trigger_map.deinit();
 
-    var prefix_map = exp.ExperimentalPrefixMap.init(gpa);
+    var prefix_map = try exp.createPrefixMap(gpa);
     defer prefix_map.deinit();
 
-    const TriggerCandidateComposer = kbs.GenericTriggerCandidateComposer(exp.ExperimentalTriggerMap, exp.ExperimentalPrefixMap);
+    const TriggerCandidateComposer = kbs.GenericTriggerCandidateComposer(exp.TriggerMap, exp.PrefixMap);
     var candidate_maker = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
     defer candidate_maker.deinit();
 
-    var insert_mode_trigger_picker = try kbs.InsertModeTriggerPicker.init(gpa, &new_event_list, &event_time_list);
+    var insert_mode_trigger_picker = try kbs.InsertModeTriggerPicker.init(gpa, &old_event_list, &new_event_list, &event_time_list);
     defer insert_mode_trigger_picker.deinit();
 
     ///////////////////////////// Text Buffer
