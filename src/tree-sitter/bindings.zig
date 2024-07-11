@@ -2,6 +2,9 @@ const std = @import("std");
 
 // Copied & Edited from https://github.com/ziglibs/treez
 
+// TREE_SITTER_LANGUAGE_VERSION 14
+// TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+
 pub const Symbol = enum(u16) { _ };
 pub const FieldId = enum(u16) { _ };
 pub const StateId = enum(u16) { _ };
@@ -131,15 +134,11 @@ pub const Parser = opaque {
 
     pub const SetLanguageError = error{VersionMismatch};
     pub fn setLanguage(parser: *Parser, language: *const Language) SetLanguageError!void {
-        if (!externs.ts_parser_set_language(parser, language))
-            return error.VersionMismatch;
+        if (!externs.ts_parser_set_language(parser, language)) return error.VersionMismatch;
     }
 
     pub fn getLanguage(parser: *const Parser) ?*const Language {
-        return if (externs.ts_parser_language(parser)) |language|
-            language
-        else
-            null;
+        return if (externs.ts_parser_language(parser)) |language| language else null;
     }
 
     pub const SetIncludedRangesError = error{Unknown};
@@ -685,6 +684,10 @@ pub const Query = opaque {
 
     pub fn getStartByteForPattern(query: *const Query, pattern_index: u32) u32 {
         return externs.ts_query_start_byte_for_pattern(query, pattern_index);
+    }
+
+    pub fn getEndByteForPattern(query: *const Query, pattern_index: u32) u32 {
+        return externs.ts_query_end_byte_for_pattern(query, pattern_index);
     }
 
     pub fn getPredicatesForPattern(query: *const Query, pattern_index: u32) []const PredicateStep {

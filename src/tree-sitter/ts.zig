@@ -2,7 +2,7 @@ const std = @import("std");
 const ts = @import("bindings.zig");
 
 test "try ts with Zig" {
-    const allocator = std.heap.page_allocator;
+    const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
     var parser = try ts.Parser.create();
@@ -22,7 +22,10 @@ test "try ts with Zig" {
     );
     defer query.destroy();
 
-    var pv = try ts.CursorWithValidation.init(allocator, query);
+    // TODO: write our own version
+    // TODO: see if flow use `#matches predicate`
+    var pv = try ts.CursorWithValidation.init(a, query);
+    defer pv.deinit();
 
     const cursor = try ts.Query.Cursor.create();
     defer cursor.destroy();
