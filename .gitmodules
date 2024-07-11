@@ -1,0 +1,6 @@
+[submodule "submodules/tree-sitter-zig"]
+	path = submodules/tree-sitter-zig
+	url = https://github.com/maxxnino/tree-sitter-zig.git
+[submodule "submodules/tree-sitter"]
+	path = submodules/tree-sitter
+	url = https://github.com/tree-sitter/tree-sitter.git
