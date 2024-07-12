@@ -56,6 +56,10 @@ pub fn build(b: *std.Build) void {
     ts.compile.linkLibrary(tree_sitter);
     ts.compile.root_module.addImport("regex", regex);
 
+    _ = addTestableModule(&bops, "src/window/window.zig", &.{
+        .{ .name = "buffer", .module = buffer.module },
+    }, zig_build_test_step);
+
     ////////////////////////////////////////////////////////////////////////////// Executable
 
     {
