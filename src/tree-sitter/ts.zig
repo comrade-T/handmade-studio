@@ -124,3 +124,52 @@ test PredicatesFilter {
         }
     }
 }
+
+test "InputEdit" {
+    const a = std.testing.allocator;
+    const source =
+        \\const std = @import("std");
+    ;
+    const patterns =
+        \\((IDENTIFIER) @identifier
+        \\  (#any-of? @identifier "std" "hello"))
+    ;
+
+    const tree, const query, const cursor = try getTreeForTesting(source, patterns);
+    defer tree.destroy();
+    defer query.destroy();
+    defer cursor.destroy();
+
+    var filter = try PredicatesFilter.init(a, query);
+    defer filter.deinit();
+
+    {
+        const result = filter.nextMatch(source, cursor);
+        const node = result.?.captures()[0].node;
+        try eqStr("std", source[node.getStartByte()..node.getEndByte()]);
+    }
+
+    const edit = b.InputEdit{
+        .start_byte = 7,
+        .old_end_byte = 9,
+        .new_end_byte = 11,
+        .start_point = b.Point{ .row = 0, .column = 7 },
+        .old_end_point = b.Point{ .row = 0, .column = 9 },
+        .new_end_point = b.Point{ .row = 0, .column = 11 },
+    };
+    tree.edit(&edit);
+    try eq(true, tree.getRootNode().hasChanges());
+
+    const new_cursor = try b.Query.Cursor.create();
+    new_cursor.execute(query, tree.getRootNode());
+
+    const new_source =
+        \\const hello = @import("std");
+    ;
+
+    {
+        const result = filter.nextMatch(new_source, new_cursor);
+        const node = result.?.captures()[0].node;
+        try eqStr("hello", new_source[node.getStartByte()..node.getEndByte()]);
+    }
+}
