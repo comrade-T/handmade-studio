@@ -11,10 +11,11 @@ const eql = std.mem.eql;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const CursorWithValidation = struct {
+pub const PredicatesFilter = struct {
     external_allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
     a: std.mem.Allocator,
+    predicates: std.ArrayList(Predicate),
 
     const PredicateError = error{ Unsupported, InvalidAmountOfSteps, InvalidArgument, OutOfMemory };
     const Predicate = union(enum) {
@@ -90,6 +91,7 @@ pub const CursorWithValidation = struct {
             .external_allocator = external_allocator,
             .arena = std.heap.ArenaAllocator.init(external_allocator),
             .a = self.arena.allocator(),
+            .predicates = std.ArrayList(Predicate).init(self.a),
         };
 
         for (0..query.getPatternCount()) |pattern_index| {
@@ -99,7 +101,7 @@ pub const CursorWithValidation = struct {
             if (steps[0].type != .string) continue;
 
             const predicate = try createPredicate(self.a, query, steps);
-            std.debug.print("predicate = {any}\n", .{predicate});
+            try self.predicates.append(predicate);
         }
 
         return self;

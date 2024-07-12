@@ -1,6 +1,6 @@
 const std = @import("std");
 const b = @import("bindings.zig");
-const CursorWithValidation = @import("predicates.zig").CursorWithValidation;
+const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
 
 // test "try ts with Zig" {
 //     const a = std.testing.allocator;
@@ -41,6 +41,9 @@ const CursorWithValidation = @import("predicates.zig").CursorWithValidation;
 //     }
 // }
 
+const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
+
 fn getTreeForTesting(source: []const u8, patterns: []const u8) !struct { *b.Tree, *b.Query } {
     const ziglang = try b.Language.get("zig");
     var parser = try b.Parser.create();
@@ -49,7 +52,8 @@ fn getTreeForTesting(source: []const u8, patterns: []const u8) !struct { *b.Tree
     return .{ try parser.parseString(null, source), try b.Query.create(ziglang, patterns) };
 }
 
-test "CursorWithValidation" {
+test "PredicatesFilter" {
+    const a = std.testing.allocator;
     const source =
         \\const std = @import("std");
         \\const ts = @import("ts")
@@ -66,8 +70,14 @@ test "CursorWithValidation" {
     defer tree.destroy();
     defer query.destroy();
 
-    const a = std.testing.allocator;
+    var filter = try PredicatesFilter.init(a, query);
+    defer filter.deinit();
 
-    var pv = try CursorWithValidation.init(a, query);
-    defer pv.deinit();
+    try eq(2, filter.predicates.items.len);
+    try eqStr("variable.builtin", filter.predicates.items[0].eq.capture);
+    try eqStr("_", filter.predicates.items[0].eq.target);
+    try eqStr("include", filter.predicates.items[1].any_of.capture);
+    try eq(2, filter.predicates.items[1].any_of.targets.items.len);
+    try eqStr("@import", filter.predicates.items[1].any_of.targets.items[0]);
+    try eqStr("@cImport", filter.predicates.items[1].any_of.targets.items[1]);
 }
