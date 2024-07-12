@@ -54,10 +54,12 @@ pub const PredicatesFilter = struct {
         self.external_allocator.destroy(self);
     }
 
-    fn isValid(_: *@This(), source: []const u8, match: Query.Match) bool {
+    fn isValid(self: *@This(), source: []const u8, match: Query.Match) bool {
         for (match.captures()) |cap| {
-            const contents = source[cap.node.getStartByte()..cap.node.getEndByte()];
-            std.debug.print("contents: {s}\n", .{contents});
+            const node = cap.node;
+            const node_contents = source[node.getStartByte()..node.getEndByte()];
+            const predicates = self.patterns[match.pattern_index];
+            for (predicates) |predicate| if (!predicate.eval(node_contents)) return false;
         }
         return true;
     }
@@ -95,6 +97,10 @@ pub const PredicatesFilter = struct {
                 },
             };
         }
+
+        fn eval(self: *const EqPredicate, source: []const u8) bool {
+            return eql(u8, source, self.target);
+        }
     };
 
     const AnyOfPredicate = struct {
@@ -128,6 +134,11 @@ pub const PredicatesFilter = struct {
                 },
             };
         }
+
+        fn eval(self: *const AnyOfPredicate, source: []const u8) bool {
+            for (self.targets) |target| if (eql(u8, source, target)) return true;
+            return false;
+        }
     };
 
     const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown };
@@ -151,6 +162,14 @@ pub const PredicatesFilter = struct {
             if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps);
             if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
             return Predicate{ .unsupported = .unsupported };
+        }
+
+        fn eval(self: *const Predicate, source: []const u8) bool {
+            return switch (self.*) {
+                .eq => self.eq.eval(source),
+                .any_of => self.any_of.eval(source),
+                .unsupported => true,
+            };
         }
     };
 };
