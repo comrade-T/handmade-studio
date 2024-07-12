@@ -1,11 +1,12 @@
 const std = @import("std");
-const ts = @import("bindings.zig");
+const b = @import("bindings.zig");
+const CursorWithValidation = @import("predicates.zig").CursorWithValidation;
 
 test "try ts with Zig" {
     const a = std.testing.allocator;
-    const ziglang = try ts.Language.get("zig");
+    const ziglang = try b.Language.get("zig");
 
-    var parser = try ts.Parser.create();
+    var parser = try b.Parser.create();
     defer parser.destroy();
 
     try parser.setLanguage(ziglang);
@@ -17,17 +18,15 @@ test "try ts with Zig" {
     const tree = try parser.parseString(null, source);
     defer tree.destroy();
 
-    const query = try ts.Query.create(ziglang,
+    const query = try b.Query.create(ziglang,
         \\(IDENTIFIER) @id
     );
     defer query.destroy();
 
-    // TODO: write our own version
-    // TODO: see if flow use `#matches predicate`
-    var pv = try ts.CursorWithValidation.init(a, query);
+    var pv = try CursorWithValidation.init(a, query);
     defer pv.deinit();
 
-    const cursor = try ts.Query.Cursor.create();
+    const cursor = try b.Query.Cursor.create();
     defer cursor.destroy();
 
     cursor.execute(query, tree.getRootNode());
