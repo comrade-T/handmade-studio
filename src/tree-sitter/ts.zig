@@ -63,11 +63,13 @@ test PredicatesFilter {
     const a = std.testing.allocator;
     const source =
         \\const std = @import("std");
-        \\const ts = @import("ts")
+        \\const raylib = @cImport({
+        \\    @cInclude("raylib.h");
+        \\});
     ;
     const patterns =
-        \\((IDENTIFIER) @variable.builtin
-        \\  (#eq? @variable.builtin "_"))
+        \\((IDENTIFIER) @std_identifier
+        \\  (#eq? @std_identifier "std"))
         \\
         \\((BUILTINIDENTIFIER) @include
         \\  (#any-of? @include "@import" "@cImport"))
@@ -85,23 +87,49 @@ test PredicatesFilter {
     var filter = try PredicatesFilter.init(a, query);
     defer filter.deinit();
 
-    try eq(3, filter.patterns.len);
+    {
+        try eq(3, filter.patterns.len);
 
-    try eq(1, filter.patterns[0].len);
-    try eqStr("variable.builtin", filter.patterns[0][0].eq.capture);
-    try eqStr("_", filter.patterns[0][0].eq.target);
+        try eq(1, filter.patterns[0].len);
+        try eqStr("std_identifier", filter.patterns[0][0].eq.capture);
+        try eqStr("std", filter.patterns[0][0].eq.target);
 
-    try eq(1, filter.patterns[1].len);
-    try eqStr("include", filter.patterns[1][0].any_of.capture);
-    try eq(2, filter.patterns[1][0].any_of.targets.len);
-    try eqStr("@import", filter.patterns[1][0].any_of.targets[0]);
-    try eqStr("@cImport", filter.patterns[1][0].any_of.targets[1]);
+        try eq(1, filter.patterns[1].len);
+        try eqStr("include", filter.patterns[1][0].any_of.capture);
+        try eq(2, filter.patterns[1][0].any_of.targets.len);
+        try eqStr("@import", filter.patterns[1][0].any_of.targets[0]);
+        try eqStr("@cImport", filter.patterns[1][0].any_of.targets[1]);
 
-    try eq(2, filter.patterns[2].len);
-    try eqStr("contrived-example", filter.patterns[2][0].eq.capture);
-    try eqStr("@contrived", filter.patterns[2][0].eq.target);
-    try eq(.unsupported, filter.patterns[2][1].unsupported);
+        try eq(2, filter.patterns[2].len);
+        try eqStr("contrived-example", filter.patterns[2][0].eq.capture);
+        try eqStr("@contrived", filter.patterns[2][0].eq.target);
+        try eq(.unsupported, filter.patterns[2][1].unsupported);
+    }
 
-    // _ = filter.nextMatch(source, cursor);
-    // _ = filter.nextMatch(source, cursor);
+    {
+        {
+            const result = filter.nextMatch(source, cursor);
+            const node = result.?.captures()[0].node;
+            try eq(1, result.?.captures_len);
+            try eqStr("std", source[node.getStartByte()..node.getEndByte()]);
+        }
+
+        {
+            const result = filter.nextMatch(source, cursor);
+            const node = result.?.captures()[0].node;
+            try eq(1, result.?.captures_len);
+            try eqStr("@import", source[node.getStartByte()..node.getEndByte()]);
+        }
+
+        {
+            const result = filter.nextMatch(source, cursor);
+            const node = result.?.captures()[0].node;
+            try eq(1, result.?.captures_len);
+            try eqStr("@cImport", source[node.getStartByte()..node.getEndByte()]);
+        }
+
+        {
+            try eq(null, filter.nextMatch(source, cursor));
+        }
+    }
 }

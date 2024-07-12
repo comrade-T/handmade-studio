@@ -54,7 +54,14 @@ pub const PredicatesFilter = struct {
         self.external_allocator.destroy(self);
     }
 
-    fn isValid(self: *@This(), source: []const u8, match: Query.Match) bool {
+    pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
+        while (true) {
+            const match = cursor.nextMatch() orelse return null;
+            if (self.allPredicateMatches(source, match)) return match;
+        }
+    }
+
+    fn allPredicateMatches(self: *@This(), source: []const u8, match: Query.Match) bool {
         for (match.captures()) |cap| {
             const node = cap.node;
             const node_contents = source[node.getStartByte()..node.getEndByte()];
@@ -62,13 +69,6 @@ pub const PredicatesFilter = struct {
             for (predicates) |predicate| if (!predicate.eval(node_contents)) return false;
         }
         return true;
-    }
-
-    pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
-        while (true) {
-            const match = cursor.nextMatch() orelse return null;
-            if (self.isValid(source, match)) return match;
-        }
     }
 
     /////////////////////////////
