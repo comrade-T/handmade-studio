@@ -23,7 +23,7 @@ pub const CursorWithValidation = struct {
     arena: std.heap.ArenaAllocator,
     a: std.mem.Allocator,
 
-    pub fn init(external_allocator: std.mem.Allocator, _: *const Query) !*@This() {
+    pub fn init(external_allocator: std.mem.Allocator, query: *const Query) !*@This() {
         var self = try external_allocator.create(@This());
 
         self.* = .{
@@ -31,6 +31,26 @@ pub const CursorWithValidation = struct {
             .arena = std.heap.ArenaAllocator.init(external_allocator),
             .a = self.arena.allocator(),
         };
+
+        for (0..query.getPatternCount()) |pattern_index| {
+            const predicate_steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
+
+            std.debug.print("--------------------------\n", .{});
+
+            for (predicate_steps) |step| {
+                switch (step.type) {
+                    .string => {
+                        const str_arg = query.getStringValueForId(@as(u32, @intCast(step.value_id)));
+                        std.debug.print(".string => {s}\n", .{str_arg});
+                    },
+                    .capture => {
+                        const capture_name = query.getCaptureNameForId(@as(u32, @intCast(step.value_id)));
+                        std.debug.print(".capture => {s}\n", .{capture_name});
+                    },
+                    .done => {},
+                }
+            }
+        }
 
         return self;
     }

@@ -54,7 +54,13 @@ test "CursorWithValidation" {
         \\const std = @import("std");
         \\const ts = @import("ts")
     ;
-    const patterns = "(IDENTIFIER) @identifier";
+    const patterns =
+        \\((IDENTIFIER) @variable.builtin
+        \\  (#eq? @variable.builtin "_"))
+        \\
+        \\((BUILTINIDENTIFIER) @include
+        \\  (#any-of? @include "@import" "@cImport"))
+    ;
 
     const tree, const query = try getTreeForTesting(source, patterns);
     defer tree.destroy();
