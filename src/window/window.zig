@@ -1,4 +1,5 @@
 const std = @import("std");
+const ts = @import("ts").b;
 const Buffer = @import("buffer").Buffer;
 const Cursor = @import("cursor").Cursor;
 
@@ -14,7 +15,10 @@ const Window = struct {
     buffer: *Buffer,
     cursor: Cursor,
 
-    pub fn create(external_allocator: Allocator) !*@This() {
+    parser: *ts.Parser,
+    tree: *ts.Tree,
+
+    pub fn create(external_allocator: Allocator, lang: *const ts.Language) !*@This() {
         var self = try external_allocator.create(@This());
 
         self.* = .{
@@ -24,12 +28,20 @@ const Window = struct {
 
             .buffer = try Buffer.create(self.a, self.a),
             .cursor = Cursor{},
+
+            .parser = try ts.Parser.create(),
+            .tree = undefined,
         };
+
+        try self.parser.setLanguage(lang);
+        self.tree = try self.parser.parseString(null, "");
 
         return self;
     }
 
     pub fn deinit(self: *@This()) void {
+        self.parser.destroy();
+        self.tree.destroy();
         self.buffer.deinit();
         self.arena.deinit();
         self.external_allocator.destroy(self);
@@ -38,8 +50,9 @@ const Window = struct {
 
 test Window {
     const a = std.testing.allocator;
+    const ziglang = try ts.Language.get("zig");
 
-    var window = try Window.create(a);
+    var window = try Window.create(a, ziglang);
     defer window.deinit();
 
     window.cursor.up(100);

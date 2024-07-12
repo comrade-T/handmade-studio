@@ -1,5 +1,5 @@
 const std = @import("std");
-const b = @import("bindings.zig");
+pub const b = @import("bindings.zig");
 const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
 
 const eq = std.testing.expectEqual;
