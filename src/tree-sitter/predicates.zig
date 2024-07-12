@@ -16,7 +16,7 @@ pub const CursorWithValidation = struct {
     arena: std.heap.ArenaAllocator,
     a: std.mem.Allocator,
 
-    const PredicateError = error{ Unsupported, InvalidAmountOfSteps, InvalidArgument };
+    const PredicateError = error{ Unsupported, InvalidAmountOfSteps, InvalidArgument, OutOfMemory };
     const Predicate = union(enum) {
         eq: struct {
             capture: []const u8,
@@ -28,11 +28,16 @@ pub const CursorWithValidation = struct {
         },
     };
 
-    fn createPredicate(a: Allocator, query: *const Query, steps: []*PredicateStep) PredicateError!Predicate {
+    fn createPredicate(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
         const name = query.getStringValueForId(@as(u32, @intCast(steps[0].value_id)));
 
+        if (steps[steps.len - 1].type != .done) {
+            std.log.err("Last step of this predicate {s} isn't .done.", .{name});
+            return PredicateError.InvalidArgument;
+        }
+
         if (eql(u8, name, "eq?")) {
-            if (steps.len != 3) return PredicateError.InvalidAmountOfSteps;
+            if (steps.len != 4) return PredicateError.InvalidAmountOfSteps;
             if (steps[1].type != .capture) {
                 std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
                 return PredicateError.InvalidArgument;
@@ -51,7 +56,7 @@ pub const CursorWithValidation = struct {
         }
 
         if (eql(u8, name, "any-of?")) {
-            if (steps.len < 3) return PredicateError.InvalidAmountOfSteps;
+            if (steps.len < 4) return PredicateError.InvalidAmountOfSteps;
             if (steps[1].type != .capture) {
                 std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
                 return PredicateError.InvalidArgument;
@@ -59,12 +64,12 @@ pub const CursorWithValidation = struct {
 
             var target_list = StringList.init(a);
             errdefer target_list.deinit();
-            for (2..steps.len) |i| {
+            for (2..steps.len - 1) |i| {
                 if (steps[i].type != .string) {
                     std.log.err("Arguments second and beyond of #any-of? predicate must be type .string, got {any}", .{steps[i].type});
                     return PredicateError.InvalidArgument;
                 }
-                target_list.append(query.getStringValueForId(steps[i].value_id));
+                try target_list.append(query.getStringValueForId(steps[i].value_id));
             }
 
             return Predicate{
@@ -93,23 +98,8 @@ pub const CursorWithValidation = struct {
             if (steps.len == 0) continue;
             if (steps[0].type != .string) continue;
 
-            const predicate = try createPredicate(self.a, steps);
+            const predicate = try createPredicate(self.a, query, steps);
             std.debug.print("predicate = {any}\n", .{predicate});
-
-            for (1..steps.len) |i| {
-                const step = steps[i];
-                switch (step.type) {
-                    .string => {
-                        const str_arg = query.getStringValueForId(@as(u32, @intCast(step.value_id)));
-                        std.debug.print(".string => {s}\n", .{str_arg});
-                    },
-                    .capture => {
-                        const capture_name = query.getCaptureNameForId(@as(u32, @intCast(step.value_id)));
-                        std.debug.print(".capture => {s}\n", .{capture_name});
-                    },
-                    .done => {},
-                }
-            }
         }
 
         return self;
