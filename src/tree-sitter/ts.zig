@@ -2,45 +2,6 @@ const std = @import("std");
 const b = @import("bindings.zig");
 const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
 
-// test "try ts with Zig" {
-//     const a = std.testing.allocator;
-//     const ziglang = try b.Language.get("zig");
-//
-//     var parser = try b.Parser.create();
-//     defer parser.destroy();
-//
-//     try parser.setLanguage(ziglang);
-//
-//     const source =
-//         \\const std = @import("std");
-//         \\const ts = @import("ts")
-//     ;
-//     const tree = try parser.parseString(null, source);
-//     defer tree.destroy();
-//
-//     const query = try b.Query.create(ziglang,
-//         \\(IDENTIFIER) @id
-//     );
-//     defer query.destroy();
-//
-//     var pv = try CursorWithValidation.init(a, query);
-//     defer pv.deinit();
-//
-//     const cursor = try b.Query.Cursor.create();
-//     defer cursor.destroy();
-//
-//     cursor.execute(query, tree.getRootNode());
-//
-//     var i: u16 = 0;
-//     while (pv.nextCapture(source, cursor)) |capture| {
-//         const node = capture.node;
-//         const content = source[node.getStartByte()..node.getEndByte()];
-//         if (i == 0) try std.testing.expectEqualStrings("std", content);
-//         if (i == 1) try std.testing.expectEqualStrings("ts", content);
-//         i += 1;
-//     }
-// }
-
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
@@ -66,6 +27,8 @@ test PredicatesFilter {
         \\const raylib = @cImport({
         \\    @cInclude("raylib.h");
         \\});
+        \\
+        \\const StandardAllocator = standard.mem.Allocator;
     ;
     const patterns =
         \\((IDENTIFIER) @std_identifier
@@ -77,6 +40,16 @@ test PredicatesFilter {
         \\((IDENTIFIER) @contrived-example
         \\  (#eq? @contrived-example "@contrived")
         \\  (#contrived-predicate? @contrived-example "contrived-argument"))
+        \\
+        \\;; assume TitleCase is a type
+        \\(
+        \\  [
+        \\    variable_type_function: (IDENTIFIER)
+        \\    field_access: (IDENTIFIER)
+        \\    parameter: (IDENTIFIER)
+        \\  ] @type
+        \\  (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
+        \\)
     ;
 
     const tree, const query, const cursor = try getTreeForTesting(source, patterns);
@@ -88,7 +61,7 @@ test PredicatesFilter {
     defer filter.deinit();
 
     {
-        try eq(3, filter.patterns.len);
+        try eq(4, filter.patterns.len);
 
         try eq(1, filter.patterns[0].len);
         try eqStr("std_identifier", filter.patterns[0][0].eq.capture);
@@ -104,6 +77,10 @@ test PredicatesFilter {
         try eqStr("contrived-example", filter.patterns[2][0].eq.capture);
         try eqStr("@contrived", filter.patterns[2][0].eq.target);
         try eq(.unsupported, filter.patterns[2][1].unsupported);
+
+        try eq(1, filter.patterns[3].len);
+        try eqStr("type", filter.patterns[3][0].match.capture);
+        try eqStr("^[A-Z]([a-z]+[A-Za-z0-9]*)*$", filter.patterns[3][0].match.regex_pattern);
     }
 
     {
@@ -126,6 +103,20 @@ test PredicatesFilter {
             const node = result.?.captures()[0].node;
             try eq(1, result.?.captures_len);
             try eqStr("@cImport", source[node.getStartByte()..node.getEndByte()]);
+        }
+
+        {
+            const result = filter.nextMatch(source, cursor);
+            const node = result.?.captures()[0].node;
+            try eq(1, result.?.captures_len);
+            try eqStr("StandardAllocator", source[node.getStartByte()..node.getEndByte()]);
+        }
+
+        {
+            const result = filter.nextMatch(source, cursor);
+            const node = result.?.captures()[0].node;
+            try eq(1, result.?.captures_len);
+            try eqStr("Allocator", source[node.getStartByte()..node.getEndByte()]);
         }
 
         {

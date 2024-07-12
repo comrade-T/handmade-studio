@@ -1,6 +1,7 @@
 // Copied & Edited from https://github.com/ziglibs/treez
 
 const std = @import("std");
+const Regex = @import("regex").Regex;
 const b = @import("bindings.zig");
 
 const Query = b.Query;
@@ -66,7 +67,7 @@ pub const PredicatesFilter = struct {
             const node = cap.node;
             const node_contents = source[node.getStartByte()..node.getEndByte()];
             const predicates = self.patterns[match.pattern_index];
-            for (predicates) |predicate| if (!predicate.eval(node_contents)) return false;
+            for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
         }
         return true;
     }
@@ -141,10 +142,43 @@ pub const PredicatesFilter = struct {
         }
     };
 
+    const MatchPredicate = struct {
+        capture: []const u8,
+        regex_pattern: []const u8,
+
+        fn create(query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+            if (steps.len != 4) {
+                std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
+                return PredicateError.InvalidAmountOfSteps;
+            }
+            if (steps[1].type != .capture) {
+                std.log.err("First argument of #match? predicate must be type .capture, got {any}", .{steps[1].type});
+                return PredicateError.InvalidArgument;
+            }
+            if (steps[2].type != .string) {
+                std.log.err("Second argument of #match? predicate must be type .string, got {any}", .{steps[2].type});
+                return PredicateError.InvalidArgument;
+            }
+            return Predicate{
+                .match = MatchPredicate{
+                    .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
+                    .regex_pattern = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                },
+            };
+        }
+
+        fn eval(self: *const MatchPredicate, a: Allocator, source: []const u8) bool {
+            var re = Regex.compile(a, self.regex_pattern) catch return false;
+            defer re.deinit();
+            return re.match(source) catch false;
+        }
+    };
+
     const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown };
     const Predicate = union(enum) {
         eq: EqPredicate,
         any_of: AnyOfPredicate,
+        match: MatchPredicate,
         unsupported: enum { unsupported },
 
         fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
@@ -161,13 +195,15 @@ pub const PredicatesFilter = struct {
 
             if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps);
             if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
+            if (eql(u8, name, "match?")) return MatchPredicate.create(query, steps);
             return Predicate{ .unsupported = .unsupported };
         }
 
-        fn eval(self: *const Predicate, source: []const u8) bool {
+        fn eval(self: *const Predicate, a: Allocator, source: []const u8) bool {
             return switch (self.*) {
                 .eq => self.eq.eval(source),
                 .any_of => self.any_of.eval(source),
+                .match => self.match.eval(a, source),
                 .unsupported => true,
             };
         }
