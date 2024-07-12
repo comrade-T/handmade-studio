@@ -50,7 +50,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/buffer/cursor.zig", &.{}, zig_build_test_step);
+    const cursor = addTestableModule(&bops, "src/buffer/cursor.zig", &.{}, zig_build_test_step);
 
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{}, zig_build_test_step);
     ts.compile.linkLibrary(tree_sitter);
@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) void {
 
     _ = addTestableModule(&bops, "src/window/window.zig", &.{
         .{ .name = "buffer", .module = buffer.module },
+        .{ .name = "cursor", .module = cursor.module },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executable

@@ -1,7 +1,10 @@
 const std = @import("std");
 const Buffer = @import("buffer").Buffer;
+const Cursor = @import("cursor").Cursor;
 
 const Allocator = std.mem.Allocator;
+const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
 
 const Window = struct {
     external_allocator: Allocator,
@@ -9,6 +12,7 @@ const Window = struct {
     a: Allocator,
 
     buffer: *Buffer,
+    cursor: Cursor,
 
     pub fn create(external_allocator: Allocator) !*@This() {
         var self = try external_allocator.create(@This());
@@ -19,6 +23,7 @@ const Window = struct {
             .a = self.arena.allocator(),
 
             .buffer = try Buffer.create(self.a, self.a),
+            .cursor = Cursor{},
         };
 
         return self;
@@ -36,4 +41,7 @@ test Window {
 
     var window = try Window.create(a);
     defer window.deinit();
+
+    window.cursor.up(100);
+    try eq(0, window.cursor.line);
 }
