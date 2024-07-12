@@ -4,17 +4,10 @@ const std = @import("std");
 const b = @import("bindings.zig");
 
 const Query = b.Query;
+const PredicateStep = b.Query.PredicateStep;
 const Allocator = std.mem.Allocator;
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const EqualPredicate = struct {
-    a: []const u8,
-    b: union(enum) { string: []const u8, capture: []const u8 },
-};
-const PredicateList = std.ArrayList(EqualPredicate);
-const PredicateMap = std.AutoHashMap(u32, packed struct { index: u32, len: u32 });
-const CaptureIdNameMap = std.StringHashMap(u32);
+const StringList = std.ArrayList([]const u8);
+const eql = std.mem.eql;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -23,7 +16,69 @@ pub const CursorWithValidation = struct {
     arena: std.heap.ArenaAllocator,
     a: std.mem.Allocator,
 
-    pub fn init(external_allocator: std.mem.Allocator, query: *const Query) !*@This() {
+    const PredicateError = error{ Unsupported, InvalidAmountOfSteps, InvalidArgument };
+    const Predicate = union(enum) {
+        eq: struct {
+            capture: []const u8,
+            target: []const u8,
+        },
+        any_of: struct {
+            capture: []const u8,
+            targets: StringList,
+        },
+    };
+
+    fn createPredicate(a: Allocator, query: *const Query, steps: []*PredicateStep) PredicateError!Predicate {
+        const name = query.getStringValueForId(@as(u32, @intCast(steps[0].value_id)));
+
+        if (eql(u8, name, "eq?")) {
+            if (steps.len != 3) return PredicateError.InvalidAmountOfSteps;
+            if (steps[1].type != .capture) {
+                std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
+                return PredicateError.InvalidArgument;
+            }
+            if (steps[2].type != .string) {
+                std.log.err("Second argument of #eq? predicate must be type .string, got {any}", .{steps[2].type});
+                return PredicateError.InvalidArgument;
+            }
+
+            return Predicate{
+                .eq = .{
+                    .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
+                    .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                },
+            };
+        }
+
+        if (eql(u8, name, "any-of?")) {
+            if (steps.len < 3) return PredicateError.InvalidAmountOfSteps;
+            if (steps[1].type != .capture) {
+                std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
+                return PredicateError.InvalidArgument;
+            }
+
+            var target_list = StringList.init(a);
+            errdefer target_list.deinit();
+            for (2..steps.len) |i| {
+                if (steps[i].type != .string) {
+                    std.log.err("Arguments second and beyond of #any-of? predicate must be type .string, got {any}", .{steps[i].type});
+                    return PredicateError.InvalidArgument;
+                }
+                target_list.append(query.getStringValueForId(steps[i].value_id));
+            }
+
+            return Predicate{
+                .any_of = .{
+                    .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
+                    .targets = target_list,
+                },
+            };
+        }
+
+        return PredicateError.Unsupported;
+    }
+
+    pub fn init(external_allocator: Allocator, query: *const Query) !*@This() {
         var self = try external_allocator.create(@This());
 
         self.* = .{
@@ -33,11 +88,16 @@ pub const CursorWithValidation = struct {
         };
 
         for (0..query.getPatternCount()) |pattern_index| {
-            const predicate_steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
+            const steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
 
-            std.debug.print("--------------------------\n", .{});
+            if (steps.len == 0) continue;
+            if (steps[0].type != .string) continue;
 
-            for (predicate_steps) |step| {
+            const predicate = try createPredicate(self.a, steps);
+            std.debug.print("predicate = {any}\n", .{predicate});
+
+            for (1..steps.len) |i| {
+                const step = steps[i];
                 switch (step.type) {
                     .string => {
                         const str_arg = query.getStringValueForId(@as(u32, @intCast(step.value_id)));
