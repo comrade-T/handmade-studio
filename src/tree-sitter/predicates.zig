@@ -55,9 +55,9 @@ pub const PredicatesFilter = struct {
     }
 
     fn isValid(_: *@This(), source: []const u8, match: Query.Match) bool {
-        for (match.captures(), 0..) |cap, i| {
+        for (match.captures()) |cap| {
             const contents = source[cap.node.getStartByte()..cap.node.getEndByte()];
-            std.debug.print("i: {d}, contents: {s}\n", .{ i, contents });
+            std.debug.print("contents: {s}\n", .{contents});
         }
         return true;
     }
@@ -71,75 +71,85 @@ pub const PredicatesFilter = struct {
 
     /////////////////////////////
 
-    const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory };
-    const Predicate = union(enum) {
-        eq: struct {
-            capture: []const u8,
-            target: []const u8,
-        },
-        any_of: struct {
-            capture: []const u8,
-            targets: [][]const u8,
-        },
-        unsupported: enum { unsupported },
+    const EqPredicate = struct {
+        capture: []const u8,
+        target: []const u8,
+
+        fn create(query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+            if (steps.len != 4) {
+                std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
+                return PredicateError.InvalidAmountOfSteps;
+            }
+            if (steps[1].type != .capture) {
+                std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
+                return PredicateError.InvalidArgument;
+            }
+            if (steps[2].type != .string) {
+                std.log.err("Second argument of #eq? predicate must be type .string, got {any}", .{steps[2].type});
+                return PredicateError.InvalidArgument;
+            }
+            return Predicate{
+                .eq = EqPredicate{
+                    .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
+                    .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                },
+            };
+        }
+    };
+
+    const AnyOfPredicate = struct {
+        capture: []const u8,
+        targets: [][]const u8,
 
         fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
-            const name = query.getStringValueForId(@as(u32, @intCast(steps[0].value_id)));
-
-            if (steps[steps.len - 1].type != .done) {
-                std.log.err("Last step of this predicate {s} isn't .done.", .{name});
+            if (steps.len < 4) {
+                std.log.err("Expected steps.len to be < 4, got {d}\n", .{steps.len});
+                return PredicateError.InvalidAmountOfSteps;
+            }
+            if (steps[1].type != .capture) {
+                std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
                 return PredicateError.InvalidArgument;
             }
 
-            if (eql(u8, name, "eq?")) {
-                if (steps.len != 4) {
-                    std.debug.print("Expected steps.len == 4, got {d}\n", .{steps.len});
-                    return PredicateError.InvalidAmountOfSteps;
-                }
-
-                if (steps[1].type != .capture) {
-                    std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
+            var targets = std.ArrayList([]const u8).init(a);
+            errdefer targets.deinit();
+            for (2..steps.len - 1) |i| {
+                if (steps[i].type != .string) {
+                    std.log.err("Arguments second and beyond of #any-of? predicate must be type .string, got {any}", .{steps[i].type});
                     return PredicateError.InvalidArgument;
                 }
-                if (steps[2].type != .string) {
-                    std.log.err("Second argument of #eq? predicate must be type .string, got {any}", .{steps[2].type});
-                    return PredicateError.InvalidArgument;
-                }
-
-                return Predicate{
-                    .eq = .{
-                        .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
-                        .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
-                    },
-                };
+                try targets.append(query.getStringValueForId(steps[i].value_id));
             }
 
-            if (eql(u8, name, "any-of?")) {
-                if (steps.len < 4) return PredicateError.InvalidAmountOfSteps;
+            return Predicate{
+                .any_of = AnyOfPredicate{
+                    .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
+                    .targets = try targets.toOwnedSlice(),
+                },
+            };
+        }
+    };
 
-                if (steps[1].type != .capture) {
-                    std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
-                    return PredicateError.InvalidArgument;
-                }
+    const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown };
+    const Predicate = union(enum) {
+        eq: EqPredicate,
+        any_of: AnyOfPredicate,
+        unsupported: enum { unsupported },
 
-                var targets = std.ArrayList([]const u8).init(a);
-                errdefer targets.deinit();
-                for (2..steps.len - 1) |i| {
-                    if (steps[i].type != .string) {
-                        std.log.err("Arguments second and beyond of #any-of? predicate must be type .string, got {any}", .{steps[i].type});
-                        return PredicateError.InvalidArgument;
-                    }
-                    try targets.append(query.getStringValueForId(steps[i].value_id));
-                }
+        fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+            if (steps[0].type != .string) {
+                std.log.err("First step of predicate isn't .string.", .{});
+                return PredicateError.Unknown;
+            }
+            const name = query.getStringValueForId(@as(u32, @intCast(steps[0].value_id)));
 
-                return Predicate{
-                    .any_of = .{
-                        .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
-                        .targets = try targets.toOwnedSlice(),
-                    },
-                };
+            if (steps[steps.len - 1].type != .done) {
+                std.log.err("Last step of predicate {s} isn't .done.", .{name});
+                return PredicateError.InvalidArgument;
             }
 
+            if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps);
+            if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
             return Predicate{ .unsupported = .unsupported };
         }
     };
