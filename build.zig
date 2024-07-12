@@ -19,6 +19,8 @@ pub fn build(b: *std.Build) void {
     const zg = b.dependency("zg", .{ .target = target, .optimize = optimize });
     const raylib = b.dependency("raylib-zig", .{ .target = target, .optimize = optimize });
 
+    const regex = b.addModule("regex", .{ .root_source_file = b.path("submodules/regex/src/regex.zig") });
+
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
     const tree_sitter = b.addStaticLibrary(.{
@@ -52,6 +54,7 @@ pub fn build(b: *std.Build) void {
 
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{}, zig_build_test_step);
     ts.compile.linkLibrary(tree_sitter);
+    ts.compile.root_module.addImport("regex", regex);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 
