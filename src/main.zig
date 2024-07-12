@@ -162,7 +162,7 @@ fn insert_chars(
     cursor: *Cursor,
     cached_contents: *std.ArrayList(u8),
 ) !void {
-    _, _, buf.root = try buf.insert_chars(buf.a, cursor.line, cursor.col, chars);
+    _, _, buf.root = try buf.insertChars(buf.a, cursor.line, cursor.col, chars);
 
     cached_contents.deinit();
     cached_contents.* = try buf.toArrayList(a);

@@ -184,7 +184,12 @@ pub const Buffer = struct {
         }
     };
 
-    pub fn insert_chars(
+    pub fn insertCharsAndUpdate(self: *const Buffer, line: usize, col: usize, s: []const u8) !struct { usize, usize } {
+        const new_line, const new_col, self.buffer.root = try self.insertChars(self.a, line, col, s);
+        return .{ new_line, new_col };
+    }
+
+    pub fn insertChars(
         self: *const Buffer,
         a: Allocator,
         line_: usize,
@@ -805,7 +810,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "B", .bol = true, .eol = false }, leaves[0].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 0, "1");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 0, "1");
         try testBufferGetLine(a, buf, 0, "1B");
 
         {
@@ -815,7 +820,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "B", .bol = false, .eol = false }, leaves[1].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 1, "2");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 1, "2");
         try testBufferGetLine(a, buf, 0, "12B");
 
         {
@@ -826,7 +831,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "B", .bol = false, .eol = false }, leaves[2].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 3, "_");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 3, "_");
         try testBufferGetLine(a, buf, 0, "12B_");
     }
 
@@ -840,7 +845,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "", .bol = true, .eol = false }, leaves[0].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 0, "안녕");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 0, "안녕");
         try testBufferGetLine(a, buf, 0, "안녕");
 
         {
@@ -850,7 +855,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "", .bol = false, .eol = false }, leaves[1].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 2, "!");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 2, "!");
         try testBufferGetLine(a, buf, 0, "안녕!");
 
         {
@@ -860,7 +865,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[1].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 3, " Hello there!");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 3, " Hello there!");
         try testBufferGetLine(a, buf, 0, "안녕! Hello there!");
 
         {
@@ -871,7 +876,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = " Hello there!", .bol = false, .eol = false }, leaves[2].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 15, " 👋");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 15, " 👋");
         try testBufferGetLine(a, buf, 0, "안녕! Hello there 👋!");
 
         {
@@ -884,7 +889,7 @@ test "Buffer.insert_chars()" {
             try eqDeep(Leaf{ .buf = "!", .bol = false, .eol = false }, leaves[4].*);
         }
 
-        _, _, buf.root = try buf.insert_chars(buf.a, 0, 2, "하세요");
+        _, _, buf.root = try buf.insertChars(buf.a, 0, 2, "하세요");
         try testBufferGetLine(a, buf, 0, "안녕하세요! Hello there 👋!");
 
         {
@@ -903,7 +908,7 @@ test "Buffer.insert_chars()" {
         buf.root = try buf.load_from_string("");
         try testNodeStore(a, buf.root, "");
 
-        for (0..10) |i| _, _, buf.root = try buf.insert_chars(buf.a, 0, i, "j");
+        for (0..10) |i| _, _, buf.root = try buf.insertChars(buf.a, 0, i, "j");
         try testNodeStore(a, buf.root, "jjjjjjjjjj");
 
         const leaves = try walkThroughNodeToGetAllLeaves(buf.a, buf.root);

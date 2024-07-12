@@ -46,6 +46,20 @@ const Window = struct {
         self.arena.deinit();
         self.external_allocator.destroy(self);
     }
+
+    pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) !void {
+        const new_line, const new_col = self.buffer.insertCharsAndUpdate(self.buffer.a, line, col, chars);
+
+        const edit = ts.InputEdit{
+            .start_byte = 0, // how??? how do I get the byte offset?
+            .old_end_byte = 0, // how??? how do I get the byte offset?
+            .new_end_byte = 0, // how??? how do I get the byte offset?
+            .start_point = ts.Point{ .row = self.cursor.line, .column = self.cursor.col },
+            .old_end_point = ts.Point{ .row = line, .column = col },
+            .new_end_point = ts.Point{ .row = new_line, .column = new_col },
+        };
+        self.tree.edit(edit);
+    }
 };
 
 test Window {
