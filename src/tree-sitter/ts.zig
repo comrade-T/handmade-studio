@@ -5,11 +5,10 @@ const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
-fn getTreeForTesting(source: []const u8, patterns: []const u8) !struct { *b.Tree, *b.Query, *b.Query.Cursor } {
+fn getTreeForTesting(source: []const u8, patterns: []const u8) !struct { *b.Parser, *b.Tree, *b.Query, *b.Query.Cursor } {
     const ziglang = try b.Language.get("zig");
 
     var parser = try b.Parser.create();
-    defer parser.destroy();
     try parser.setLanguage(ziglang);
 
     const tree = try parser.parseString(null, source);
@@ -17,7 +16,7 @@ fn getTreeForTesting(source: []const u8, patterns: []const u8) !struct { *b.Tree
     const cursor = try b.Query.Cursor.create();
     cursor.execute(query, tree.getRootNode());
 
-    return .{ tree, query, cursor };
+    return .{ parser, tree, query, cursor };
 }
 
 test PredicatesFilter {
@@ -52,7 +51,8 @@ test PredicatesFilter {
         \\)
     ;
 
-    const tree, const query, const cursor = try getTreeForTesting(source, patterns);
+    const parser, const tree, const query, const cursor = try getTreeForTesting(source, patterns);
+    defer parser.destroy();
     defer tree.destroy();
     defer query.destroy();
     defer cursor.destroy();
@@ -125,18 +125,21 @@ test PredicatesFilter {
     }
 }
 
-test "InputEdit" {
-    const a = std.testing.allocator;
-    const source =
-        \\const std = @import("std");
-    ;
-    const patterns =
-        \\((IDENTIFIER) @identifier
-        \\  (#any-of? @identifier "std" "hello"))
-    ;
+fn testInputEdit(
+    old_source: []const u8,
+    patterns: []const u8,
+    old_expect: ?[]const u8,
+    edit: b.InputEdit,
+    new_source: []const u8,
+    new_expect: ?[]const u8,
+) !void {
+    ///////////////////////////// old tree
 
-    const tree, const query, const cursor = try getTreeForTesting(source, patterns);
-    defer tree.destroy();
+    const a = std.testing.allocator;
+
+    const parser, const old_tree, const query, const cursor = try getTreeForTesting(old_source, patterns);
+    defer parser.destroy();
+    defer old_tree.destroy();
     defer query.destroy();
     defer cursor.destroy();
 
@@ -144,11 +147,47 @@ test "InputEdit" {
     defer filter.deinit();
 
     {
-        const result = filter.nextMatch(source, cursor);
-        const node = result.?.captures()[0].node;
-        try eqStr("std", source[node.getStartByte()..node.getEndByte()]);
+        const result = filter.nextMatch(old_source, cursor);
+        if (old_expect) |expected| {
+            const node = result.?.captures()[0].node;
+            try eqStr(expected, old_source[node.getStartByte()..node.getEndByte()]);
+        } else {
+            try eq(null, result);
+        }
     }
 
+    ///////////////////////////// new tree
+
+    old_tree.edit(&edit);
+    try eq(true, old_tree.getRootNode().hasChanges());
+
+    const new_tree = try parser.parseString(old_tree, new_source);
+    defer new_tree.destroy();
+    const new_cursor = try b.Query.Cursor.create();
+    new_cursor.execute(query, new_tree.getRootNode());
+
+    {
+        const result = filter.nextMatch(new_source, new_cursor);
+        if (new_expect) |expected| {
+            const node = result.?.captures()[0].node;
+            try eqStr(expected, new_source[node.getStartByte()..node.getEndByte()]);
+        } else {
+            try eq(null, result);
+        }
+    }
+}
+
+test "InputEdit" {
+    const source =
+        \\const std = @import("std");
+    ;
+    const patterns =
+        \\((IDENTIFIER) @identifier
+        \\  (#any-of? @identifier "std" "hello"))
+    ;
+    const new_source =
+        \\const hello = @import("std");
+    ;
     const edit = b.InputEdit{
         .start_byte = 7,
         .old_end_byte = 9,
@@ -157,19 +196,27 @@ test "InputEdit" {
         .old_end_point = b.Point{ .row = 0, .column = 9 },
         .new_end_point = b.Point{ .row = 0, .column = 11 },
     };
-    tree.edit(&edit);
-    try eq(true, tree.getRootNode().hasChanges());
+    try testInputEdit(source, patterns, "std", edit, new_source, "hello");
+}
 
-    const new_cursor = try b.Query.Cursor.create();
-    new_cursor.execute(query, tree.getRootNode());
-
+test "InputEdit_insert_char" {
+    const old_source =
+        \\const = @import("std");
+    ;
+    const patterns =
+        \\((IDENTIFIER) @identifier
+        \\  (#any-of? @identifier "std" "hello"))
+    ;
+    const edit = b.InputEdit{
+        .start_byte = 6,
+        .old_end_byte = 6,
+        .new_end_byte = 11,
+        .start_point = b.Point{ .row = 0, .column = 6 },
+        .old_end_point = b.Point{ .row = 0, .column = 6 },
+        .new_end_point = b.Point{ .row = 0, .column = 11 },
+    };
     const new_source =
         \\const hello = @import("std");
     ;
-
-    {
-        const result = filter.nextMatch(new_source, new_cursor);
-        const node = result.?.captures()[0].node;
-        try eqStr("hello", new_source[node.getStartByte()..node.getEndByte()]);
-    }
+    try testInputEdit(old_source, patterns, null, edit, new_source, "hello");
 }
