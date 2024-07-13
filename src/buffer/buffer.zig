@@ -125,8 +125,8 @@ pub const Buffer = struct {
 
                 if (leaf_num_of_chars + ctx.last_line_num_of_chars.* >= ctx.col) {
                     const num_of_chars_till_col = ctx.last_line_num_of_chars.* + ctx.col;
-                    const remaining_num_of_bytes = byte_count_for_range(leaf.buf, 0, num_of_chars_till_col);
-                    ctx.result.* += ctx.last_line_num_of_bytes.* + remaining_num_of_bytes;
+                    const num_of_bytes_till_col = byte_count_for_range(leaf.buf, 0, num_of_chars_till_col);
+                    ctx.result.* += ctx.last_line_num_of_bytes.* + num_of_bytes_till_col;
 
                     return Walker.found;
                 }
@@ -709,6 +709,18 @@ test "Buffer.getByteOffsetAtPoint()" {
         try eqStr("hello\nworld\nfrom", source[0..try buf.getByteOffsetAtPoint(2, 4)]);
         try eqStr("hello\nworld\nfrom\nm", source[0..try buf.getByteOffsetAtPoint(3, 1)]);
         try eqStr("hello\nworld\nfrom\nmars", source[0..try buf.getByteOffsetAtPoint(3, 4)]);
+    }
+
+    {
+        const source = "안녕하세요!\nHello there 👋!";
+        buf.root = try buf.load_from_string(source);
+
+        try eqStr("안녕", source[0..try buf.getByteOffsetAtPoint(0, 2)]);
+        try eqStr("안녕하세요", source[0..try buf.getByteOffsetAtPoint(0, 5)]);
+        try eqStr("안녕하세요!", source[0..try buf.getByteOffsetAtPoint(0, 6)]);
+        try eqStr("안녕하세요!\nHello there", source[0..try buf.getByteOffsetAtPoint(1, 11)]);
+        try eqStr("안녕하세요!\nHello there 👋", source[0..try buf.getByteOffsetAtPoint(1, 13)]);
+        try eqStr("안녕하세요!\nHello there 👋!", source[0..try buf.getByteOffsetAtPoint(1, 14)]);
     }
 }
 
