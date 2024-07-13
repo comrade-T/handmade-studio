@@ -71,7 +71,7 @@ const Window = struct {
         /////////////////////////////
 
         const char_count_till_start = _b.num_of_chars(self.string_buffer.items[0..start_byte]);
-        const char_count_till_end = char_count_till_start - count;
+        const char_count_till_end = char_count_till_start -| count;
         const num_of_bytes_to_delete = _b.byte_count_for_range(self.string_buffer.items, char_count_till_end, char_count_till_start);
         const new_end_byte = start_byte - num_of_bytes_to_delete;
 
@@ -213,13 +213,53 @@ test "Window.deleteChars()" {
 
     /////////////////////////////
 
-    try eqStr("", window.string_buffer.items);
+    {
+        try eqStr("", window.string_buffer.items);
 
-    try window.insertChars("c");
-    try eqStr("c", window.string_buffer.items);
+        try window.insertChars("c");
+        try eqStr("c", window.string_buffer.items);
 
-    try window.deleteCharsBackwards(1);
-    try eqStr("", window.string_buffer.items);
+        try window.deleteCharsBackwards(1);
+        try eqStr("", window.string_buffer.items);
+
+        try window.deleteCharsBackwards(1);
+        try eqStr("", window.string_buffer.items);
+
+        try window.deleteCharsBackwards(100);
+        try eqStr("", window.string_buffer.items);
+    }
+
+    {
+        try window.insertChars("const std = @import(\"std\");");
+        try eqStr("const std = @import(\"std\");", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+        });
+
+        try window.deleteCharsBackwards(8);
+        try eqStr("const std = @import", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+        });
+
+        try window.deleteCharsBackwards(10);
+        try eqStr("const std", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+        });
+
+        window.cursor.left(3);
+        try window.insertChars("my");
+        try eqStr("const mystd", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+        });
+    }
 }
 
 test "Window.insertChars()" {
