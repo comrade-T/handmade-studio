@@ -2,7 +2,8 @@ const std = @import("std");
 const ts_ = @import("ts");
 const ts = ts_.b;
 const PredicatesFilter = ts_.PredicatesFilter;
-const Buffer = @import("buffer").Buffer;
+const _b = @import("buffer");
+const Buffer = _b.Buffer;
 const Cursor = @import("cursor").Cursor;
 
 const Allocator = std.mem.Allocator;
@@ -55,6 +56,68 @@ const Window = struct {
         self.buffer.deinit();
         self.arena.deinit();
         self.external_allocator.destroy(self);
+    }
+
+    pub fn deleteCharsBackwards(self: *@This(), count: usize) !void {
+        const start_line = self.cursor.line;
+        const start_col = self.cursor.col;
+
+        const start_point = ts.Point{ .row = @intCast(start_line), .column = @intCast(start_col) };
+        const old_end_point = start_point;
+
+        const start_byte = try self.buffer.getByteOffsetAtPoint(start_line, start_col);
+        const old_end_byte = start_byte;
+
+        /////////////////////////////
+
+        const char_count_till_start = _b.num_of_chars(self.string_buffer.items[0..start_byte]);
+        const char_count_till_end = char_count_till_start - count;
+        const num_of_bytes_to_delete = _b.byte_count_for_range(self.string_buffer.items, char_count_till_end, char_count_till_start);
+        const new_end_byte = start_byte - num_of_bytes_to_delete;
+
+        var end_line = start_line;
+        var end_col = start_col;
+        {
+            var iter = _b.code_point.Iterator{ .bytes = self.string_buffer.items[new_end_byte..start_byte] };
+            while (iter.next()) |cp| {
+                end_col -= 1;
+                if (cp.code == @as(u21, '\n')) {
+                    end_line -= 1;
+                    end_col = start_col;
+                }
+            }
+        }
+        const new_end_point = ts.Point{ .row = @intCast(end_line), .column = @intCast(end_col) };
+
+        /////////////////////////////
+
+        try self.buffer.deleteCharsAndUpdate(end_line, end_col, count);
+
+        /////////////////////////////
+
+        self.cursor.set(end_line, end_col);
+
+        /////////////////////////////
+
+        const old_string_buffer = self.string_buffer;
+        defer old_string_buffer.deinit();
+        self.string_buffer = try self.buffer.toArrayList(self.a);
+
+        /////////////////////////////
+
+        const edit = ts.InputEdit{
+            .start_byte = @intCast(start_byte),
+            .old_end_byte = @intCast(old_end_byte),
+            .new_end_byte = @intCast(new_end_byte),
+            .start_point = start_point,
+            .old_end_point = old_end_point,
+            .new_end_point = new_end_point,
+        };
+        self.tree.edit(&edit);
+
+        const old_tree = self.tree;
+        defer old_tree.destroy();
+        self.tree = try self.parser.parseString(old_tree, self.string_buffer.items);
     }
 
     pub fn insertChars(self: *@This(), chars: []const u8) !void {
@@ -134,6 +197,29 @@ fn testWindowTreeHasMatches(
         i += 1;
     }
     try eq(comparisons.len, i);
+}
+
+test "Window.deleteChars()" {
+    const a = std.testing.allocator;
+    const ziglang = try ts.Language.get("zig");
+
+    var window = try Window.create(a, ziglang);
+    defer window.deinit();
+
+    const query = try ts.Query.create(ziglang, patterns);
+    defer query.destroy();
+    var filter = try PredicatesFilter.init(a, query);
+    defer filter.deinit();
+
+    /////////////////////////////
+
+    try eqStr("", window.string_buffer.items);
+
+    try window.insertChars("c");
+    try eqStr("c", window.string_buffer.items);
+
+    try window.deleteCharsBackwards(1);
+    try eqStr("", window.string_buffer.items);
 }
 
 test "Window.insertChars()" {

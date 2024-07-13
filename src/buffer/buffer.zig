@@ -1,5 +1,5 @@
 const std = @import("std");
-const code_point = @import("code_point");
+pub const code_point = @import("code_point");
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -390,6 +390,10 @@ pub const Buffer = struct {
         const result = self.root.walk_line_mut(a, line, DeleteCharsCtx.walker, &ctx);
         return if (result.found) (if (result.replace) |r| r else error.Stop) else error.NotFound;
     }
+
+    pub fn deleteCharsAndUpdate(self: *Buffer, line: usize, col: usize, count: usize) !void {
+        self.root = try self.delete_chars(self.a, line, col, count);
+    }
 };
 
 const Walker = struct {
@@ -665,7 +669,7 @@ pub fn num_of_chars(str: []const u8) usize {
     return num_chars;
 }
 
-fn byte_count_for_range(str: []const u8, start: usize, end: usize) usize {
+pub fn byte_count_for_range(str: []const u8, start: usize, end: usize) usize {
     var iter = code_point.Iterator{ .bytes = str };
     var byte_count: usize = 0;
     var i: usize = 0;
@@ -892,7 +896,7 @@ test "Buffer.delete_chars()" {
     }
 }
 
-test "Buffer.insert_chars()" {
+test "Buffer.insertChars()" {
     const a = std.testing.allocator;
     const buf = try Buffer.create(a, a);
     defer buf.deinit();
