@@ -91,7 +91,8 @@ const Window = struct {
 
         /////////////////////////////
 
-        try self.buffer.deleteCharsAndUpdate(end_line, end_col, count);
+        const num_of_chars_to_delete = _b.num_of_chars(self.string_buffer.items[new_end_byte..start_byte]);
+        try self.buffer.deleteCharsAndUpdate(end_line, end_col, num_of_chars_to_delete);
 
         /////////////////////////////
 
@@ -259,6 +260,12 @@ test "Window.deleteChars()" {
         try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
             &[_][]const u8{"const"},
         });
+
+        try window.deleteCharsBackwards(1000);
+        try eqStr("std", window.string_buffer.items);
+        // try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+        //     &[_][]const u8{"std"},
+        // });
     }
 }
 
