@@ -77,8 +77,11 @@ pub const PredicatesFilter = struct {
     const EqPredicate = struct {
         capture: []const u8,
         target: []const u8,
+        variant: EqPredicateVariant,
 
-        fn create(query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+        const EqPredicateVariant = enum { eq, not_eq };
+
+        fn create(query: *const Query, steps: []const PredicateStep, variant: EqPredicateVariant) PredicateError!Predicate {
             if (steps.len != 4) {
                 std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
                 return PredicateError.InvalidAmountOfSteps;
@@ -95,12 +98,16 @@ pub const PredicatesFilter = struct {
                 .eq = EqPredicate{
                     .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
                     .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                    .variant = variant,
                 },
             };
         }
 
         fn eval(self: *const EqPredicate, source: []const u8) bool {
-            return eql(u8, source, self.target);
+            return switch (self.variant) {
+                .eq => eql(u8, source, self.target),
+                .not_eq => !eql(u8, source, self.target),
+            };
         }
     };
 
@@ -145,8 +152,11 @@ pub const PredicatesFilter = struct {
     const MatchPredicate = struct {
         capture: []const u8,
         regex_pattern: []const u8,
+        variant: MatchPredicateVariant,
 
-        fn create(query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+        const MatchPredicateVariant = enum { match, not_match };
+
+        fn create(query: *const Query, steps: []const PredicateStep, variant: MatchPredicateVariant) PredicateError!Predicate {
             if (steps.len != 4) {
                 std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
                 return PredicateError.InvalidAmountOfSteps;
@@ -163,6 +173,7 @@ pub const PredicatesFilter = struct {
                 .match = MatchPredicate{
                     .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
                     .regex_pattern = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                    .variant = variant,
                 },
             };
         }
@@ -170,7 +181,11 @@ pub const PredicatesFilter = struct {
         fn eval(self: *const MatchPredicate, a: Allocator, source: []const u8) bool {
             var re = Regex.compile(a, self.regex_pattern) catch return false;
             defer re.deinit();
-            return re.match(source) catch false;
+            const result = re.match(source) catch return false;
+            return switch (self.variant) {
+                .match => result,
+                .not_match => !result,
+            };
         }
     };
 
@@ -193,9 +208,11 @@ pub const PredicatesFilter = struct {
                 return PredicateError.InvalidArgument;
             }
 
-            if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps);
+            if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps, .eq);
+            if (eql(u8, name, "not-eq?")) return EqPredicate.create(query, steps, .not_eq);
             if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
-            if (eql(u8, name, "match?")) return MatchPredicate.create(query, steps);
+            if (eql(u8, name, "match?")) return MatchPredicate.create(query, steps, .match);
+            if (eql(u8, name, "not-match?")) return MatchPredicate.create(query, steps, .not_match);
             return Predicate{ .unsupported = .unsupported };
         }
 
