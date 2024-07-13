@@ -134,9 +134,7 @@ const Window = struct {
 
         /////////////////////////////
 
-        const old_string_buffer = self.string_buffer;
-        defer old_string_buffer.deinit();
-        self.string_buffer = try self.buffer.toArrayList(self.a);
+        try self.string_buffer.insertSlice(start_byte, chars);
 
         self.cursor.set(end_line, end_col);
 
