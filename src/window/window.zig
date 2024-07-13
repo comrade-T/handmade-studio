@@ -136,7 +136,7 @@ fn testWindowTreeHasMatches(
     try eq(comparisons.len, i);
 }
 
-test Window {
+test "Window.insertChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
@@ -161,5 +161,28 @@ test Window {
     try eqStr("const", window.string_buffer.items);
     try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
         &[_][]const u8{"const"},
+    });
+
+    try window.insertChars(" std");
+    try eqStr("const std", window.string_buffer.items);
+    try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+        &[_][]const u8{"const"},
+        &[_][]const u8{"std"},
+    });
+
+    try window.insertChars(" = @import(\"");
+    try eqStr("const std = @import(\"", window.string_buffer.items);
+    try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+        &[_][]const u8{"const"},
+        &[_][]const u8{"std"},
+        &[_][]const u8{"@import"},
+    });
+
+    try window.insertChars("std\");");
+    try eqStr("const std = @import(\"std\");", window.string_buffer.items);
+    try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+        &[_][]const u8{"const"},
+        &[_][]const u8{"std"},
+        &[_][]const u8{"@import"},
     });
 }
