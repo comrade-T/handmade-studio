@@ -283,8 +283,8 @@ pub const Buffer = struct {
         return .{ line, col, root };
     }
 
-    pub fn insertCharsAndUpdate(self: *const Buffer, line: usize, col: usize, s: []const u8) !struct { usize, usize } {
-        const new_line, const new_col, self.buffer.root = try self.insertChars(self.a, line, col, s);
+    pub fn insertCharsAndUpdate(self: *Buffer, line: usize, col: usize, s: []const u8) !struct { usize, usize } {
+        const new_line, const new_col, self.root = try self.insertChars(self.a, line, col, s);
         return .{ new_line, new_col };
     }
 
@@ -691,6 +691,11 @@ test "Buffer.getByteOffsetAtPoint()" {
     const a = std.testing.allocator;
     var buf = try Buffer.create(a, a);
     defer buf.deinit();
+
+    {
+        buf.root = try buf.load_from_string("");
+        try eq(0, try buf.getByteOffsetAtPoint(0, 0));
+    }
 
     {
         const source = "hello world";
