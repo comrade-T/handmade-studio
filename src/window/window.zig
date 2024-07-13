@@ -50,6 +50,9 @@ const Window = struct {
     pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) !void {
         const new_line, const new_col = self.buffer.insertCharsAndUpdate(self.buffer.a, line, col, chars);
 
+        // TODO: it would be nice if we can get the byte offset of the cursor
+        // so we could just calculate from there.
+
         const edit = ts.InputEdit{
             .start_byte = 0, // how??? how do I get the byte offset?
             .old_end_byte = 0, // how??? how do I get the byte offset?

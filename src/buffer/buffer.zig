@@ -109,6 +109,61 @@ pub const Buffer = struct {
         return if (!walk_result.found) error.NotFound;
     }
 
+    const GetByteOffsetAtPointCtx = struct {
+        col: usize,
+        at_last_line: bool,
+        last_line_num_of_chars: *usize,
+        last_line_num_of_bytes: *usize,
+        result: *usize,
+
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+
+            if (!ctx.at_last_line) ctx.result.* += leaf.buf.len;
+            if (ctx.at_last_line) {
+                const leaf_num_of_chars = num_of_chars(leaf.buf);
+
+                if (leaf_num_of_chars + ctx.last_line_num_of_chars.* >= ctx.col) {
+                    const num_of_chars_till_col = ctx.last_line_num_of_chars.* + ctx.col;
+                    const remaining_num_of_bytes = byte_count_for_range(leaf.buf, 0, num_of_chars_till_col);
+                    ctx.result.* += ctx.last_line_num_of_bytes.* + remaining_num_of_bytes;
+
+                    return Walker.found;
+                }
+
+                ctx.last_line_num_of_bytes.* += leaf.buf.len;
+                ctx.last_line_num_of_chars.* += leaf_num_of_chars;
+            }
+
+            return if (!leaf.eol) Walker.keep_walking else Walker.stop;
+        }
+    };
+
+    pub fn getByteOffsetAtPoint(self: *const Buffer, line: usize, col: usize) !usize {
+        if (line + 1 > self.root.weights_sum().bols) return error.NotFound;
+
+        var result: usize = 0;
+        var last_line_num_of_chars: usize = 0;
+        var last_line_num_of_bytes: usize = 0;
+        for (0..line + 1) |i| {
+            var ctx: GetByteOffsetAtPointCtx = .{
+                .col = col,
+                .at_last_line = i == line,
+                .last_line_num_of_chars = &last_line_num_of_chars,
+                .last_line_num_of_bytes = &last_line_num_of_bytes,
+                .result = &result,
+            };
+            const walk_result = self.root.walk_line(i, GetByteOffsetAtPointCtx.walker, &ctx);
+
+            if (i > 0) result += 1; // +1 due to \n
+
+            if (walk_result.err) |e| return e;
+            if (!walk_result.found) return error.NotFound;
+        }
+
+        return result;
+    }
+
     const NumOfCharsInLineCtx = struct {
         result: *usize,
         fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
@@ -184,11 +239,6 @@ pub const Buffer = struct {
         }
     };
 
-    pub fn insertCharsAndUpdate(self: *const Buffer, line: usize, col: usize, s: []const u8) !struct { usize, usize } {
-        const new_line, const new_col, self.buffer.root = try self.insertChars(self.a, line, col, s);
-        return .{ new_line, new_col };
-    }
-
     pub fn insertChars(
         self: *const Buffer,
         a: Allocator,
@@ -231,6 +281,11 @@ pub const Buffer = struct {
         }
 
         return .{ line, col, root };
+    }
+
+    pub fn insertCharsAndUpdate(self: *const Buffer, line: usize, col: usize, s: []const u8) !struct { usize, usize } {
+        const new_line, const new_col, self.buffer.root = try self.insertChars(self.a, line, col, s);
+        return .{ new_line, new_col };
     }
 
     const DeleteCharsCtx = struct {
@@ -630,6 +685,31 @@ test "Buffer.create() & Buffer.deinit()" {
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_buffer.root.weights_sum());
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.left.weights_sum());
     try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.right.weights_sum());
+}
+
+test "Buffer.getByteOffsetAtPoint()" {
+    const a = std.testing.allocator;
+    var buf = try Buffer.create(a, a);
+    defer buf.deinit();
+
+    {
+        const source = "hello world";
+        buf.root = try buf.load_from_string(source);
+        try eqStr("hello", source[0..try buf.getByteOffsetAtPoint(0, 5)]);
+        try eqStr("hello world", source[0..try buf.getByteOffsetAtPoint(0, 11)]);
+    }
+
+    {
+        const source = "hello\nworld\nfrom\nmars";
+        buf.root = try buf.load_from_string(source);
+
+        try eqStr("hello", source[0..try buf.getByteOffsetAtPoint(0, 5)]);
+        try eqStr("hello\nworld", source[0..try buf.getByteOffsetAtPoint(1, 5)]);
+        try eqStr("hello\nworld\nfr", source[0..try buf.getByteOffsetAtPoint(2, 2)]);
+        try eqStr("hello\nworld\nfrom", source[0..try buf.getByteOffsetAtPoint(2, 4)]);
+        try eqStr("hello\nworld\nfrom\nm", source[0..try buf.getByteOffsetAtPoint(3, 1)]);
+        try eqStr("hello\nworld\nfrom\nmars", source[0..try buf.getByteOffsetAtPoint(3, 4)]);
+    }
 }
 
 fn testBufferGetLine(a: std.mem.Allocator, buf: *Buffer, line: usize, expected: []const u8) !void {
