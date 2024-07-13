@@ -223,22 +223,20 @@ test "InputEdit_insert_char" {
 
 test "InputEdit_delete_char_backwards" {
     const old_source =
-        \\const std = @import("std");
+        \\const mystd
     ;
     const patterns =
         \\((IDENTIFIER) @identifier
         \\  (#any-of? @identifier "std" "s"))
     ;
     const edit = b.InputEdit{
-        .start_byte = 9,
-        .old_end_byte = 9,
-        .new_end_byte = 7,
-        .start_point = b.Point{ .row = 0, .column = 9 },
-        .old_end_point = b.Point{ .row = 0, .column = 9 },
-        .new_end_point = b.Point{ .row = 0, .column = 7 },
+        .start_byte = 0,
+        .old_end_byte = 0,
+        .new_end_byte = 8,
+        .start_point = b.Point{ .row = 0, .column = 0 },
+        .old_end_point = b.Point{ .row = 0, .column = 0 },
+        .new_end_point = b.Point{ .row = 0, .column = 8 },
     };
-    const new_source =
-        \\const s = @import("std");
-    ;
-    try testInputEdit(old_source, patterns, "std", edit, new_source, "s");
+    const new_source = "std";
+    try testInputEdit(old_source, patterns, null, edit, new_source, "std");
 }

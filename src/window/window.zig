@@ -61,12 +61,8 @@ const Window = struct {
     pub fn deleteCharsBackwards(self: *@This(), count: usize) !void {
         const start_line = self.cursor.line;
         const start_col = self.cursor.col;
-
         const start_point = ts.Point{ .row = @intCast(start_line), .column = @intCast(start_col) };
-        const old_end_point = start_point;
-
         const start_byte = try self.buffer.getByteOffsetAtPoint(start_line, start_col);
-        const old_end_byte = start_byte;
 
         /////////////////////////////
 
@@ -107,12 +103,12 @@ const Window = struct {
         /////////////////////////////
 
         const edit = ts.InputEdit{
-            .start_byte = @intCast(start_byte),
-            .old_end_byte = @intCast(old_end_byte),
-            .new_end_byte = @intCast(new_end_byte),
-            .start_point = start_point,
-            .old_end_point = old_end_point,
-            .new_end_point = new_end_point,
+            .start_byte = @intCast(new_end_byte),
+            .old_end_byte = @intCast(new_end_byte),
+            .new_end_byte = @intCast(start_byte),
+            .start_point = new_end_point,
+            .old_end_point = new_end_point,
+            .new_end_point = start_point,
         };
         self.tree.edit(&edit);
 
@@ -124,12 +120,8 @@ const Window = struct {
     pub fn insertChars(self: *@This(), chars: []const u8) !void {
         const start_line = self.cursor.line;
         const start_col = self.cursor.col;
-
         const start_point = ts.Point{ .row = @intCast(start_line), .column = @intCast(start_col) };
-        const old_end_point = start_point;
-
         const start_byte = try self.buffer.getByteOffsetAtPoint(start_line, start_col);
-        const old_end_byte = start_byte;
 
         /////////////////////////////
 
@@ -151,10 +143,10 @@ const Window = struct {
 
         const edit = ts.InputEdit{
             .start_byte = @intCast(start_byte),
-            .old_end_byte = @intCast(old_end_byte),
+            .old_end_byte = @intCast(start_byte),
             .new_end_byte = @intCast(new_end_byte),
             .start_point = start_point,
-            .old_end_point = old_end_point,
+            .old_end_point = start_point,
             .new_end_point = new_end_point,
         };
         self.tree.edit(&edit);
@@ -263,9 +255,9 @@ test "Window.deleteChars()" {
 
         try window.deleteCharsBackwards(1000);
         try eqStr("std", window.string_buffer.items);
-        // try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
-        //     &[_][]const u8{"std"},
-        // });
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"std"},
+        });
     }
 }
 
