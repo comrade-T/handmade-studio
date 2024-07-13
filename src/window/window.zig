@@ -74,12 +74,19 @@ const Window = struct {
         var end_line = start_line;
         var end_col = start_col;
         {
+            var char_list = std.ArrayList(u21).init(self.a);
+            defer char_list.deinit();
+
             var iter = _b.code_point.Iterator{ .bytes = self.string_buffer.items[new_end_byte..start_byte] };
-            while (iter.next()) |cp| {
-                end_col -= 1;
-                if (cp.code == @as(u21, '\n')) {
-                    end_line -= 1;
-                    end_col = start_col;
+            while (iter.next()) |cp| try char_list.append(cp.code);
+
+            var i: usize = char_list.items.len;
+            while (i > 0) {
+                i -= 1;
+                end_col -|= 1;
+                if (char_list.items[i] == @as(u21, '\n')) {
+                    end_line -|= 1;
+                    end_col = try self.buffer.num_of_chars_in_line(end_line);
                 }
             }
         }
@@ -90,11 +97,7 @@ const Window = struct {
         const num_of_chars_to_delete = _b.num_of_chars(self.string_buffer.items[new_end_byte..start_byte]);
         try self.buffer.deleteCharsAndUpdate(end_line, end_col, num_of_chars_to_delete);
 
-        /////////////////////////////
-
         self.cursor.set(end_line, end_col);
-
-        /////////////////////////////
 
         const old_string_buffer = self.string_buffer;
         defer old_string_buffer.deinit();
@@ -134,8 +137,6 @@ const Window = struct {
         const old_string_buffer = self.string_buffer;
         defer old_string_buffer.deinit();
         self.string_buffer = try self.buffer.toArrayList(self.a);
-
-        /////////////////////////////
 
         self.cursor.set(end_line, end_col);
 
@@ -256,6 +257,65 @@ test "Window.deleteChars()" {
         try window.deleteCharsBackwards(1000);
         try eqStr("std", window.string_buffer.items);
         try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"std"},
+        });
+
+        window.cursor.right(3, try window.buffer.num_of_chars_in_line(0));
+        try window.deleteCharsBackwards(3);
+        try eqStr("", window.string_buffer.items);
+        try eq(Cursor{ .line = 0, .col = 0 }, window.cursor);
+    }
+
+    {
+        try window.insertChars("const std = @import(\"std\");");
+        try eqStr("const std = @import(\"std\");", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+        });
+
+        try window.insertChars("\nconst a = 10;");
+        try eqStr("const std = @import(\"std\");\nconst a = 10;", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+            &[_][]const u8{"const"},
+        });
+
+        try window.deleteCharsBackwards(8);
+        try eqStr("const std = @import(\"std\");\nconst", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+            &[_][]const u8{"const"},
+        });
+        try eq(Cursor{ .line = 1, .col = 5 }, window.cursor);
+
+        try window.deleteCharsBackwards(6);
+        try eqStr("const std = @import(\"std\");", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+        });
+
+        try window.insertChars("\nconst");
+        try eqStr("const std = @import(\"std\");\nconst", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
+            &[_][]const u8{"std"},
+            &[_][]const u8{"@import"},
+            &[_][]const u8{"const"},
+        });
+        try eq(Cursor{ .line = 1, .col = 5 }, window.cursor);
+
+        try window.deleteCharsBackwards(24);
+        try eqStr("const std", window.string_buffer.items);
+        try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+            &[_][]const u8{"const"},
             &[_][]const u8{"std"},
         });
     }
