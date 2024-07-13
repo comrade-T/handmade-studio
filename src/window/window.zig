@@ -97,11 +97,9 @@ const Window = struct {
         const num_of_chars_to_delete = _b.num_of_chars(self.string_buffer.items[new_end_byte..start_byte]);
         try self.buffer.deleteCharsAndUpdate(end_line, end_col, num_of_chars_to_delete);
 
-        self.cursor.set(end_line, end_col);
+        try self.string_buffer.replaceRange(new_end_byte, num_of_bytes_to_delete, &[0]u8{});
 
-        const old_string_buffer = self.string_buffer;
-        defer old_string_buffer.deinit();
-        self.string_buffer = try self.buffer.toArrayList(self.a);
+        self.cursor.set(end_line, end_col);
 
         /////////////////////////////
 
