@@ -1,5 +1,7 @@
 const std = @import("std");
-const ts = @import("ts").b;
+const ts_ = @import("ts");
+const ts = ts_.b;
+const PredicatesFilter = ts_.PredicatesFilter;
 const Buffer = @import("buffer").Buffer;
 const Cursor = @import("cursor").Cursor;
 
@@ -92,8 +94,47 @@ const Window = struct {
             .new_end_point = new_end_point,
         };
         self.tree.edit(&edit);
+
+        const old_tree = self.tree;
+        defer old_tree.destroy();
+        self.tree = try self.parser.parseString(old_tree, self.string_buffer.items);
     }
 };
+
+const patterns =
+    \\[
+    \\  "const"
+    \\  "var"
+    \\] @type.qualifier
+    \\
+    \\((IDENTIFIER) @std_identifier
+    \\  (#eq? @std_identifier "std"))
+    \\
+    \\((BUILTINIDENTIFIER) @include
+    \\  (#any-of? @include "@import" "@cImport"))
+;
+
+fn testWindowTreeHasMatches(
+    window: *const Window,
+    query: *ts.Query,
+    filter: *PredicatesFilter,
+    comparisons: []const []const []const u8,
+) !void {
+    const source = window.string_buffer.items;
+    const cursor = try ts.Query.Cursor.create();
+    defer cursor.destroy();
+    cursor.execute(query, window.tree.getRootNode());
+
+    var i: usize = 0;
+    while (filter.nextMatch(source, cursor)) |pattern| {
+        for (pattern.captures(), 0..) |capture, j| {
+            const node = capture.node;
+            try eqStr(comparisons[i][j], source[node.getStartByte()..node.getEndByte()]);
+        }
+        i += 1;
+    }
+    try eq(comparisons.len, i);
+}
 
 test Window {
     const a = std.testing.allocator;
@@ -102,13 +143,23 @@ test Window {
     var window = try Window.create(a, ziglang);
     defer window.deinit();
 
+    const query = try ts.Query.create(ziglang, patterns);
+    defer query.destroy();
+    var filter = try PredicatesFilter.init(a, query);
+    defer filter.deinit();
+
+    /////////////////////////////
+
     try eqStr("", window.string_buffer.items);
+    try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{});
 
-    try window.insertChars("A");
-    try eq(1, window.string_buffer.items.len);
-    try eqStr("A", window.string_buffer.items);
+    try window.insertChars("c");
+    try eqStr("c", window.string_buffer.items);
+    try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{});
 
-    try window.insertChars("BC");
-    try eq(3, window.string_buffer.items.len);
-    try eqStr("ABC", window.string_buffer.items);
+    try window.insertChars("onst");
+    try eqStr("const", window.string_buffer.items);
+    try testWindowTreeHasMatches(window, query, filter, &[_][]const []const u8{
+        &[_][]const u8{"const"},
+    });
 }
