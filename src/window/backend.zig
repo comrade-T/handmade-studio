@@ -430,7 +430,7 @@ fn getUpdatedCells(
         if (window.highlight_map.get(capture_name)) |color| {
             for (cap.node.getStartByte()..cap.node.getEndByte()) |j| {
                 const cell_index = indexes.items[j];
-                cells.items[cell_index].color = color;
+                if (cell_index < cells.items.len) cells.items[cell_index].color = color;
             }
         }
     }
@@ -491,6 +491,13 @@ test "getUpdatedCells" {
             const result = try getUpdatedCells(window, query, filter);
             try eq(1, result.len);
             try testColorAndContent(result, 0, 1, "👋", Color.ray_white);
+        }
+        try window.insertChars(" const");
+        {
+            const result = try getUpdatedCells(window, query, filter);
+            try eq(7, result.len);
+            try testColorAndContent(result, 0, 2, "👋 ", Color.ray_white);
+            try testColorAndContent(result, 2, 7, "const", Color.purple);
         }
     }
 }
