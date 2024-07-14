@@ -37,6 +37,46 @@ pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*Event
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub const KeyboardEventsManager = struct {
+    a: Allocator,
+
+    old_arr: EventArray = [_]bool{false} ** 400,
+    new_arr: EventArray = [_]bool{false} ** 400,
+
+    old_list: EventList,
+    new_list: EventList,
+
+    time_list: EventTimeList,
+
+    pub fn init(a: Allocator) !*@This() {
+        const self = try a.create(@This());
+        self.* = .{
+            .a = a,
+            .old_list = EventList.init(a),
+            .new_list = EventList.init(a),
+            .time_list = EventTimeList.init(a),
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.old_list.deinit();
+        self.new_list.deinit();
+        self.time_list.deinit();
+        self.a.destroy(self);
+    }
+
+    pub fn updateNew(self: *@This()) !void {
+        try updateEventList(&self.new_arr, &self.new_list, &self.time_list);
+    }
+
+    pub fn updateOld(self: *@This()) !void {
+        try updateEventList(&self.old_arr, &self.old_list, null);
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 pub const TestTriggerMap = std.StringHashMap([]const u8);
 pub const TestPrefixMap = std.StringHashMap(bool);
 

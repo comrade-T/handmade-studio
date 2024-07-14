@@ -29,17 +29,8 @@ pub fn main() anyerror!void {
     defer _ = gpa__.deinit();
     const gpa = gpa__.allocator();
 
-    var old_event_array = [_]bool{false} ** 400;
-    var new_event_array = [_]bool{false} ** 400;
-
-    var old_event_list = kbs.EventList.init(gpa);
-    defer old_event_list.deinit();
-
-    var new_event_list = kbs.EventList.init(gpa);
-    defer new_event_list.deinit();
-
-    var event_time_list = kbs.EventTimeList.init(gpa);
-    defer event_time_list.deinit();
+    var kem = try kbs.KeyboardEventsManager.init(gpa);
+    defer kem.deinit();
 
     var trigger_map = try exp.createTriggerMap(gpa);
     defer trigger_map.deinit();
@@ -51,7 +42,7 @@ pub fn main() anyerror!void {
     var composer = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
     defer composer.deinit();
 
-    var picker = try kbs.TriggerPicker.init(gpa, &old_event_list, &new_event_list, &event_time_list);
+    var picker = try kbs.TriggerPicker.init(gpa, &kem.old_list, &kem.new_list, &kem.time_list);
     defer picker.deinit();
 
     ///////////////////////////// Text Buffer
@@ -77,13 +68,13 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        try kbs.updateEventList(&new_event_array, &new_event_list, &event_time_list);
+        try kem.updateNew();
 
         {
             const insert_mode_active = true;
             var trigger: []const u8 = "";
 
-            const candidate = try composer.getTriggerCandidate(old_event_list.items, new_event_list.items);
+            const candidate = try composer.getTriggerCandidate(kem.old_list.items, kem.new_list.items);
             if (!insert_mode_active) {
                 if (candidate) |c| trigger = c;
             }
@@ -147,7 +138,7 @@ pub fn main() anyerror!void {
             }
         }
 
-        try kbs.updateEventList(&old_event_array, &old_event_list, null);
+        try kem.updateOld();
     }
 }
 
