@@ -79,10 +79,16 @@ pub fn main() anyerror!void {
 
                 for (exp.letters_and_numbers) |chars|
                     if (eql(u8, chars, trigger)) try win.insertChars(chars);
+                for (exp.single_char_symbols) |chars|
+                    if (eql(u8, chars, trigger)) try win.insertChars(chars);
 
                 if (eql(u8, trigger, "space")) try win.insertChars(" ");
                 if (eql(u8, trigger, "tab")) try win.insertChars("    ");
                 if (eql(u8, trigger, "enter")) try win.insertChars("\n");
+
+                /////////////////////////////
+
+                if (eql(u8, trigger, "backspace")) try win.deleteCharsBackwards(1);
 
                 /////////////////////////////
 

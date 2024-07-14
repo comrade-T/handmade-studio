@@ -5,6 +5,10 @@ pub const letters_and_numbers = [_][]const u8{
     "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
 };
+pub const single_char_symbols = [_][]const u8{
+    "=", "-", "[", "]", "\\",
+    ";", "'", ",", ".", "/",
+};
 
 pub const TriggerMap = std.StringHashMap(bool);
 pub const PrefixMap = std.StringHashMap(bool);
@@ -13,6 +17,7 @@ pub fn createTriggerMap(a: std.mem.Allocator) !TriggerMap {
     var map = TriggerMap.init(a);
 
     for (letters_and_numbers) |char| try map.put(char, true);
+    for (single_char_symbols) |symb| try map.put(symb, true);
 
     const other_keys = [_][]const u8{
         "space",     "tab",    "enter", "up",  "down", "left", "right",

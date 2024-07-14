@@ -412,7 +412,9 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
     try map.put("type.qualifier", Color.purple);
 
     try map.put("include", Color.maroon);
+
     try map.put("string", Color.yellow);
+    try map.put("character", Color.yellow);
 
     try map.put("punctuation.bracket", Color.white);
     try map.put("punctuation.delimiter", Color.white);
