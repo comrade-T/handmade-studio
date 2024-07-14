@@ -62,6 +62,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "cursor", .module = cursor.module },
         .{ .name = "ts", .module = ts.module },
         .{ .name = "raylib", .module = raylib.module("raylib") },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     window_backend.compile.linkLibrary(tree_sitter);
 
@@ -158,4 +159,13 @@ fn addParser(b: *std.Build, lib: *std.Build.Step.Compile, comptime lang: []const
 fn exists(b: *std.Build, path: []const u8) bool {
     std.fs.cwd().access(b.pathFromRoot(path), .{ .mode = .read_only }) catch return false;
     return true;
+}
+
+fn ts_queryfile(b: *std.Build, comptime path: []const u8) std.Build.Module.Import {
+    return .{
+        .name = path,
+        .module = b.createModule(.{
+            .root_source_file = b.path(path),
+        }),
+    };
 }

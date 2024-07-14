@@ -15,6 +15,7 @@ const eqStr = std.testing.expectEqualStrings;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const HighlightMap = std.StringHashMap(rl.Color);
+const highlight_scm = @embedFile("submodules/tree-sitter-zig/queries/highlights.scm");
 
 fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
     var map = HighlightMap.init(a);
@@ -28,7 +29,9 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WindowBackend = struct {
+const Cell = struct { char: u8, color: rl.Color };
+
+pub const WindowBackend = struct {
     external_allocator: Allocator,
     arena: std.heap.ArenaAllocator,
     a: Allocator,
