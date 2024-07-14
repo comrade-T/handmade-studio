@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const Color = rl.Color;
 const ts_ = @import("ts");
 const ts = ts_.b;
 const PredicatesFilter = ts_.PredicatesFilter;
@@ -14,23 +15,6 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const HighlightMap = std.StringHashMap(rl.Color);
-const highlight_scm = @embedFile("submodules/tree-sitter-zig/queries/highlights.scm");
-
-fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
-    var map = HighlightMap.init(a);
-
-    try map.put("comment", rl.Color.gray);
-    try map.put("keyword", rl.Color.purple);
-    try map.put("string", rl.Color.yellow);
-
-    return map;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const Cell = struct { char: u8, color: rl.Color };
-
 pub const WindowBackend = struct {
     external_allocator: Allocator,
     arena: std.heap.ArenaAllocator,
@@ -43,7 +27,9 @@ pub const WindowBackend = struct {
     tree: *ts.Tree,
 
     string_buffer: std.ArrayList(u8),
+
     highlight_map: HighlightMap,
+    cells: std.ArrayList(Cell),
 
     pub fn create(external_allocator: Allocator, lang: *const ts.Language) !*@This() {
         var self = try external_allocator.create(@This());
@@ -60,7 +46,9 @@ pub const WindowBackend = struct {
             .tree = undefined,
 
             .string_buffer = std.ArrayList(u8).init(self.a),
+
             .highlight_map = try createExperimentalHighlightMap(self.a),
+            .cells = std.ArrayList(Cell).init(self.a),
         };
 
         self.buffer.root = try self.buffer.load_from_string("");
@@ -176,7 +164,7 @@ pub const WindowBackend = struct {
     }
 };
 
-const patterns =
+const test_patterns =
     \\[
     \\  "const"
     \\  "var"
@@ -218,7 +206,7 @@ test "Window.deleteChars()" {
     var window = try WindowBackend.create(a, ziglang);
     defer window.deinit();
 
-    const query = try ts.Query.create(ziglang, patterns);
+    const query = try ts.Query.create(ziglang, test_patterns);
     defer query.destroy();
     var filter = try PredicatesFilter.init(a, query);
     defer filter.deinit();
@@ -346,7 +334,7 @@ test "Window.insertChars()" {
     var window = try WindowBackend.create(a, ziglang);
     defer window.deinit();
 
-    const query = try ts.Query.create(ziglang, patterns);
+    const query = try ts.Query.create(ziglang, test_patterns);
     defer query.destroy();
     var filter = try PredicatesFilter.init(a, query);
     defer filter.deinit();
@@ -388,4 +376,97 @@ test "Window.insertChars()" {
         &[_][]const u8{"std"},
         &[_][]const u8{"@import"},
     });
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const HighlightMap = std.StringHashMap(rl.Color);
+const zig_highlight_scm = @embedFile("submodules/tree-sitter-zig/queries/highlights.scm");
+
+fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
+    var map = HighlightMap.init(a);
+
+    try map.put("comment", Color.gray);
+
+    try map.put("keyword", Color.purple);
+    try map.put("type.qualifier", Color.purple);
+
+    try map.put("string", Color.yellow);
+
+    return map;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const Cell = struct { char: u8, color: Color };
+
+fn getUpdatedCells(
+    window: *WindowBackend,
+    query: *ts.Query,
+    filter: *PredicatesFilter,
+) ![]Cell {
+    var list = std.ArrayList(Cell).init(window.a);
+    errdefer list.deinit();
+
+    const source = window.string_buffer.items;
+    for (source) |char| {
+        try list.append(Cell{ .char = char, .color = Color.ray_white });
+    }
+
+    /////////////////////////////
+
+    const cursor = try ts.Query.Cursor.create();
+    cursor.execute(query, window.tree.getRootNode());
+
+    while (filter.nextMatch(source, cursor)) |pattern| {
+        const cap = pattern.captures()[0];
+        const capture_name = query.getCaptureNameForId(cap.id);
+        if (window.highlight_map.get(capture_name)) |color| {
+            for (cap.node.getStartByte()..cap.node.getEndByte()) |i| {
+                list.items[i].color = color;
+            }
+        }
+    }
+
+    return try list.toOwnedSlice();
+}
+
+fn testColorAndContent(cells: []Cell, start: usize, end: usize, content: []const u8, color: Color) !void {
+    for (start..end) |i| {
+        try eq(cells[i].color, color);
+        try eq(content[i], cells[i].char);
+    }
+}
+
+test "getUpdatedCells" {
+    const a = std.testing.allocator;
+    const ziglang = try ts.Language.get("zig");
+
+    var window = try WindowBackend.create(a, ziglang);
+    defer window.deinit();
+
+    const query = try ts.Query.create(ziglang, zig_highlight_scm);
+    defer query.destroy();
+    var filter = try PredicatesFilter.init(a, query);
+    defer filter.deinit();
+
+    /////////////////////////////
+
+    {
+        const result = try getUpdatedCells(window, query, filter);
+        try eq(0, result.len);
+    }
+
+    try window.insertChars("c");
+    {
+        const result = try getUpdatedCells(window, query, filter);
+        try eq(1, result.len);
+        try testColorAndContent(result, 0, 1, "c", Color.ray_white);
+    }
+    try window.insertChars("onst");
+    {
+        const result = try getUpdatedCells(window, query, filter);
+        try eq(5, result.len);
+        try testColorAndContent(result, 0, 5, "const", Color.purple);
+    }
 }
