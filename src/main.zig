@@ -75,27 +75,7 @@ pub fn main() anyerror!void {
                 defer picker.a.free(trigger);
                 std.debug.print("trigger: {s}\n", .{trigger});
 
-                /////////////////////////////
-
-                for (exp.letters_and_numbers) |chars|
-                    if (eql(u8, chars, trigger)) try win.insertChars(chars);
-                for (exp.single_char_symbols) |chars|
-                    if (eql(u8, chars, trigger)) try win.insertChars(chars);
-
-                if (eql(u8, trigger, "space")) try win.insertChars(" ");
-                if (eql(u8, trigger, "tab")) try win.insertChars("    ");
-                if (eql(u8, trigger, "enter")) try win.insertChars("\n");
-
-                /////////////////////////////
-
-                if (eql(u8, trigger, "backspace")) try win.deleteCharsBackwards(1);
-
-                /////////////////////////////
-
-                if (eql(u8, trigger, "up")) win.cursor.up(1);
-                if (eql(u8, trigger, "down")) win.cursor.down(1, win.buffer.num_of_lines());
-                if (eql(u8, trigger, "left")) win.cursor.left(1);
-                if (eql(u8, trigger, "right")) win.cursor.right(1, try win.buffer.num_of_chars_in_line(win.cursor.line));
+                try triggerCallback(&trigger_map, trigger, win);
             }
         }
 
@@ -139,4 +119,20 @@ pub fn main() anyerror!void {
 
         try kem.updateOld();
     }
+}
+
+fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, win: *window_backend.WindowBackend) !void {
+    var action: exp.TriggerAction = undefined;
+    if (trigger_map.get(trigger)) |a| action = a else return;
+    try switch (action) {
+        .insert => |chars| win.insertChars(chars),
+        .custom => {
+            if (eql(u8, trigger, "backspace")) try win.deleteCharsBackwards(1);
+
+            if (eql(u8, trigger, "up")) win.cursor.up(1);
+            if (eql(u8, trigger, "down")) win.cursor.down(1, win.buffer.num_of_lines());
+            if (eql(u8, trigger, "left")) win.cursor.left(1);
+            if (eql(u8, trigger, "right")) win.cursor.right(1, try win.buffer.num_of_chars_in_line(win.cursor.line));
+        },
+    };
 }

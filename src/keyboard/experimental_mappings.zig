@@ -9,23 +9,34 @@ pub const single_char_symbols = [_][]const u8{
     "=", "-", "[", "]", "\\",
     ";", "'", ",", ".", "/",
 };
+pub const other_mappings = [_][]const []const u8{
+    &[_][]const u8{ "space", " " },
+    &[_][]const u8{ "tab", "    " },
+    &[_][]const u8{ "enter", "\n" },
+};
 
-pub const TriggerMap = std.StringHashMap(bool);
+pub const TriggerAction = union(enum) {
+    insert: []const u8,
+    custom: bool,
+};
+
+pub const TriggerMap = std.StringHashMap(TriggerAction);
 pub const PrefixMap = std.StringHashMap(bool);
 
 pub fn createTriggerMap(a: std.mem.Allocator) !TriggerMap {
     var map = TriggerMap.init(a);
 
-    for (letters_and_numbers) |char| try map.put(char, true);
-    for (single_char_symbols) |symb| try map.put(symb, true);
+    for (letters_and_numbers) |char| try map.put(char, .{ .insert = char });
+    for (single_char_symbols) |char| try map.put(char, .{ .insert = char });
+    for (other_mappings) |mapping| try map.put(mapping[0], .{ .insert = mapping[1] });
 
     const other_keys = [_][]const u8{
-        "space",     "tab",    "enter", "up",  "down", "left", "right",
-        "backspace", "delete", "home",  "end",
+        "up",        "down",   "left", "right",
+        "backspace", "delete", "home", "end",
     };
-    for (other_keys) |trigger| try map.put(trigger, true);
+    for (other_keys) |trigger| try map.put(trigger, .{ .custom = true });
 
-    try map.put("s o", true);
+    try map.put("s o", .{ .custom = true });
 
     return map;
 }
