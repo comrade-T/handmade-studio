@@ -398,22 +398,28 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Cell = struct { char: u8, color: Color };
+const Cell = struct { char: []const u8, color: Color };
 
 fn getUpdatedCells(
     window: *WindowBackend,
     query: *ts.Query,
     filter: *PredicatesFilter,
 ) ![]Cell {
-    var list = std.ArrayList(Cell).init(window.a);
-    errdefer list.deinit();
+    var cells = std.ArrayList(Cell).init(window.a);
+    errdefer cells.deinit();
+
+    var indexes = std.ArrayList(usize).init(window.a);
+    defer indexes.deinit();
 
     const source = window.string_buffer.items;
-    for (source) |char| {
-        try list.append(Cell{ .char = char, .color = Color.ray_white });
-    }
+    var iter = _b.code_point.Iterator{ .bytes = source };
 
-    /////////////////////////////
+    var i: usize = 0;
+    while (iter.next()) |cp| {
+        try cells.append(Cell{ .char = source[i .. i + cp.len], .color = Color.ray_white });
+        for (0..cp.len) |_| try indexes.append(i);
+        i += cp.len;
+    }
 
     const cursor = try ts.Query.Cursor.create();
     cursor.execute(query, window.tree.getRootNode());
@@ -422,28 +428,31 @@ fn getUpdatedCells(
         const cap = pattern.captures()[0];
         const capture_name = query.getCaptureNameForId(cap.id);
         if (window.highlight_map.get(capture_name)) |color| {
-            for (cap.node.getStartByte()..cap.node.getEndByte()) |i| {
-                list.items[i].color = color;
+            for (cap.node.getStartByte()..cap.node.getEndByte()) |j| {
+                const cell_index = indexes.items[j];
+                cells.items[cell_index].color = color;
             }
         }
     }
 
-    return try list.toOwnedSlice();
+    return try cells.toOwnedSlice();
 }
 
 fn testColorAndContent(cells: []Cell, start: usize, end: usize, content: []const u8, color: Color) !void {
-    for (start..end) |i| {
+    var iter = _b.code_point.Iterator{ .bytes = content };
+    var i: usize = 0;
+    while (iter.next()) |cp| {
+        if (i < start) continue;
+        if (i > end) break;
         try eq(cells[i].color, color);
-        try eq(content[i], cells[i].char);
+        try eqStr(content[i .. i + cp.len], cells[i].char);
+        i += cp.len;
     }
 }
 
 test "getUpdatedCells" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
-
-    var window = try WindowBackend.create(a, ziglang);
-    defer window.deinit();
 
     const query = try ts.Query.create(ziglang, zig_highlight_scm);
     defer query.destroy();
@@ -453,20 +462,35 @@ test "getUpdatedCells" {
     /////////////////////////////
 
     {
-        const result = try getUpdatedCells(window, query, filter);
-        try eq(0, result.len);
+        var window = try WindowBackend.create(a, ziglang);
+        defer window.deinit();
+        {
+            const result = try getUpdatedCells(window, query, filter);
+            try eq(0, result.len);
+        }
+        try window.insertChars("c");
+        {
+            const result = try getUpdatedCells(window, query, filter);
+            try eq(1, result.len);
+            try testColorAndContent(result, 0, 1, "c", Color.ray_white);
+        }
+        try window.insertChars("onst");
+        {
+            const result = try getUpdatedCells(window, query, filter);
+            try eq(5, result.len);
+            try testColorAndContent(result, 0, 5, "const", Color.purple);
+        }
     }
 
-    try window.insertChars("c");
     {
-        const result = try getUpdatedCells(window, query, filter);
-        try eq(1, result.len);
-        try testColorAndContent(result, 0, 1, "c", Color.ray_white);
-    }
-    try window.insertChars("onst");
-    {
-        const result = try getUpdatedCells(window, query, filter);
-        try eq(5, result.len);
-        try testColorAndContent(result, 0, 5, "const", Color.purple);
+        var window = try WindowBackend.create(a, ziglang);
+        defer window.deinit();
+
+        try window.insertChars("👋");
+        {
+            const result = try getUpdatedCells(window, query, filter);
+            try eq(1, result.len);
+            try testColorAndContent(result, 0, 1, "👋", Color.ray_white);
+        }
     }
 }
