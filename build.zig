@@ -78,8 +78,8 @@ pub fn build(b: *std.Build) void {
 
         exe.linkLibrary(raylib.artifact("raylib"));
         exe.root_module.addImport("raylib", raylib.module("raylib"));
-
-        exe.root_module.addImport("buffer", buffer.module);
+        exe.root_module.addImport("window_backend", window_backend.module);
+        exe.linkLibrary(tree_sitter);
 
         const run_cmd = b.addRunArtifact(exe);
         run_cmd.step.dependOn(b.getInstallStep());
