@@ -393,7 +393,9 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 
     try map.put("include", Color.maroon);
     try map.put("string", Color.yellow);
+
     try map.put("punctuation.bracket", Color.white);
+    try map.put("punctuation.delimiter", Color.white);
 
     return map;
 }
@@ -486,7 +488,6 @@ test "getUpdatedCells" {
     {
         var window = try WindowBackend.create(a, ziglang);
         defer window.deinit();
-
         try window.insertChars("👋");
         {
             const result = try getUpdatedCells(window, query, filter);
@@ -505,7 +506,6 @@ test "getUpdatedCells" {
     {
         var window = try WindowBackend.create(a, ziglang);
         defer window.deinit();
-
         try window.insertChars("const std = @import(\"std\")");
         {
             const result = try getUpdatedCells(window, query, filter);
@@ -515,6 +515,19 @@ test "getUpdatedCells" {
             try testColorAndContent(result, 19, 20, "(", Color.white);
             try testColorAndContent(result, 20, 25, "\"std\"", Color.yellow);
             try testColorAndContent(result, 25, 26, ")", Color.white);
+        }
+    }
+
+    {
+        var window = try WindowBackend.create(a, ziglang);
+        defer window.deinit();
+        try window.insertChars("const emoji = \"👋\";");
+        {
+            const result = try getUpdatedCells(window, query, filter);
+            try testColorAndContent(result, 0, 5, "const", Color.purple);
+            try testColorAndContent(result, 5, 14, " emoji = ", Color.ray_white);
+            try testColorAndContent(result, 14, 17, "\"👋\"", Color.yellow);
+            try testColorAndContent(result, 17, 18, ";", Color.white);
         }
     }
 }
