@@ -689,7 +689,7 @@ const supported_keys = [_]Key{
     Key.key_f10,       Key.key_f11,          Key.key_f12,           Key.key_equal,
     Key.key_minus,     Key.key_left_bracket, Key.key_right_bracket, Key.key_backslash,
     Key.key_semicolon, Key.key_apostrophe,   Key.key_comma,         Key.key_period,
-    Key.key_slash,     Key.key_grave,
+    Key.key_slash,     Key.key_grave,        Key.key_left_shift,    Key.key_right_shift,
 };
 
 fn getStringRepresentationOfKey(key: Key) []const u8 {
@@ -757,6 +757,9 @@ fn getStringRepresentationOfKey(key: Key) []const u8 {
 
         Key.key_home => "home",
         Key.key_end => "end",
+
+        Key.key_left_shift => "lshift",
+        Key.key_right_shift => "rshift",
 
         Key.key_f1 => "<f1>",
         Key.key_f2 => "<f2>",
