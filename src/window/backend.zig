@@ -28,10 +28,13 @@ pub const WindowBackend = struct {
 
     string_buffer: std.ArrayList(u8),
 
+    // experimental syntax highlighting
+    highlight_query: *ts.Query,
+    highlight_filter: *PredicatesFilter,
     highlight_map: HighlightMap,
     cells: std.ArrayList(Cell),
 
-    pub fn create(external_allocator: Allocator, lang: *const ts.Language) !*@This() {
+    pub fn create(external_allocator: Allocator, lang: *const ts.Language, patterns: []const u8) !*@This() {
         var self = try external_allocator.create(@This());
 
         self.* = .{
@@ -47,6 +50,9 @@ pub const WindowBackend = struct {
 
             .string_buffer = std.ArrayList(u8).init(self.a),
 
+            // experimental syntax highlighting
+            .highlight_query = try ts.Query.create(lang, patterns),
+            .highlight_filter = try PredicatesFilter.init(self.a, self.highlight_query),
             .highlight_map = try createExperimentalHighlightMap(self.a),
             .cells = std.ArrayList(Cell).init(self.a),
         };
@@ -203,7 +209,7 @@ test "Window.deleteChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    var window = try WindowBackend.create(a, ziglang);
+    var window = try WindowBackend.create(a, ziglang, test_patterns);
     defer window.deinit();
 
     const query = try ts.Query.create(ziglang, test_patterns);
@@ -331,7 +337,7 @@ test "Window.insertChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    var window = try WindowBackend.create(a, ziglang);
+    var window = try WindowBackend.create(a, ziglang, test_patterns);
     defer window.deinit();
 
     const query = try ts.Query.create(ziglang, test_patterns);
@@ -457,46 +463,41 @@ test "getUpdatedCells" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    const query = try ts.Query.create(ziglang, zig_highlight_scm);
-    defer query.destroy();
-    var filter = try PredicatesFilter.init(a, query);
-    defer filter.deinit();
-
     /////////////////////////////
 
     {
-        var window = try WindowBackend.create(a, ziglang);
+        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try eq(0, result.len);
         }
         try window.insertChars("c");
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try eq(1, result.len);
             try testColorAndContent(result, 0, 1, "c", Color.ray_white);
         }
         try window.insertChars("onst");
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try eq(5, result.len);
             try testColorAndContent(result, 0, 5, "const", Color.purple);
         }
     }
 
     {
-        var window = try WindowBackend.create(a, ziglang);
+        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("👋");
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try eq(1, result.len);
             try testColorAndContent(result, 0, 1, "👋", Color.ray_white);
         }
         try window.insertChars(" const");
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try eq(7, result.len);
             try testColorAndContent(result, 0, 2, "👋 ", Color.ray_white);
             try testColorAndContent(result, 2, 7, "const", Color.purple);
@@ -504,11 +505,11 @@ test "getUpdatedCells" {
     }
 
     {
-        var window = try WindowBackend.create(a, ziglang);
+        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("const std = @import(\"std\")");
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try testColorAndContent(result, 0, 5, "const", Color.purple);
             try testColorAndContent(result, 5, 12, " std = ", Color.ray_white);
             try testColorAndContent(result, 12, 19, "@import", Color.maroon);
@@ -519,11 +520,11 @@ test "getUpdatedCells" {
     }
 
     {
-        var window = try WindowBackend.create(a, ziglang);
+        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("const emoji = \"👋\";");
         {
-            const result = try getUpdatedCells(window, query, filter);
+            const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try testColorAndContent(result, 0, 5, "const", Color.purple);
             try testColorAndContent(result, 5, 14, " emoji = ", Color.ray_white);
             try testColorAndContent(result, 14, 17, "\"👋\"", Color.yellow);
