@@ -57,12 +57,12 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     ts.compile.linkLibrary(tree_sitter);
 
-    const window = addTestableModule(&bops, "src/window/window.zig", &.{
+    const window_backend = addTestableModule(&bops, "src/window/backend.zig", &.{
         .{ .name = "buffer", .module = buffer.module },
         .{ .name = "cursor", .module = cursor.module },
         .{ .name = "ts", .module = ts.module },
     }, zig_build_test_step);
-    window.compile.linkLibrary(tree_sitter);
+    window_backend.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 

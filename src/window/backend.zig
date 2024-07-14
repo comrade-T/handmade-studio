@@ -11,7 +11,7 @@ const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
-const Window = struct {
+const WindowBackend = struct {
     external_allocator: Allocator,
     arena: std.heap.ArenaAllocator,
     a: Allocator,
@@ -168,7 +168,7 @@ const patterns =
 ;
 
 fn testWindowTreeHasMatches(
-    window: *const Window,
+    window: *const WindowBackend,
     query: *ts.Query,
     filter: *PredicatesFilter,
     comparisons: []const []const []const u8,
@@ -193,7 +193,7 @@ test "Window.deleteChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    var window = try Window.create(a, ziglang);
+    var window = try WindowBackend.create(a, ziglang);
     defer window.deinit();
 
     const query = try ts.Query.create(ziglang, patterns);
@@ -321,7 +321,7 @@ test "Window.insertChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    var window = try Window.create(a, ziglang);
+    var window = try WindowBackend.create(a, ziglang);
     defer window.deinit();
 
     const query = try ts.Query.create(ziglang, patterns);
