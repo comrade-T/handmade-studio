@@ -75,7 +75,21 @@ pub fn main() anyerror!void {
                 defer picker.a.free(trigger);
                 std.debug.print("trigger: {s}\n", .{trigger});
 
-                // TODO:
+                /////////////////////////////
+
+                for (exp.letters_and_numbers) |chars|
+                    if (eql(u8, chars, trigger)) try win.insertChars(chars);
+
+                if (eql(u8, trigger, "space")) try win.insertChars(" ");
+                if (eql(u8, trigger, "tab")) try win.insertChars("    ");
+                if (eql(u8, trigger, "enter")) try win.insertChars("\n");
+
+                /////////////////////////////
+
+                if (eql(u8, trigger, "up")) win.cursor.up(1);
+                if (eql(u8, trigger, "down")) win.cursor.down(1, win.buffer.num_of_lines());
+                if (eql(u8, trigger, "left")) win.cursor.left(1);
+                if (eql(u8, trigger, "right")) win.cursor.right(1, try win.buffer.num_of_chars_in_line(win.cursor.line));
             }
         }
 
@@ -89,10 +103,30 @@ pub fn main() anyerror!void {
             }
 
             { // display text_buffer
+                const start_x = 100;
+                const start_y = 100;
+
+                const font_size = 40;
+                const spacing = 0;
+
+                const line_height = 50;
+
+                var x: f32 = 0;
+                var y: f32 = 0;
+
                 for (win.cells.items) |cell| {
+                    if (cell.char[0] == '\n') {
+                        y += line_height;
+                        x = 0;
+                        continue;
+                    }
+
                     var buf: [10]u8 = undefined;
                     const text = std.fmt.bufPrintZ(&buf, "{s}", .{cell.char}) catch "error";
-                    rl.drawTextEx(font, text, .{ .x = 100, .y = 100 }, 40, 0, cell.color);
+                    rl.drawTextEx(font, text, .{ .x = start_x + x, .y = start_y + y }, font_size, spacing, cell.color);
+
+                    const measure = rl.measureTextEx(font, text, font_size, spacing);
+                    x += measure.x;
                 }
             }
         }
