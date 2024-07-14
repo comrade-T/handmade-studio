@@ -2,7 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const Color = rl.Color;
 const ts_ = @import("ts");
-const ts = ts_.b;
+pub const ts = ts_.b;
 const PredicatesFilter = ts_.PredicatesFilter;
 const _b = @import("buffer");
 const Buffer = _b.Buffer;
@@ -132,6 +132,12 @@ pub const WindowBackend = struct {
         const old_tree = self.tree;
         defer old_tree.destroy();
         self.tree = try self.parser.parseString(old_tree, self.string_buffer.items);
+
+        /////////////////////////////
+
+        const old_cells = self.cells;
+        defer old_cells.deinit();
+        self.cells = try getUpdatedCells(self, self.highlight_query, self.highlight_filter);
     }
 
     pub fn insertChars(self: *@This(), chars: []const u8) !void {
@@ -167,6 +173,12 @@ pub const WindowBackend = struct {
         const old_tree = self.tree;
         defer old_tree.destroy();
         self.tree = try self.parser.parseString(old_tree, self.string_buffer.items);
+
+        /////////////////////////////
+
+        const old_cells = self.cells;
+        defer old_cells.deinit();
+        self.cells = try getUpdatedCells(self, self.highlight_query, self.highlight_filter);
     }
 };
 
@@ -387,7 +399,9 @@ test "Window.insertChars()" {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const HighlightMap = std.StringHashMap(rl.Color);
-const zig_highlight_scm = @embedFile("submodules/tree-sitter-zig/queries/highlights.scm");
+const CellList = std.ArrayList(Cell);
+
+pub const zig_highlight_scm = @embedFile("submodules/tree-sitter-zig/queries/highlights.scm");
 
 fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
     var map = HighlightMap.init(a);
@@ -414,9 +428,8 @@ fn getUpdatedCells(
     window: *WindowBackend,
     query: *ts.Query,
     filter: *PredicatesFilter,
-) ![]Cell {
+) !CellList {
     var cells = std.ArrayList(Cell).init(window.a);
-    errdefer cells.deinit();
 
     var indexes = std.ArrayList(usize).init(window.a);
     defer indexes.deinit();
@@ -447,7 +460,7 @@ fn getUpdatedCells(
         }
     }
 
-    return try cells.toOwnedSlice();
+    return cells;
 }
 
 fn testColorAndContent(cells: []Cell, start: usize, end: usize, content: []const u8, color: Color) !void {
@@ -470,19 +483,19 @@ test "getUpdatedCells" {
         defer window.deinit();
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try eq(0, result.len);
+            try eq(0, result.items.len);
         }
         try window.insertChars("c");
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try eq(1, result.len);
-            try testColorAndContent(result, 0, 1, "c", Color.ray_white);
+            try eq(1, result.items.len);
+            try testColorAndContent(result.items, 0, 1, "c", Color.ray_white);
         }
         try window.insertChars("onst");
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try eq(5, result.len);
-            try testColorAndContent(result, 0, 5, "const", Color.purple);
+            try eq(5, result.items.len);
+            try testColorAndContent(result.items, 0, 5, "const", Color.purple);
         }
     }
 
@@ -492,15 +505,15 @@ test "getUpdatedCells" {
         try window.insertChars("👋");
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try eq(1, result.len);
-            try testColorAndContent(result, 0, 1, "👋", Color.ray_white);
+            try eq(1, result.items.len);
+            try testColorAndContent(result.items, 0, 1, "👋", Color.ray_white);
         }
         try window.insertChars(" const");
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try eq(7, result.len);
-            try testColorAndContent(result, 0, 2, "👋 ", Color.ray_white);
-            try testColorAndContent(result, 2, 7, "const", Color.purple);
+            try eq(7, result.items.len);
+            try testColorAndContent(result.items, 0, 2, "👋 ", Color.ray_white);
+            try testColorAndContent(result.items, 2, 7, "const", Color.purple);
         }
     }
 
@@ -510,12 +523,12 @@ test "getUpdatedCells" {
         try window.insertChars("const std = @import(\"std\")");
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try testColorAndContent(result, 0, 5, "const", Color.purple);
-            try testColorAndContent(result, 5, 12, " std = ", Color.ray_white);
-            try testColorAndContent(result, 12, 19, "@import", Color.maroon);
-            try testColorAndContent(result, 19, 20, "(", Color.white);
-            try testColorAndContent(result, 20, 25, "\"std\"", Color.yellow);
-            try testColorAndContent(result, 25, 26, ")", Color.white);
+            try testColorAndContent(result.items, 0, 5, "const", Color.purple);
+            try testColorAndContent(result.items, 5, 12, " std = ", Color.ray_white);
+            try testColorAndContent(result.items, 12, 19, "@import", Color.maroon);
+            try testColorAndContent(result.items, 19, 20, "(", Color.white);
+            try testColorAndContent(result.items, 20, 25, "\"std\"", Color.yellow);
+            try testColorAndContent(result.items, 25, 26, ")", Color.white);
         }
     }
 
@@ -525,10 +538,10 @@ test "getUpdatedCells" {
         try window.insertChars("const emoji = \"👋\";");
         {
             const result = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
-            try testColorAndContent(result, 0, 5, "const", Color.purple);
-            try testColorAndContent(result, 5, 14, " emoji = ", Color.ray_white);
-            try testColorAndContent(result, 14, 17, "\"👋\"", Color.yellow);
-            try testColorAndContent(result, 17, 18, ";", Color.white);
+            try testColorAndContent(result.items, 0, 5, "const", Color.purple);
+            try testColorAndContent(result.items, 5, 14, " emoji = ", Color.ray_white);
+            try testColorAndContent(result.items, 14, 17, "\"👋\"", Color.yellow);
+            try testColorAndContent(result.items, 17, 18, ";", Color.white);
         }
     }
 }
