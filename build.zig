@@ -61,6 +61,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "buffer", .module = buffer.module },
         .{ .name = "cursor", .module = cursor.module },
         .{ .name = "ts", .module = ts.module },
+        .{ .name = "raylib", .module = raylib.module("raylib") },
     }, zig_build_test_step);
     window_backend.compile.linkLibrary(tree_sitter);
 

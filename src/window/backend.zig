@@ -1,4 +1,5 @@
 const std = @import("std");
+const rl = @import("raylib");
 const ts_ = @import("ts");
 const ts = ts_.b;
 const PredicatesFilter = ts_.PredicatesFilter;
@@ -11,6 +12,22 @@ const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const HighlightMap = std.StringHashMap(rl.Color);
+
+fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
+    var map = HighlightMap.init(a);
+
+    try map.put("comment", rl.Color.gray);
+    try map.put("keyword", rl.Color.purple);
+    try map.put("string", rl.Color.yellow);
+
+    return map;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const WindowBackend = struct {
     external_allocator: Allocator,
     arena: std.heap.ArenaAllocator,
@@ -19,10 +36,11 @@ const WindowBackend = struct {
     buffer: *Buffer,
     cursor: Cursor,
 
-    string_buffer: std.ArrayList(u8),
-
     parser: *ts.Parser,
     tree: *ts.Tree,
+
+    string_buffer: std.ArrayList(u8),
+    highlight_map: HighlightMap,
 
     pub fn create(external_allocator: Allocator, lang: *const ts.Language) !*@This() {
         var self = try external_allocator.create(@This());
@@ -35,10 +53,11 @@ const WindowBackend = struct {
             .buffer = try Buffer.create(self.a, self.a),
             .cursor = Cursor{},
 
-            .string_buffer = std.ArrayList(u8).init(self.a),
-
             .parser = try ts.Parser.create(),
             .tree = undefined,
+
+            .string_buffer = std.ArrayList(u8).init(self.a),
+            .highlight_map = try createExperimentalHighlightMap(self.a),
         };
 
         self.buffer.root = try self.buffer.load_from_string("");
