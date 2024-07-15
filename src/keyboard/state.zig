@@ -82,7 +82,12 @@ pub const TestPrefixMap = std.StringHashMap(bool);
 
 pub fn createTriggerMapForTesting(a: Allocator) !TestTriggerMap {
     var map = TestTriggerMap.init(a);
+
     try map.put("z", "Zed");
+
+    try map.put("1", "1");
+    try map.put("lshift 1", "!");
+
     try map.put("d", "Dee");
     try map.put("d j", "DJ");
     try map.put("d j l", "DJ's Life");
@@ -96,6 +101,7 @@ pub fn createTriggerMapForTesting(a: Allocator) !TestTriggerMap {
 
     try map.put("s", "s");
     try map.put("s o", "so so");
+
     return map;
 }
 
@@ -105,6 +111,7 @@ pub fn createPrefixMapForTesting(a: Allocator) !TestPrefixMap {
     try map.put("d j", true);
     try map.put("d k", true);
     try map.put("s", true);
+    try map.put("lshift", true);
     return map;
 }
 
@@ -243,6 +250,8 @@ pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime
             const new_status = try getTriggerStatus(self.a, new, self.trigger_map);
             const new_is_prefix = try isPrefix(self.a, new, self.prefix_map);
 
+            //                                                                    prevent prepeating the same key when holding down
+            //                                                                   __________________________________________________
             if (new_status.mapped and !new_is_prefix and ((new.len > old.len) or !std.mem.eql(Key, new, self.latest_trigger.items))) {
                 try self.setLatestTrigger(new);
                 return .{ .trigger = new_status.trigger };
@@ -493,7 +502,7 @@ test GenericTriggerCandidateComposer {
     try eq(null, try composer.getTriggerCandidate(&i, &i));
     try eq(null, try composer.getTriggerCandidate(&i, &nothingness));
 
-    /////////////////////////////
+    ///////////////////////////// Consecutive key down combo emits
 
     try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
     try eq(null, try composer.getTriggerCandidate(&d, &d));
@@ -519,89 +528,106 @@ test GenericTriggerCandidateComposer {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
 
-pub const TriggerPicker = struct {
-    a: Allocator,
-    new: *EventList,
-    old: *EventList,
-    time: *EventTimeList,
-    previous_trigger: ?Candidate = null,
-    threshold: i64 = 100,
+pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
+    return struct {
+        a: Allocator,
+        new: *EventList,
+        old: *EventList,
+        time: *EventTimeList,
+        trigger_map: *trigger_map_type,
+        previous_trigger: ?Candidate = null,
+        threshold: i64 = 100,
 
-    pub fn init(a: std.mem.Allocator, old: *EventList, new: *EventList, time: *EventTimeList) !*@This() {
-        const picker = try a.create(@This());
-        picker.* = .{
-            .a = a,
-            .old = old,
-            .new = new,
-            .time = time,
-        };
-        return picker;
-    }
-
-    pub fn deinit(self: *@This()) void {
-        if (self.previous_trigger) |latest| self.a.free(latest.trigger);
-        self.a.destroy(self);
-    }
-
-    fn updatePreviousTrigger(self: *@This(), final_candidate: ?Candidate) !void {
-        if (self.previous_trigger) |latest| self.a.free(latest.trigger);
-        if (final_candidate) |fc| {
-            self.previous_trigger = .{
-                .last = fc.last,
-                .up = fc.up,
-                .trigger = try self.a.dupe(u8, fc.trigger),
+        pub fn init(a: std.mem.Allocator, old: *EventList, new: *EventList, time: *EventTimeList, trigger_map: *trigger_map_type) !*@This() {
+            const picker = try a.create(@This());
+            picker.* = .{
+                .a = a,
+                .old = old,
+                .new = new,
+                .time = time,
+                .trigger_map = trigger_map,
             };
-            return;
-        }
-        self.previous_trigger = null;
-    }
-
-    fn process(self: *@This(), candidate: ?Candidate) !?Candidate {
-        const old, const new, const time = .{ self.old.items, self.new.items, self.time.items };
-
-        if (new.len == 0) { // return null and clean up candidate
-            if (candidate) |c| self.a.free(c.trigger);
-            return null;
+            return picker;
         }
 
-        if (new.len > 1 and time[1] -| time[0] < self.threshold) { // timing in threshold, clean up candidate and return last key
-            if (candidate) |c| self.a.free(c.trigger);
-            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+        pub fn deinit(self: *@This()) void {
+            if (self.previous_trigger) |latest| self.a.free(latest.trigger);
+            self.a.destroy(self);
         }
 
-        if (candidate) |c| return c; // return non-null candidate
-
-        if (new.len == 1 and old.len == 0) { // single key down
-            // a trigger for this key might exist, but it might be a prefix as well.
-            // if it's a prefix, candidate will be null.
-            // since we're in Insert Mode, we want to emit it right away on key down despite it being a prefix
-            return .{ .last = true, .trigger = try eventListToStr(self.a, new[new.len - 1 ..]) };
+        fn updatePreviousTrigger(self: *@This(), final_candidate: ?Candidate) !void {
+            if (self.previous_trigger) |latest| self.a.free(latest.trigger);
+            if (final_candidate) |fc| {
+                self.previous_trigger = .{
+                    .last = fc.last,
+                    .up = fc.up,
+                    .trigger = try self.a.dupe(u8, fc.trigger),
+                };
+                return;
+            }
+            self.previous_trigger = null;
         }
 
-        return null;
-    }
+        fn process(self: *@This(), candidate: ?Candidate) !?Candidate {
+            const old, const new, const time = .{ self.old.items, self.new.items, self.time.items };
 
-    pub fn getFinalTrigger(self: *@This(), potential_candidate: ?Candidate) !?[]const u8 {
-        const final = try self.process(potential_candidate);
-
-        if (final == null) {
-            try self.updatePreviousTrigger(null);
-            return null;
-        }
-
-        if (self.previous_trigger) |latest| { // prevent repeating previous trigger
-            if (std.mem.eql(u8, latest.trigger, final.?.trigger)) {
-                self.a.free(final.?.trigger);
+            if (new.len == 0) { // return null and clean up candidate
+                if (candidate) |c| self.a.free(c.trigger);
                 return null;
             }
+
+            if (new.len > 1 and time[1] -| time[0] < self.threshold) { // timing in threshold, clean up candidate and return last key
+                const trigger = try eventListToStr(self.a, new[new.len - 1 ..]);
+                const first_char = try eventListToStr(self.a, new[0..1]);
+                defer self.a.free(first_char);
+
+                if (self.trigger_map.get(first_char) != null and self.trigger_map.get(trigger) != null) {
+                    if (candidate) |c| self.a.free(c.trigger);
+                    return .{ .last = true, .trigger = trigger };
+                }
+                self.a.free(trigger);
+            }
+
+            if (candidate) |c| return c; // return non-null candidate
+
+            if (new.len == 1 and old.len == 0) { // single key down
+                // a trigger for this key might exist, but it might be a prefix as well.
+                // if it's a prefix, candidate will be null.
+                // since we're in Insert Mode, we want to emit it right away on key down despite it being a prefix
+                const trigger = try eventListToStr(self.a, new[new.len - 1 ..]);
+                if (self.trigger_map.get(trigger) != null) return .{ .last = true, .trigger = trigger };
+                self.a.free(trigger);
+            }
+
+            return null;
         }
 
-        try self.updatePreviousTrigger(final.?);
-        return final.?.trigger;
-    }
-};
+        pub fn getFinalTrigger(self: *@This(), potential_candidate: ?Candidate) !?[]const u8 {
+            const final = try self.process(potential_candidate);
 
-test TriggerPicker {
+            if (final) |f| {
+                std.debug.print("{s} | {any} <\n", .{ f.trigger, f.last });
+            }
+
+            if (final == null) {
+                try self.updatePreviousTrigger(null);
+                return null;
+            }
+
+            if (self.previous_trigger) |latest| { // prevent repeating previous trigger
+                if (std.mem.eql(u8, latest.trigger, final.?.trigger)) {
+                    self.a.free(final.?.trigger);
+                    return null;
+                }
+            }
+
+            try self.updatePreviousTrigger(final.?);
+            return final.?.trigger;
+        }
+    };
+}
+
+test GenericTriggerPicker {
     const a = std.testing.allocator;
 
     var old = EventList.init(a);
@@ -613,7 +639,12 @@ test TriggerPicker {
     var time = EventTimeList.init(a);
     defer time.deinit();
 
-    var picker = try TriggerPicker.init(a, &old, &new, &time);
+    var trigger_map = try createTriggerMapForTesting(a);
+    defer trigger_map.deinit();
+
+    const TriggerPicker = GenericTriggerPicker(TestTriggerMap);
+
+    var picker = try TriggerPicker.init(a, &old, &new, &time, &trigger_map);
     defer picker.deinit();
 
     // single key case
@@ -689,6 +720,16 @@ test TriggerPicker {
             try eq(null, result);
         }
         _ = old.orderedRemove(0);
+    }
+
+    // don't short circuit triggers not in map
+    {
+        try new.append(Key.key_left_shift);
+        try time.append(0);
+        {
+            const result = try picker.getFinalTrigger(null);
+            try eq(null, result);
+        }
     }
 }
 

@@ -47,7 +47,8 @@ pub fn main() anyerror!void {
     var composer = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
     defer composer.deinit();
 
-    var picker = try kbs.TriggerPicker.init(gpa, &kem.old_list, &kem.new_list, &kem.time_list);
+    const TriggerPicker = kbs.GenericTriggerPicker(exp.TriggerMap);
+    var picker = try TriggerPicker.init(gpa, &kem.old_list, &kem.new_list, &kem.time_list, &trigger_map);
     defer picker.deinit();
 
     ///////////////////////////// Main Loop
@@ -67,6 +68,9 @@ pub fn main() anyerror!void {
                 if (candidate) |c| trigger = c;
             }
             if (insert_mode_active) {
+                if (candidate) |c| {
+                    std.debug.print("candidate: {s}\n", .{c.trigger});
+                }
                 const may_final_trigger = try picker.getFinalTrigger(candidate);
                 if (may_final_trigger) |t| trigger = t;
             }
