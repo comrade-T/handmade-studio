@@ -243,7 +243,7 @@ pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime
             const new_status = try getTriggerStatus(self.a, new, self.trigger_map);
             const new_is_prefix = try isPrefix(self.a, new, self.prefix_map);
 
-            if (new_status.mapped and !new_is_prefix and !std.mem.eql(Key, new, self.latest_trigger.items)) {
+            if (new_status.mapped and !new_is_prefix and ((new.len > old.len) or !std.mem.eql(Key, new, self.latest_trigger.items))) {
                 try self.setLatestTrigger(new);
                 return .{ .trigger = new_status.trigger };
             }
@@ -492,6 +492,29 @@ test GenericTriggerCandidateComposer {
     try eq(null, try composer.getTriggerCandidate(&i, &i));
     try eq(null, try composer.getTriggerCandidate(&i, &i));
     try eq(null, try composer.getTriggerCandidate(&i, &nothingness));
+
+    /////////////////////////////
+
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d));
+    {
+        const result = (try composer.getTriggerCandidate(&d, &d_l)).?;
+        defer allocator.free(result.trigger);
+        try eqStr("d l", result.trigger);
+    }
+    try eq(null, try composer.getTriggerCandidate(&d_l, &d_l));
+    try eq(null, try composer.getTriggerCandidate(&d_l, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d));
+    {
+        const result = (try composer.getTriggerCandidate(&d, &d_l)).?;
+        defer allocator.free(result.trigger);
+        try eqStr("d l", result.trigger);
+    }
+    try eq(null, try composer.getTriggerCandidate(&d_l, &d_l));
+    try eq(null, try composer.getTriggerCandidate(&d_l, &d_l));
+    try eq(null, try composer.getTriggerCandidate(&d_l, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &d));
+    try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
