@@ -732,7 +732,7 @@ pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
                 return null;
             }
 
-            if (new.len > 1 and time[1] -| time[0] < self.threshold) { // timing in threshold, clean up candidate and return last key
+            if (time.len > 1 and new.len > 1 and time[1] -| time[0] < self.threshold) { // timing in threshold, clean up candidate and return last key
                 const trigger = try eventListToStr(self.a, new[new.len - 1 ..]);
                 const first_char = try eventListToStr(self.a, new[0..1]);
                 defer self.a.free(first_char);

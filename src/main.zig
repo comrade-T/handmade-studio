@@ -62,7 +62,7 @@ pub fn main() anyerror!void {
             const input_steps = try kem.inputSteps();
             defer input_steps.deinit();
 
-            for (input_steps.items, 0..) |step, i| {
+            for (input_steps.items) |step| {
                 const insert_mode_active = true;
                 var trigger: []const u8 = "";
 
@@ -71,15 +71,14 @@ pub fn main() anyerror!void {
                     if (candidate) |c| trigger = c;
                 }
                 if (insert_mode_active) {
-                    if (candidate) |c| {
-                        std.debug.print("candidate: {s}\n", .{c.trigger});
-                    }
+                    // if (candidate) |c| {
+                    // std.debug.print("candidate: {s}\n", .{c.trigger});
+                    // }
                     const may_final_trigger = try picker.getFinalTrigger(step.old, step.new, step.time, candidate);
                     if (may_final_trigger) |t| trigger = t;
                     if (candidate != null or may_final_trigger != null) {
-                        std.debug.print("step: {d}\n", .{i});
                         std.debug.print("trigger: {s}\n", .{trigger});
-                        std.debug.print("-------------------------------------\n", .{});
+                        // std.debug.print("-------------------------------------\n", .{});
                     }
                 }
 
