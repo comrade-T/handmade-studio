@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 
+const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const eqDeep = std.testing.expectEqualDeep;
@@ -14,6 +15,7 @@ pub const EventArray = [400]bool;
 pub const EventList = std.ArrayList(rl.KeyboardKey);
 pub const EventSlice = []const rl.KeyboardKey;
 pub const EventTimeList = std.ArrayList(i64);
+pub const EventTimeSlice = []i64;
 
 pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*EventTimeList) !void {
     for (e_list.items, 0..) |key, i| {
@@ -37,6 +39,46 @@ pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*Event
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const InputStepList = std.ArrayList(InputStep);
+const InputStep = struct {
+    old: EventSlice,
+    new: EventSlice,
+    time: EventTimeSlice,
+};
+
+fn getInputSteps(
+    a: Allocator,
+    real_old: EventSlice,
+    real_new: EventSlice,
+    real_time: EventTimeSlice,
+) !InputStepList {
+    var list = std.ArrayList(InputStep).init(a);
+    errdefer list.deinit();
+
+    if (real_old.len == real_new.len) {
+        try list.append(InputStep{ .old = real_old, .new = real_new, .time = real_time });
+        return list;
+    }
+
+    return list;
+}
+
+test getInputSteps {
+    const a = std.testing.allocator;
+    {
+        var real_old = [_]Key{};
+        var real_new = [_]Key{};
+        var real_time = [_]i64{};
+        const steps = try getInputSteps(a, &real_old, &real_new, &real_time);
+        defer steps.deinit();
+        try eq(1, steps.items.len);
+        const step = steps.items[0];
+        try expect(eql(Key, step.old, &real_old));
+        try expect(eql(Key, step.new, &real_new));
+        try expect(eql(i64, step.time, &real_time));
+    }
+}
+
 pub const KeyboardEventsManager = struct {
     a: Allocator,
 
@@ -47,8 +89,6 @@ pub const KeyboardEventsManager = struct {
     new_list: EventList,
 
     time_list: EventTimeList,
-
-    // TODO: if there's more than 1 key changes in a frame, split and ease it out
 
     pub fn init(a: Allocator) !*@This() {
         const self = try a.create(@This());
@@ -743,7 +783,7 @@ test GenericTriggerPicker {
             try eq(null, result);
         }
         _ = new.orderedRemove(0);
-        _ = new.orderedRemove(0);
+        _ = time.orderedRemove(0);
     }
 }
 
