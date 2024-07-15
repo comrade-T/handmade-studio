@@ -55,13 +55,23 @@ fn getInputSteps(
     var list = std.ArrayList(InputStep).init(a);
     errdefer list.deinit();
 
-    const should_return_as_is =
-        real_old.len == real_new.len or
-        real_old.len > real_new.len and real_old.len - real_new.len <= 1 or
-        real_new.len > real_old.len and real_new.len - real_old.len <= 1;
-
-    if (should_return_as_is) {
+    if (real_old.len == real_new.len) {
         try list.append(InputStep{ .old = real_old, .new = real_new, .time = real_time });
+        return list;
+    }
+
+    if (real_old.len > real_new.len) {
+        const diff = real_old.len - real_new.len;
+        var old = real_old[0..real_old.len];
+        var new = real_old[0 .. real_old.len - 1];
+        var time = real_time[0..real_time.len];
+        try list.resize(real_old.len);
+        for (0..diff) |i| {
+            list.items[i] = InputStep{ .old = old, .new = new, .time = time };
+            old = old[0..old.len -| 1];
+            new = new[0..new.len -| 1];
+            time = time[0..time.len -| 1];
+        }
         return list;
     }
 
@@ -77,9 +87,10 @@ fn getInputSteps(
             new = new[0..new.len -| 1];
             time = time[0..time.len -| 1];
         }
+        return list;
     }
 
-    return list;
+    unreachable;
 }
 
 test getInputSteps {
@@ -87,6 +98,27 @@ test getInputSteps {
 
     ///////////////////////////// Split things
 
+    var nothingness = [_]Key{};
+    var d = [_]Key{Key.key_d};
+    var d_l = [_]Key{ Key.key_d, Key.key_l };
+
+    // real_new.len < real_old.len
+    {
+        var real_old = [_]Key{ Key.key_d, Key.key_l };
+        var real_new = [_]Key{};
+        var real_time = [_]i64{};
+        const steps = try getInputSteps(a, &real_old, &real_new, &real_time);
+        defer steps.deinit();
+        try eq(2, steps.items.len);
+
+        var time_1 = [_]i64{};
+        try eqStep(steps.items[0], &d_l, &d, &time_1);
+
+        var time_2 = [_]i64{};
+        try eqStep(steps.items[1], &d, &nothingness, &time_2);
+    }
+
+    // real_old.len < real_new.len
     {
         var real_old = [_]Key{};
         var real_new = [_]Key{ Key.key_d, Key.key_l };
@@ -95,12 +127,9 @@ test getInputSteps {
         defer steps.deinit();
         try eq(2, steps.items.len);
 
-        var nothingness = [_]Key{};
-        var d = [_]Key{Key.key_d};
         var time_1 = [_]i64{0};
         try eqStep(steps.items[0], &nothingness, &d, &time_1);
 
-        var d_l = [_]Key{ Key.key_d, Key.key_l };
         var time_2 = [_]i64{ 0, 1 };
         try eqStep(steps.items[1], &d, &d_l, &time_2);
     }
