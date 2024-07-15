@@ -55,7 +55,12 @@ fn getInputSteps(
     var list = std.ArrayList(InputStep).init(a);
     errdefer list.deinit();
 
-    if (real_old.len == real_new.len) {
+    const should_return_as_is =
+        real_old.len == real_new.len or
+        real_old.len > real_new.len and real_old.len - real_new.len <= 1 or
+        real_new.len > real_old.len and real_new.len - real_old.len <= 1;
+
+    if (should_return_as_is) {
         try list.append(InputStep{ .old = real_old, .new = real_new, .time = real_time });
         return list;
     }
@@ -65,9 +70,8 @@ fn getInputSteps(
         var old = real_old[0..real_old.len];
         var new = real_old[0 .. real_old.len - 1];
         var time = real_time[0..real_time.len];
-        try list.resize(real_old.len);
-        for (0..diff) |i| {
-            list.items[i] = InputStep{ .old = old, .new = new, .time = time };
+        for (0..diff) |_| {
+            try list.append(InputStep{ .old = old, .new = new, .time = time });
             old = old[0..old.len -| 1];
             new = new[0..new.len -| 1];
             time = time[0..time.len -| 1];
@@ -80,9 +84,8 @@ fn getInputSteps(
         var old = real_new[0 .. real_new.len - 1];
         var new = real_new[0..real_new.len];
         var time = real_time[0..real_time.len];
-        try list.resize(real_new.len);
         for (0..diff) |_| {
-            list.items[new.len - 1] = InputStep{ .old = old, .new = new, .time = time };
+            try list.insert(0, InputStep{ .old = old, .new = new, .time = time });
             old = old[0..old.len -| 1];
             new = new[0..new.len -| 1];
             time = time[0..time.len -| 1];
@@ -207,6 +210,10 @@ pub const KeyboardEventsManager = struct {
         self.new_list.deinit();
         self.time_list.deinit();
         self.a.destroy(self);
+    }
+
+    pub fn inputSteps(self: *@This()) !InputStepList {
+        return getInputSteps(self.a, self.old_list.items, self.new_list.items, self.time_list.items);
     }
 
     pub fn startHandlingInputs(self: *@This()) !void {
@@ -688,20 +695,14 @@ test GenericTriggerCandidateComposer {
 pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
     return struct {
         a: Allocator,
-        new: *EventList,
-        old: *EventList,
-        time: *EventTimeList,
         trigger_map: *trigger_map_type,
         previous_trigger: ?Candidate = null,
         threshold: i64 = 100,
 
-        pub fn init(a: std.mem.Allocator, old: *EventList, new: *EventList, time: *EventTimeList, trigger_map: *trigger_map_type) !*@This() {
+        pub fn init(a: std.mem.Allocator, trigger_map: *trigger_map_type) !*@This() {
             const picker = try a.create(@This());
             picker.* = .{
                 .a = a,
-                .old = old,
-                .new = new,
-                .time = time,
                 .trigger_map = trigger_map,
             };
             return picker;
@@ -725,9 +726,7 @@ pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
             self.previous_trigger = null;
         }
 
-        fn process(self: *@This(), candidate: ?Candidate) !?Candidate {
-            const old, const new, const time = .{ self.old.items, self.new.items, self.time.items };
-
+        fn process(self: *@This(), old: EventSlice, new: EventSlice, time: EventTimeSlice, candidate: ?Candidate) !?Candidate {
             if (new.len == 0) { // return null and clean up candidate
                 if (candidate) |c| self.a.free(c.trigger);
                 return null;
@@ -759,8 +758,8 @@ pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
             return null;
         }
 
-        pub fn getFinalTrigger(self: *@This(), potential_candidate: ?Candidate) !?[]const u8 {
-            const final = try self.process(potential_candidate);
+        pub fn getFinalTrigger(self: *@This(), old: EventSlice, new: EventSlice, time: EventTimeSlice, potential_candidate: ?Candidate) !?[]const u8 {
+            const final = try self.process(old, new, time, potential_candidate);
 
             if (final == null) {
                 try self.updatePreviousTrigger(null);
@@ -797,7 +796,7 @@ test GenericTriggerPicker {
 
     const TriggerPicker = GenericTriggerPicker(TestTriggerMap);
 
-    var picker = try TriggerPicker.init(a, &old, &new, &time, &trigger_map);
+    var picker = try TriggerPicker.init(a, &trigger_map);
     defer picker.deinit();
 
     // single key case
@@ -806,21 +805,21 @@ test GenericTriggerPicker {
         try time.append(0);
         { // d down
             const trigger = try std.fmt.allocPrint(a, "d", .{});
-            const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger });
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, Candidate{ .trigger = trigger });
             defer a.free(result.?);
             try eqStr("d", result.?);
         }
         try old.append(Key.key_d);
 
         { // d hold
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
 
         _ = new.orderedRemove(0);
         _ = time.orderedRemove(0);
         { // d up
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
         _ = old.orderedRemove(0);
@@ -831,14 +830,14 @@ test GenericTriggerPicker {
         try new.append(Key.key_s);
         try time.append(0);
         { // s down
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             defer a.free(result.?);
             try eqStr("s", result.?);
         }
         try old.append(Key.key_s);
 
         { // s hold
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
 
@@ -846,21 +845,21 @@ test GenericTriggerPicker {
         try time.append(200);
         { // `s o` down
             const trigger = try std.fmt.allocPrint(a, "s o", .{});
-            const result = try picker.getFinalTrigger(Candidate{ .trigger = trigger });
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, Candidate{ .trigger = trigger });
             defer a.free(result.?);
             try eqStr("s o", result.?);
         }
         try old.append(Key.key_o);
 
         { // `s o` hold
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
 
         _ = new.orderedRemove(1);
         _ = time.orderedRemove(1);
         { // o up
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
         _ = old.orderedRemove(1);
@@ -869,7 +868,7 @@ test GenericTriggerPicker {
         _ = time.orderedRemove(0);
         {
             // s up
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
         _ = old.orderedRemove(0);
@@ -880,7 +879,7 @@ test GenericTriggerPicker {
         try new.append(Key.key_left_shift);
         try time.append(0);
         {
-            const result = try picker.getFinalTrigger(null);
+            const result = try picker.getFinalTrigger(old.items, new.items, time.items, null);
             try eq(null, result);
         }
         _ = new.orderedRemove(0);

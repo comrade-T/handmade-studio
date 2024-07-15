@@ -48,7 +48,7 @@ pub fn main() anyerror!void {
     defer composer.deinit();
 
     const TriggerPicker = kbs.GenericTriggerPicker(exp.TriggerMap);
-    var picker = try TriggerPicker.init(gpa, &kem.old_list, &kem.new_list, &kem.time_list, &trigger_map);
+    var picker = try TriggerPicker.init(gpa, &trigger_map);
     defer picker.deinit();
 
     ///////////////////////////// Main Loop
@@ -59,28 +59,34 @@ pub fn main() anyerror!void {
 
         try kem.startHandlingInputs();
         {
-            const insert_mode_active = true;
-            var trigger: []const u8 = "";
+            const input_steps = try kem.inputSteps();
+            defer input_steps.deinit();
 
-            const candidate = try composer.getTriggerCandidate(kem.old_list.items, kem.new_list.items);
-            if (!insert_mode_active) {
-                if (candidate) |c| trigger = c;
-            }
-            if (insert_mode_active) {
-                if (candidate) |c| {
-                    std.debug.print("candidate: {s}\n", .{c.trigger});
-                }
-                const may_final_trigger = try picker.getFinalTrigger(candidate);
-                if (may_final_trigger) |t| trigger = t;
-                if (candidate != null or may_final_trigger != null) {
-                    std.debug.print("trigger: {s}\n", .{trigger});
-                    std.debug.print("-------------------------------------\n", .{});
-                }
-            }
+            for (input_steps.items, 0..) |step, i| {
+                const insert_mode_active = true;
+                var trigger: []const u8 = "";
 
-            if (!eql(u8, trigger, "")) {
-                defer picker.a.free(trigger);
-                try triggerCallback(&trigger_map, trigger, win);
+                const candidate = try composer.getTriggerCandidate(step.old, step.new);
+                if (!insert_mode_active) {
+                    if (candidate) |c| trigger = c;
+                }
+                if (insert_mode_active) {
+                    if (candidate) |c| {
+                        std.debug.print("candidate: {s}\n", .{c.trigger});
+                    }
+                    const may_final_trigger = try picker.getFinalTrigger(step.old, step.new, step.time, candidate);
+                    if (may_final_trigger) |t| trigger = t;
+                    if (candidate != null or may_final_trigger != null) {
+                        std.debug.print("step: {d}\n", .{i});
+                        std.debug.print("trigger: {s}\n", .{trigger});
+                        std.debug.print("-------------------------------------\n", .{});
+                    }
+                }
+
+                if (!eql(u8, trigger, "")) {
+                    defer picker.a.free(trigger);
+                    try triggerCallback(&trigger_map, trigger, win);
+                }
             }
         }
         try kem.finishHandlingInputs();
