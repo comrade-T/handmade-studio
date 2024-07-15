@@ -57,8 +57,7 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        try kem.updateNew();
-
+        try kem.startHandlingInputs();
         {
             const insert_mode_active = true;
             var trigger: []const u8 = "";
@@ -69,20 +68,22 @@ pub fn main() anyerror!void {
             }
             if (insert_mode_active) {
                 if (candidate) |c| {
-                    std.debug.print("-------------------------------------\n", .{});
                     std.debug.print("candidate: {s}\n", .{c.trigger});
                 }
                 const may_final_trigger = try picker.getFinalTrigger(candidate);
                 if (may_final_trigger) |t| trigger = t;
+                if (candidate != null or may_final_trigger != null) {
+                    std.debug.print("trigger: {s}\n", .{trigger});
+                    std.debug.print("-------------------------------------\n", .{});
+                }
             }
 
             if (!eql(u8, trigger, "")) {
                 defer picker.a.free(trigger);
-                std.debug.print("trigger: {s}\n", .{trigger});
-
                 try triggerCallback(&trigger_map, trigger, win);
             }
         }
+        try kem.finishHandlingInputs();
 
         {
             rl.clearBackground(rl.Color.blank);
@@ -121,8 +122,6 @@ pub fn main() anyerror!void {
                 }
             }
         }
-
-        try kem.updateOld();
     }
 }
 

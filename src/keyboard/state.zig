@@ -48,6 +48,8 @@ pub const KeyboardEventsManager = struct {
 
     time_list: EventTimeList,
 
+    // TODO: if there's more than 1 key changes in a frame, split and ease it out
+
     pub fn init(a: Allocator) !*@This() {
         const self = try a.create(@This());
         self.* = .{
@@ -66,11 +68,11 @@ pub const KeyboardEventsManager = struct {
         self.a.destroy(self);
     }
 
-    pub fn updateNew(self: *@This()) !void {
+    pub fn startHandlingInputs(self: *@This()) !void {
         try updateEventList(&self.new_arr, &self.new_list, &self.time_list);
     }
 
-    pub fn updateOld(self: *@This()) !void {
+    pub fn finishHandlingInputs(self: *@This()) !void {
         try updateEventList(&self.old_arr, &self.old_list, null);
     }
 };
@@ -250,10 +252,6 @@ pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime
             const new_status = try getTriggerStatus(self.a, new, self.trigger_map);
             const new_is_prefix = try isPrefix(self.a, new, self.prefix_map);
 
-            std.debug.print("> {s}\n", .{new_status.trigger});
-
-            //                                                                    prevent prepeating the same key when holding down
-            //                                                                   __________________________________________________
             if (new_status.mapped and !new_is_prefix and new.len >= old.len) {
                 try self.setLatestTrigger(new);
                 return .{ .trigger = new_status.trigger };
@@ -744,6 +742,8 @@ test GenericTriggerPicker {
             const result = try picker.getFinalTrigger(null);
             try eq(null, result);
         }
+        _ = new.orderedRemove(0);
+        _ = new.orderedRemove(0);
     }
 }
 
