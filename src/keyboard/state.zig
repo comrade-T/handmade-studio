@@ -250,9 +250,11 @@ pub fn GenericTriggerCandidateComposer(comptime trigger_map_type: type, comptime
             const new_status = try getTriggerStatus(self.a, new, self.trigger_map);
             const new_is_prefix = try isPrefix(self.a, new, self.prefix_map);
 
+            std.debug.print("> {s}\n", .{new_status.trigger});
+
             //                                                                    prevent prepeating the same key when holding down
             //                                                                   __________________________________________________
-            if (new_status.mapped and !new_is_prefix and ((new.len > old.len) or !std.mem.eql(Key, new, self.latest_trigger.items))) {
+            if (new_status.mapped and !new_is_prefix and new.len >= old.len) {
                 try self.setLatestTrigger(new);
                 return .{ .trigger = new_status.trigger };
             }
@@ -524,6 +526,22 @@ test GenericTriggerCandidateComposer {
     try eq(null, try composer.getTriggerCandidate(&d_l, &d));
     try eq(null, try composer.getTriggerCandidate(&d, &d));
     try eq(null, try composer.getTriggerCandidate(&d, &nothingness));
+
+    /////////////////////////////
+
+    var lshift = [_]Key{Key.key_left_shift};
+    var one = [_]Key{Key.key_one};
+    var lshift_1 = [_]Key{ Key.key_left_shift, Key.key_one };
+
+    try eq(null, try composer.getTriggerCandidate(&nothingness, &lshift));
+    try eq(null, try composer.getTriggerCandidate(&lshift, &lshift));
+    {
+        const result = (try composer.getTriggerCandidate(&lshift, &lshift_1)).?;
+        defer allocator.free(result.trigger);
+        try eqStr("lshift 1", result.trigger);
+    }
+    try eq(null, try composer.getTriggerCandidate(&lshift_1, &lshift_1));
+    try eq(null, try composer.getTriggerCandidate(&lshift_1, &one));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Invoker
@@ -604,10 +622,6 @@ pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
 
         pub fn getFinalTrigger(self: *@This(), potential_candidate: ?Candidate) !?[]const u8 {
             const final = try self.process(potential_candidate);
-
-            if (final) |f| {
-                std.debug.print("{s} | {any} <\n", .{ f.trigger, f.last });
-            }
 
             if (final == null) {
                 try self.updatePreviousTrigger(null);

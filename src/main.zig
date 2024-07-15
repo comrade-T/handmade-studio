@@ -69,6 +69,7 @@ pub fn main() anyerror!void {
             }
             if (insert_mode_active) {
                 if (candidate) |c| {
+                    std.debug.print("-------------------------------------\n", .{});
                     std.debug.print("candidate: {s}\n", .{c.trigger});
                 }
                 const may_final_trigger = try picker.getFinalTrigger(candidate);
