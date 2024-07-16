@@ -23,20 +23,19 @@ pub const WindowBackend = struct {
     buffer: *Buffer,
     cursor: Cursor,
 
-    parser: *ts.Parser,
-    tree: *ts.Tree,
-
     string_buffer: std.ArrayList(u8),
-
-    // experimental syntax highlighting
-    highlight_query: *ts.Query,
-    highlight_filter: *PredicatesFilter,
-    highlight_map: HighlightMap,
 
     cells: std.ArrayList(Cell),
     lines: std.ArrayList(Line),
 
-    pub fn create(external_allocator: Allocator, lang: *const ts.Language, patterns: []const u8) !*@This() {
+    parser: ?*ts.Parser = null,
+    tree: ?*ts.Tree = null,
+
+    highlight_query: ?*ts.Query = null,
+    highlight_filter: ?*PredicatesFilter = null,
+    highlight_map: ?HighlightMap = null,
+
+    pub fn create(external_allocator: Allocator) !*@This() {
         var self = try external_allocator.create(@This());
 
         self.* = .{
@@ -47,15 +46,7 @@ pub const WindowBackend = struct {
             .buffer = try Buffer.create(self.a, self.a),
             .cursor = Cursor{},
 
-            .parser = try ts.Parser.create(),
-            .tree = undefined,
-
             .string_buffer = std.ArrayList(u8).init(self.a),
-
-            // experimental syntax highlighting
-            .highlight_query = try ts.Query.create(lang, patterns),
-            .highlight_filter = try PredicatesFilter.init(self.a, self.highlight_query),
-            .highlight_map = try createExperimentalHighlightMap(self.a),
 
             .cells = std.ArrayList(Cell).init(self.a),
             .lines = std.ArrayList(Line).init(self.a),
@@ -63,15 +54,32 @@ pub const WindowBackend = struct {
 
         self.buffer.root = try self.buffer.load_from_string("");
 
-        try self.parser.setLanguage(lang);
-        self.tree = try self.parser.parseString(null, "");
-
         return self;
     }
 
+    pub fn createWithTreeSitter(external_allocator: Allocator, lang: *const ts.Language, patterns: []const u8) !*WindowBackend {
+        var self = try WindowBackend.create(external_allocator);
+        try self.initializeTreeSitter(lang, patterns);
+        return self;
+    }
+
+    pub fn initializeTreeSitter(self: *@This(), lang: *const ts.Language, patterns: []const u8) !void {
+        self.parser = try ts.Parser.create();
+        try self.parser.?.setLanguage(lang);
+        self.highlight_query = try ts.Query.create(lang, patterns);
+        self.highlight_filter = try PredicatesFilter.init(self.a, self.highlight_query.?);
+        self.highlight_map = try createExperimentalHighlightMap(self.a);
+        self.tree = try self.parser.?.parseString(null, self.string_buffer.items);
+    }
+
     pub fn deinit(self: *@This()) void {
-        self.parser.destroy();
-        self.tree.destroy();
+        if (self.parser) |_| self.parser.?.destroy();
+        if (self.tree) |_| self.tree.?.destroy();
+
+        if (self.highlight_query) |_| self.highlight_query.?.destroy();
+        if (self.highlight_filter) |_| self.highlight_filter.?.deinit();
+        if (self.highlight_map) |_| self.highlight_map.?.deinit();
+
         self.string_buffer.deinit();
         self.buffer.deinit();
         self.arena.deinit();
@@ -123,19 +131,21 @@ pub const WindowBackend = struct {
 
         /////////////////////////////
 
-        const edit = ts.InputEdit{
-            .start_byte = @intCast(new_end_byte),
-            .old_end_byte = @intCast(new_end_byte),
-            .new_end_byte = @intCast(start_byte),
-            .start_point = new_end_point,
-            .old_end_point = new_end_point,
-            .new_end_point = start_point,
-        };
-        self.tree.edit(&edit);
+        if (self.tree) |_| {
+            const edit = ts.InputEdit{
+                .start_byte = @intCast(new_end_byte),
+                .old_end_byte = @intCast(new_end_byte),
+                .new_end_byte = @intCast(start_byte),
+                .start_point = new_end_point,
+                .old_end_point = new_end_point,
+                .new_end_point = start_point,
+            };
+            self.tree.?.edit(&edit);
 
-        const old_tree = self.tree;
-        defer old_tree.destroy();
-        self.tree = try self.parser.parseString(old_tree, self.string_buffer.items);
+            const old_tree = self.tree;
+            defer old_tree.?.destroy();
+            self.tree = try self.parser.?.parseString(old_tree, self.string_buffer.items);
+        }
 
         /////////////////////////////
 
@@ -166,19 +176,21 @@ pub const WindowBackend = struct {
 
         /////////////////////////////
 
-        const edit = ts.InputEdit{
-            .start_byte = @intCast(start_byte),
-            .old_end_byte = @intCast(start_byte),
-            .new_end_byte = @intCast(new_end_byte),
-            .start_point = start_point,
-            .old_end_point = start_point,
-            .new_end_point = new_end_point,
-        };
-        self.tree.edit(&edit);
+        if (self.tree) |_| {
+            const edit = ts.InputEdit{
+                .start_byte = @intCast(start_byte),
+                .old_end_byte = @intCast(start_byte),
+                .new_end_byte = @intCast(new_end_byte),
+                .start_point = start_point,
+                .old_end_point = start_point,
+                .new_end_point = new_end_point,
+            };
+            self.tree.?.edit(&edit);
 
-        const old_tree = self.tree;
-        defer old_tree.destroy();
-        self.tree = try self.parser.parseString(old_tree, self.string_buffer.items);
+            const old_tree = self.tree;
+            defer old_tree.?.destroy();
+            self.tree = try self.parser.?.parseString(old_tree, self.string_buffer.items);
+        }
 
         /////////////////////////////
 
@@ -212,7 +224,7 @@ fn testWindowTreeHasMatches(
     const source = window.string_buffer.items;
     const cursor = try ts.Query.Cursor.create();
     defer cursor.destroy();
-    cursor.execute(query, window.tree.getRootNode());
+    cursor.execute(query, window.tree.?.getRootNode());
 
     var i: usize = 0;
     while (filter.nextMatch(source, cursor)) |pattern| {
@@ -229,7 +241,7 @@ test "Window.deleteChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    var window = try WindowBackend.create(a, ziglang, test_patterns);
+    var window = try WindowBackend.createWithTreeSitter(a, ziglang, test_patterns);
     defer window.deinit();
 
     const query = try ts.Query.create(ziglang, test_patterns);
@@ -357,7 +369,7 @@ test "Window.insertChars()" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
 
-    var window = try WindowBackend.create(a, ziglang, test_patterns);
+    var window = try WindowBackend.createWithTreeSitter(a, ziglang, test_patterns);
     defer window.deinit();
 
     const query = try ts.Query.create(ziglang, test_patterns);
@@ -441,18 +453,14 @@ const Line = struct {
     }
 };
 
-fn getUpdatedCells(
-    window: *WindowBackend,
-    query: *ts.Query,
-    filter: *PredicatesFilter,
-) !struct { std.ArrayList(Cell), std.ArrayList(Line) } {
-    var cells = std.ArrayList(Cell).init(window.a);
-    var lines = std.ArrayList(Line).init(window.a);
+fn getUpdatedCells(win: *WindowBackend, query: ?*ts.Query, filter: ?*PredicatesFilter) !struct { std.ArrayList(Cell), std.ArrayList(Line) } {
+    var cells = std.ArrayList(Cell).init(win.a);
+    var lines = std.ArrayList(Line).init(win.a);
 
-    var indexes = std.ArrayList(usize).init(window.a);
+    var indexes = std.ArrayList(usize).init(win.a);
     defer indexes.deinit();
 
-    const source = window.string_buffer.items;
+    const source = win.string_buffer.items;
     var iter = _b.code_point.Iterator{ .bytes = source };
 
     {
@@ -472,14 +480,14 @@ fn getUpdatedCells(
         try lines.append(Line{ .start = start_index, .end = cells.items.len });
     }
 
-    {
+    if (win.tree) |_| {
         const cursor = try ts.Query.Cursor.create();
-        cursor.execute(query, window.tree.getRootNode());
+        cursor.execute(query.?, win.tree.?.getRootNode());
 
-        while (filter.nextMatch(source, cursor)) |pattern| {
+        while (filter.?.nextMatch(source, cursor)) |pattern| {
             const cap = pattern.captures()[0];
-            const capture_name = query.getCaptureNameForId(cap.id);
-            if (window.highlight_map.get(capture_name)) |color| {
+            const capture_name = query.?.getCaptureNameForId(cap.id);
+            if (win.highlight_map.?.get(capture_name)) |color| {
                 for (cap.node.getStartByte()..cap.node.getEndByte()) |k| {
                     const cell_index = indexes.items[k];
                     if (cell_index < cells.items.len) cells.items[cell_index].color = color;
@@ -507,7 +515,7 @@ test getUpdatedCells {
     /////////////////////////////
 
     {
-        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var window = try WindowBackend.createWithTreeSitter(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         {
             const result, _ = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
@@ -528,7 +536,7 @@ test getUpdatedCells {
     }
 
     {
-        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var window = try WindowBackend.createWithTreeSitter(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("👋");
         {
@@ -546,7 +554,7 @@ test getUpdatedCells {
     }
 
     {
-        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var window = try WindowBackend.createWithTreeSitter(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("const std = @import(\"std\")");
         {
@@ -561,7 +569,7 @@ test getUpdatedCells {
     }
 
     {
-        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var window = try WindowBackend.createWithTreeSitter(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("const emoji = \"👋\";");
         {
@@ -576,7 +584,7 @@ test getUpdatedCells {
     /////////////////////////////
 
     {
-        var window = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var window = try WindowBackend.createWithTreeSitter(a, ziglang, zig_highlight_scm);
         defer window.deinit();
         try window.insertChars("hello\nman\nover\nthere\nvery nice 👋");
         {
@@ -645,12 +653,11 @@ fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count:
 
 test "[count] words backward" {
     const a = std.testing.allocator;
-    const ziglang = try ts.Language.get("zig");
     var chars_to_stop_at_map = try createCharsToStopAtHashMap(a);
     defer chars_to_stop_at_map.deinit();
 
     {
-        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var win = try WindowBackend.create(a);
         defer win.deinit();
         try win.insertChars("const");
         try eqStr("const", win.string_buffer.items);
@@ -663,7 +670,7 @@ test "[count] words backward" {
     }
 
     {
-        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var win = try WindowBackend.create(a);
         defer win.deinit();
         try win.insertChars("const std");
         try eqStr("const std", win.string_buffer.items);
@@ -680,7 +687,7 @@ test "[count] words backward" {
     }
 
     {
-        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var win = try WindowBackend.create(a);
         defer win.deinit();
         try win.insertChars("const  std");
 
@@ -696,7 +703,7 @@ test "[count] words backward" {
     }
 
     {
-        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        var win = try WindowBackend.create(a);
         defer win.deinit();
         try win.insertChars("hello\nworld");
 
