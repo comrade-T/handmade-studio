@@ -125,14 +125,9 @@ pub const WindowBackend = struct {
         const num_of_chars_to_delete = _b.num_of_chars(self.string_buffer.items[new_end_byte..start_byte]);
         try self.buffer.deleteCharsAndUpdate(end_line, end_col, num_of_chars_to_delete);
 
-        try self.string_buffer.replaceRange(new_end_byte, num_of_bytes_to_delete, &[0]u8{});
-
+        try self.updateStringBuffer();
         self.cursor.set(end_line, end_col);
-
-        /////////////////////////////
-
         try self.updateTree(new_end_byte, new_end_byte, start_byte, new_end_point, new_end_point, start_point);
-
         try self.updateCells();
     }
 
@@ -146,12 +141,16 @@ pub const WindowBackend = struct {
         const new_end_point = ts.Point{ .row = @intCast(end_line), .column = @intCast(end_col) };
         const new_end_byte = start_byte + chars.len;
 
-        /////////////////////////////
-
-        try self.string_buffer.insertSlice(start_byte, chars);
+        try self.updateStringBuffer();
         self.cursor.set(end_line, end_col);
         try self.updateTree(start_byte, start_byte, new_end_byte, start_point, start_point, new_end_point);
         try self.updateCells();
+    }
+
+    fn updateStringBuffer(self: *@This()) !void {
+        const old_string_buffer = self.string_buffer;
+        defer old_string_buffer.deinit();
+        self.string_buffer = try self.buffer.toArrayList(self.a);
     }
 
     fn updateTree(self: *@This(), start_byte: usize, old_end_byte: usize, new_end_byte: usize, start_point: ts.Point, old_end_point: ts.Point, new_end_point: ts.Point) !void {
