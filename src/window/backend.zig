@@ -432,7 +432,14 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const Cell = struct { char: []const u8, color: Color };
-const Line = struct { start: usize, end: usize };
+const Line = struct {
+    start: usize,
+    end: usize,
+
+    fn cells(self: *@This(), win: *WindowBackend) []Cell {
+        return win.cells.items[self.start..self.end];
+    }
+};
 
 fn getUpdatedCells(
     window: *WindowBackend,
@@ -448,31 +455,35 @@ fn getUpdatedCells(
     const source = window.string_buffer.items;
     var iter = _b.code_point.Iterator{ .bytes = source };
 
-    var i: usize = 0;
-    var j: usize = 0;
-    var start_index: usize = 0;
-    while (iter.next()) |cp| {
-        try cells.append(Cell{ .char = source[i .. i + cp.len], .color = Color.ray_white });
-        for (0..cp.len) |_| try indexes.append(j);
-        if (cp.code == '\n') {
-            try lines.append(Line{ .start = start_index, .end = j });
-            start_index = cells.items.len;
+    {
+        var i: usize = 0;
+        var j: usize = 0;
+        var start_index: usize = 0;
+        while (iter.next()) |cp| {
+            try cells.append(Cell{ .char = source[i .. i + cp.len], .color = Color.ray_white });
+            for (0..cp.len) |_| try indexes.append(j);
+            if (cp.code == '\n') {
+                try lines.append(Line{ .start = start_index, .end = j });
+                start_index = cells.items.len;
+            }
+            i += cp.len;
+            j += 1;
         }
-        i += cp.len;
-        j += 1;
+        try lines.append(Line{ .start = start_index, .end = cells.items.len });
     }
-    try lines.append(Line{ .start = start_index, .end = cells.items.len });
 
-    const cursor = try ts.Query.Cursor.create();
-    cursor.execute(query, window.tree.getRootNode());
+    {
+        const cursor = try ts.Query.Cursor.create();
+        cursor.execute(query, window.tree.getRootNode());
 
-    while (filter.nextMatch(source, cursor)) |pattern| {
-        const cap = pattern.captures()[0];
-        const capture_name = query.getCaptureNameForId(cap.id);
-        if (window.highlight_map.get(capture_name)) |color| {
-            for (cap.node.getStartByte()..cap.node.getEndByte()) |k| {
-                const cell_index = indexes.items[k];
-                if (cell_index < cells.items.len) cells.items[cell_index].color = color;
+        while (filter.nextMatch(source, cursor)) |pattern| {
+            const cap = pattern.captures()[0];
+            const capture_name = query.getCaptureNameForId(cap.id);
+            if (window.highlight_map.get(capture_name)) |color| {
+                for (cap.node.getStartByte()..cap.node.getEndByte()) |k| {
+                    const cell_index = indexes.items[k];
+                    if (cell_index < cells.items.len) cells.items[cell_index].color = color;
+                }
             }
         }
     }
@@ -597,14 +608,12 @@ fn createCharsToStopAtHashMap(a: Allocator) !CharsToStopAtMap {
 
 fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
     for (0..count) |_| {
-        var line = win.lines.items[win.cursor.line];
-        var cells = win.cells.items[line.start..line.end];
+        var cells = win.lines.items[win.cursor.line].cells(win);
 
         if (win.cursor.col == 0) {
             if (win.cursor.line == 0) continue;
             const new_cursor_line = win.cursor.line - 1;
-            line = win.lines.items[new_cursor_line];
-            cells = win.cells.items[line.start..line.end];
+            cells = win.lines.items[new_cursor_line].cells(win);
             win.cursor.set(new_cursor_line, cells.len);
         }
 
