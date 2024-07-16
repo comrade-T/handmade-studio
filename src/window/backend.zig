@@ -34,7 +34,7 @@ pub const WindowBackend = struct {
     highlight_map: HighlightMap,
 
     cells: std.ArrayList(Cell),
-    lines: std.ArrayList([2]usize),
+    lines: std.ArrayList(Line),
 
     pub fn create(external_allocator: Allocator, lang: *const ts.Language, patterns: []const u8) !*@This() {
         var self = try external_allocator.create(@This());
@@ -58,7 +58,7 @@ pub const WindowBackend = struct {
             .highlight_map = try createExperimentalHighlightMap(self.a),
 
             .cells = std.ArrayList(Cell).init(self.a),
-            .lines = std.ArrayList([2]usize).init(self.a),
+            .lines = std.ArrayList(Line).init(self.a),
         };
 
         self.buffer.root = try self.buffer.load_from_string("");
@@ -431,15 +431,16 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const Cell = struct { char: []const u8, color: Color };
+const Cell = struct { char: []const u8, color: Color };
+const Line = struct { start: usize, end: usize };
 
 fn getUpdatedCells(
     window: *WindowBackend,
     query: *ts.Query,
     filter: *PredicatesFilter,
-) !struct { std.ArrayList(Cell), std.ArrayList([2]usize) } {
+) !struct { std.ArrayList(Cell), std.ArrayList(Line) } {
     var cells = std.ArrayList(Cell).init(window.a);
-    var lines = std.ArrayList([2]usize).init(window.a);
+    var lines = std.ArrayList(Line).init(window.a);
 
     var indexes = std.ArrayList(usize).init(window.a);
     defer indexes.deinit();
@@ -454,13 +455,13 @@ fn getUpdatedCells(
         try cells.append(Cell{ .char = source[i .. i + cp.len], .color = Color.ray_white });
         for (0..cp.len) |_| try indexes.append(j);
         if (cp.code == '\n') {
-            try lines.append([2]usize{ start_index, j });
+            try lines.append(Line{ .start = start_index, .end = j });
             start_index = cells.items.len;
         }
         i += cp.len;
         j += 1;
     }
-    try lines.append([2]usize{ start_index, cells.items.len });
+    try lines.append(Line{ .start = start_index, .end = cells.items.len });
 
     const cursor = try ts.Query.Cursor.create();
     cursor.execute(query, window.tree.getRootNode());
@@ -570,11 +571,11 @@ test getUpdatedCells {
         {
             _, const lines = try getUpdatedCells(window, window.highlight_query, window.highlight_filter);
             try eq(5, lines.items.len);
-            try testCells(window.cells.items[lines.items[0][0]..lines.items[0][1]], 0, 5, "hello", Color.ray_white);
-            try testCells(window.cells.items[lines.items[1][0]..lines.items[1][1]], 0, 3, "man", Color.ray_white);
-            try testCells(window.cells.items[lines.items[2][0]..lines.items[2][1]], 0, 4, "over", Color.ray_white);
-            try testCells(window.cells.items[lines.items[3][0]..lines.items[3][1]], 0, 5, "there", Color.ray_white);
-            try testCells(window.cells.items[lines.items[4][0]..lines.items[4][1]], 0, 11, "very nice 👋", Color.ray_white);
+            try testCells(window.cells.items[lines.items[0].start..lines.items[0].end], 0, 5, "hello", Color.ray_white);
+            try testCells(window.cells.items[lines.items[1].start..lines.items[1].end], 0, 3, "man", Color.ray_white);
+            try testCells(window.cells.items[lines.items[2].start..lines.items[2].end], 0, 4, "over", Color.ray_white);
+            try testCells(window.cells.items[lines.items[3].start..lines.items[3].end], 0, 5, "there", Color.ray_white);
+            try testCells(window.cells.items[lines.items[4].start..lines.items[4].end], 0, 11, "very nice 👋", Color.ray_white);
         }
     }
 }
