@@ -582,34 +582,88 @@ test getUpdatedCells {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn moveCursorBackwardsByWord(win: *WindowBackend, count: usize) void {
-    // TODO: it would be nice if we could just access the Cell index the cursor is on at once.
+const chars_to_stop_at = [_][]const u8{
+    " ", ";", ":", "'", "\"", "!", "@", "#", "$", "%", "^",
+    "&", "*", "(", ")", "-",  "+", "=", "{", "}", "[", "]",
+    "|", "<", ">", ",", ".",  "?", "/", "~", "`",
+};
 
-    _ = count;
-    win.cursor.left(1000);
+const CharsToStopAtMap = std.StringHashMap(bool);
+fn createCharsToStopAtHashMap(a: Allocator) !CharsToStopAtMap {
+    var map = CharsToStopAtMap.init(a);
+    for (chars_to_stop_at) |char| try map.put(char, true);
+    return map;
+}
+
+fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
+    for (0..count) |_| {
+        const line = win.lines.items[win.cursor.line];
+        const cells = win.cells.items[line.start..line.end];
+
+        if (win.cursor.col == 0) {
+            // TODO:
+            continue;
+        }
+
+        {
+            var i: usize = win.cursor.col - 1;
+            while (i > 0) {
+                if (map.get(cells[i].char) == null) {
+                    i += 1;
+                    break;
+                }
+                i -|= 1;
+            }
+            win.cursor.set(win.cursor.line, i);
+        }
+
+        {
+            var i: usize = win.cursor.col - 1;
+            while (i > 0) {
+                if (map.get(cells[i].char)) |_| {
+                    i += 1;
+                    break;
+                }
+                i -|= 1;
+            }
+            win.cursor.set(win.cursor.line, i);
+        }
+    }
 }
 
 test "[count] words backward" {
     const a = std.testing.allocator;
     const ziglang = try ts.Language.get("zig");
+    var chars_to_stop_at_map = try createCharsToStopAtHashMap(a);
+    defer chars_to_stop_at_map.deinit();
 
     {
         var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
         defer win.deinit();
         try win.insertChars("const");
         try eqStr("const", win.string_buffer.items);
-        moveCursorBackwardsByWord(win, 1);
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
+
         try win.insertChars("okay ");
         try eqStr("okay const", win.string_buffer.items);
     }
 
-    // {
-    //     var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
-    //     defer win.deinit();
-    //     try win.insertChars("const std");
-    //     try eqStr("const std", win.string_buffer.items);
-    //     moveCursorBackwardsByWord(win, 1);
-    //     try win.insertChars("okay ");
-    //     try eqStr("const okay std", win.string_buffer.items);
-    // }
+    {
+        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        defer win.deinit();
+        try win.insertChars("const std");
+        try eqStr("const std", win.string_buffer.items);
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        try eq(Cursor{ .line = 0, .col = 6 }, win.cursor);
+        try win.insertChars("okay ");
+        try eqStr("const okay std", win.string_buffer.items);
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
+        try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
+        try win.insertChars("// ");
+        try eqStr("// const okay std", win.string_buffer.items);
+    }
 }
