@@ -597,12 +597,15 @@ fn createCharsToStopAtHashMap(a: Allocator) !CharsToStopAtMap {
 
 fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
     for (0..count) |_| {
-        const line = win.lines.items[win.cursor.line];
-        const cells = win.cells.items[line.start..line.end];
+        var line = win.lines.items[win.cursor.line];
+        var cells = win.cells.items[line.start..line.end];
 
         if (win.cursor.col == 0) {
-            // TODO:
-            continue;
+            if (win.cursor.line == 0) continue;
+            const new_cursor_line = win.cursor.line - 1;
+            line = win.lines.items[new_cursor_line];
+            cells = win.cells.items[line.start..line.end];
+            win.cursor.set(new_cursor_line, cells.len);
         }
 
         {
@@ -665,5 +668,37 @@ test "[count] words backward" {
         try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
         try win.insertChars("// ");
         try eqStr("// const okay std", win.string_buffer.items);
+    }
+
+    {
+        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        defer win.deinit();
+        try win.insertChars("const  std");
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        try eq(Cursor{ .line = 0, .col = 7 }, win.cursor);
+        try win.insertChars("super ");
+        try eqStr("const  super std", win.string_buffer.items);
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
+        try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
+        try win.insertChars("//");
+        try eqStr("//const  super std", win.string_buffer.items);
+    }
+
+    {
+        var win = try WindowBackend.create(a, ziglang, zig_highlight_scm);
+        defer win.deinit();
+        try win.insertChars("hello\nworld");
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
+        try win.insertChars("my ");
+        try eqStr("hello\nmy world", win.string_buffer.items);
+
+        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
+        try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
+        try win.insertChars("say ");
+        try eqStr("say hello\nmy world", win.string_buffer.items);
     }
 }
