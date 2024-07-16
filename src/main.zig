@@ -66,6 +66,7 @@ pub fn main() anyerror!void {
     defer picker.deinit();
 
     var prev_trigger = try std.fmt.allocPrint(gpa, "", .{});
+    defer gpa.free(prev_trigger);
 
     ///////////////////////////// Main Loop
 
@@ -131,19 +132,39 @@ pub fn main() anyerror!void {
                 var x: f32 = 0;
                 var y: f32 = 0;
 
-                for (win.cells.items) |cell| {
-                    if (cell.char[0] == '\n') {
-                        y += line_height;
-                        x = 0;
-                        continue;
+                for (win.lines.items, 0..) |line, line_nr| {
+                    for (line.cells(win), 0..) |cell, col_nr| {
+                        var buf: [10]u8 = undefined;
+                        const text = std.fmt.bufPrintZ(&buf, "{s}", .{cell.char}) catch "error";
+                        rl.drawTextEx(font, text, .{ .x = start_x + x, .y = start_y + y }, font_size, text_spacing, cell.color);
+
+                        const measure = rl.measureTextEx(font, text, font_size, text_spacing);
+                        x += measure.x;
+
+                        // draw cursor
+                        if (line_nr == win.cursor.line and win.cursor.col > 0 and col_nr == win.cursor.col - 1) {
+                            const cursor_x = start_x + x + 2;
+                            const cursor_y = start_y + y;
+                            rl.drawRectangle(@intFromFloat(cursor_x), @intFromFloat(cursor_y), 3, font_size, rl.Color.ray_white);
+                        }
                     }
 
-                    var buf: [10]u8 = undefined;
-                    const text = std.fmt.bufPrintZ(&buf, "{s}", .{cell.char}) catch "error";
-                    rl.drawTextEx(font, text, .{ .x = start_x + x, .y = start_y + y }, font_size, text_spacing, cell.color);
+                    // draw cursor
+                    if (line_nr == win.cursor.line and win.cursor.col == 0) {
+                        const cursor_x = start_x - 2;
+                        const cursor_y = start_y + y;
+                        rl.drawRectangle(@intFromFloat(cursor_x), @intFromFloat(cursor_y), 3, font_size, rl.Color.ray_white);
+                    }
 
-                    const measure = rl.measureTextEx(font, text, font_size, text_spacing);
-                    x += measure.x;
+                    y += line_height;
+                    x = 0;
+                }
+
+                // draw cursor
+                if (win.lines.items.len == 0) {
+                    const cursor_x = start_x + 5;
+                    const cursor_y = start_y + y;
+                    rl.drawRectangle(@intFromFloat(cursor_x), @intFromFloat(cursor_y), 3, font_size, rl.Color.ray_white);
                 }
             }
         }

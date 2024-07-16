@@ -439,7 +439,7 @@ const Line = struct {
     start: usize,
     end: usize,
 
-    fn cells(self: *@This(), win: *WindowBackend) []Cell {
+    pub fn cells(self: *const @This(), win: *WindowBackend) []Cell {
         return win.cells.items[self.start..self.end];
     }
 };
