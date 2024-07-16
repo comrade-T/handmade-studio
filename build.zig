@@ -50,7 +50,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
-    const cursor = addTestableModule(&bops, "src/buffer/cursor.zig", &.{}, zig_build_test_step);
+    _ = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
 
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
         .{ .name = "regex", .module = regex },
@@ -59,7 +59,6 @@ pub fn build(b: *std.Build) void {
 
     const window_backend = addTestableModule(&bops, "src/window/backend.zig", &.{
         .{ .name = "buffer", .module = buffer.module },
-        .{ .name = "cursor", .module = cursor.module },
         .{ .name = "ts", .module = ts.module },
         .{ .name = "raylib", .module = raylib.module("raylib") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),

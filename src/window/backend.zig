@@ -6,7 +6,7 @@ pub const ts = ts_.b;
 const PredicatesFilter = ts_.PredicatesFilter;
 const _b = @import("buffer");
 const Buffer = _b.Buffer;
-const Cursor = @import("cursor").Cursor;
+const Cursor = @import("cursor.zig").Cursor;
 
 const Allocator = std.mem.Allocator;
 const eql = std.mem.eql;
@@ -431,7 +431,7 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Cell = struct { char: []const u8, color: Color };
+pub const Cell = struct { char: []const u8, color: Color };
 
 fn getUpdatedCells(
     window: *WindowBackend,
