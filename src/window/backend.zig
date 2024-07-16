@@ -131,29 +131,9 @@ pub const WindowBackend = struct {
 
         /////////////////////////////
 
-        if (self.tree) |_| {
-            const edit = ts.InputEdit{
-                .start_byte = @intCast(new_end_byte),
-                .old_end_byte = @intCast(new_end_byte),
-                .new_end_byte = @intCast(start_byte),
-                .start_point = new_end_point,
-                .old_end_point = new_end_point,
-                .new_end_point = start_point,
-            };
-            self.tree.?.edit(&edit);
+        try self.updateTree(new_end_byte, new_end_byte, start_byte, new_end_point, new_end_point, start_point);
 
-            const old_tree = self.tree;
-            defer old_tree.?.destroy();
-            self.tree = try self.parser.?.parseString(old_tree, self.string_buffer.items);
-        }
-
-        /////////////////////////////
-
-        const old_cells = self.cells;
-        defer old_cells.deinit();
-        const old_lines = self.lines;
-        defer old_lines.deinit();
-        self.cells, self.lines = try getUpdatedCells(self, self.highlight_query, self.highlight_filter);
+        try self.updateCells();
     }
 
     pub fn insertChars(self: *@This(), chars: []const u8) !void {
@@ -162,8 +142,6 @@ pub const WindowBackend = struct {
         const start_point = ts.Point{ .row = @intCast(start_line), .column = @intCast(start_col) };
         const start_byte = try self.buffer.getByteOffsetAtPoint(start_line, start_col);
 
-        /////////////////////////////
-
         const end_line, const end_col = try self.buffer.insertCharsAndUpdate(start_line, start_col, chars);
         const new_end_point = ts.Point{ .row = @intCast(end_line), .column = @intCast(end_col) };
         const new_end_byte = start_byte + chars.len;
@@ -171,18 +149,19 @@ pub const WindowBackend = struct {
         /////////////////////////////
 
         try self.string_buffer.insertSlice(start_byte, chars);
-
         self.cursor.set(end_line, end_col);
+        try self.updateTree(start_byte, start_byte, new_end_byte, start_point, start_point, new_end_point);
+        try self.updateCells();
+    }
 
-        /////////////////////////////
-
+    fn updateTree(self: *@This(), start_byte: usize, old_end_byte: usize, new_end_byte: usize, start_point: ts.Point, old_end_point: ts.Point, new_end_point: ts.Point) !void {
         if (self.tree) |_| {
             const edit = ts.InputEdit{
                 .start_byte = @intCast(start_byte),
-                .old_end_byte = @intCast(start_byte),
+                .old_end_byte = @intCast(old_end_byte),
                 .new_end_byte = @intCast(new_end_byte),
                 .start_point = start_point,
-                .old_end_point = start_point,
+                .old_end_point = old_end_point,
                 .new_end_point = new_end_point,
             };
             self.tree.?.edit(&edit);
@@ -191,9 +170,9 @@ pub const WindowBackend = struct {
             defer old_tree.?.destroy();
             self.tree = try self.parser.?.parseString(old_tree, self.string_buffer.items);
         }
+    }
 
-        /////////////////////////////
-
+    fn updateCells(self: *@This()) !void {
         const old_cells = self.cells;
         defer old_cells.deinit();
         const old_lines = self.lines;
