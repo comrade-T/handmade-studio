@@ -16,6 +16,10 @@
             .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
             .hash = "1220608d53a1e0e295f8367be3aa7b1439d044af1551ae64cf5ae6ce9edb05858e73",
         },
+        .logz = .{
+            .url = "https://github.com/karlseguin/log.zig/archive/master.tar.gz",
+            .hash = "1220996bf8517c7785a577811f6ee39574c274151a350e2be1896359e878e1ef9aa9",
+        },
     },
 
     .paths = .{

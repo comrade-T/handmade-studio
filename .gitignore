@@ -2,3 +2,4 @@ zig-out/
 .zig-cache/
 *.ttf
 submodules/
+*.log

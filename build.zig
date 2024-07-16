@@ -21,6 +21,8 @@ pub fn build(b: *std.Build) void {
 
     const regex = b.addModule("regex", .{ .root_source_file = b.path("submodules/regex/src/regex.zig") });
 
+    const logz = b.dependency("logz", .{ .target = target, .optimize = optimize });
+
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
     const tree_sitter = b.addStaticLibrary(.{
@@ -78,6 +80,9 @@ pub fn build(b: *std.Build) void {
         exe.linkLibrary(raylib.artifact("raylib"));
         exe.root_module.addImport("raylib", raylib.module("raylib"));
         exe.root_module.addImport("window_backend", window_backend.module);
+
+        exe.root_module.addImport("logz", logz.module("logz"));
+
         exe.linkLibrary(tree_sitter);
 
         const run_cmd = b.addRunArtifact(exe);
