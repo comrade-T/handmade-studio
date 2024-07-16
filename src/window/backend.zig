@@ -35,6 +35,8 @@ pub const WindowBackend = struct {
     highlight_filter: ?*PredicatesFilter = null,
     highlight_map: ?HighlightMap = null,
 
+    chars_to_stop_at_map: CharsToStopAtMap,
+
     pub fn create(external_allocator: Allocator) !*@This() {
         var self = try external_allocator.create(@This());
 
@@ -50,6 +52,8 @@ pub const WindowBackend = struct {
 
             .cells = std.ArrayList(Cell).init(self.a),
             .lines = std.ArrayList(Line).init(self.a),
+
+            .chars_to_stop_at_map = try createCharsToStopAtHashMap(self.a),
         };
 
         self.buffer.root = try self.buffer.load_from_string("");
@@ -85,6 +89,14 @@ pub const WindowBackend = struct {
 
         self.arena.deinit();
         self.external_allocator.destroy(self);
+    }
+
+    pub fn moveCursorBackwardsByWord(self: *@This(), count: usize) void {
+        _moveCursorBackwardsByWord(self, &self.chars_to_stop_at_map, count);
+    }
+
+    pub fn moveCursorForwardToNextWord(self: *@This(), count: usize) void {
+        _moveCursorForwardToNextWord(self, &self.chars_to_stop_at_map, count);
     }
 
     pub fn deleteCharsBackwards(self: *@This(), count: usize) !void {
@@ -593,7 +605,7 @@ fn createCharsToStopAtHashMap(a: Allocator) !CharsToStopAtMap {
     return map;
 }
 
-fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
+fn _moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
     for (0..count) |_| {
         var cells = win.lines.items[win.cursor.line].cells(win);
 
@@ -605,7 +617,7 @@ fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count:
         }
 
         {
-            var new_cursor_col: usize = win.cursor.col - 1;
+            var new_cursor_col: usize = win.cursor.col -| 1;
             while (new_cursor_col > 0) {
                 if (map.get(cells[new_cursor_col].char) == null) {
                     new_cursor_col += 1;
@@ -617,7 +629,7 @@ fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count:
         }
 
         {
-            var new_cursor_col: usize = win.cursor.col - 1;
+            var new_cursor_col: usize = win.cursor.col -| 1;
             while (new_cursor_col > 0) {
                 if (map.get(cells[new_cursor_col].char)) |_| {
                     new_cursor_col += 1;
@@ -630,7 +642,7 @@ fn moveCursorBackwardsByWord(win: *WindowBackend, map: *CharsToStopAtMap, count:
     }
 }
 
-test moveCursorBackwardsByWord {
+test _moveCursorBackwardsByWord {
     const a = std.testing.allocator;
     var chars_to_stop_at_map = try createCharsToStopAtHashMap(a);
     defer chars_to_stop_at_map.deinit();
@@ -641,7 +653,7 @@ test moveCursorBackwardsByWord {
         try win.insertChars("const");
         try eqStr("const", win.string_buffer.items);
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
         try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
 
         try win.insertChars("okay ");
@@ -654,12 +666,12 @@ test moveCursorBackwardsByWord {
         try win.insertChars("const std");
         try eqStr("const std", win.string_buffer.items);
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
         try eq(Cursor{ .line = 0, .col = 6 }, win.cursor);
         try win.insertChars("okay ");
         try eqStr("const okay std", win.string_buffer.items);
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
         try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
         try win.insertChars("// ");
         try eqStr("// const okay std", win.string_buffer.items);
@@ -670,12 +682,12 @@ test moveCursorBackwardsByWord {
         defer win.deinit();
         try win.insertChars("const  std");
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
         try eq(Cursor{ .line = 0, .col = 7 }, win.cursor);
         try win.insertChars("super ");
         try eqStr("const  super std", win.string_buffer.items);
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 2);
         try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
         try win.insertChars("//");
         try eqStr("//const  super std", win.string_buffer.items);
@@ -686,15 +698,15 @@ test moveCursorBackwardsByWord {
         defer win.deinit();
         try win.insertChars("hello\nworld");
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
         try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
         try win.insertChars("my ");
         try eqStr("hello\nmy world", win.string_buffer.items);
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
         try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
 
-        moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
+        _moveCursorBackwardsByWord(win, &chars_to_stop_at_map, 1);
         try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
         try win.insertChars("say ");
         try eqStr("say hello\nmy world", win.string_buffer.items);
@@ -703,7 +715,7 @@ test moveCursorBackwardsByWord {
 
 ///////////////////////////// Forward `w`
 
-fn moveCursorForwardToNextWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
+fn _moveCursorForwardToNextWord(win: *WindowBackend, map: *CharsToStopAtMap, count: usize) void {
     for (0..count) |_| {
         const cells = win.lines.items[win.cursor.line].cells(win);
 
@@ -742,7 +754,7 @@ fn moveCursorForwardToNextWord(win: *WindowBackend, map: *CharsToStopAtMap, coun
     }
 }
 
-test moveCursorForwardToNextWord {
+test _moveCursorForwardToNextWord {
     const a = std.testing.allocator;
     var chars_to_stop_at_map = try createCharsToStopAtHashMap(a);
     defer chars_to_stop_at_map.deinit();
@@ -756,12 +768,12 @@ test moveCursorForwardToNextWord {
 
             win.cursor.set(0, 0);
 
-            moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
+            _moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
             try eq(Cursor{ .line = 0, .col = 6 }, win.cursor);
             try win.insertChars("st");
             try eqStr("const std", win.string_buffer.items);
 
-            moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
+            _moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
             try eq(Cursor{ .line = 0, .col = 9 }, win.cursor);
             try win.insertChars(" =");
             try eqStr("const std =", win.string_buffer.items);
@@ -774,13 +786,13 @@ test moveCursorForwardToNextWord {
 
             win.cursor.set(0, 0);
 
-            moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
+            _moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
             try eq(Cursor{ .line = 0, .col = 6 }, win.cursor);
 
-            moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
+            _moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 1);
             try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
 
-            moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 3);
+            _moveCursorForwardToNextWord(win, &chars_to_stop_at_map, 3);
             try eq(Cursor{ .line = 1, .col = 16 }, win.cursor);
             try win.insertChars(".");
             try eqStr("hello there\nmy name is Yoshi.", win.string_buffer.items);

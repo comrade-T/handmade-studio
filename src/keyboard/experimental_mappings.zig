@@ -50,6 +50,9 @@ pub fn createTriggerMap(a: std.mem.Allocator) !TriggerMap {
 
     try map.put("s o", .{ .custom = true });
 
+    try map.put("w h", .{ .custom = true });
+    try map.put("w l", .{ .custom = true });
+
     return map;
 }
 

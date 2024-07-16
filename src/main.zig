@@ -1,6 +1,7 @@
 const std = @import("std");
 const rl = @import("raylib");
 const window_backend = @import("window_backend");
+const logz = @import("logz");
 
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
@@ -29,10 +30,23 @@ pub fn main() anyerror!void {
     defer _ = gpa__.deinit();
     const gpa = gpa__.allocator();
 
+    try logz.setup(gpa, .{
+        .level = .Debug,
+        .pool_size = 100,
+        .buffer_size = 4096,
+        .large_buffer_count = 8,
+        .large_buffer_size = 16384,
+        .output = .{ .file = "app.log" },
+        .encoding = .logfmt,
+    });
+    defer logz.deinit();
+    logz.info().string("----------------------------------------------", null).log();
+    logz.info().string("Program starts!", null).log();
+
     var kem = try kbs.KeyboardEventsManager.init(gpa);
     defer kem.deinit();
 
-    var win = try window_backend.WindowBackend.create(gpa, try window_backend.ts.Language.get("zig"), window_backend.zig_highlight_scm);
+    var win = try window_backend.WindowBackend.createWithTreeSitter(gpa, try window_backend.ts.Language.get("zig"), window_backend.zig_highlight_scm);
     defer win.deinit();
 
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
@@ -51,12 +65,11 @@ pub fn main() anyerror!void {
     var picker = try TriggerPicker.init(gpa, &trigger_map);
     defer picker.deinit();
 
+    var prev_trigger = try std.fmt.allocPrint(gpa, "", .{});
+
     ///////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
-        rl.beginDrawing();
-        defer rl.endDrawing();
-
         try kem.startHandlingInputs();
         {
             const input_steps = try kem.inputSteps();
@@ -84,15 +97,22 @@ pub fn main() anyerror!void {
 
                 if (!eql(u8, trigger, "")) {
                     defer picker.a.free(trigger);
-                    try triggerCallback(&trigger_map, trigger, win);
+
+                    const old_prev_trigger = prev_trigger;
+                    defer gpa.free(old_prev_trigger);
+
+                    try triggerCallback(&trigger_map, trigger, win, prev_trigger);
+                    prev_trigger = try std.fmt.allocPrint(gpa, "{s}", .{trigger});
                 }
             }
         }
         try kem.finishHandlingInputs();
 
-        {
-            rl.clearBackground(rl.Color.blank);
+        rl.beginDrawing();
+        defer rl.endDrawing();
+        rl.clearBackground(rl.Color.blank);
 
+        {
             { // display cursor position
                 var buf: [64]u8 = undefined;
                 const text = std.fmt.bufPrintZ(&buf, "({d}, {d})", .{ win.cursor.line, win.cursor.col }) catch "error";
@@ -104,7 +124,7 @@ pub fn main() anyerror!void {
                 const start_y = 100;
 
                 const font_size = 40;
-                const spacing = 0;
+                const text_spacing = 0;
 
                 const line_height = 50;
 
@@ -120,9 +140,9 @@ pub fn main() anyerror!void {
 
                     var buf: [10]u8 = undefined;
                     const text = std.fmt.bufPrintZ(&buf, "{s}", .{cell.char}) catch "error";
-                    rl.drawTextEx(font, text, .{ .x = start_x + x, .y = start_y + y }, font_size, spacing, cell.color);
+                    rl.drawTextEx(font, text, .{ .x = start_x + x, .y = start_y + y }, font_size, text_spacing, cell.color);
 
-                    const measure = rl.measureTextEx(font, text, font_size, spacing);
+                    const measure = rl.measureTextEx(font, text, font_size, text_spacing);
                     x += measure.x;
                 }
             }
@@ -130,9 +150,12 @@ pub fn main() anyerror!void {
     }
 }
 
-fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, win: *window_backend.WindowBackend) !void {
+fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, win: *window_backend.WindowBackend, prev_trigger: []const u8) !void {
     var action: exp.TriggerAction = undefined;
     if (trigger_map.get(trigger)) |a| action = a else return;
+
+    logz.debug().string("trigger", trigger).log();
+
     try switch (action) {
         .insert => |chars| win.insertChars(chars),
         .custom => {
@@ -142,6 +165,24 @@ fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, win: *wind
             if (eql(u8, trigger, "down")) win.cursor.down(1, win.buffer.num_of_lines());
             if (eql(u8, trigger, "left")) win.cursor.left(1);
             if (eql(u8, trigger, "right")) win.cursor.right(1, try win.buffer.num_of_chars_in_line(win.cursor.line));
+
+            if (eql(u8, trigger, "s o")) {
+                try win.deleteCharsBackwards(1);
+                try win.insertChars("So So");
+            }
+
+            if (eql(u8, trigger, "w h")) {
+                if (prev_trigger.len > 1 and prev_trigger[0] == 'w') {} else {
+                    try win.deleteCharsBackwards(1);
+                }
+                win.moveCursorBackwardsByWord(1);
+            }
+            if (eql(u8, trigger, "w l")) {
+                if (prev_trigger.len > 1 and prev_trigger[0] == 'w') {} else {
+                    try win.deleteCharsBackwards(1);
+                }
+                win.moveCursorForwardToNextWord(1);
+            }
         },
     };
 }
