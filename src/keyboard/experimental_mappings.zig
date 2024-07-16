@@ -60,6 +60,7 @@ pub fn createPrefixMap(a: std.mem.Allocator) !PrefixMap {
     var map = PrefixMap.init(a);
 
     try map.put("s", true);
+    try map.put("w", true);
     try map.put("lshift", true);
     try map.put("rshift", true);
 

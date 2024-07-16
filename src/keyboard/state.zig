@@ -22,18 +22,23 @@ pub fn updateEventList(arr: *EventArray, e_list: *EventList, may_t_list: ?*Event
         if (rl.isKeyUp(key)) {
             _ = e_list.orderedRemove(i);
             arr.*[@intCast(@intFromEnum(key))] = false;
-            if (may_t_list) |t_list| _ = t_list.orderedRemove(i);
         }
     }
 
+    var number_of_key_down: usize = 0;
     for (supported_keys) |key| {
         const code = @intFromEnum(key);
         if (rl.isKeyDown(key)) {
+            number_of_key_down += 1;
             if (arr[@intCast(code)]) continue;
             try e_list.append(key);
             if (may_t_list) |t_list| try t_list.append(std.time.milliTimestamp());
             arr[@intCast(code)] = true;
         }
+    }
+
+    if (number_of_key_down == 0) {
+        if (may_t_list) |t_list| _ = try t_list.replaceRange(0, t_list.items.len, &[_]i64{});
     }
 }
 
