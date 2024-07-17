@@ -105,6 +105,7 @@ fn isNotWordChar(c: []const u8) bool {
         '|' => true,
         '?' => true,
         '&' => true,
+        '#' => true,
         else => false,
     };
 }
@@ -123,6 +124,7 @@ fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []co
     var target_linenr = linenr;
     var target_colnr = colnr;
     var found_non_word_char = false;
+    var passed_a_space = false;
     const start = lines[linenr].start + colnr;
     for (cells[start..cells.len], start..) |cell, i| {
         if (i < cells.len - 1 and lines[target_linenr].end - 1 == i) {
@@ -132,11 +134,17 @@ fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []co
         }
 
         const cell_text = cell.getText(source);
-        if (!found_non_word_char) {
-            if (isNotWordChar(cell_text)) found_non_word_char = true;
-        } else {
-            if (!isNotWordChar(cell_text) or !isSpace(cell_text)) return .{ target_linenr, target_colnr };
+        if (found_non_word_char) {
+            if (!isNotWordChar(cell_text)) {
+                return .{ target_linenr, target_colnr };
+            }
+            if (!isSpace(cell_text) and passed_a_space) {
+                return .{ target_linenr, target_colnr };
+            }
         }
+
+        if (!found_non_word_char and isNotWordChar(cell_text)) found_non_word_char = true;
+        if (isSpace(cell_text)) passed_a_space = true;
 
         target_colnr += 1;
     }
@@ -234,14 +242,38 @@ test moveCursorForwardLikeVim {
         try eq(.{ 0, 17 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 15));
     }
 
-    // {
-    //     const source = "const four == 4";
-    //     const cells, const lines = try createCellListAndLineList(a, source);
-    //     defer cells.deinit();
-    //     defer lines.deinit();
-    //
-    //     try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
-    //     try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
-    //     try eq(.{ 0, 14 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
-    // }
+    {
+        const source = "const four == 4";
+        const cells, const lines = try createCellListAndLineList(a, source);
+        defer cells.deinit();
+        defer lines.deinit();
+
+        try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
+        try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
+        try eq(.{ 0, 14 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
+    }
+
+    {
+        const source = "const four === 4";
+        const cells, const lines = try createCellListAndLineList(a, source);
+        defer cells.deinit();
+        defer lines.deinit();
+
+        try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
+        try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
+        try eq(.{ 0, 15 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
+    }
+
+    {
+        const source = "const four === #four";
+        const cells, const lines = try createCellListAndLineList(a, source);
+        defer cells.deinit();
+        defer lines.deinit();
+
+        try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
+        try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
+        try eq(.{ 0, 15 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
+        try eq(.{ 0, 16 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 15));
+        try eq(.{ 0, 20 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 16));
+    }
 }
