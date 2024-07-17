@@ -110,47 +110,41 @@ fn isNotWordChar(c: []const u8) bool {
     };
 }
 
-fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, linenr: usize, colnr: usize) struct { usize, usize } {
+fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
     const last_line_index = lines.len - 1;
     const last_line = lines[last_line_index];
     const last_line_cells = last_line.getCells(cells);
+    const default_result = .{ lines.len - 1, last_line_cells.len };
+    if (input_linenr > last_line_index) return default_result;
+    if (input_linenr == last_line_index and input_colnr >= last_line_cells.len) return default_result;
 
-    const default_target_linenr = lines.len - 1;
-    const default_target_colnr = last_line_cells.len;
-
-    if (linenr > last_line_index) return .{ default_target_linenr, default_target_colnr };
-    if (linenr == last_line_index and colnr >= last_line_cells.len) return .{ default_target_linenr, default_target_colnr };
-
-    var target_linenr = linenr;
-    var target_colnr = colnr;
-    var found_non_word_char = false;
+    var linenr = input_linenr;
+    var colnr = input_colnr;
+    var found_non_word = false;
     var passed_a_space = false;
-    const start = lines[linenr].start + colnr;
-    const start_char_is_word = !isNotWordChar(cells[start].getText(source));
+    const start = lines[input_linenr].start + input_colnr;
+    const start_is_word = !isNotWordChar(cells[start].getText(source));
     for (cells[start..cells.len], start..) |cell, i| {
-        if (i < cells.len - 1 and lines[target_linenr].end - 1 == i) {
-            target_linenr += 1;
-            target_colnr = 0;
-            return .{ target_linenr, target_colnr };
+        if (i < cells.len - 1 and lines[linenr].end - 1 == i) {
+            linenr += 1;
+            colnr = 0;
+            return .{ linenr, colnr };
         }
 
-        const cell_text = cell.getText(source);
-        if (found_non_word_char) {
-            if (!isSpace(cell_text) and !passed_a_space and start_char_is_word) return .{ target_linenr, target_colnr - 1 };
-            if (!isNotWordChar(cell_text)) return .{ target_linenr, target_colnr };
-            if (!isSpace(cell_text) and passed_a_space) return .{ target_linenr, target_colnr };
-        }
+        const char = cell.getText(source);
+        if (found_non_word and !isSpace(char) and !passed_a_space and start_is_word) return .{ linenr, colnr - 1 };
+        if (found_non_word and !isNotWordChar(char)) return .{ linenr, colnr };
+        if (found_non_word and !isSpace(char) and passed_a_space) return .{ linenr, colnr };
 
-        if (!found_non_word_char and isNotWordChar(cell_text)) found_non_word_char = true;
-        if (isSpace(cell_text)) passed_a_space = true;
+        if (isNotWordChar(char)) found_non_word = true;
+        if (isSpace(char)) passed_a_space = true;
 
-        if (i == cells.len - 1 and found_non_word_char and !isSpace(cell_text) and start_char_is_word)
-            return .{ target_linenr, target_colnr };
+        if (i == cells.len - 1 and found_non_word and start_is_word and !isSpace(char)) return .{ linenr, colnr };
 
-        target_colnr += 1;
+        colnr += 1;
     }
 
-    return .{ default_target_linenr, default_target_colnr };
+    return default_result;
 }
 
 test moveCursorForwardLikeVim {
