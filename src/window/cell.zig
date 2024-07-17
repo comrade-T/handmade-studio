@@ -153,14 +153,13 @@ fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []co
 }
 
 test moveCursorForwardLikeVim {
-    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
     {
         const source = "";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 0 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 0 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 100, 0));
         try eq(.{ 0, 0 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 12));
@@ -169,9 +168,6 @@ test moveCursorForwardLikeVim {
     {
         const source = "hello world";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 100, 0));
         try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 12));
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
@@ -184,9 +180,6 @@ test moveCursorForwardLikeVim {
             \\world wide web
         ;
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 1, 0 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 1, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 1, 0));
         try eq(.{ 1, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 1, 6));
@@ -195,8 +188,6 @@ test moveCursorForwardLikeVim {
     {
         const source = "a b c d eee ffff";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
 
         try eq(.{ 0, 2 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 4 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 2));
@@ -214,18 +205,13 @@ test moveCursorForwardLikeVim {
     {
         const source = "hello  world";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 7 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
+        try eq(.{ 0, 12 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 7));
     }
 
     {
         const source = "const four = 4";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
         try eq(.{ 0, 13 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
@@ -234,9 +220,6 @@ test moveCursorForwardLikeVim {
     {
         const source = "const four     = 4";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 15 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
         try eq(.{ 0, 17 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 15));
@@ -245,9 +228,6 @@ test moveCursorForwardLikeVim {
     {
         const source = "const four == 4";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
         try eq(.{ 0, 14 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
@@ -256,9 +236,6 @@ test moveCursorForwardLikeVim {
     {
         const source = "const four === 4";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
         try eq(.{ 0, 15 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
@@ -267,9 +244,6 @@ test moveCursorForwardLikeVim {
     {
         const source = "const four === #four";
         const cells, const lines = try createCellListAndLineList(a, source);
-        defer cells.deinit();
-        defer lines.deinit();
-
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 0));
         try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 6));
         try eq(.{ 0, 15 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 0, 11));
