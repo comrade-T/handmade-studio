@@ -434,8 +434,8 @@ fn createExperimentalHighlightMap(a: Allocator) !HighlightMap {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Cell = struct { char: []const u8, color: Color };
-const Line = struct {
+pub const Cell = struct { char: []const u8, color: Color = Color.ray_white };
+pub const Line = struct {
     start: usize,
     end: usize,
 
@@ -459,7 +459,7 @@ fn getUpdatedCells(win: *WindowBackend, query: ?*ts.Query, filter: ?*PredicatesF
         var j: usize = 0;
         var start_index: usize = 0;
         while (iter.next()) |cp| {
-            try cells.append(Cell{ .char = source[i .. i + cp.len], .color = Color.ray_white });
+            try cells.append(Cell{ .char = source[i .. i + cp.len] });
             for (0..cp.len) |_| try indexes.append(j);
             if (cp.code == '\n') {
                 try lines.append(Line{ .start = start_index, .end = j });
