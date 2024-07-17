@@ -59,7 +59,9 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     ts.compile.linkLibrary(tree_sitter);
 
-    _ = addTestableModule(&bops, "src/window/movements.zig", &.{}, zig_build_test_step);
+    _ = addTestableModule(&bops, "src/window/cell.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
 
     const window_backend = addTestableModule(&bops, "src/window/backend.zig", &.{
         .{ .name = "buffer", .module = buffer.module },
