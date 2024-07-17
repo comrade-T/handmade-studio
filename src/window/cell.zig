@@ -27,9 +27,8 @@ pub const Line = struct {
     }
 
     pub fn getText(self: *@This(), cells: []const Cell, source: []const u8) []const u8 {
-        const start_byte = cells[self.start].start_byte;
-        const end_byte = cells[self.end].end_byte;
-        return source[start_byte..end_byte];
+        const line_cells = cells[self.start..self.end];
+        return source[line_cells[0].start_byte..line_cells[line_cells.len - 1].end_byte];
     }
 };
 
@@ -44,11 +43,11 @@ fn createCellListAndLineList(a: Allocator, source: []const u8) !struct { List(Ce
     while (iter.next()) |cp| {
         try cells.append(Cell{ .start_byte = cp.offset, .end_byte = cp.offset + cp.len });
         if (cp.code == '\n') {
-            try lines.append(Line{ .start = i, .end = cells.items.len - 2 });
-            i += cells.items.len;
+            try lines.append(Line{ .start = i, .end = cells.items.len - 1 });
+            i = cells.items.len;
         }
     }
-    try lines.append(Line{ .start = i, .end = cells.items.len - 1 });
+    try lines.append(Line{ .start = i, .end = cells.items.len });
 
     return .{ cells, lines };
 }
