@@ -26,10 +26,6 @@ pub const Line = struct {
     start: usize,
     end: usize,
 
-    pub fn len(self: *const @This()) usize {
-        return self.end - self.start;
-    }
-
     pub fn getCells(self: *const @This(), cells: []const Cell) []const Cell {
         return cells[self.start..self.end];
     }
@@ -37,6 +33,17 @@ pub const Line = struct {
     pub fn getText(self: *const @This(), cells: []const Cell, source: []const u8) []const u8 {
         const line_cells = cells[self.start..self.end];
         return source[line_cells[0].start_byte..line_cells[line_cells.len - 1].end_byte];
+    }
+
+    pub fn numOfBytes(self: *const @This(), cells: []const Cell) usize {
+        const line_cells = self.getCells(cells);
+        const start_byte = line_cells[0].start_byte;
+        const end_byte = line_cells[line_cells.len - 1].end_byte;
+        return end_byte - start_byte;
+    }
+
+    pub fn numOfCells(self: *const @This()) usize {
+        return self.end - self.start;
     }
 };
 
