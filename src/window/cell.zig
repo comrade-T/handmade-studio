@@ -28,7 +28,7 @@ pub const Line = struct {
 
     pub fn cell(self: *const Line, cells: []Cell, index: usize) ?Cell {
         if (self.numOfCells() == 0) return null;
-        if (self.start + index > self.numOfCells() -| 1) return null;
+        if (self.start + index > cells.len -| 1) return null;
         return cells[self.start + index];
     }
 
@@ -393,7 +393,7 @@ const TargetBoundary = enum {
 };
 
 fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
-    const linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
+    var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
 
     const start = lines[linenr].start + colnr;
     var target_boundary = TargetBoundary.null;
@@ -401,9 +401,13 @@ fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []co
     for (start..cells.len) |i| {
         defer colnr += 1;
 
-        const char = cells[i].getText(source);
-        // std.debug.print("char: {s}\n", .{char});
+        if (i < cells.len - 1 and lines[linenr].end - 1 == i) {
+            linenr += 1;
+            colnr = 0;
+            return .{ linenr, colnr };
+        }
 
+        const char = cells[i].getText(source);
         if (isSpace(char)) {
             passed_a_space = true;
             target_boundary = .null;
@@ -411,16 +415,12 @@ fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []co
         }
 
         if (target_boundary == .null) {
-            if (passed_a_space) {
-                return .{ linenr, colnr };
-            }
+            if (passed_a_space) return .{ linenr, colnr };
             target_boundary = if (isSymbol(char)) .word else .symbol;
             continue;
         }
 
-        if (target_boundary.isSameTypeAs(char)) {
-            return .{ linenr, colnr };
-        }
+        if (target_boundary.isSameTypeAs(char)) return .{ linenr, colnr };
     }
 
     return .{ linenr, colnr -| 1 };
@@ -438,7 +438,6 @@ test moveCursorForwardLikeVim {
         try eq(.{ 0, 0 }, moveCursorForwardLikeVim(source, cells, lines, 100, 0));
         try eq(.{ 0, 0 }, moveCursorForwardLikeVim(source, cells, lines, 0, 200));
     }
-
     {
         const source = "hello world";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
@@ -446,5 +445,26 @@ test moveCursorForwardLikeVim {
         try eqStr("w", lines[0].cell(cells, 6).?.getText(source));
         try eq(.{ 0, 10 }, moveCursorForwardLikeVim(source, cells, lines, 0, 6));
         try eqStr("d", lines[0].cell(cells, 10).?.getText(source));
+    }
+
+    {
+        const source = "hello\nworld\nvenus\nmars";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 1, 0 }, moveCursorForwardLikeVim(source, cells, lines, 0, 0));
+        try eq(.{ 2, 0 }, moveCursorForwardLikeVim(source, cells, lines, 1, 0));
+        try eq(.{ 3, 0 }, moveCursorForwardLikeVim(source, cells, lines, 2, 0));
+    }
+
+    {
+        const source = "hello world\nvenus and mars";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells, lines, 0, 0));
+        try eq(.{ 1, 0 }, moveCursorForwardLikeVim(source, cells, lines, 0, 6));
+        try eq(.{ 1, 6 }, moveCursorForwardLikeVim(source, cells, lines, 1, 0));
+        try eqStr("a", lines[1].cell(cells, 6).?.getText(source));
+        try eq(.{ 1, 10 }, moveCursorForwardLikeVim(source, cells, lines, 1, 6));
+        try eqStr("m", lines[1].cell(cells, 10).?.getText(source));
+        try eq(.{ 1, 13 }, moveCursorForwardLikeVim(source, cells, lines, 1, 10));
+        try eqStr("s", lines[1].cell(cells, 13).?.getText(source));
     }
 }
