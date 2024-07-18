@@ -298,6 +298,34 @@ test moveCursorForwardLikeVim {
         try eqStr("t", lines[0].cell(cells, 19).?.getText(source));
     }
     {
+        const source = "one|two||3|||four";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 3 }, moveCursorForwardLikeVim(source, cells, lines, 0, 0));
+        try eq(.{ 0, 3 }, moveCursorForwardLikeVim(source, cells, lines, 0, 1));
+        try eq(.{ 0, 3 }, moveCursorForwardLikeVim(source, cells, lines, 0, 2));
+        try eqStr("|", lines[0].cell(cells, 3).?.getText(source));
+        try eq(.{ 0, 4 }, moveCursorForwardLikeVim(source, cells, lines, 0, 3));
+        try eqStr("t", lines[0].cell(cells, 4).?.getText(source));
+        try eq(.{ 0, 7 }, moveCursorForwardLikeVim(source, cells, lines, 0, 4));
+        try eq(.{ 0, 7 }, moveCursorForwardLikeVim(source, cells, lines, 0, 5));
+        try eq(.{ 0, 7 }, moveCursorForwardLikeVim(source, cells, lines, 0, 6));
+        try eqStr("|", lines[0].cell(cells, 7).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorForwardLikeVim(source, cells, lines, 0, 7));
+        try eq(.{ 0, 9 }, moveCursorForwardLikeVim(source, cells, lines, 0, 8));
+        try eqStr("3", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 10 }, moveCursorForwardLikeVim(source, cells, lines, 0, 9));
+        try eqStr("|", lines[0].cell(cells, 10).?.getText(source));
+        try eq(.{ 0, 13 }, moveCursorForwardLikeVim(source, cells, lines, 0, 10));
+        try eq(.{ 0, 13 }, moveCursorForwardLikeVim(source, cells, lines, 0, 11));
+        try eq(.{ 0, 13 }, moveCursorForwardLikeVim(source, cells, lines, 0, 12));
+        try eqStr("f", lines[0].cell(cells, 13).?.getText(source));
+        try eq(.{ 0, 16 }, moveCursorForwardLikeVim(source, cells, lines, 0, 13));
+        try eq(.{ 0, 16 }, moveCursorForwardLikeVim(source, cells, lines, 0, 14));
+        try eq(.{ 0, 16 }, moveCursorForwardLikeVim(source, cells, lines, 0, 15));
+        try eq(.{ 0, 16 }, moveCursorForwardLikeVim(source, cells, lines, 0, 16));
+        try eqStr("r", lines[0].cell(cells, 16).?.getText(source));
+    }
+    {
         const source = "const std = @import(\"std\");\nconst";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
         try eq(.{ 0, 6 }, moveCursorForwardLikeVim(source, cells, lines, 0, 0));
