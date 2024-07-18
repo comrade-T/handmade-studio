@@ -22,6 +22,10 @@ pub const Line = struct {
     start: usize,
     end: usize,
 
+    pub fn len(self: *const @This()) usize {
+        return self.end - self.start;
+    }
+
     pub fn getCells(self: *const @This(), cells: []const Cell) []const Cell {
         return cells[self.start..self.end];
     }
@@ -132,9 +136,11 @@ fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []co
         }
 
         const char = cell.getText(source);
-        if (found_non_word and !isSpace(char) and !passed_a_space and start_is_word) return .{ linenr, colnr - 1 };
-        if (found_non_word and !isNotWordChar(char)) return .{ linenr, colnr };
-        if (found_non_word and !isSpace(char) and passed_a_space) return .{ linenr, colnr };
+        if (found_non_word) {
+            if (!isSpace(char) and !passed_a_space and start_is_word) return .{ linenr, colnr - 1 };
+            if (!isNotWordChar(char)) return .{ linenr, colnr };
+            if (!isSpace(char) and passed_a_space) return .{ linenr, colnr };
+        }
 
         if (isNotWordChar(char)) found_non_word = true;
         if (isSpace(char)) passed_a_space = true;
@@ -272,3 +278,30 @@ test moveCursorForwardLikeVim {
         try eq(.{ 2, 3 }, moveCursorForwardLikeVim(source, cells.items, lines.items, 2, 0));
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+// fn moveCursorBackwardsLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+//     // TODO:
+// }
+//
+// test moveCursorBackwardsLikeVim {
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     defer arena.deinit();
+//     const a = arena.allocator();
+//
+//     {
+//         const source = "";
+//         const cells, const lines = try createCellListAndLineList(a, source);
+//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 0));
+//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 100, 0));
+//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 200));
+//     }
+//
+//     {
+//         const source = "hello world";
+//         const cells, const lines = try createCellListAndLineList(a, source);
+//         try eq(.{ 0, 6 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 11));
+//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 6));
+//     }
+// }
