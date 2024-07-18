@@ -426,15 +426,14 @@ fn moveCursorBackwardsLikeVim(source: []const u8, cells: []const Cell, lines: []
         defer colnr -|= 1;
 
         if (colnr == 0) {
-            if (linenr == 0) return .{ 0, 0 };
+            if (linenr == 0 or input_colnr > 0) return .{ linenr, colnr };
             linenr -= 1;
             colnr = lines[linenr].numOfCells() - 1;
         }
 
-        const curr_line = lines[linenr];
-        const prev_char = curr_line.cell(cells, colnr - 1).?.getText(source);
-        const curr_char = curr_line.cell(cells, colnr).?.getText(source);
-        const next_char = if (curr_line.cell(cells, colnr + 1)) |c| c.getText(source) else null;
+        const prev_char = lines[linenr].cell(cells, colnr - 1).?.getText(source);
+        const curr_char = lines[linenr].cell(cells, colnr).?.getText(source);
+        const next_char = if (lines[linenr].cell(cells, colnr + 1)) |c| c.getText(source) else null;
         const char_boundary_type = getCharBoundaryType(prev_char, curr_char, next_char);
 
         if (char_boundary_type == .start or char_boundary_type == .both) return .{ linenr, colnr };
@@ -483,5 +482,34 @@ test moveCursorBackwardsLikeVim {
         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 2));
         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 1));
         try eqStr("o", lines[0].cell(cells, 0).?.getText(source));
+    }
+
+    {
+        const source = "one\ntwo";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 1, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 2));
+        try eq(.{ 1, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 1));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 0));
+    }
+    {
+        const source = "draw forth\na map";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 1, 2 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 4));
+        try eq(.{ 1, 2 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 3));
+        try eqStr("m", lines[1].cell(cells, 2).?.getText(source));
+        try eq(.{ 1, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 2));
+        try eq(.{ 1, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 1));
+        try eqStr("a", lines[1].cell(cells, 0).?.getText(source));
+        try eq(.{ 0, 5 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 0));
+        try eqStr("f", lines[0].cell(cells, 5).?.getText(source));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 5));
+        try eqStr("d", lines[0].cell(cells, 0).?.getText(source));
+    }
+    {
+        const source = "draw forth;\na map";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 10 }, moveCursorBackwardsLikeVim(source, cells, lines, 1, 0));
+        try eqStr(";", lines[0].cell(cells, 10).?.getText(source));
+        try eq(.{ 0, 5 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 10));
     }
 }
