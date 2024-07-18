@@ -177,6 +177,7 @@ fn isSymbol(c: []const u8) bool {
         '?' => true,
         '&' => true,
         '#' => true,
+        '-' => true,
         else => false,
     };
 }
@@ -382,52 +383,105 @@ const CharType = enum {
     }
 };
 
-fn isWordBoundary(prev: ?[]const u8, curr: []const u8, next: ?[]const u8) bool {
-    const prev_type = CharType.fromChar(prev);
+const WordBoundaryType = enum {
+    start,
+    end,
+    both,
+    not_a_boundary,
+};
+
+fn getCharBoundaryType(prev: ?[]const u8, curr: []const u8, next: ?[]const u8) WordBoundaryType {
     const curr_type = CharType.fromChar(curr);
+    if (curr_type == .space) return .not_a_boundary;
+    const prev_type = CharType.fromChar(prev);
     const next_type = CharType.fromChar(next);
-    return curr_type != prev_type or curr_type != next_type;
+
+    var curr_boundary_type: WordBoundaryType = .not_a_boundary;
+    if (prev_type != curr_type) curr_boundary_type = .start;
+    if (curr_type != next_type) {
+        if (curr_boundary_type == .start) return .both;
+        return .end;
+    }
+
+    return curr_boundary_type;
 }
 
-test isWordBoundary {
-    try eq(true, isWordBoundary(null, "a", " "));
-    try eq(false, isWordBoundary("a", "b", "c"));
-    try eq(false, isWordBoundary(";", ";", "#"));
-    try eq(true, isWordBoundary(null, "a", null));
+test getCharBoundaryType {
+    try eq(.not_a_boundary, getCharBoundaryType("a", "b", "c"));
+    try eq(.not_a_boundary, getCharBoundaryType("a", " ", "c"));
+    try eq(.start, getCharBoundaryType(" ", "a", "c"));
+    try eq(.start, getCharBoundaryType(";", "a", "c"));
+    try eq(.end, getCharBoundaryType("a", "b", " "));
+    try eq(.end, getCharBoundaryType("a", "b", ";"));
+    try eq(.both, getCharBoundaryType(" ", "a", " "));
+    try eq(.both, getCharBoundaryType(" ", "a", ";"));
 }
 
-// fn moveCursorBackwardsLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
-//     var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
-//
-//     // TODO:
-//
-//     return .{ linenr, colnr };
-// }
+fn moveCursorBackwardsLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
 
-// test moveCursorBackwardsLikeVim {
-//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-//     defer arena.deinit();
-//     const a = arena.allocator();
-//
-//     {
-//         const source = "";
-//         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 0));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 100, 0));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 200));
-//     }
-//
-//     {
-//         const source = "hello world";
-//         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 0));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 1));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 2));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 3));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 4));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 5));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 6));
-//         try eq(.{ 0, 6 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 7));
-//         try eqStr("h", lines[0].cell(cells, 6).?.getText(source));
-//     }
-// }
+    colnr -|= 1;
+
+    while (true) {
+        defer colnr -|= 1;
+
+        if (colnr == 0) {
+            if (linenr == 0) return .{ 0, 0 };
+            linenr -= 1;
+            colnr = lines[linenr].numOfCells() - 1;
+        }
+
+        const curr_line = lines[linenr];
+        const prev_char = curr_line.cell(cells, colnr - 1).?.getText(source);
+        const curr_char = curr_line.cell(cells, colnr).?.getText(source);
+        const next_char = if (curr_line.cell(cells, colnr + 1)) |c| c.getText(source) else null;
+        const char_boundary_type = getCharBoundaryType(prev_char, curr_char, next_char);
+
+        if (char_boundary_type == .start or char_boundary_type == .both) return .{ linenr, colnr };
+    }
+
+    return .{ linenr, colnr };
+}
+
+test moveCursorBackwardsLikeVim {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const source = "";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 0));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 100, 0));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 200));
+    }
+
+    {
+        const source = "one;two--3|||four;";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 13 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 17));
+        try eq(.{ 0, 13 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 16));
+        try eq(.{ 0, 13 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 15));
+        try eq(.{ 0, 13 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 14));
+        try eqStr("f", lines[0].cell(cells, 13).?.getText(source));
+        try eq(.{ 0, 10 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 13));
+        try eq(.{ 0, 10 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 12));
+        try eq(.{ 0, 10 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 11));
+        try eqStr("|", lines[0].cell(cells, 10).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 10));
+        try eqStr("3", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 7 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 9));
+        try eq(.{ 0, 7 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 8));
+        try eqStr("-", lines[0].cell(cells, 7).?.getText(source));
+        try eq(.{ 0, 4 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 7));
+        try eq(.{ 0, 4 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 6));
+        try eq(.{ 0, 4 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 5));
+        try eqStr("t", lines[0].cell(cells, 4).?.getText(source));
+        try eq(.{ 0, 3 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 4));
+        try eqStr(";", lines[0].cell(cells, 3).?.getText(source));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 3));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 2));
+        try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 1));
+        try eqStr("o", lines[0].cell(cells, 0).?.getText(source));
+    }
+}
