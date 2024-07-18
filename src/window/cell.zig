@@ -182,52 +182,83 @@ fn isSymbol(c: []const u8) bool {
     };
 }
 
-const TargetBoundary = enum {
-    null,
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const CharType = enum {
+    space,
     word,
     symbol,
+    null,
 
-    fn isSameTypeAs(self: TargetBoundary, char: []const u8) bool {
-        return switch (self) {
-            .symbol => isSymbol(char),
-            .word => !isSymbol(char),
-            else => false,
-        };
+    fn fromChar(may_char: ?[]const u8) CharType {
+        if (may_char) |char| {
+            if (isSpace(char)) return .space;
+            if (isSymbol(char)) return .symbol;
+            return .word;
+        }
+        return .null;
     }
 };
 
-fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
-    var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
+const WordBoundaryType = enum {
+    start,
+    end,
+    both,
+    not_a_boundary,
+};
 
-    var passed_a_space = false;
-    var target_boundary = TargetBoundary.null;
-    for (lines[linenr].start + colnr..cells.len) |i| {
-        defer colnr += 1;
+fn getCharBoundaryType(prev: ?[]const u8, curr: []const u8, next: ?[]const u8) WordBoundaryType {
+    const curr_type = CharType.fromChar(curr);
+    if (curr_type == .space) return .not_a_boundary;
+    const prev_type = CharType.fromChar(prev);
+    const next_type = CharType.fromChar(next);
 
-        const i_at_end_of_line = lines[linenr].end - 1 == i;
-        if (i_at_end_of_line and i < cells.len - 1) {
-            linenr += 1;
-            colnr = 0;
-            return .{ linenr, colnr };
-        }
-
-        const char = cells[i].getText(source);
-        if (isSpace(char)) {
-            passed_a_space = true;
-            target_boundary = .null;
-            continue;
-        }
-
-        if (target_boundary == .null) {
-            if (passed_a_space) return .{ linenr, colnr };
-            target_boundary = if (isSymbol(char)) .word else .symbol;
-            continue;
-        }
-
-        if (target_boundary.isSameTypeAs(char)) return .{ linenr, colnr };
+    var curr_boundary_type: WordBoundaryType = .not_a_boundary;
+    if (prev_type != curr_type) curr_boundary_type = .start;
+    if (curr_type != next_type) {
+        if (curr_boundary_type == .start) return .both;
+        return .end;
     }
 
-    return .{ linenr, colnr -| 1 };
+    return curr_boundary_type;
+}
+
+test getCharBoundaryType {
+    try eq(.not_a_boundary, getCharBoundaryType("a", "b", "c"));
+    try eq(.not_a_boundary, getCharBoundaryType("a", " ", "c"));
+    try eq(.start, getCharBoundaryType(" ", "a", "c"));
+    try eq(.start, getCharBoundaryType(";", "a", "c"));
+    try eq(.end, getCharBoundaryType("a", "b", " "));
+    try eq(.end, getCharBoundaryType("a", "b", ";"));
+    try eq(.both, getCharBoundaryType(" ", "a", " "));
+    try eq(.both, getCharBoundaryType(" ", "a", ";"));
+}
+
+fn foundTargetBoundary(source: []const u8, cells: []const Cell, lines: []const Line, linenr: usize, colnr: usize) bool {
+    const prev_char = if (colnr == 0) null else lines[linenr].cell(cells, colnr - 1).?.getText(source);
+    const curr_char = lines[linenr].cell(cells, colnr).?.getText(source);
+    const next_char = if (lines[linenr].cell(cells, colnr + 1)) |c| c.getText(source) else null;
+    const char_boundary_type = getCharBoundaryType(prev_char, curr_char, next_char);
+    if (char_boundary_type == .start or char_boundary_type == .both) return true;
+    return false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
+    if (linenr == lines.len -| 1 and colnr == lines[lines.len -| 1].numOfCells() -| 1) return .{ linenr, colnr };
+    colnr += 1;
+    while (true) {
+        defer colnr += 1;
+        if (colnr >= lines[linenr].numOfCells() -| 1) {
+            if (linenr == lines.len - 1) return .{ linenr, colnr };
+            linenr += 1;
+            colnr = 0;
+        }
+        if (foundTargetBoundary(source, cells, lines, linenr, colnr)) return .{ linenr, colnr };
+    }
+    return .{ linenr, colnr };
 }
 
 test moveCursorForwardLikeVim {
@@ -367,78 +398,18 @@ test moveCursorForwardLikeVim {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const CharType = enum {
-    space,
-    word,
-    symbol,
-    null,
-
-    fn fromChar(may_char: ?[]const u8) CharType {
-        if (may_char) |char| {
-            if (isSpace(char)) return .space;
-            if (isSymbol(char)) return .symbol;
-            return .word;
-        }
-        return .null;
-    }
-};
-
-const WordBoundaryType = enum {
-    start,
-    end,
-    both,
-    not_a_boundary,
-};
-
-fn getCharBoundaryType(prev: ?[]const u8, curr: []const u8, next: ?[]const u8) WordBoundaryType {
-    const curr_type = CharType.fromChar(curr);
-    if (curr_type == .space) return .not_a_boundary;
-    const prev_type = CharType.fromChar(prev);
-    const next_type = CharType.fromChar(next);
-
-    var curr_boundary_type: WordBoundaryType = .not_a_boundary;
-    if (prev_type != curr_type) curr_boundary_type = .start;
-    if (curr_type != next_type) {
-        if (curr_boundary_type == .start) return .both;
-        return .end;
-    }
-
-    return curr_boundary_type;
-}
-
-test getCharBoundaryType {
-    try eq(.not_a_boundary, getCharBoundaryType("a", "b", "c"));
-    try eq(.not_a_boundary, getCharBoundaryType("a", " ", "c"));
-    try eq(.start, getCharBoundaryType(" ", "a", "c"));
-    try eq(.start, getCharBoundaryType(";", "a", "c"));
-    try eq(.end, getCharBoundaryType("a", "b", " "));
-    try eq(.end, getCharBoundaryType("a", "b", ";"));
-    try eq(.both, getCharBoundaryType(" ", "a", " "));
-    try eq(.both, getCharBoundaryType(" ", "a", ";"));
-}
-
 fn moveCursorBackwardsLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
     var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
-
     colnr -|= 1;
-
     while (true) {
         defer colnr -|= 1;
-
         if (colnr == 0) {
             if (linenr == 0 or input_colnr > 0) return .{ linenr, colnr };
             linenr -= 1;
             colnr = lines[linenr].numOfCells() - 1;
         }
-
-        const prev_char = lines[linenr].cell(cells, colnr - 1).?.getText(source);
-        const curr_char = lines[linenr].cell(cells, colnr).?.getText(source);
-        const next_char = if (lines[linenr].cell(cells, colnr + 1)) |c| c.getText(source) else null;
-        const char_boundary_type = getCharBoundaryType(prev_char, curr_char, next_char);
-
-        if (char_boundary_type == .start or char_boundary_type == .both) return .{ linenr, colnr };
+        if (foundTargetBoundary(source, cells, lines, linenr, colnr)) return .{ linenr, colnr };
     }
-
     return .{ linenr, colnr };
 }
 
@@ -454,7 +425,6 @@ test moveCursorBackwardsLikeVim {
         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 100, 0));
         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells, lines, 0, 200));
     }
-
     {
         const source = "one;two--3|||four;";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
