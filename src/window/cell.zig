@@ -395,13 +395,13 @@ const TargetBoundary = enum {
 fn moveCursorForwardLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
     var linenr, var colnr = bringLinenrAndColnrInBound(lines, input_linenr, input_colnr);
 
-    const start = lines[linenr].start + colnr;
-    var target_boundary = TargetBoundary.null;
     var passed_a_space = false;
-    for (start..cells.len) |i| {
+    var target_boundary = TargetBoundary.null;
+    for (lines[linenr].start + colnr..cells.len) |i| {
         defer colnr += 1;
 
-        if (i < cells.len - 1 and lines[linenr].end - 1 == i) {
+        const i_at_end_of_line = lines[linenr].end - 1 == i;
+        if (i_at_end_of_line and i < cells.len - 1) {
             linenr += 1;
             colnr = 0;
             return .{ linenr, colnr };
@@ -446,6 +446,22 @@ test moveCursorForwardLikeVim {
         try eq(.{ 0, 10 }, moveCursorForwardLikeVim(source, cells, lines, 0, 6));
         try eqStr("d", lines[0].cell(cells, 10).?.getText(source));
     }
+    {
+        const source = "hello  world";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 7 }, moveCursorForwardLikeVim(source, cells, lines, 0, 0));
+        try eqStr("w", lines[0].cell(cells, 7).?.getText(source));
+        try eq(.{ 0, 11 }, moveCursorForwardLikeVim(source, cells, lines, 0, 7));
+        try eqStr("d", lines[0].cell(cells, 11).?.getText(source));
+    }
+    {
+        const source = "hello   world";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 8 }, moveCursorForwardLikeVim(source, cells, lines, 0, 0));
+        try eqStr("w", lines[0].cell(cells, 8).?.getText(source));
+        try eq(.{ 0, 12 }, moveCursorForwardLikeVim(source, cells, lines, 0, 8));
+        try eqStr("d", lines[0].cell(cells, 12).?.getText(source));
+    }
 
     {
         const source = "hello\nworld\nvenus\nmars";
@@ -454,7 +470,6 @@ test moveCursorForwardLikeVim {
         try eq(.{ 2, 0 }, moveCursorForwardLikeVim(source, cells, lines, 1, 0));
         try eq(.{ 3, 0 }, moveCursorForwardLikeVim(source, cells, lines, 2, 0));
     }
-
     {
         const source = "hello world\nvenus and mars";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
