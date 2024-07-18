@@ -13,7 +13,7 @@ pub const Cell = struct {
     start_byte: usize,
     end_byte: usize,
 
-    pub fn len(self: *const @This()) usize {
+    pub fn len(self: *const Cell) usize {
         return self.end_byte - self.start_byte;
     }
 
@@ -26,23 +26,23 @@ pub const Line = struct {
     start: usize,
     end: usize,
 
-    pub fn getCells(self: *const @This(), cells: []const Cell) []const Cell {
+    pub fn getCells(self: *const Line, cells: []const Cell) []const Cell {
         return cells[self.start..self.end];
     }
 
-    pub fn getText(self: *const @This(), cells: []const Cell, source: []const u8) []const u8 {
+    pub fn getText(self: *const Line, cells: []const Cell, source: []const u8) []const u8 {
         const line_cells = cells[self.start..self.end];
         return source[line_cells[0].start_byte..line_cells[line_cells.len - 1].end_byte];
     }
 
-    pub fn numOfBytes(self: *const @This(), cells: []const Cell) usize {
+    pub fn numOfBytes(self: *const Line, cells: []const Cell) usize {
         const line_cells = self.getCells(cells);
         const start_byte = line_cells[0].start_byte;
         const end_byte = line_cells[line_cells.len - 1].end_byte;
         return end_byte - start_byte;
     }
 
-    pub fn numOfCells(self: *const @This()) usize {
+    pub fn numOfCells(self: *const Line) usize {
         return self.end - self.start;
     }
 };
@@ -292,10 +292,55 @@ test moveCursorForwardLikeVim {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+fn bringLinenrAndColnrInBound(lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = .{ input_linenr, input_colnr };
+    if (linenr > lines.len -| 1) {
+        linenr = lines.len -| 1;
+        colnr = lines[linenr].numOfCells() -| 1;
+        return .{ linenr, colnr };
+    }
+    if (colnr > lines[linenr].numOfCells() -| 1) colnr = lines[linenr].numOfCells() -| 1;
+    return .{ linenr, colnr };
+}
+
+test bringLinenrAndColnrInBound {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    {
+        _, const lines = try createCellListAndLineList(a, "");
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 0, 100));
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 100, 0));
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 200, 200));
+    }
+    {
+        const cells, const lines = try createCellListAndLineList(a, "1234567890");
+        try eq(10, lines.items[0].getCells(cells.items).len);
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 0, 100));
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 100, 0));
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 100, 100));
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 1, 5));
+        try eq(.{ 0, 5 }, bringLinenrAndColnrInBound(lines.items, 0, 5));
+    }
+    {
+        const cells, const lines = try createCellListAndLineList(a, "12345\n6789");
+        try eq(5, lines.items[0].getCells(cells.items).len);
+        try eq(4, lines.items[1].getCells(cells.items).len);
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 0, 0));
+        try eq(.{ 0, 4 }, bringLinenrAndColnrInBound(lines.items, 0, 10));
+        try eq(.{ 0, 4 }, bringLinenrAndColnrInBound(lines.items, 0, 5));
+        try eq(.{ 1, 0 }, bringLinenrAndColnrInBound(lines.items, 1, 0));
+        try eq(.{ 1, 2 }, bringLinenrAndColnrInBound(lines.items, 1, 2));
+        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines.items, 1, 3));
+        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines.items, 1, 4));
+        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines.items, 1, 100));
+    }
+}
+
 // fn moveCursorBackwardsLikeVim(source: []const u8, cells: []const Cell, lines: []const Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
-//     // TODO:
+//     var linenr, var colnr = bringLinenrAndColnrInbound(lines, input_linenr, input_colnr);
 // }
-//
+
 // test moveCursorBackwardsLikeVim {
 //     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
 //     defer arena.deinit();
@@ -309,10 +354,10 @@ test moveCursorForwardLikeVim {
 //         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 200));
 //     }
 //
-//     {
-//         const source = "hello world";
-//         const cells, const lines = try createCellListAndLineList(a, source);
-//         try eq(.{ 0, 6 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 11));
-//         try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 6));
-//     }
+//     // {
+//     //     const source = "hello world";
+//     //     const cells, const lines = try createCellListAndLineList(a, source);
+//     //     try eq(.{ 0, 6 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 11));
+//     //     try eq(.{ 0, 0 }, moveCursorBackwardsLikeVim(source, cells.items, lines.items, 0, 6));
+//     // }
 // }
