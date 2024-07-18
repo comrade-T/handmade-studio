@@ -13,6 +13,10 @@ pub const Cell = struct {
     start_byte: usize,
     end_byte: usize,
 
+    pub fn len(self: *const @This()) usize {
+        return self.end_byte - self.start_byte;
+    }
+
     pub fn getText(self: *const Cell, source: []const u8) []const u8 {
         return source[self.start_byte..self.end_byte];
     }
