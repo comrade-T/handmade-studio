@@ -270,7 +270,7 @@ fn forwardByWord(
     return .{ linenr, colnr };
 }
 
-test "moveCursorForward.end" {
+test "forwardByWord.end" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -345,7 +345,7 @@ test "moveCursorForward.end" {
     }
 }
 
-test "moveCursorForward.start" {
+test "forwardByWord.start" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -578,7 +578,7 @@ test backByWord {
     }
 }
 
-test "moveCursorBackwards.end" {
+test "backByWord.end" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();

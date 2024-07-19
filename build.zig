@@ -52,6 +52,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
+    _ = addTestableModule(&bops, "src/buffer/buffer_new.zig", &.{}, zig_build_test_step);
+
     _ = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
 
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
