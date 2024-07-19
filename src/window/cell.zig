@@ -149,6 +149,7 @@ fn isSpace(c: []const u8) bool {
     return switch (c[0]) {
         ' ' => true,
         '\t' => true,
+        '\n' => true,
         else => false,
     };
 }
@@ -232,6 +233,7 @@ test getCharBoundaryType {
     try eq(.end, getCharBoundaryType("a", "b", ";"));
     try eq(.both, getCharBoundaryType(" ", "a", " "));
     try eq(.both, getCharBoundaryType(" ", "a", ";"));
+    try eq(.both, getCharBoundaryType("h", ";", null));
 }
 
 fn foundTargetBoundary(source: []const u8, cells: []const Cell, curr_line: Line, colnr: usize, boundary_type: WordBoundaryType) bool {
@@ -495,7 +497,8 @@ fn moveCursorBackwards(
     while (true) {
         defer colnr -|= 1;
         if (colnr == 0) {
-            if (linenr == 0 or input_colnr > 0) return .{ linenr, colnr };
+            if (linenr == 0) return .{ 0, 0 };
+            if (input_colnr > 0) if (foundTargetBoundary(source, cells, lines[linenr], colnr, destination)) return .{ linenr, colnr };
             linenr -= 1;
             colnr = lines[linenr].numOfCells() - 1;
         }
@@ -572,5 +575,85 @@ test moveCursorBackwards {
         try eq(.{ 0, 10 }, moveCursorBackwards(.start, source, cells, lines, 1, 0));
         try eqStr(";", lines[0].cell(cells, 10).?.getText(source));
         try eq(.{ 0, 5 }, moveCursorBackwards(.start, source, cells, lines, 0, 10));
+    }
+}
+
+test "moveCursorBackwards.end" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const source = "";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 0 }, moveCursorBackwards(.end, source, cells, lines, 0, 0));
+        try eq(.{ 0, 0 }, moveCursorBackwards(.end, source, cells, lines, 100, 0));
+        try eq(.{ 0, 0 }, moveCursorBackwards(.end, source, cells, lines, 0, 200));
+    }
+    {
+        const source = "one;two--3|||four;;;;";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 16 }, moveCursorBackwards(.end, source, cells, lines, 0, 20));
+        try eq(.{ 0, 16 }, moveCursorBackwards(.end, source, cells, lines, 0, 19));
+        try eq(.{ 0, 16 }, moveCursorBackwards(.end, source, cells, lines, 0, 18));
+        try eq(.{ 0, 16 }, moveCursorBackwards(.end, source, cells, lines, 0, 17));
+        try eqStr("r", lines[0].cell(cells, 16).?.getText(source));
+        try eq(.{ 0, 12 }, moveCursorBackwards(.end, source, cells, lines, 0, 16));
+        try eq(.{ 0, 12 }, moveCursorBackwards(.end, source, cells, lines, 0, 15));
+        try eq(.{ 0, 12 }, moveCursorBackwards(.end, source, cells, lines, 0, 14));
+        try eq(.{ 0, 12 }, moveCursorBackwards(.end, source, cells, lines, 0, 13));
+        try eqStr("|", lines[0].cell(cells, 12).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 0, 12));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 0, 11));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 0, 10));
+        try eqStr("3", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 8 }, moveCursorBackwards(.end, source, cells, lines, 0, 9));
+        try eqStr("-", lines[0].cell(cells, 8).?.getText(source));
+        try eq(.{ 0, 6 }, moveCursorBackwards(.end, source, cells, lines, 0, 8));
+        try eq(.{ 0, 6 }, moveCursorBackwards(.end, source, cells, lines, 0, 7));
+        try eqStr("o", lines[0].cell(cells, 6).?.getText(source));
+        try eq(.{ 0, 3 }, moveCursorBackwards(.end, source, cells, lines, 0, 6));
+        try eq(.{ 0, 3 }, moveCursorBackwards(.end, source, cells, lines, 0, 5));
+        try eq(.{ 0, 3 }, moveCursorBackwards(.end, source, cells, lines, 0, 4));
+        try eqStr(";", lines[0].cell(cells, 3).?.getText(source));
+        try eq(.{ 0, 2 }, moveCursorBackwards(.end, source, cells, lines, 0, 3));
+        try eqStr("e", lines[0].cell(cells, 2).?.getText(source));
+        try eq(.{ 0, 0 }, moveCursorBackwards(.end, source, cells, lines, 0, 2));
+        try eq(.{ 0, 0 }, moveCursorBackwards(.end, source, cells, lines, 0, 1));
+        try eq(.{ 0, 0 }, moveCursorBackwards(.end, source, cells, lines, 0, 0));
+        try eqStr("o", lines[0].cell(cells, 0).?.getText(source));
+    }
+    {
+        const source = "draw forth\na map";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 1, 0 }, moveCursorBackwards(.end, source, cells, lines, 1, 4));
+        try eqStr("a", lines[1].cell(cells, 0).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 1, 0));
+        try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 3 }, moveCursorBackwards(.end, source, cells, lines, 0, 9));
+        try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
+    }
+    {
+        const source = "draw forth\nmy map";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 1, 1 }, moveCursorBackwards(.end, source, cells, lines, 1, 5));
+        try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 1, 1));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 1, 0));
+        try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 3 }, moveCursorBackwards(.end, source, cells, lines, 0, 9));
+        try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
+    }
+    {
+        const source = "draw forth;\nmy map";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 1, 1 }, moveCursorBackwards(.end, source, cells, lines, 1, 5));
+        try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
+        try eq(.{ 0, 10 }, moveCursorBackwards(.end, source, cells, lines, 1, 1));
+        try eqStr(";", lines[0].cell(cells, 10).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorBackwards(.end, source, cells, lines, 0, 10));
+        try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 3 }, moveCursorBackwards(.end, source, cells, lines, 0, 9));
+        try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
     }
 }
