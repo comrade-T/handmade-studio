@@ -395,17 +395,21 @@ test "Buffer.get_line()" {
     const a = std.testing.allocator;
     var buf = try Buffer.create(a, a);
     defer buf.deinit();
-
     {
         buf.root = try buf.load_from_string("ayaya");
         try testBufferGetLine(a, buf, 0, "ayaya");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, ""));
     }
-
     {
         buf.root = try buf.load_from_string("hello\nworld");
         try testBufferGetLine(a, buf, 0, "hello");
         try testBufferGetLine(a, buf, 1, "world");
+        try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
+    }
+    {
+        buf.root = try buf.load_from_string("안녕하세요!\nHello there 👋!");
+        try testBufferGetLine(a, buf, 0, "안녕하세요!");
+        try testBufferGetLine(a, buf, 1, "Hello there 👋!");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
     }
 }
@@ -413,13 +417,11 @@ test "Buffer.get_line()" {
 test "Buffer.load_from_string()" {
     const buffer = try Buffer.create(std.testing.allocator, std.testing.allocator);
     defer buffer.deinit();
-
     {
         const root = try buffer.load_from_string("ayaya");
         try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, root.weights_sum());
         try eqStr("ayaya", root.leaf.buf);
     }
-
     {
         const root = try buffer.load_from_string("hello\nworld");
         try eqDeep(Weights{ .bols = 2, .eols = 1, .len = 11, .depth = 2 }, root.weights_sum());
