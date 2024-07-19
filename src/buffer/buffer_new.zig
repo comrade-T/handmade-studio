@@ -37,12 +37,12 @@ pub const Buffer = struct {
     }
 
     pub fn toArrayList(self: *Buffer, a: Allocator) !std.ArrayList(u8) {
-        var s = try ArrayList(u8).initCapacity(a, self.root.weights_sum().len);
+        var s = try ArrayList(u8).initCapacity(a, self.root.weightsSum().len);
         try self.root.store(s.writer());
         return s;
     }
 
-    pub fn load_from_string(self: *const Buffer, s: []const u8) !Root {
+    pub fn loadFromString(self: *const Buffer, s: []const u8) !Root {
         var stream = std.io.fixedBufferStream(s);
         return self.load(stream.reader(), s.len);
     }
@@ -56,11 +56,11 @@ pub const Buffer = struct {
         const final_read = try reader.read(buf);
         if (final_read != 0) @panic("unexpected data in final read");
 
-        const leaves = try _create_leaves(self.a, buf);
-        return Node.merge_in_place(self.a, leaves);
+        const leaves = try _createLeaves(self.a, buf);
+        return Node.mergeInPlace(self.a, leaves);
     }
 
-    fn _create_leaves(a: std.mem.Allocator, buf: []const u8) ![]Node {
+    fn _createLeaves(a: std.mem.Allocator, buf: []const u8) ![]Node {
         const eol = '\n';
 
         var leaf_count: usize = 1;
@@ -96,10 +96,10 @@ pub const Buffer = struct {
         }
     };
 
-    fn get_line(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
-        if (line + 1 > self.root.weights_sum().bols) return error.NotFound;
+    fn getLine(self: *const Buffer, line: usize, result_list: *ArrayList(u8)) !void {
+        if (line + 1 > self.root.weightsSum().bols) return error.NotFound;
         var walk_ctx: GetLineCtx = .{ .result_list = result_list };
-        const walk_result = self.root.walk_line(line, GetLineCtx.walker, &walk_ctx);
+        const walk_result = self.root.walkLine(line, GetLineCtx.walker, &walk_ctx);
         if (walk_result.err) |e| return e;
         return if (!walk_result.found) error.NotFound;
     }
@@ -137,7 +137,7 @@ const Node = union(enum) {
     node: Branch,
     leaf: Leaf,
 
-    fn weights_sum(self: *const Node) Weights {
+    fn weightsSum(self: *const Node) Weights {
         return switch (self.*) {
             .node => |*branch| branch.weights_sum,
             .leaf => |*leaf| leaf.weights(),
@@ -146,8 +146,8 @@ const Node = union(enum) {
 
     fn new(a: Allocator, l: *const Node, r: *const Node) !*const Node {
         const node = try a.create(Node);
-        const left_ws = l.weights_sum();
-        const right_ws = r.weights_sum();
+        const left_ws = l.weightsSum();
+        const right_ws = r.weightsSum();
 
         var ws = Weights{};
         ws.add(left_ws);
@@ -158,10 +158,10 @@ const Node = union(enum) {
         return node;
     }
 
-    fn is_empty(self: *const Node) bool {
+    fn isEmpty(self: *const Node) bool {
         return switch (self.*) {
-            .node => |*branch| branch.left.is_empty() and branch.right.is_empty(),
-            .leaf => |*l| if (self == &empty_leaf) true else l.is_empty(),
+            .node => |*branch| branch.left.isEmpty() and branch.right.isEmpty(),
+            .leaf => |*l| if (self == &empty_leaf) true else l.isEmpty(),
         };
     }
 
@@ -178,21 +178,21 @@ const Node = union(enum) {
         }
     }
 
-    fn merge_in_place(a: Allocator, leaves: []const Node) !Root {
+    fn mergeInPlace(a: Allocator, leaves: []const Node) !Root {
         if (leaves.len == 1) return &leaves[0];
         if (leaves.len == 2) return Node.new(a, &leaves[0], &leaves[1]);
         const mid = leaves.len / 2;
-        return Node.new(a, try merge_in_place(a, leaves[0..mid]), try merge_in_place(a, leaves[mid..]));
+        return Node.new(a, try mergeInPlace(a, leaves[0..mid]), try mergeInPlace(a, leaves[mid..]));
     }
 
-    fn walk_line(self: *const Node, line: usize, f: Walker.F, ctx: *anyopaque) Walker {
+    fn walkLine(self: *const Node, line: usize, f: Walker.F, ctx: *anyopaque) Walker {
         switch (self.*) {
             .node => |*branch| {
                 const left_bols = branch.weights.bols;
-                if (line >= left_bols) return branch.right.walk_line(line - left_bols, f, ctx);
-                const left_result = branch.left.walk_line(line, f, ctx);
+                if (line >= left_bols) return branch.right.walkLine(line - left_bols, f, ctx);
+                const left_result = branch.left.walkLine(line, f, ctx);
                 const right_result = if (left_result.found and left_result.keep_walking) branch.right.walk(f, ctx) else Walker{};
-                return branch.merge_walk_results(left_result, right_result);
+                return branch.mergeWalkResults(left_result, right_result);
             },
             .leaf => |*leaf| {
                 if (line == 0) {
@@ -217,24 +217,24 @@ const Node = union(enum) {
                     return result;
                 }
                 const right = branch.right.walk(f, ctx);
-                return branch.merge_walk_results(left, right);
+                return branch.mergeWalkResults(left, right);
             },
             .leaf => |*l| return f(ctx, l),
         }
     }
 
-    fn walk_line_mut(self: *const Node, a: Allocator, line: usize, f: WalkerMut.F, ctx: *anyopaque) WalkerMut {
+    fn walkLineMut(self: *const Node, a: Allocator, line: usize, f: WalkerMut.F, ctx: *anyopaque) WalkerMut {
         switch (self.*) {
             .node => |*node| {
                 const left_bols = node.weights.bols;
                 if (line >= left_bols) {
-                    const right = node.right.walk_line_mut(a, line - left_bols, f, ctx);
+                    const right = node.right.walkLineMut(a, line - left_bols, f, ctx);
                     if (right.replace) |replacement| {
                         return WalkerMut{
                             .err = right.err,
                             .found = right.found,
                             .keep_walking = right.keep_walking,
-                            .replace = if (replacement.is_empty())
+                            .replace = if (replacement.isEmpty())
                                 node.left
                             else
                                 Node.new(a, node.left, replacement) catch |e| return WalkerMut{ .err = e },
@@ -242,9 +242,9 @@ const Node = union(enum) {
                     }
                     return right;
                 }
-                const left = node.left.walk_line_mut(a, line, f, ctx);
-                const right = if (left.found and left.keep_walking) node.right.walk_mut(a, f, ctx) else WalkerMut{};
-                return node.merge_walk_results_mut(a, left, right);
+                const left = node.left.walkLineMut(a, line, f, ctx);
+                const right = if (left.found and left.keep_walking) node.right.walkMut(a, f, ctx) else WalkerMut{};
+                return node.mergeWalkResultsMut(a, left, right);
             },
             .leaf => |*l| {
                 if (line == 0) {
@@ -261,10 +261,10 @@ const Node = union(enum) {
         }
     }
 
-    fn walk_mut(self: *const Node, a: Allocator, f: WalkerMut.F, ctx: *anyopaque) WalkerMut {
+    fn walkMut(self: *const Node, a: Allocator, f: WalkerMut.F, ctx: *anyopaque) WalkerMut {
         switch (self.*) {
             .node => |*node| {
-                const left = node.left.walk_mut(a, f, ctx);
+                const left = node.left.walkMut(a, f, ctx);
                 if (!left.keep_walking) {
                     return WalkerMut{
                         .err = left.err,
@@ -275,8 +275,8 @@ const Node = union(enum) {
                             null,
                     };
                 }
-                const right = node.right.walk_mut(a, f, ctx);
-                return node.merge_walk_results_mut(a, left, right);
+                const right = node.right.walkMut(a, f, ctx);
+                return node.mergeWalkResultsMut(a, left, right);
             },
             .leaf => |*l| return f(ctx, l),
         }
@@ -289,7 +289,7 @@ const Branch = struct {
     weights: Weights,
     weights_sum: Weights,
 
-    fn merge_walk_results(_: *const Branch, left: Walker, right: Walker) Walker {
+    fn mergeWalkResults(_: *const Branch, left: Walker, right: Walker) Walker {
         var result = Walker{};
         result.err = if (left.err) |_| left.err else right.err;
         result.keep_walking = left.keep_walking and right.keep_walking;
@@ -297,7 +297,7 @@ const Branch = struct {
         return result;
     }
 
-    fn merge_walk_results_mut(self: *const Branch, a: Allocator, left: WalkerMut, right: WalkerMut) WalkerMut {
+    fn mergeWalkResultsMut(self: *const Branch, a: Allocator, left: WalkerMut, right: WalkerMut) WalkerMut {
         return WalkerMut{
             .err = if (left.err) |_| left.err else right.err,
             .keep_walking = left.keep_walking and right.keep_walking,
@@ -305,16 +305,16 @@ const Branch = struct {
             .replace = if (left.replace == null and right.replace == null)
                 null
             else
-                self._merge_replacements(a, left, right) catch |e| return WalkerMut{ .err = e },
+                self._mergeReplacements(a, left, right) catch |e| return WalkerMut{ .err = e },
         };
     }
 
-    fn _merge_replacements(self: *const Branch, a: std.mem.Allocator, left: WalkerMut, right: WalkerMut) !*const Node {
+    fn _mergeReplacements(self: *const Branch, a: std.mem.Allocator, left: WalkerMut, right: WalkerMut) !*const Node {
         const new_left = if (left.replace) |p| p else self.left;
         const new_right = if (right.replace) |p| p else self.right;
 
-        if (new_left.is_empty()) return new_right;
-        if (new_right.is_empty()) return new_left;
+        if (new_left.isEmpty()) return new_right;
+        if (new_right.isEmpty()) return new_left;
 
         return Node.new(a, new_left, new_right);
     }
@@ -352,7 +352,7 @@ const Leaf = struct {
         };
     }
 
-    inline fn is_empty(self: *const Leaf) bool {
+    inline fn isEmpty(self: *const Leaf) bool {
         return self.buf.len == 0 and !self.bol and !self.eol;
     }
 };
@@ -379,81 +379,78 @@ test "Buffer.create() & Buffer.deinit()" {
     const empty_buffer = try Buffer.create(std.testing.allocator, std.testing.allocator);
     defer empty_buffer.deinit();
 
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_buffer.root.weights_sum());
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.left.weights_sum());
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.right.weights_sum());
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_buffer.root.weightsSum());
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.left.weightsSum());
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, empty_buffer.root.node.right.weightsSum());
 }
 
 fn testBufferGetLine(a: std.mem.Allocator, buf: *Buffer, line: usize, expected: []const u8) !void {
     var result = ArrayList(u8).init(a);
     defer result.deinit();
-    try buf.get_line(line, &result);
+    try buf.getLine(line, &result);
     try std.testing.expectEqualStrings(expected, result.items);
 }
 
-test "Buffer.get_line()" {
+test "Buffer.getLine()" {
     const a = std.testing.allocator;
     var buf = try Buffer.create(a, a);
     defer buf.deinit();
     {
-        buf.root = try buf.load_from_string("ayaya");
+        buf.root = try buf.loadFromString("ayaya");
         try testBufferGetLine(a, buf, 0, "ayaya");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 1, ""));
     }
     {
-        buf.root = try buf.load_from_string("hello\nworld");
+        buf.root = try buf.loadFromString("hello\nworld");
         try testBufferGetLine(a, buf, 0, "hello");
         try testBufferGetLine(a, buf, 1, "world");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
     }
     {
-        buf.root = try buf.load_from_string("안녕하세요!\nHello there 👋!");
+        buf.root = try buf.loadFromString("안녕하세요!\nHello there 👋!");
         try testBufferGetLine(a, buf, 0, "안녕하세요!");
         try testBufferGetLine(a, buf, 1, "Hello there 👋!");
         try shouldErr(error.NotFound, testBufferGetLine(a, buf, 2, ""));
     }
 }
 
-test "Buffer.load_from_string()" {
+test "Buffer.loadFromString()" {
     const buffer = try Buffer.create(std.testing.allocator, std.testing.allocator);
     defer buffer.deinit();
     {
-        const root = try buffer.load_from_string("ayaya");
-        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, root.weights_sum());
+        const root = try buffer.loadFromString("ayaya");
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, root.weightsSum());
         try eqStr("ayaya", root.leaf.buf);
     }
     {
-        const root = try buffer.load_from_string("hello\nworld");
-        try eqDeep(Weights{ .bols = 2, .eols = 1, .len = 11, .depth = 2 }, root.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, root.node.right.weights_sum());
+        const root = try buffer.loadFromString("hello\nworld");
+        try eqDeep(Weights{ .bols = 2, .eols = 1, .len = 11, .depth = 2 }, root.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, root.node.right.weightsSum());
         try eqStr("hello", root.node.left.leaf.buf);
         try eqStr("world", root.node.right.leaf.buf);
     }
 }
 
-test "Buffer._create_leaves()" {
+test "Buffer._createLeaves()" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const a = arena.allocator();
-
     {
         const str = "hello";
         const expected = [_]Node{
             Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = false } },
         };
-        try eqDeep(&expected, try Buffer._create_leaves(a, str));
+        try eqDeep(&expected, try Buffer._createLeaves(a, str));
     }
-
     {
         const str = "hello\nworld";
         const expected = [_]Node{
             Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = true } },
             Node{ .leaf = Leaf{ .buf = "world", .bol = true, .eol = false } },
         };
-        try eqDeep(&expected, try Buffer._create_leaves(a, str));
+        try eqDeep(&expected, try Buffer._createLeaves(a, str));
     }
-
     {
         const str = "hello\nfrom\nthe\nother side";
         const expected = [_]Node{
@@ -462,7 +459,7 @@ test "Buffer._create_leaves()" {
             Node{ .leaf = Leaf{ .buf = "the", .bol = true, .eol = true } },
             Node{ .leaf = Leaf{ .buf = "other side", .bol = true, .eol = false } },
         };
-        try eqDeep(&expected, try Buffer._create_leaves(a, str));
+        try eqDeep(&expected, try Buffer._createLeaves(a, str));
     }
 }
 
@@ -474,11 +471,11 @@ test "Node.new()" {
     const a = arena.allocator();
 
     const empty_node = try Node.new(a, &empty_leaf, &empty_leaf);
-    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weights_sum());
+    try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 2 }, empty_node.weightsSum());
 }
 
 fn testNodeStore(a: std.mem.Allocator, root: Root, expected: []const u8) !void {
-    var s = try ArrayList(u8).initCapacity(a, root.weights_sum().len);
+    var s = try ArrayList(u8).initCapacity(a, root.weightsSum().len);
     defer s.deinit();
     try root.store(s.writer());
     try eqStr(expected, s.items);
@@ -491,17 +488,17 @@ test "Node.store()" {
 
     {
         const content = "hello\nworld";
-        const root = try buffer.load_from_string(content);
+        const root = try buffer.loadFromString(content);
         try testNodeStore(a, root, content);
     }
     {
         const content = "one two";
-        const root = try buffer.load_from_string(content);
+        const root = try buffer.loadFromString(content);
         try testNodeStore(a, root, content);
     }
     {
         const content = [_]u8{ 'A', 'A', 'A', 10 } ** 1_000;
-        const root = try buffer.load_from_string(&content);
+        const root = try buffer.loadFromString(&content);
         try testNodeStore(a, root, &content);
     }
 }
@@ -530,7 +527,7 @@ test "Node.walk()" {
     defer buffer.deinit();
 
     {
-        const root = try buffer.load_from_string("hello\nfrom\nthe\nother\nside");
+        const root = try buffer.loadFromString("hello\nfrom\nthe\nother\nside");
         const leaves = try walkThroughNodeToGetAllLeaves(a, root);
         defer a.free(leaves);
 
@@ -542,7 +539,7 @@ test "Node.walk()" {
     }
 }
 
-test "Node.merge_in_place()" {
+test "Node.mergeInPlace()" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -552,8 +549,8 @@ test "Node.merge_in_place()" {
             Node{ .leaf = Leaf{ .buf = "hello", .bol = true, .eol = true } },
         };
 
-        const root = try Node.merge_in_place(a, &leaves);
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.weights_sum());
+        const root = try Node.mergeInPlace(a, &leaves);
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.weightsSum());
     }
 
     {
@@ -562,10 +559,10 @@ test "Node.merge_in_place()" {
             Node{ .leaf = Leaf{ .buf = "mars", .bol = true, .eol = true } },
         };
 
-        const root = try Node.merge_in_place(a, &leaves);
-        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 11, .depth = 2 }, root.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.weights_sum());
+        const root = try Node.mergeInPlace(a, &leaves);
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 11, .depth = 2 }, root.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.weightsSum());
     }
 
     {
@@ -575,12 +572,12 @@ test "Node.merge_in_place()" {
             Node{ .leaf = Leaf{ .buf = "mars", .bol = true, .eol = true } },
         };
 
-        const root = try Node.merge_in_place(a, &leaves);
-        try eqDeep(Weights{ .bols = 3, .eols = 3, .len = 16, .depth = 3 }, root.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weights_sum());
-        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 10, .depth = 2 }, root.node.right.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.node.left.weights_sum());
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.node.right.weights_sum());
+        const root = try Node.mergeInPlace(a, &leaves);
+        try eqDeep(Weights{ .bols = 3, .eols = 3, .len = 16, .depth = 3 }, root.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, root.node.left.weightsSum());
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 10, .depth = 2 }, root.node.right.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.node.left.weightsSum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, root.node.right.node.right.weightsSum());
         try eqStr("hello", root.node.left.leaf.buf);
         try eqStr("from", root.node.right.node.left.leaf.buf);
         try eqStr("mars", root.node.right.node.right.leaf.buf);
@@ -594,48 +591,48 @@ test "Node.merge_in_place()" {
             Node{ .leaf = Leaf{ .buf = "other side", .bol = true, .eol = true } },
         };
 
-        const root = try Node.merge_in_place(a, &leaves);
-        try eqDeep(Weights{ .bols = 4, .eols = 4, .len = 26, .depth = 3 }, root.weights_sum());
+        const root = try Node.mergeInPlace(a, &leaves);
+        try eqDeep(Weights{ .bols = 4, .eols = 4, .len = 26, .depth = 3 }, root.weightsSum());
 
         const root_left = root.node.left;
         const root_right = root.node.right;
-        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 11, .depth = 2 }, root_left.weights_sum());
-        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 15, .depth = 2 }, root_right.weights_sum());
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 11, .depth = 2 }, root_left.weightsSum());
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 15, .depth = 2 }, root_right.weightsSum());
 
         const hello = root_left.node.left;
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, hello.weightsSum());
         try eqStr("hello", hello.leaf.buf);
 
         const from = root_left.node.right;
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, from.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 }, from.weightsSum());
         try eqStr("from", from.leaf.buf);
 
         const the = root_right.node.left;
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 4, .depth = 1 }, the.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 4, .depth = 1 }, the.weightsSum());
         try eqStr("the", the.leaf.buf);
 
         const other_side = root_right.node.right;
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 11, .depth = 1 }, other_side.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 11, .depth = 1 }, other_side.weightsSum());
         try eqStr("other side", other_side.leaf.buf);
     }
 }
 
-test "Node.weights_sum()" {
+test "Node.weightsSum()" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
     {
         const leaf = try Leaf.new(a, "", false, false);
-        try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, leaf.weights_sum());
+        try eqDeep(Weights{ .bols = 0, .eols = 0, .len = 0, .depth = 1 }, leaf.weightsSum());
     }
     {
         const leaf = try Leaf.new(a, "hello", true, false);
-        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, leaf.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, leaf.weightsSum());
     }
     {
         const leaf = try Leaf.new(a, "hello", true, true);
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, leaf.weights_sum());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 6, .depth = 1 }, leaf.weightsSum());
     }
 }
 
@@ -670,22 +667,22 @@ test "Leaf.weights()" {
     }
 }
 
-test "Leaf.is_empty()" {
+test "Leaf.isEmpty()" {
     {
         const leaf = Leaf{ .buf = "", .bol = false, .eol = false };
-        try eq(true, leaf.is_empty());
+        try eq(true, leaf.isEmpty());
     }
     {
         const leaf = Leaf{ .buf = "hi!", .bol = false, .eol = false };
-        try eq(false, leaf.is_empty());
+        try eq(false, leaf.isEmpty());
     }
     {
         const leaf = Leaf{ .buf = "", .bol = true, .eol = false };
-        try eq(false, leaf.is_empty());
+        try eq(false, leaf.isEmpty());
     }
     {
         const leaf = Leaf{ .buf = "", .bol = false, .eol = true };
-        try eq(false, leaf.is_empty());
+        try eq(false, leaf.isEmpty());
     }
 }
 
