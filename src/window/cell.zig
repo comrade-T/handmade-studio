@@ -258,8 +258,8 @@ fn moveCursorForward(
     colnr += 1;
     while (true) {
         defer colnr += 1;
-        if (colnr >= lines[linenr].numOfCells() -| 1) {
-            if (linenr == lines.len - 1) return .{ linenr, colnr };
+        if (colnr >= lines[linenr].numOfCells()) {
+            if (linenr == lines.len - 1) return .{ linenr, lines[linenr].numOfCells() - 1 };
             linenr += 1;
             colnr = 0;
         }
@@ -268,7 +268,82 @@ fn moveCursorForward(
     return .{ linenr, colnr };
 }
 
-test moveCursorForward {
+test "moveCursorForward.end" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const source = "";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 0 }, moveCursorForward(.end, source, cells, lines, 0, 0));
+        try eq(.{ 0, 0 }, moveCursorForward(.end, source, cells, lines, 100, 0));
+        try eq(.{ 0, 0 }, moveCursorForward(.end, source, cells, lines, 0, 200));
+    }
+    {
+        const source = "hello world";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 4 }, moveCursorForward(.end, source, cells, lines, 0, 0));
+        try eq(.{ 0, 4 }, moveCursorForward(.end, source, cells, lines, 0, 1));
+        try eq(.{ 0, 4 }, moveCursorForward(.end, source, cells, lines, 0, 2));
+        try eq(.{ 0, 4 }, moveCursorForward(.end, source, cells, lines, 0, 3));
+        try eqStr("o", lines[0].cell(cells, 4).?.getText(source));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 4));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 5));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 6));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 7));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 8));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 9));
+        try eq(.{ 0, 10 }, moveCursorForward(.end, source, cells, lines, 0, 10));
+        try eqStr("d", lines[0].cell(cells, 10).?.getText(source));
+    }
+    {
+        const source = "one#two--3|||four;;;;";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 2 }, moveCursorForward(.end, source, cells, lines, 0, 0));
+        try eq(.{ 0, 2 }, moveCursorForward(.end, source, cells, lines, 0, 1));
+        try eqStr("e", lines[0].cell(cells, 2).?.getText(source));
+        try eq(.{ 0, 3 }, moveCursorForward(.end, source, cells, lines, 0, 2));
+        try eqStr("#", lines[0].cell(cells, 3).?.getText(source));
+        try eq(.{ 0, 6 }, moveCursorForward(.end, source, cells, lines, 0, 3));
+        try eq(.{ 0, 6 }, moveCursorForward(.end, source, cells, lines, 0, 4));
+        try eq(.{ 0, 6 }, moveCursorForward(.end, source, cells, lines, 0, 5));
+        try eqStr("o", lines[0].cell(cells, 6).?.getText(source));
+        try eq(.{ 0, 8 }, moveCursorForward(.end, source, cells, lines, 0, 6));
+        try eq(.{ 0, 8 }, moveCursorForward(.end, source, cells, lines, 0, 7));
+        try eqStr("-", lines[0].cell(cells, 8).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorForward(.end, source, cells, lines, 0, 8));
+        try eqStr("3", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 0, 12 }, moveCursorForward(.end, source, cells, lines, 0, 9));
+        try eq(.{ 0, 12 }, moveCursorForward(.end, source, cells, lines, 0, 10));
+        try eq(.{ 0, 12 }, moveCursorForward(.end, source, cells, lines, 0, 11));
+        try eqStr("|", lines[0].cell(cells, 12).?.getText(source));
+        try eq(.{ 0, 16 }, moveCursorForward(.end, source, cells, lines, 0, 12));
+        try eq(.{ 0, 16 }, moveCursorForward(.end, source, cells, lines, 0, 13));
+        try eq(.{ 0, 16 }, moveCursorForward(.end, source, cells, lines, 0, 14));
+        try eq(.{ 0, 16 }, moveCursorForward(.end, source, cells, lines, 0, 15));
+        try eqStr("r", lines[0].cell(cells, 16).?.getText(source));
+        try eq(.{ 0, 20 }, moveCursorForward(.end, source, cells, lines, 0, 16));
+        try eq(.{ 0, 20 }, moveCursorForward(.end, source, cells, lines, 0, 17));
+        try eq(.{ 0, 20 }, moveCursorForward(.end, source, cells, lines, 0, 18));
+        try eq(.{ 0, 20 }, moveCursorForward(.end, source, cells, lines, 0, 19));
+        try eqStr(";", lines[0].cell(cells, 20).?.getText(source));
+    }
+    {
+        const source = "draw forth\nmy map";
+        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        try eq(.{ 0, 3 }, moveCursorForward(.end, source, cells, lines, 0, 0));
+        try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
+        try eq(.{ 0, 9 }, moveCursorForward(.end, source, cells, lines, 0, 3));
+        try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
+        try eq(.{ 1, 1 }, moveCursorForward(.end, source, cells, lines, 0, 9));
+        try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
+        try eq(.{ 1, 5 }, moveCursorForward(.end, source, cells, lines, 1, 1));
+        try eqStr("p", lines[1].cell(cells, 5).?.getText(source));
+    }
+}
+
+test "moveCursorForward.start" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -287,6 +362,8 @@ test moveCursorForward {
         try eqStr("w", lines[0].cell(cells, 6).?.getText(source));
         try eq(.{ 0, 10 }, moveCursorForward(.start, source, cells, lines, 0, 6));
         try eqStr("d", lines[0].cell(cells, 10).?.getText(source));
+        try eq(.{ 0, 10 }, moveCursorForward(.start, source, cells, lines, 0, 10));
+        try eq(.{ 0, 10 }, moveCursorForward(.start, source, cells, lines, 0, 11));
     }
     {
         const source = "hello; world";
