@@ -92,7 +92,7 @@ pub const Buffer = struct {
         fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
             ctx.result_list.appendSlice(leaf.buf) catch |e| return Walker{ .err = e };
-            return if (!leaf.eol) Walker.keep_walking else Walker.stop;
+            return if (leaf.eol) Walker.stop else Walker.keep_walking;
         }
     };
 
@@ -429,6 +429,22 @@ test "Buffer.loadFromString()" {
         try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 5, .depth = 1 }, root.node.right.weightsSum());
         try eqStr("hello", root.node.left.leaf.buf);
         try eqStr("world", root.node.right.leaf.buf);
+    }
+    {
+        const source =
+            \\one
+            \\two two
+            \\three three three
+            \\four four four four
+        ;
+        const root = try buffer.loadFromString(source);
+        try eqDeep(Weights{ .bols = 4, .eols = 3, .len = 49, .depth = 3 }, root.weightsSum());
+        try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 12, .depth = 2 }, root.node.left.node.weights_sum);
+        try eqDeep(Weights{ .bols = 2, .eols = 1, .len = 37, .depth = 2 }, root.node.right.node.weights_sum);
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 4, .depth = 1 }, root.node.left.node.left.leaf.weights());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 8, .depth = 1 }, root.node.left.node.right.leaf.weights());
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 18, .depth = 1 }, root.node.right.node.left.leaf.weights());
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 19, .depth = 1 }, root.node.right.node.right.leaf.weights());
     }
 }
 

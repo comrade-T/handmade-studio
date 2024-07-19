@@ -53,6 +53,7 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/buffer/buffer_new.zig", &.{}, zig_build_test_step);
+    _ = addTestableModule(&bops, "src/buffer/buffer_brave_new_world.zig", &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
 
