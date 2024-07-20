@@ -64,24 +64,59 @@ const Node = union(enum) {
         const three_four = try Node.new(a, try Leaf.new(a, " three"), try Leaf.new(a, " four"));
         const root = try Node.new(a, one_two, three_four);
 
-        const CollectLeavesCtx = struct {
-            leaves: *ArrayList(*const Leaf),
-            fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                ctx.leaves.append(leaf) catch |e| return Walker{ .err = e };
-                return Walker.keep_walking;
-            }
-        };
-        var leaves = std.ArrayList(*const Leaf).init(a);
-        defer leaves.deinit();
-        var ctx: CollectLeavesCtx = .{ .leaves = &leaves };
-        const walk_result = root.walk(CollectLeavesCtx.walker, &ctx);
+        {
+            const CollectLeavesCtx = struct {
+                leaves: *ArrayList(*const Leaf),
+                fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                    ctx.leaves.append(leaf) catch |e| return Walker{ .err = e };
+                    return Walker.keep_walking;
+                }
+            };
+            var leaves = std.ArrayList(*const Leaf).init(std.testing.allocator);
+            defer leaves.deinit();
+            var ctx: CollectLeavesCtx = .{ .leaves = &leaves };
+            const walk_result = root.walk(CollectLeavesCtx.walker, &ctx);
 
-        try eq(Walker.keep_walking, walk_result);
-        try eqStr("one", leaves.items[0].buf);
-        try eqStr(" two", leaves.items[1].buf);
-        try eqStr(" three", leaves.items[2].buf);
-        try eqStr(" four", leaves.items[3].buf);
+            try eq(Walker.keep_walking, walk_result);
+            try eqStr("one", leaves.items[0].buf);
+            try eqStr(" two", leaves.items[1].buf);
+            try eqStr(" three", leaves.items[2].buf);
+            try eqStr(" four", leaves.items[3].buf);
+        }
+
+        {
+            const FindLeafThatSpansAcrossTargetByteIndexCtx = struct {
+                target_index: usize,
+                result: ?*const Leaf = null,
+                current_index: usize = 0,
+                fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                    const leaf_len = leaf.buf.len;
+                    if (ctx.current_index + leaf_len > ctx.target_index) {
+                        ctx.result = leaf;
+                        return Walker.found;
+                    }
+                    ctx.current_index += leaf_len;
+                    return Walker.keep_walking;
+                }
+            };
+
+            const testIndexToLeaf = struct {
+                fn f(node: *const Node, start: usize, end: usize, expected_str: []const u8) !void {
+                    for (start..end) |target_index| {
+                        var ctx: FindLeafThatSpansAcrossTargetByteIndexCtx = .{ .target_index = target_index };
+                        const walk_result = node.walk(FindLeafThatSpansAcrossTargetByteIndexCtx.walker, &ctx);
+                        try eq(Walker.found, walk_result);
+                        try eqStr(expected_str, ctx.result.?.*.buf);
+                    }
+                }
+            }.f;
+            try testIndexToLeaf(root, 0, 3, "one");
+            try testIndexToLeaf(root, 3, 7, " two");
+            try testIndexToLeaf(root, 7, 13, " three");
+            try testIndexToLeaf(root, 13, 18, " four");
+        }
     }
 
     fn weights(self: *const Node) Weights {
