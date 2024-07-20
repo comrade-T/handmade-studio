@@ -8,27 +8,80 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+// Copied & edited from https://github.com/neurocyte/flow
+// https://github.com/neurocyte/flow/blob/master/src/buffer/Buffer.zig
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const Walker = struct {
+    keep_walking: bool = false,
+    found: bool = false,
+    err: ?anyerror = null,
+
+    const keep_walking = Walker{ .keep_walking = true };
+    const stop = Walker{ .keep_walking = false };
+    const found = Walker{ .found = true };
+
+    const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) Walker;
+};
+
 const empty_leaf_node: Node = .{ .leaf = .{ .buf = "" } };
 const Node = union(enum) {
     branch: Branch,
     leaf: Leaf,
 
-    fn new(a: Allocator, l: *const Node, r: *const Node) !*const Node {
+    fn new(a: Allocator, left: *const Node, right: *const Node) !*const Node {
         const node = try a.create(Node);
         var w = Weights{};
-        w.add(l.weights());
-        w.add(r.weights());
+        w.add(left.weights());
+        w.add(right.weights());
         w.depth += 1;
-        node.* = .{ .branch = .{ .left = l, .right = r, .weights = w } };
+        node.* = .{ .branch = .{ .left = left, .right = right, .weights = w } };
         return node;
     }
-    test new {
+
+    fn walk(self: *const Node, f: Walker.F, ctx: *anyopaque) Walker {
+        switch (self.*) {
+            .branch => |*branch| {
+                const left_result = branch.left.walk(f, ctx);
+                if (!left_result.keep_walking) {
+                    var result = Walker{};
+                    result.err = left_result.err;
+                    result.found = left_result.found;
+                    return result;
+                }
+                const right_result = branch.right.walk(f, ctx);
+                return mergeWalkResults(left_result, right_result);
+            },
+            .leaf => |*l| return f(ctx, l),
+        }
+    }
+    test walk {
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer arena.deinit();
         const a = arena.allocator();
-        const node = try Node.new(arena.allocator(), try Leaf.new(a, "one"), try Leaf.new(a, " two"));
-        try eqStr("one", node.branch.left.leaf.buf);
-        try eqStr(" two", node.branch.right.leaf.buf);
+        const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, " two"));
+        const three_four = try Node.new(a, try Leaf.new(a, " three"), try Leaf.new(a, " four"));
+        const root = try Node.new(a, one_two, three_four);
+
+        const CollectLeavesCtx = struct {
+            leaves: *ArrayList(*const Leaf),
+            fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                ctx.leaves.append(leaf) catch |e| return Walker{ .err = e };
+                return Walker.keep_walking;
+            }
+        };
+        var leaves = std.ArrayList(*const Leaf).init(a);
+        defer leaves.deinit();
+        var ctx: CollectLeavesCtx = .{ .leaves = &leaves };
+        const walk_result = root.walk(CollectLeavesCtx.walker, &ctx);
+
+        try eq(Walker.keep_walking, walk_result);
+        try eqStr("one", leaves.items[0].buf);
+        try eqStr(" two", leaves.items[1].buf);
+        try eqStr(" three", leaves.items[2].buf);
+        try eqStr(" four", leaves.items[3].buf);
     }
 
     fn weights(self: *const Node) Weights {
@@ -42,6 +95,8 @@ const Node = union(enum) {
         defer arena.deinit();
         const a = arena.allocator();
         const node = try Node.new(arena.allocator(), try Leaf.new(a, "one"), try Leaf.new(a, " two"));
+        try eqStr("one", node.branch.left.leaf.buf);
+        try eqStr(" two", node.branch.right.leaf.buf);
         try eqDeep(Weights{ .len = 7, .depth = 2 }, node.weights());
         try eqDeep(Weights{ .len = 3, .depth = 1 }, node.branch.left.weights());
         try eqDeep(Weights{ .len = 4, .depth = 1 }, node.branch.right.weights());
@@ -71,6 +126,19 @@ const Node = union(enum) {
         }
     }
 };
+
+fn mergeWalkResults(left: Walker, right: Walker) Walker {
+    var result = Walker{};
+    result.err = if (left.err) |_| left.err else right.err;
+    result.keep_walking = left.keep_walking and right.keep_walking;
+    result.found = left.found or right.found;
+    return result;
+}
+test mergeWalkResults {
+    try eqDeep(Walker.found, mergeWalkResults(Walker.found, Walker.keep_walking));
+    try eqDeep(Walker.keep_walking, mergeWalkResults(Walker.keep_walking, Walker.keep_walking));
+    try eqDeep(Walker.stop, mergeWalkResults(Walker.stop, Walker.keep_walking));
+}
 
 const Branch = struct {
     left: *const Node,
