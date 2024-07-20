@@ -86,36 +86,36 @@ const Node = union(enum) {
         }
 
         {
-            const FindLeafThatSpansAcrossTargetByteIndexCtx = struct {
-                target_index: usize,
+            const LeafFinderCtx = struct {
+                target_offset: usize,
                 result: ?*const Leaf = null,
-                current_index: usize = 0,
+                current_offset: usize = 0,
                 fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
                     const leaf_len = leaf.buf.len;
-                    if (ctx.current_index + leaf_len > ctx.target_index) {
+                    if (ctx.current_offset + leaf_len > ctx.target_offset) {
                         ctx.result = leaf;
                         return Walker.found;
                     }
-                    ctx.current_index += leaf_len;
+                    ctx.current_offset += leaf_len;
                     return Walker.keep_walking;
                 }
             };
 
-            const testIndexToLeaf = struct {
+            const testFindLeafUsingByteOffset = struct {
                 fn f(node: *const Node, start: usize, end: usize, expected_str: []const u8) !void {
-                    for (start..end) |target_index| {
-                        var ctx: FindLeafThatSpansAcrossTargetByteIndexCtx = .{ .target_index = target_index };
-                        const walk_result = node.walk(FindLeafThatSpansAcrossTargetByteIndexCtx.walker, &ctx);
+                    for (start..end) |target_offset| {
+                        var ctx: LeafFinderCtx = .{ .target_offset = target_offset };
+                        const walk_result = node.walk(LeafFinderCtx.walker, &ctx);
                         try eq(Walker.found, walk_result);
                         try eqStr(expected_str, ctx.result.?.*.buf);
                     }
                 }
             }.f;
-            try testIndexToLeaf(root, 0, 3, "one");
-            try testIndexToLeaf(root, 3, 7, " two");
-            try testIndexToLeaf(root, 7, 13, " three");
-            try testIndexToLeaf(root, 13, 18, " four");
+            try testFindLeafUsingByteOffset(root, 0, 3, "one");
+            try testFindLeafUsingByteOffset(root, 3, 7, " two");
+            try testFindLeafUsingByteOffset(root, 7, 13, " three");
+            try testFindLeafUsingByteOffset(root, 13, 18, " four");
         }
     }
 
