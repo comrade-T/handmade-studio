@@ -22,8 +22,10 @@ const Walker = struct {
     const stop = Walker{ .keep_walking = false };
     const found = Walker{ .found = true };
 
-    const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) Walker;
+    const F = *const fn (ctx: *anyopaque, node: *const Node, node_kind: NodeKind) Walker;
 };
+
+const NodeKind = enum { root, left, right, leaf };
 
 const empty_leaf_node: Node = .{ .leaf = .{ .buf = "" } };
 const Node = union(enum) {
@@ -40,20 +42,29 @@ const Node = union(enum) {
         return node;
     }
 
-    fn walk(self: *const Node, f: Walker.F, ctx: *anyopaque) Walker {
+    fn debugPrint(self: *const Node, kind: NodeKind) void {
+        switch (kind) {
+            .root => std.debug.print("Root: depth: {d} | len: {d}\n", .{ self.weights().depth, self.weights().len }),
+            .left => std.debug.print("Left Branch: depth: {d} | len: {d}\n", .{ self.weights().depth, self.weights().len }),
+            .right => std.debug.print("Right Branch: depth: {d} | len: {d}\n", .{ self.weights().depth, self.weights().len }),
+            .leaf => std.debug.print("Leaf: `{s}` | len: {d}\n", .{ self.leaf.buf, self.leaf.buf.len }),
+        }
+    }
+
+    fn walk(self: *const Node, f: Walker.F, ctx: *anyopaque, kind: NodeKind) Walker {
+        const current = f(ctx, self, kind);
         switch (self.*) {
             .branch => |*branch| {
-                const left_result = branch.left.walk(f, ctx);
-                if (!left_result.keep_walking) {
-                    var result = Walker{};
-                    result.err = left_result.err;
-                    result.found = left_result.found;
-                    return result;
-                }
-                const right_result = branch.right.walk(f, ctx);
-                return mergeWalkResults(left_result, right_result);
+                if (!current.keep_walking) return current;
+
+                const left = branch.left.walk(f, ctx, .left);
+                if (left.found) return left;
+
+                const right = branch.right.walk(f, ctx, .right);
+                return mergeWalkResults(left, right);
             },
-            .leaf => |*l| return f(ctx, l),
+
+            .leaf => |_| return current,
         }
     }
     test walk {
@@ -65,57 +76,120 @@ const Node = union(enum) {
         const root = try Node.new(a, one_two, three_four);
 
         {
-            const CollectLeavesCtx = struct {
-                leaves: *ArrayList(*const Leaf),
-                fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
+            const CollectNodesCtx = struct {
+                nodes: *ArrayList(*const Node),
+                fn walker(ctx_: *anyopaque, node: *const Node, _: NodeKind) Walker {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                    ctx.leaves.append(leaf) catch |e| return Walker{ .err = e };
+                    ctx.nodes.append(node) catch |e| return Walker{ .err = e };
                     return Walker.keep_walking;
                 }
             };
-            var leaves = std.ArrayList(*const Leaf).init(std.testing.allocator);
-            defer leaves.deinit();
-            var ctx: CollectLeavesCtx = .{ .leaves = &leaves };
-            const walk_result = root.walk(CollectLeavesCtx.walker, &ctx);
+            var nodes = std.ArrayList(*const Node).init(std.testing.allocator);
+            defer nodes.deinit();
+            var ctx: CollectNodesCtx = .{ .nodes = &nodes };
+            const walk_result = root.walk(CollectNodesCtx.walker, &ctx, .root);
 
             try eq(Walker.keep_walking, walk_result);
-            try eqStr("one", leaves.items[0].buf);
-            try eqStr(" two", leaves.items[1].buf);
-            try eqStr(" three", leaves.items[2].buf);
-            try eqStr(" four", leaves.items[3].buf);
+            try eq(root, nodes.items[0]);
+
+            try eq(root.branch.left, nodes.items[1]);
+            try eq(root.branch.left.branch.left.leaf, nodes.items[2].leaf);
+            try eqStr("one", nodes.items[2].leaf.buf);
+            try eq(root.branch.left.branch.right.leaf, nodes.items[3].leaf);
+            try eqStr(" two", nodes.items[3].leaf.buf);
+
+            try eq(root.branch.right, nodes.items[4]);
+            try eq(root.branch.right.branch.left.leaf, nodes.items[5].leaf);
+            try eqStr(" three", nodes.items[5].leaf.buf);
+            try eq(root.branch.right.branch.right.leaf, nodes.items[6].leaf);
+            try eqStr(" four", nodes.items[6].leaf.buf);
         }
 
         {
             const LeafFinderCtx = struct {
                 target_offset: usize,
-                result: ?*const Leaf = null,
+                nodes_traversed: *std.ArrayList(*const Node),
                 current_offset: usize = 0,
-                fn walker(ctx_: *anyopaque, leaf: *const Leaf) Walker {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                    const leaf_len = leaf.buf.len;
-                    if (ctx.current_offset + leaf_len > ctx.target_offset) {
-                        ctx.result = leaf;
-                        return Walker.found;
+                fn walker(ctx_: *anyopaque, node: *const Node, _: NodeKind) Walker {
+                    const c = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                    c.nodes_traversed.append(node) catch |err| return Walker{ .err = err };
+
+                    const node_end = c.current_offset + node.weights().len;
+                    if (node_end < c.target_offset) {
+                        c.current_offset = node_end;
+                        return Walker.stop;
                     }
-                    ctx.current_offset += leaf_len;
+
+                    const node_contains_target_offset = c.current_offset <= c.target_offset and c.target_offset < node_end;
+                    if (node_contains_target_offset) return switch (node.*) {
+                        .branch => Walker.keep_walking,
+                        .leaf => Walker.found,
+                    };
+
+                    c.current_offset = node_end;
                     return Walker.keep_walking;
                 }
             };
 
-            const testFindLeafUsingByteOffset = struct {
-                fn f(node: *const Node, start: usize, end: usize, expected_str: []const u8) !void {
-                    for (start..end) |target_offset| {
-                        var ctx: LeafFinderCtx = .{ .target_offset = target_offset };
-                        const walk_result = node.walk(LeafFinderCtx.walker, &ctx);
-                        try eq(Walker.found, walk_result);
-                        try eqStr(expected_str, ctx.result.?.*.buf);
-                    }
-                }
-            }.f;
-            try testFindLeafUsingByteOffset(root, 0, 3, "one");
-            try testFindLeafUsingByteOffset(root, 3, 7, " two");
-            try testFindLeafUsingByteOffset(root, 7, 13, " three");
-            try testFindLeafUsingByteOffset(root, 13, 18, " four");
+            {
+                var nodes_traversed = std.ArrayList(*const Node).init(std.testing.allocator);
+                defer nodes_traversed.deinit();
+                var ctx: LeafFinderCtx = .{ .target_offset = 0, .nodes_traversed = &nodes_traversed };
+                const walk_result = root.walk(LeafFinderCtx.walker, &ctx, .root);
+
+                try eq(Walker.found, walk_result);
+                try eq(3, nodes_traversed.items.len);
+                try eq(root, nodes_traversed.items[0]);
+                try eq(root.branch.left, nodes_traversed.items[1]);
+                try eq(root.branch.left.branch.left, nodes_traversed.items[2]);
+                try eqStr("one", nodes_traversed.items[2].leaf.buf);
+            }
+
+            {
+                var nodes_traversed = std.ArrayList(*const Node).init(std.testing.allocator);
+                defer nodes_traversed.deinit();
+                var ctx: LeafFinderCtx = .{ .target_offset = 5, .nodes_traversed = &nodes_traversed };
+                const walk_result = root.walk(LeafFinderCtx.walker, &ctx, .root);
+
+                try eq(Walker.found, walk_result);
+                try eq(4, nodes_traversed.items.len);
+                try eq(root, nodes_traversed.items[0]);
+                try eq(root.branch.left, nodes_traversed.items[1]);
+                try eq(root.branch.left.branch.left, nodes_traversed.items[2]);
+                try eq(root.branch.left.branch.right, nodes_traversed.items[3]);
+                try eqStr(" two", nodes_traversed.items[3].leaf.buf);
+            }
+
+            {
+                var nodes_traversed = std.ArrayList(*const Node).init(std.testing.allocator);
+                defer nodes_traversed.deinit();
+                var ctx: LeafFinderCtx = .{ .target_offset = 10, .nodes_traversed = &nodes_traversed };
+                const walk_result = root.walk(LeafFinderCtx.walker, &ctx, .root);
+
+                try eq(Walker.found, walk_result);
+                try eq(4, nodes_traversed.items.len);
+                try eq(root, nodes_traversed.items[0]);
+                try eq(root.branch.left, nodes_traversed.items[1]);
+                try eq(root.branch.right, nodes_traversed.items[2]);
+                try eq(root.branch.right.branch.left, nodes_traversed.items[3]);
+                try eqStr(" three", nodes_traversed.items[3].leaf.buf);
+            }
+
+            {
+                var nodes_traversed = std.ArrayList(*const Node).init(std.testing.allocator);
+                defer nodes_traversed.deinit();
+                var ctx: LeafFinderCtx = .{ .target_offset = 15, .nodes_traversed = &nodes_traversed };
+                const walk_result = root.walk(LeafFinderCtx.walker, &ctx, .root);
+
+                try eq(Walker.found, walk_result);
+                try eq(5, nodes_traversed.items.len);
+                try eq(root, nodes_traversed.items[0]);
+                try eq(root.branch.left, nodes_traversed.items[1]);
+                try eq(root.branch.right, nodes_traversed.items[2]);
+                try eq(root.branch.right.branch.left, nodes_traversed.items[3]);
+                try eq(root.branch.right.branch.right, nodes_traversed.items[4]);
+                try eqStr(" four", nodes_traversed.items[4].leaf.buf);
+            }
         }
     }
 
