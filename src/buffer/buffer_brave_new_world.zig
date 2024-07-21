@@ -58,12 +58,12 @@ const Node = union(enum) {
         {
             const root = try Node.loadFromString(a, "", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "" }};
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
         {
             const root = try Node.loadFromString(a, "hello", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello" }};
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
         {
             const root = try Node.loadFromString(a, "hello\nworld", .{ .new_line = true });
@@ -72,14 +72,14 @@ const Node = union(enum) {
                 .{ root.branch.left, "hello\n" },
                 .{ root.branch.right, "world" },
             };
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
 
         // capacity
         {
             const root = try Node.loadFromString(a, "hello\nworld", .{ .capacity = 100 });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
         {
             const root = try Node.loadFromString(a, "hello\nworld", .{ .capacity = 5 });
@@ -90,7 +90,7 @@ const Node = union(enum) {
                 .{ root.branch.right.branch.left, "\nworl" },
                 .{ root.branch.right.branch.right, "d" },
             };
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
     }
 
@@ -194,7 +194,7 @@ const Node = union(enum) {
                 .{ root.branch.right.branch.left, "\nworl" },
                 .{ root.branch.right.branch.right, "d" },
             };
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
     }
 
@@ -208,7 +208,7 @@ const Node = union(enum) {
             return Walker.keep_walking;
         }
     };
-    fn testCollectNodes(root: *const Node, expected: []struct { *const Node, ?[]const u8 }) !void {
+    fn testNodesTraversed(root: *const Node, expected: []struct { *const Node, ?[]const u8 }) !void {
         var collected_nodes = std.ArrayList(*const Node).init(std.testing.allocator);
         defer collected_nodes.deinit();
         var ctx: CollectNodesCtx = .{ .nodes = &collected_nodes };
@@ -233,7 +233,7 @@ const Node = union(enum) {
                 .{ root.branch.left, "" },
                 .{ root.branch.right, "" },
             };
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
         {
             const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, " two"));
@@ -248,7 +248,7 @@ const Node = union(enum) {
                 .{ root.branch.right.branch.left, " three" },
                 .{ root.branch.right.branch.right, " four" },
             };
-            try testCollectNodes(root, &expected);
+            try testNodesTraversed(root, &expected);
         }
     }
 
