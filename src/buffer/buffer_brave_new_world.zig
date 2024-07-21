@@ -45,28 +45,28 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn loadFromString(a: Allocator, s: []const u8, config: LoadConfig) !*const Node {
+    pub fn fromString(a: Allocator, s: []const u8, config: CreateFromConfig) !*const Node {
         var stream = std.io.fixedBufferStream(s);
-        return Node.load(a, stream.reader(), s.len, config);
+        return Node.fromReader(a, stream.reader(), s.len, config);
     }
-    test loadFromString {
+    test fromString {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const a = arena.allocator();
 
         // new_line
         {
-            const root = try Node.loadFromString(a, "", .{ .new_line = true });
+            const root = try Node.fromString(a, "", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "" }};
             try testNodesTraversed(root, &expected);
         }
         {
-            const root = try Node.loadFromString(a, "hello", .{ .new_line = true });
+            const root = try Node.fromString(a, "hello", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello" }};
             try testNodesTraversed(root, &expected);
         }
         {
-            const root = try Node.loadFromString(a, "hello\nworld", .{ .new_line = true });
+            const root = try Node.fromString(a, "hello\nworld", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{
                 .{ root, null },
                 .{ root.branch.left, "hello\n" },
@@ -77,12 +77,12 @@ const Node = union(enum) {
 
         // capacity
         {
-            const root = try Node.loadFromString(a, "hello\nworld", .{ .capacity = 100 });
+            const root = try Node.fromString(a, "hello\nworld", .{ .capacity = 100 });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
             try testNodesTraversed(root, &expected);
         }
         {
-            const root = try Node.loadFromString(a, "hello\nworld", .{ .capacity = 5 });
+            const root = try Node.fromString(a, "hello\nworld", .{ .capacity = 5 });
             var expected = [_]struct { *const Node, ?[]const u8 }{
                 .{ root, null },
                 .{ root.branch.left, "hello" },
@@ -94,12 +94,12 @@ const Node = union(enum) {
         }
     }
 
-    const LoadConfig = union(enum) { new_line: bool, capacity: usize };
-    fn load(a: Allocator, reader: anytype, size: usize, config: LoadConfig) !*const Node {
-        const buf = try a.alloc(u8, size);
+    const CreateFromConfig = union(enum) { new_line: bool, capacity: usize };
+    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, config: CreateFromConfig) !*const Node {
+        const buf = try a.alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
-        if (read_size != size) return error.BufferUnderrun;
+        if (read_size != buffer_size) return error.BufferUnderrun;
 
         const final_read = try reader.read(buf);
         if (final_read != 0) @panic("unexpected data in final read");
