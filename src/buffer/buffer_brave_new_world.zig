@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 const eq = std.testing.expectEqual;
 const eqDeep = std.testing.expectEqualDeep;
 const eqStr = std.testing.expectEqualStrings;
+const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -107,7 +108,7 @@ const Node = union(enum) {
             .new_line => try createLeavesByNewLine(a, buf),
             .capacity => |cap| try createLeavesByCapacity(a, buf, cap),
         };
-        return Node.merge_in_place(a, leaves);
+        return Node.mergeLeaves(a, leaves);
     }
 
     fn createLeavesByCapacity(a: Allocator, buf: []const u8, capacity_per_leaf: usize) ![]Node {
@@ -141,11 +142,8 @@ const Node = union(enum) {
         return leaves;
     }
     test createLeavesByCapacity {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-        const a = arena.allocator();
         {
-            const leaves = try createLeavesByCapacity(a, "1-22-333-4444", 4);
+            const leaves = try createLeavesByCapacity(idc_if_it_leaks, "1-22-333-4444", 4);
             try eqStr("1-22", leaves[0].leaf.buf);
             try eqStr("-333", leaves[1].leaf.buf);
             try eqStr("-444", leaves[2].leaf.buf);
@@ -178,14 +176,26 @@ const Node = union(enum) {
         return leaves;
     }
 
-    fn merge_in_place(a: Allocator, leaves: []const Node) !*const Node {
+    fn mergeLeaves(a: Allocator, leaves: []const Node) !*const Node {
         if (leaves.len == 1) return &leaves[0];
         if (leaves.len == 2) return Node.new(a, &leaves[0], &leaves[1]);
         const mid = leaves.len / 2;
-        return Node.new(a, try merge_in_place(a, leaves[0..mid]), try merge_in_place(a, leaves[mid..]));
+        return Node.new(a, try mergeLeaves(a, leaves[0..mid]), try mergeLeaves(a, leaves[mid..]));
     }
-    test merge_in_place {
-        // TODO:
+    test mergeLeaves {
+        {
+            const leaves = try createLeavesByCapacity(idc_if_it_leaks, "hello\nworld", 5);
+            try eq(3, leaves.len);
+            const root = try mergeLeaves(idc_if_it_leaks, leaves);
+            var expected = [_]struct { *const Node, ?[]const u8 }{
+                .{ root, null },
+                .{ root.branch.left, "hello" },
+                .{ root.branch.right, null },
+                .{ root.branch.right.branch.left, "\nworl" },
+                .{ root.branch.right.branch.right, "d" },
+            };
+            try testCollectNodes(root, &expected);
+        }
     }
 
     ///////////////////////////// Experimental Walk Contexts
