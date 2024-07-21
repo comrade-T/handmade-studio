@@ -52,6 +52,8 @@ const Node = union(enum) {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const a = arena.allocator();
+
+        // new_line
         {
             const root = try Node.loadFromString(a, "", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "" }};
@@ -68,6 +70,24 @@ const Node = union(enum) {
                 .{ root, null },
                 .{ root.branch.left, "hello\n" },
                 .{ root.branch.right, "world" },
+            };
+            try testCollectNodes(root, &expected);
+        }
+
+        // capacity
+        {
+            const root = try Node.loadFromString(a, "hello\nworld", .{ .capacity = 100 });
+            var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
+            try testCollectNodes(root, &expected);
+        }
+        {
+            const root = try Node.loadFromString(a, "hello\nworld", .{ .capacity = 5 });
+            var expected = [_]struct { *const Node, ?[]const u8 }{
+                .{ root, null },
+                .{ root.branch.left, "hello" },
+                .{ root.branch.right, null },
+                .{ root.branch.right.branch.left, "\nworl" },
+                .{ root.branch.right.branch.right, "d" },
             };
             try testCollectNodes(root, &expected);
         }
