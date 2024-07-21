@@ -44,26 +44,26 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn loadFromString(a: Allocator, s: []const u8) !*const Node {
+    pub fn loadFromString(a: Allocator, s: []const u8, config: LoadConfig) !*const Node {
         var stream = std.io.fixedBufferStream(s);
-        return Node.load(a, stream.reader(), s.len);
+        return Node.load(a, stream.reader(), s.len, config);
     }
     test loadFromString {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const a = arena.allocator();
         {
-            const root = try Node.loadFromString(a, "");
+            const root = try Node.loadFromString(a, "", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "" }};
             try testCollectNodes(root, &expected);
         }
         {
-            const root = try Node.loadFromString(a, "hello");
+            const root = try Node.loadFromString(a, "hello", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello" }};
             try testCollectNodes(root, &expected);
         }
         {
-            const root = try Node.loadFromString(a, "hello\nworld");
+            const root = try Node.loadFromString(a, "hello\nworld", .{ .new_line = true });
             var expected = [_]struct { *const Node, ?[]const u8 }{
                 .{ root, null },
                 .{ root.branch.left, "hello\n" },
@@ -73,7 +73,8 @@ const Node = union(enum) {
         }
     }
 
-    fn load(a: Allocator, reader: anytype, size: usize) !*const Node {
+    const LoadConfig = union(enum) { new_line: bool, capacity: usize };
+    fn load(a: Allocator, reader: anytype, size: usize, config: LoadConfig) !*const Node {
         const buf = try a.alloc(u8, size);
 
         const read_size = try reader.read(buf);
@@ -82,11 +83,57 @@ const Node = union(enum) {
         const final_read = try reader.read(buf);
         if (final_read != 0) @panic("unexpected data in final read");
 
-        const leaves = try createLeaves(a, buf);
+        const leaves = switch (config) {
+            .new_line => try createLeavesByNewLine(a, buf),
+            .capacity => |cap| try createLeavesByCapacity(a, buf, cap),
+        };
         return Node.merge_in_place(a, leaves);
     }
 
-    fn createLeaves(a: std.mem.Allocator, buf: []const u8) ![]Node {
+    fn createLeavesByCapacity(a: Allocator, buf: []const u8, capacity_per_leaf: usize) ![]Node {
+        var leaf_count: usize = 1;
+        var split_indexes = try std.ArrayList(usize).initCapacity(a, 8);
+        defer split_indexes.deinit();
+
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < buf.len) {
+            if (j >= capacity_per_leaf and i < 128) {
+                j = 0;
+                leaf_count += 1;
+                try split_indexes.append(i);
+            }
+            i += 1;
+            j += 1;
+        }
+        try split_indexes.append(buf.len);
+
+        var leaves = try a.alloc(Node, leaf_count);
+        var cur_leaf: usize = 0;
+        var b: usize = 0;
+        for (split_indexes.items) |end| {
+            leaves[cur_leaf] = .{ .leaf = .{ .buf = buf[b..end] } };
+            cur_leaf += 1;
+            b = end;
+        }
+
+        if (leaves.len != cur_leaf) return error.Unexpected;
+        return leaves;
+    }
+    test createLeavesByCapacity {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        {
+            const leaves = try createLeavesByCapacity(a, "1-22-333-4444", 4);
+            try eqStr("1-22", leaves[0].leaf.buf);
+            try eqStr("-333", leaves[1].leaf.buf);
+            try eqStr("-444", leaves[2].leaf.buf);
+            try eqStr("4", leaves[3].leaf.buf);
+        }
+    }
+
+    fn createLeavesByNewLine(a: std.mem.Allocator, buf: []const u8) ![]Node {
         const eol = '\n';
         var leaf_count: usize = 1;
         for (0..buf.len) |i| {
