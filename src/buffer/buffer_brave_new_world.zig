@@ -24,6 +24,19 @@ const Walker = struct {
     const found = Walker{ .found = true };
 
     const F = *const fn (ctx: *anyopaque, node: *const Node, node_kind: NodeKind) Walker;
+
+    fn mergeWalkResults(left: Walker, right: Walker) Walker {
+        var result = Walker{};
+        result.err = if (left.err) |_| left.err else right.err;
+        result.keep_walking = left.keep_walking and right.keep_walking;
+        result.found = left.found or right.found;
+        return result;
+    }
+    test mergeWalkResults {
+        try eqDeep(Walker.found, mergeWalkResults(Walker.found, Walker.keep_walking));
+        try eqDeep(Walker.keep_walking, mergeWalkResults(Walker.keep_walking, Walker.keep_walking));
+        try eqDeep(Walker.stop, mergeWalkResults(Walker.stop, Walker.keep_walking));
+    }
 };
 
 const NodeKind = enum { root, left, right, leaf };
@@ -353,7 +366,7 @@ const Node = union(enum) {
                 if (left.found) return left;
 
                 const right = branch.right.walk(f, ctx, .right);
-                return mergeWalkResults(left, right);
+                return Walker.mergeWalkResults(left, right);
             },
 
             .leaf => |_| return current,
@@ -423,19 +436,6 @@ const Node = union(enum) {
     }
 };
 
-fn mergeWalkResults(left: Walker, right: Walker) Walker {
-    var result = Walker{};
-    result.err = if (left.err) |_| left.err else right.err;
-    result.keep_walking = left.keep_walking and right.keep_walking;
-    result.found = left.found or right.found;
-    return result;
-}
-test mergeWalkResults {
-    try eqDeep(Walker.found, mergeWalkResults(Walker.found, Walker.keep_walking));
-    try eqDeep(Walker.keep_walking, mergeWalkResults(Walker.keep_walking, Walker.keep_walking));
-    try eqDeep(Walker.stop, mergeWalkResults(Walker.stop, Walker.keep_walking));
-}
-
 const Branch = struct {
     left: *const Node,
     right: *const Node,
@@ -452,10 +452,14 @@ const Leaf = struct {
         return node;
     }
     test new {
-        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-        defer arena.deinit();
-        const node = try Leaf.new(arena.allocator(), "hello");
-        try eqStr("hello", node.leaf.buf);
+        {
+            const leaf_node = try Leaf.new(idc_if_it_leaks, "");
+            try eq(&empty_leaf_node, leaf_node);
+        }
+        {
+            const leaf_node = try Leaf.new(idc_if_it_leaks, "hello");
+            try eqStr("hello", leaf_node.leaf.buf);
+        }
     }
 
     fn weights(self: *const Leaf) Weights {
@@ -513,6 +517,3 @@ const Weights = struct {
         }
     }
 };
-test Weights {
-    _ = Weights{};
-}
