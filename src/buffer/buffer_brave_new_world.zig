@@ -58,44 +58,21 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn fromString(a: Allocator, s: []const u8, config: CreateFromConfig) !*const Node {
+    pub fn fromString(a: Allocator, s: []const u8, leaf_capacity: usize) !*const Node {
         var stream = std.io.fixedBufferStream(s);
-        return Node.fromReader(a, stream.reader(), s.len, config);
+        return Node.fromReader(a, stream.reader(), s.len, leaf_capacity);
     }
     test fromString {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const a = arena.allocator();
-
-        // new_line
         {
-            const root = try Node.fromString(a, "", .{ .new_line = true });
-            var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "" }};
-            try testNodesTraversed(root, &expected);
-        }
-        {
-            const root = try Node.fromString(a, "hello", .{ .new_line = true });
-            var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello" }};
-            try testNodesTraversed(root, &expected);
-        }
-        {
-            const root = try Node.fromString(a, "hello\nworld", .{ .new_line = true });
-            var expected = [_]struct { *const Node, ?[]const u8 }{
-                .{ root, null },
-                .{ root.branch.left, "hello\n" },
-                .{ root.branch.right, "world" },
-            };
-            try testNodesTraversed(root, &expected);
-        }
-
-        // capacity
-        {
-            const root = try Node.fromString(a, "hello\nworld", .{ .capacity = 100 });
+            const root = try Node.fromString(a, "hello\nworld", 100);
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
             try testNodesTraversed(root, &expected);
         }
         {
-            const root = try Node.fromString(a, "hello\nworld", .{ .capacity = 5 });
+            const root = try Node.fromString(a, "hello\nworld", 5);
             var expected = [_]struct { *const Node, ?[]const u8 }{
                 .{ root, null },
                 .{ root.branch.left, "hello" },
@@ -107,8 +84,7 @@ const Node = union(enum) {
         }
     }
 
-    const CreateFromConfig = union(enum) { new_line: bool, capacity: usize };
-    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, config: CreateFromConfig) !*const Node {
+    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, leaf_capacity: usize) !*const Node {
         const buf = try a.alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
@@ -117,10 +93,7 @@ const Node = union(enum) {
         const final_read = try reader.read(buf);
         if (final_read != 0) @panic("unexpected data in final read");
 
-        const leaves = switch (config) {
-            .new_line => try createLeavesByNewLine(a, buf),
-            .capacity => |cap| try createLeavesByCapacity(a, buf, cap),
-        };
+        const leaves = try createLeavesByCapacity(a, buf, leaf_capacity);
         return Node.mergeLeaves(a, leaves);
     }
 
@@ -162,31 +135,6 @@ const Node = union(enum) {
             try eqStr("-444", leaves[2].leaf.buf);
             try eqStr("4", leaves[3].leaf.buf);
         }
-    }
-
-    fn createLeavesByNewLine(a: std.mem.Allocator, buf: []const u8) ![]Node {
-        const eol = '\n';
-        var leaf_count: usize = 1;
-        for (0..buf.len) |i| {
-            if (buf[i] == eol) leaf_count += 1;
-        }
-
-        var leaves = try a.alloc(Node, leaf_count);
-        var cur_leaf: usize = 0;
-        var b: usize = 0;
-        for (0..buf.len) |i| {
-            if (buf[i] == eol) {
-                const line = buf[b .. i + 1];
-                leaves[cur_leaf] = .{ .leaf = .{ .buf = line } };
-                cur_leaf += 1;
-                b = i + 1;
-            }
-        }
-
-        const rest = buf[b..];
-        leaves[cur_leaf] = .{ .leaf = .{ .buf = rest } };
-        if (leaves.len != cur_leaf + 1) return error.Unexpected;
-        return leaves;
     }
 
     fn mergeLeaves(a: Allocator, leaves: []const Node) !*const Node {
