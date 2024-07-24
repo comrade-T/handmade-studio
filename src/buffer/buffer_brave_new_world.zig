@@ -58,33 +58,22 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn fromString(a: Allocator, s: []const u8, leaf_capacity: usize) !*const Node {
+    pub fn fromString(a: Allocator, s: []const u8) !*const Node {
         var stream = std.io.fixedBufferStream(s);
-        return Node.fromReader(a, stream.reader(), s.len, leaf_capacity);
+        return Node.fromReader(a, stream.reader(), s.len);
     }
     test fromString {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         const a = arena.allocator();
         {
-            const root = try Node.fromString(a, "hello\nworld", 100);
+            const root = try Node.fromString(a, "hello\nworld");
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
-            try testNodesTraversed(root, &expected);
-        }
-        {
-            const root = try Node.fromString(a, "hello\nworld", 5);
-            var expected = [_]struct { *const Node, ?[]const u8 }{
-                .{ root, null },
-                .{ root.branch.left, "hello" },
-                .{ root.branch.right, null },
-                .{ root.branch.right.branch.left, "\nworl" },
-                .{ root.branch.right.branch.right, "d" },
-            };
             try testNodesTraversed(root, &expected);
         }
     }
 
-    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, leaf_capacity: usize) !*const Node {
+    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize) !*const Node {
         const buf = try a.alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
@@ -93,10 +82,10 @@ const Node = union(enum) {
         const final_read = try reader.read(buf);
         if (final_read != 0) @panic("unexpected data in final read");
 
-        const leaves = try createLeavesByCapacity(a, buf, leaf_capacity);
-        return Node.mergeLeaves(a, leaves);
+        return Leaf.new(a, buf);
     }
 
+    /// Currently unused, due to author trying to experiment with not splitting input chars at all.
     fn createLeavesByCapacity(a: Allocator, buf: []const u8, capacity_per_leaf: usize) ![]Node {
         var leaf_count: usize = 1;
         var split_indexes = try std.ArrayList(usize).initCapacity(a, 8);
@@ -117,11 +106,11 @@ const Node = union(enum) {
 
         var leaves = try a.alloc(Node, leaf_count);
         var cur_leaf: usize = 0;
-        var b: usize = 0;
+        var start: usize = 0;
         for (split_indexes.items) |end| {
-            leaves[cur_leaf] = .{ .leaf = .{ .buf = buf[b..end] } };
+            leaves[cur_leaf] = .{ .leaf = .{ .buf = buf[start..end] } };
             cur_leaf += 1;
-            b = end;
+            start = end;
         }
 
         if (leaves.len != cur_leaf) return error.Unexpected;
