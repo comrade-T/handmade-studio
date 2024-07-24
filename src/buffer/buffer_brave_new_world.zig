@@ -158,20 +158,6 @@ const Node = union(enum) {
             return Walker.keep_walking;
         }
     };
-    fn testNodesTraversed(root: *const Node, expected: []struct { *const Node, ?[]const u8 }) !void {
-        var collected_nodes = std.ArrayList(*const Node).init(std.testing.allocator);
-        defer collected_nodes.deinit();
-        var ctx: CollectNodesCtx = .{ .nodes = &collected_nodes };
-        const walk_result = root.walk(CollectNodesCtx.walker, &ctx, .root);
-
-        try eq(Walker.keep_walking, walk_result);
-        try eq(expected.len, collected_nodes.items.len);
-        for (expected, 0..) |e, i| {
-            const expected_node, const may_expected_str = e;
-            try eq(expected_node, collected_nodes.items[i]);
-            if (may_expected_str) |str| try eqStr(str, collected_nodes.items[i].leaf.buf);
-        }
-    }
     test CollectNodesCtx {
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer arena.deinit();
@@ -199,6 +185,20 @@ const Node = union(enum) {
                 .{ root.branch.right.branch.right, " four" },
             };
             try testNodesTraversed(root, &expected);
+        }
+    }
+    fn testNodesTraversed(root: *const Node, expected: []struct { *const Node, ?[]const u8 }) !void {
+        var collected_nodes = std.ArrayList(*const Node).init(std.testing.allocator);
+        defer collected_nodes.deinit();
+        var ctx: CollectNodesCtx = .{ .nodes = &collected_nodes };
+        const walk_result = root.walk(CollectNodesCtx.walker, &ctx, .root);
+
+        try eq(Walker.keep_walking, walk_result);
+        try eq(expected.len, collected_nodes.items.len);
+        for (expected, 0..) |e, i| {
+            const expected_node, const may_expected_str = e;
+            try eq(expected_node, collected_nodes.items[i]);
+            if (may_expected_str) |str| try eqStr(str, collected_nodes.items[i].leaf.buf);
         }
     }
 
@@ -233,26 +233,6 @@ const Node = union(enum) {
         const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, " two"));
         const three_four = try Node.new(a, try Leaf.new(a, " three"), try Leaf.new(a, " four"));
         const root = try Node.new(a, one_two, three_four);
-        const testLeafFinder = struct {
-            fn f(root_: *const Node, start: usize, end: usize, expected_nodes: []*const Node, expected_result: Walker, expected_str: []const u8) !void {
-                for (start..end) |target_offset| {
-                    var nodes_traversed = std.ArrayList(*const Node).init(std.testing.allocator);
-                    defer nodes_traversed.deinit();
-                    var ctx: LeafFinderCtx = .{ .target_offset = target_offset, .nodes_traversed = &nodes_traversed };
-                    const walk_result = root_.walk(LeafFinderCtx.walker, &ctx, .root);
-
-                    try eq(expected_result, walk_result);
-                    eq(expected_nodes.len, nodes_traversed.items.len) catch {
-                        std.debug.print("expected_nodes.len != nodes_traversed.items.len\n", .{});
-                        for (nodes_traversed.items) |node| node.debugPrint();
-                    };
-                    for (expected_nodes, 0..) |node, i| {
-                        try eq(node, nodes_traversed.items[i]);
-                    }
-                    try eqStr(expected_str, nodes_traversed.items[nodes_traversed.items.len - 1].leaf.buf);
-                }
-            }
-        }.f;
         {
             var expected_order = [_]*const Node{
                 root,
@@ -288,6 +268,24 @@ const Node = union(enum) {
                 root.branch.right.branch.right,
             };
             try testLeafFinder(root, 13, 18, &expected_order, Walker.found, " four");
+        }
+    }
+    fn testLeafFinder(root_: *const Node, start: usize, end: usize, expected_nodes: []*const Node, expected_result: Walker, expected_str: []const u8) !void {
+        for (start..end) |target_offset| {
+            var nodes_traversed = std.ArrayList(*const Node).init(std.testing.allocator);
+            defer nodes_traversed.deinit();
+            var ctx: LeafFinderCtx = .{ .target_offset = target_offset, .nodes_traversed = &nodes_traversed };
+            const walk_result = root_.walk(LeafFinderCtx.walker, &ctx, .root);
+
+            try eq(expected_result, walk_result);
+            eq(expected_nodes.len, nodes_traversed.items.len) catch {
+                std.debug.print("expected_nodes.len != nodes_traversed.items.len\n", .{});
+                for (nodes_traversed.items) |node| node.debugPrint();
+            };
+            for (expected_nodes, 0..) |node, i| {
+                try eq(node, nodes_traversed.items[i]);
+            }
+            try eqStr(expected_str, nodes_traversed.items[nodes_traversed.items.len - 1].leaf.buf);
         }
     }
 
