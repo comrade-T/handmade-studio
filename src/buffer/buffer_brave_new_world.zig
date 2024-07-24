@@ -62,15 +62,13 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    /// Create 1 single Leaf Node given string argument.
+    /// Create 1 single Leaf Node given source string.
     pub fn fromString(a: Allocator, source: []const u8) !*const Node {
         var stream = std.io.fixedBufferStream(source);
         return Node.fromReader(a, stream.reader(), source.len);
     }
     test fromString {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-        const a = arena.allocator();
+        const a = idc_if_it_leaks;
         {
             const root = try Node.fromString(a, "hello\nworld");
             var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
@@ -78,7 +76,7 @@ const Node = union(enum) {
         }
     }
 
-    /// Create 1 single Leaf Node from the source read from the `reader`.
+    /// Use `reader` to read into a buffer, then create 1 single Leaf Node from that.
     fn fromReader(a: Allocator, reader: anytype, buffer_size: usize) !*const Node {
         const buf = try a.alloc(u8, buffer_size);
 
@@ -160,7 +158,7 @@ const Node = union(enum) {
 
     ///////////////////////////// Walk
 
-    /// Helper function to assert the traversal order of those who use `Node.walker() method.`
+    /// Helper function to assert the traversal order of those who use `Node.walk() method.`
     fn testNodesTraversed(root: *const Node, expected: []struct { *const Node, ?[]const u8 }) !void {
         const TestTraverseNodesCtx = struct {
             nodes: *ArrayList(*const Node),
@@ -204,9 +202,7 @@ const Node = union(enum) {
         }
     }
     test walk {
-        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-        defer arena.deinit();
-        const a = arena.allocator();
+        const a = idc_if_it_leaks;
         {
             const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, "_two"));
             const three_four = try Node.new(a, try Leaf.new(a, "_three"), try Leaf.new(a, "_four"));
@@ -235,10 +231,8 @@ const Node = union(enum) {
         };
     }
     test weights {
-        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-        defer arena.deinit();
-        const a = arena.allocator();
-        const node = try Node.new(arena.allocator(), try Leaf.new(a, "one"), try Leaf.new(a, " two"));
+        const a = idc_if_it_leaks;
+        const node = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, " two"));
         try eqStr("one", node.branch.left.leaf.buf);
         try eqStr(" two", node.branch.right.leaf.buf);
         try eqDeep(Weights{ .len = 7, .depth = 2 }, node.weights());
@@ -254,17 +248,15 @@ const Node = union(enum) {
         };
     }
     test isEmpty {
-        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-        defer arena.deinit();
-        const a = arena.allocator();
+        const a = idc_if_it_leaks;
         {
-            const node = try Node.new(arena.allocator(), try Leaf.new(a, ""), try Leaf.new(a, ""));
+            const node = try Node.new(a, try Leaf.new(a, ""), try Leaf.new(a, ""));
             try eq(true, node.isEmpty());
             try eq(true, node.branch.left.isEmpty());
             try eq(true, node.branch.right.isEmpty());
         }
         {
-            const node = try Node.new(arena.allocator(), try Leaf.new(a, ""), try Leaf.new(a, "two"));
+            const node = try Node.new(a, try Leaf.new(a, ""), try Leaf.new(a, "two"));
             try eq(false, node.isEmpty());
             try eq(true, node.branch.left.isEmpty());
             try eq(false, node.branch.right.isEmpty());
