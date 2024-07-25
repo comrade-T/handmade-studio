@@ -128,6 +128,33 @@ const Node = union(enum) {
         return Leaf.new(a, buf);
     }
 
+    ///////////////////////////// Balancing
+
+    fn rotateLeft(self: *const Node, allocator: Allocator) !*const Node {
+        const other = self.branch.right;
+        const a = try Node.new(allocator, self.branch.left, other.branch.left);
+        const b = try Node.new(allocator, a, other.branch.right);
+        return b;
+    }
+    test rotateLeft {
+        const a = idc_if_it_leaks;
+        {
+            const acd = try Node.fromString(a, "ACD");
+            const abcd = try acd.insertChars(a, 1, "B");
+            const old_root = try abcd.insertChars(a, 4, "E");
+            const new_root = try old_root.rotateLeft(a);
+            try eqDeep(Weights{ .depth = 3, .len = 5 }, new_root.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, new_root.branch.left.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
+            try eqStr("A", new_root.branch.left.branch.left.leaf.buf);
+            try eqStr("B", new_root.branch.left.branch.right.leaf.buf);
+            try eqStr("CD", new_root.branch.right.branch.left.leaf.buf);
+            try eqStr("E", new_root.branch.right.branch.right.leaf.buf);
+        }
+    }
+
+    ///////////////////////////// Insert Chars
+
     fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
         const InsertCharsCtx = struct {
             a: Allocator,
