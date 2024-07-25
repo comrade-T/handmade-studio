@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 const eq = std.testing.expectEqual;
 const eqDeep = std.testing.expectEqualDeep;
 const eqStr = std.testing.expectEqualStrings;
+const shouldErr = std.testing.expectError;
 const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -14,7 +15,9 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Represents a result after walking through a Node.
+const Walker = *const fn (ctx: *anyopaque, node: *const Node) WalkResult;
+
+/// Represents a result returned after walking through a Node.
 const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
@@ -23,8 +26,6 @@ const WalkResult = struct {
     const keep_walking = WalkResult{ .keep_walking = true };
     const stop = WalkResult{ .keep_walking = false };
     const found = WalkResult{ .found = true };
-
-    const F = *const fn (ctx: *anyopaque, node: *const Node) WalkResult;
 
     /// Produce a merged walk result from `self` and another WalkResult.
     fn merge(self: WalkResult, right: WalkResult) WalkResult {
@@ -90,7 +91,84 @@ const Node = union(enum) {
 
     ///////////////////////////// Walk
 
-    // TODO:
+    /// Wrapper & Test Helper for`Node.walkToTargetIndex()`.
+    fn getLeafAtIndex(self: *const Node, target_index: usize) !*const Node {
+        if (target_index > self.weights().len - 1) return error.NotFound;
+
+        const GetLeafAtIndexCtx = struct {
+            result: ?*const Node = null,
+            fn walker(ctx_: *anyopaque, leaf: *const Node) WalkResult {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                ctx.result = leaf;
+                return WalkResult.found;
+            }
+        };
+
+        var current_index: usize = 0;
+        var ctx = GetLeafAtIndexCtx{};
+        const walk_result = self.walkToTargetIndex(&current_index, target_index, GetLeafAtIndexCtx.walker, &ctx);
+
+        if (walk_result.err) |e| return e;
+        if (!walk_result.found) return error.NotFound;
+        return ctx.result.?;
+    }
+
+    test getLeafAtIndex {
+        const a = idc_if_it_leaks;
+        const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, "_two"));
+        const three_four = try Node.new(a, try Leaf.new(a, "_three"), try Leaf.new(a, "_four"));
+        const root = try Node.new(a, one_two, three_four);
+
+        // one
+        try eq(root.branch.left.branch.left, try root.getLeafAtIndex(0));
+        try eq(root.branch.left.branch.left, try root.getLeafAtIndex(1));
+        try eq(root.branch.left.branch.left, try root.getLeafAtIndex(2));
+
+        // _two
+        try eq(root.branch.left.branch.right, try root.getLeafAtIndex(3));
+        try eq(root.branch.left.branch.right, try root.getLeafAtIndex(4));
+        try eq(root.branch.left.branch.right, try root.getLeafAtIndex(5));
+        try eq(root.branch.left.branch.right, try root.getLeafAtIndex(6));
+
+        // _three
+        try eq(root.branch.right.branch.left, try root.getLeafAtIndex(7));
+        try eq(root.branch.right.branch.left, try root.getLeafAtIndex(8));
+        try eq(root.branch.right.branch.left, try root.getLeafAtIndex(9));
+        try eq(root.branch.right.branch.left, try root.getLeafAtIndex(10));
+        try eq(root.branch.right.branch.left, try root.getLeafAtIndex(11));
+        try eq(root.branch.right.branch.left, try root.getLeafAtIndex(12));
+
+        // _four
+        try eq(root.branch.right.branch.right, try root.getLeafAtIndex(13));
+        try eq(root.branch.right.branch.right, try root.getLeafAtIndex(14));
+        try eq(root.branch.right.branch.right, try root.getLeafAtIndex(15));
+        try eq(root.branch.right.branch.right, try root.getLeafAtIndex(16));
+        try eq(root.branch.right.branch.right, try root.getLeafAtIndex(17));
+
+        // out of bounds
+        try shouldErr(error.NotFound, root.getLeafAtIndex(18));
+        try shouldErr(error.NotFound, root.getLeafAtIndex(1000));
+    }
+
+    /// Recursively walk through this Node, ignoring Brances that end before `target_index`.
+    /// Requires caller to own and pass in a *usize for this function to keep track of `current_index` while it walks.
+    /// Caller MUST handle out of bounds `target_index`, since
+    /// this function will always stop at last Leaf if `target_index` is out of bounds.
+    fn walkToTargetIndex(self: *const Node, current_index: *usize, target_index: usize, f: Walker, ctx: *anyopaque) WalkResult {
+        switch (self.*) {
+            .branch => |*branch| {
+                const left_len = branch.left.weights().len;
+                const left_end = current_index.* + left_len;
+                if (target_index < left_end) {
+                    return branch.left.walkToTargetIndex(current_index, target_index, f, ctx);
+                } else {
+                    current_index.* = left_end;
+                    return branch.right.walkToTargetIndex(current_index, target_index, f, ctx);
+                }
+            },
+            .leaf => return f(ctx, self),
+        }
+    }
 
     ///////////////////////////// Node Info
 
