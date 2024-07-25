@@ -30,27 +30,27 @@ const WalkMutResult = struct {
     const stop = WalkMutResult{ .keep_walking = false };
     const found = WalkMutResult{ .found = true };
 
-    fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
-        return WalkerMut{
-            .err = if (left.err) |_| left.err else right.err,
-            .keep_walking = left.keep_walking and right.keep_walking,
-            .found = left.found or right.found,
-            .replace = if (left.replace == null and right.replace == null)
-                null
-            else
-                _mergeReplacements(a, b, left, right) catch |e| return WalkerMut{ .err = e },
-        };
-    }
-
-    fn _mergeReplacements(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) !*const Node {
-        const new_left = if (left.replace) |p| p else b.left;
-        const new_right = if (right.replace) |p| p else b.right;
-
-        if (new_left.is_empty()) return new_right;
-        if (new_right.is_empty()) return new_left;
-
-        return Node.new(a, new_left, new_right);
-    }
+    // fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
+    //     return WalkerMut{
+    //         .err = if (left.err) |_| left.err else right.err,
+    //         .keep_walking = left.keep_walking and right.keep_walking,
+    //         .found = left.found or right.found,
+    //         .replace = if (left.replace == null and right.replace == null)
+    //             null
+    //         else
+    //             _mergeReplacements(a, b, left, right) catch |e| return WalkerMut{ .err = e },
+    //     };
+    // }
+    //
+    // fn _mergeReplacements(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) !*const Node {
+    //     const new_left = if (left.replace) |p| p else b.left;
+    //     const new_right = if (right.replace) |p| p else b.right;
+    //
+    //     if (new_left.is_empty()) return new_right;
+    //     if (new_right.is_empty()) return new_left;
+    //
+    //     return Node.new(a, new_left, new_right);
+    // }
 };
 
 const Walker = *const fn (ctx: *anyopaque, node: *const Node) WalkResult;
@@ -66,19 +66,19 @@ const WalkResult = struct {
     const stop = WalkResult{ .keep_walking = false };
     const found = WalkResult{ .found = true };
 
-    /// Produce a merged walk result from `self` and another WalkResult.
-    fn merge(self: WalkResult, right: WalkResult) WalkResult {
-        return WalkResult{
-            .err = if (self.err) |_| self.err else right.err,
-            .keep_walking = self.keep_walking and right.keep_walking,
-            .found = self.found or right.found,
-        };
-    }
-    test merge {
-        try eqDeep(WalkResult.found, merge(WalkResult.found, WalkResult.keep_walking));
-        try eqDeep(WalkResult.keep_walking, merge(WalkResult.keep_walking, WalkResult.keep_walking));
-        try eqDeep(WalkResult.stop, merge(WalkResult.stop, WalkResult.keep_walking));
-    }
+    // /// Produce a merged walk result from `self` and another WalkResult.
+    // fn merge(self: WalkResult, right: WalkResult) WalkResult {
+    //     return WalkResult{
+    //         .err = if (self.err) |_| self.err else right.err,
+    //         .keep_walking = self.keep_walking and right.keep_walking,
+    //         .found = self.found or right.found,
+    //     };
+    // }
+    // test merge {
+    //     try eqDeep(WalkResult.found, merge(WalkResult.found, WalkResult.keep_walking));
+    //     try eqDeep(WalkResult.keep_walking, merge(WalkResult.keep_walking, WalkResult.keep_walking));
+    //     try eqDeep(WalkResult.stop, merge(WalkResult.stop, WalkResult.keep_walking));
+    // }
 };
 
 const empty_leaf_node: Node = .{ .leaf = .{ .buf = "" } };
@@ -172,7 +172,41 @@ const Node = union(enum) {
     //     }
     // }
 
-    ///////////////////////////// Walk
+    ///////////////////////////// walkToTargetIndexMut
+
+    fn walkToTargetIndexMut(self: *const Node, a: Allocator, current_index: *usize, target_index: usize, f: Walker, ctx: *anyopaque) WalkMutResult {
+        switch (self.*) {
+            .branch => |*branch| {
+                const left_end = current_index.* + branch.left.weights().len;
+
+                if (target_index < left_end) {
+                    const left_result = branch.left.walkToTargetIndexMut(current_index, target_index, f, ctx);
+                    return WalkMutResult{
+                        .err = left_result.err,
+                        .found = left_result.found,
+                        .replace = if (left_result.replace) |replacement|
+                            Node.new(a, replacement, branch.right) catch |e| return WalkerMut{ .err = e }
+                        else
+                            null,
+                    };
+                }
+
+                current_index.* = left_end;
+                const right_result = branch.right.walkToTargetIndexMut(current_index, target_index, f, ctx);
+                return WalkMutResult{
+                    .err = right_result.err,
+                    .found = right_result.found,
+                    .replace = if (right_result.replace) |replacement|
+                        Node.new(a, branch.left, replacement) catch |e| return WalkerMut{ .err = e }
+                    else
+                        null,
+                };
+            },
+            .leaf => return f(ctx, self),
+        }
+    }
+
+    ///////////////////////////// walkToTargetIndex
 
     /// Wrapper & Test Helper for`Node.walkToTargetIndex()`.
     fn getLeafAtIndex(self: *const Node, target_index: usize) !*const Node {
@@ -240,14 +274,10 @@ const Node = union(enum) {
     fn walkToTargetIndex(self: *const Node, current_index: *usize, target_index: usize, f: Walker, ctx: *anyopaque) WalkResult {
         switch (self.*) {
             .branch => |*branch| {
-                const left_len = branch.left.weights().len;
-                const left_end = current_index.* + left_len;
-                if (target_index < left_end) {
-                    return branch.left.walkToTargetIndex(current_index, target_index, f, ctx);
-                } else {
-                    current_index.* = left_end;
-                    return branch.right.walkToTargetIndex(current_index, target_index, f, ctx);
-                }
+                const left_end = current_index.* + branch.left.weights().len;
+                if (target_index < left_end) return branch.left.walkToTargetIndex(current_index, target_index, f, ctx);
+                current_index.* = left_end;
+                return branch.right.walkToTargetIndex(current_index, target_index, f, ctx);
             },
             .leaf => return f(ctx, self),
         }
