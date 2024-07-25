@@ -130,6 +130,70 @@ const Node = union(enum) {
 
     ///////////////////////////// Balancing
 
+    const MAX_IMBALANCE = 1;
+
+    fn calculateBalanceFactor(left: *const Node, right: *const Node) i32 {
+        var balance_factor: i32 = @intCast(left.weights().depth);
+        balance_factor -= right.weights().depth;
+        return balance_factor;
+    }
+
+    fn balance(self: *const Node, a: Allocator) !*const Node {
+        switch (self.*) {
+            .leaf => return self,
+            .branch => |branch| {
+                const left = try branch.left.balance(a);
+                const right = try branch.right.balance(a);
+
+                const balance_factor = calculateBalanceFactor(left, right);
+
+                if (@abs(balance_factor) > MAX_IMBALANCE) {
+                    if (balance_factor < 0) {
+                        const right_balance_factor = calculateBalanceFactor(right.branch.left, right.branch.right);
+                        if (right_balance_factor < 0) {
+                            const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
+                            return try this.rotateLeft(a);
+                        }
+
+                        const new_right = try right.rotateRight(a);
+                        const this = try Node.new(a, left, new_right);
+                        return try this.rotateLeft(a);
+                    }
+
+                    const left_balance_factor = calculateBalanceFactor(left.branch.left, left.branch.right);
+                    if (left_balance_factor > 0) {
+                        const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
+                        return try this.rotateRight(a);
+                    }
+
+                    const new_left = try left.rotateLeft(a);
+                    const this = try Node.new(a, new_left, right);
+                    return try this.rotateRight(a);
+                }
+
+                return if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
+            },
+        }
+    }
+    test balance {
+        const a = idc_if_it_leaks;
+        {
+            const root = try __inputCharsNTimes(a, "j", 4);
+            try eqDeep(Weights{ .depth = 4, .len = 4 }, root.weights());
+            const balanced_root = try root.balance(a);
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, balanced_root.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.left.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+        }
+    }
+    fn __inputCharsNTimes(a: Allocator, chars: []const u8, times: usize) !*const Node {
+        var root = try Node.fromString(a, "");
+        for (0..times) |_| {
+            root = try root.insertChars(a, root.weights().len, chars);
+        }
+        return root;
+    }
+
     fn rotateRight(self: *const Node, allocator: Allocator) !*const Node {
         const other = self.branch.left;
         const a = try Node.new(allocator, other.branch.right, self.branch.right);
