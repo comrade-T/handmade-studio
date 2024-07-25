@@ -15,9 +15,48 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutResult;
+
+/// Represents the result of a walk operation on a Node.
+/// This walk operation should never mutate the current Node and can potentially return a new Node.
+const WalkMutResult = struct {
+    keep_walking: bool = false,
+    found: bool = false,
+    err: ?anyerror = null,
+
+    replace: ?*const Node = null,
+
+    const keep_walking = WalkMutResult{ .keep_walking = true };
+    const stop = WalkMutResult{ .keep_walking = false };
+    const found = WalkMutResult{ .found = true };
+
+    fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
+        return WalkerMut{
+            .err = if (left.err) |_| left.err else right.err,
+            .keep_walking = left.keep_walking and right.keep_walking,
+            .found = left.found or right.found,
+            .replace = if (left.replace == null and right.replace == null)
+                null
+            else
+                _mergeReplacements(a, b, left, right) catch |e| return WalkerMut{ .err = e },
+        };
+    }
+
+    fn _mergeReplacements(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) !*const Node {
+        const new_left = if (left.replace) |p| p else b.left;
+        const new_right = if (right.replace) |p| p else b.right;
+
+        if (new_left.is_empty()) return new_right;
+        if (new_right.is_empty()) return new_left;
+
+        return Node.new(a, new_left, new_right);
+    }
+};
+
 const Walker = *const fn (ctx: *anyopaque, node: *const Node) WalkResult;
 
-/// Represents a result returned after walking through a Node.
+/// Represents the result of a walk operation on a Node.
+/// This walk operation should never mutate the current Node or create a new Node.
 const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
@@ -29,11 +68,11 @@ const WalkResult = struct {
 
     /// Produce a merged walk result from `self` and another WalkResult.
     fn merge(self: WalkResult, right: WalkResult) WalkResult {
-        var result = WalkResult{};
-        result.err = if (self.err) |_| self.err else right.err;
-        result.keep_walking = self.keep_walking and right.keep_walking;
-        result.found = self.found or right.found;
-        return result;
+        return WalkResult{
+            .err = if (self.err) |_| self.err else right.err,
+            .keep_walking = self.keep_walking and right.keep_walking,
+            .found = self.found or right.found,
+        };
     }
     test merge {
         try eqDeep(WalkResult.found, merge(WalkResult.found, WalkResult.keep_walking));
@@ -88,6 +127,50 @@ const Node = union(enum) {
 
         return Leaf.new(a, buf);
     }
+
+    // fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
+    //     const InsertCharsCtx = struct {
+    //         current_index: *usize,
+    //         target_index: usize,
+    //
+    //         fn walker(ctx_: *anyopaque, leaf: *const Node) WalkResult {
+    //             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+    //
+    //             // TODO:
+    //
+    //             return WalkResult.found;
+    //         }
+    //     };
+    //
+    //     switch (self.*) {
+    //         .leaf => |this_leaf| {
+    //             const new_buf = try a.dupe(u8, chars);
+    //             const new_leaf = try Leaf.new(a, new_buf);
+    //             if (this_leaf.buf.len == 0) return new_leaf;
+    //             return Node.new(a, self, new_leaf);
+    //         },
+    //         .branch => {},
+    //     }
+    //
+    //     _ = target_index;
+    //
+    //     return self;
+    // }
+
+    // test insertChars {
+    //     const a = idc_if_it_leaks;
+    //     {
+    //         const root = try Node.fromString(a, "");
+    //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+    //         try eqStr("A", new_root.leaf.buf);
+    //     }
+    //     {
+    //         const root = try Node.fromString(a, "BCD");
+    //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+    //         try eqStr("A", new_root.branch.left.leaf.buf);
+    //         try eqStr("BCD", new_root.branch.right.leaf.buf);
+    //     }
+    // }
 
     ///////////////////////////// Walk
 
