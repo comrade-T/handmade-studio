@@ -184,6 +184,7 @@ const Node = union(enum) {
 
     test insertChars {
         const a = idc_if_it_leaks;
+
         { // replace empty Leaf with new Leaf with new content
             const root = try Node.fromString(a, "");
             const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
@@ -192,21 +193,38 @@ const Node = union(enum) {
         { // target_index at start of Leaf
             const root = try Node.fromString(a, "BCD");
             const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
             try eqStr("A", new_root.branch.left.leaf.buf);
             try eqStr("BCD", new_root.branch.right.leaf.buf);
         }
         { // target_index at end of Leaf
             const root = try Node.fromString(a, "A");
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
             try eqStr("A", new_root.branch.left.leaf.buf);
             try eqStr("BCD", new_root.branch.right.leaf.buf);
         }
         { // target_index at middle of Leaf
             const root = try Node.fromString(a, "ACD");
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "B");
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, new_root.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
             try eqStr("A", new_root.branch.left.leaf.buf);
             try eqStr("B", new_root.branch.right.branch.left.leaf.buf);
             try eqStr("CD", new_root.branch.right.branch.right.leaf.buf);
+        }
+
+        {
+            const acd = try Node.fromString(a, "ACD");
+            const abcd = try acd.insertChars(idc_if_it_leaks, 1, "B");
+            const abcde = try abcd.insertChars(idc_if_it_leaks, 4, "E");
+            try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
+            try eqStr("A", abcde.branch.left.leaf.buf);
+            try eqStr("B", abcde.branch.right.branch.left.leaf.buf);
+            try eqStr("CD", abcde.branch.right.branch.right.branch.left.leaf.buf);
+            try eqStr("E", abcde.branch.right.branch.right.branch.right.leaf.buf);
         }
     }
 
