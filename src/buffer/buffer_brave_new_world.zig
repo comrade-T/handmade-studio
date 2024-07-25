@@ -150,7 +150,7 @@ const Node = union(enum) {
                 if (@abs(balance_factor) > MAX_IMBALANCE) {
                     if (balance_factor < 0) {
                         const right_balance_factor = calculateBalanceFactor(right.branch.left, right.branch.right);
-                        if (right_balance_factor < 0) {
+                        if (right_balance_factor <= 0) {
                             const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
                             return try this.rotateLeft(a);
                         }
@@ -161,7 +161,7 @@ const Node = union(enum) {
                     }
 
                     const left_balance_factor = calculateBalanceFactor(left.branch.left, left.branch.right);
-                    if (left_balance_factor > 0) {
+                    if (left_balance_factor >= 0) {
                         const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
                         return try this.rotateRight(a);
                     }
@@ -178,18 +178,36 @@ const Node = union(enum) {
     test balance {
         const a = idc_if_it_leaks;
         {
-            const root = try __inputCharsNTimes(a, "j", 4);
+            const root = try __inputCharsOneAfterAnother(a, "abcd");
             try eqDeep(Weights{ .depth = 4, .len = 4 }, root.weights());
             const balanced_root = try root.balance(a);
             try eqDeep(Weights{ .depth = 3, .len = 4 }, balanced_root.weights());
             try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.left.weights());
+            try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
+            try eqStr("b", balanced_root.branch.left.branch.right.leaf.buf);
             try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+            try eqStr("c", balanced_root.branch.right.branch.left.leaf.buf);
+            try eqStr("d", balanced_root.branch.right.branch.right.leaf.buf);
+        }
+        {
+            const root = try __inputCharsOneAfterAnother(a, "abcde");
+            try eqDeep(Weights{ .depth = 5, .len = 5 }, root.weights());
+            const balanced_root = try root.balance(a);
+            try eqDeep(Weights{ .depth = 4, .len = 5 }, balanced_root.weights());
+            try eqDeep(Weights{ .depth = 3, .len = 3 }, balanced_root.branch.left.weights());
+            try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+            try eqStr("b", balanced_root.branch.left.branch.right.branch.left.leaf.buf);
+            try eqStr("c", balanced_root.branch.left.branch.right.branch.right.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+            try eqStr("d", balanced_root.branch.right.branch.left.leaf.buf);
+            try eqStr("e", balanced_root.branch.right.branch.right.leaf.buf);
         }
     }
-    fn __inputCharsNTimes(a: Allocator, chars: []const u8, times: usize) !*const Node {
+    fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
         var root = try Node.fromString(a, "");
-        for (0..times) |_| {
-            root = try root.insertChars(a, root.weights().len, chars);
+        for (0..chars.len) |i| {
+            root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
         }
         return root;
     }
