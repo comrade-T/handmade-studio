@@ -154,9 +154,19 @@ const Node = union(enum) {
                     return WalkMutResult{ .replace = replacement };
                 }
 
-                // TODO: insert in the middle of the leaf
+                const old_buf = leaf_node.leaf.buf;
+                const split_index = cx.target_index - cx.current_index.*;
 
-                return WalkMutResult.found;
+                const upper_left_content = old_buf[0..split_index];
+                const upper_left = Leaf.new(cx.a, upper_left_content) catch |err| return .{ .err = err };
+
+                const left = new_leaf_node;
+                const right_content = old_buf[split_index..old_buf.len];
+                const right = Leaf.new(cx.a, right_content) catch |err| return .{ .err = err };
+                const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+
+                const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
+                return WalkMutResult{ .replace = replacement };
             }
         };
 
@@ -174,16 +184,29 @@ const Node = union(enum) {
 
     test insertChars {
         const a = idc_if_it_leaks;
-        {
+        { // replace empty Leaf with new Leaf with new content
             const root = try Node.fromString(a, "");
             const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
             try eqStr("A", new_root.leaf.buf);
         }
-        {
+        { // target_index at start of Leaf
             const root = try Node.fromString(a, "BCD");
             const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
             try eqStr("A", new_root.branch.left.leaf.buf);
             try eqStr("BCD", new_root.branch.right.leaf.buf);
+        }
+        { // target_index at end of Leaf
+            const root = try Node.fromString(a, "A");
+            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            try eqStr("A", new_root.branch.left.leaf.buf);
+            try eqStr("BCD", new_root.branch.right.leaf.buf);
+        }
+        { // target_index at middle of Leaf
+            const root = try Node.fromString(a, "ACD");
+            const new_root = try root.insertChars(idc_if_it_leaks, 1, "B");
+            try eqStr("A", new_root.branch.left.leaf.buf);
+            try eqStr("B", new_root.branch.right.branch.left.leaf.buf);
+            try eqStr("CD", new_root.branch.right.branch.right.leaf.buf);
         }
     }
 
