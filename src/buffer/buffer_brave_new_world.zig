@@ -15,7 +15,7 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutResult;
+const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Node) WalkMutResult;
 
 /// Represents the result of a walk operation on a Node.
 /// This walk operation should never mutate the current Node and can potentially return a new Node.
@@ -128,76 +128,91 @@ const Node = union(enum) {
         return Leaf.new(a, buf);
     }
 
-    // fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
-    //     const InsertCharsCtx = struct {
-    //         current_index: *usize,
-    //         target_index: usize,
-    //
-    //         fn walker(ctx_: *anyopaque, leaf: *const Node) WalkResult {
-    //             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-    //
-    //             // TODO:
-    //
-    //             return WalkResult.found;
-    //         }
-    //     };
-    //
-    //     switch (self.*) {
-    //         .leaf => |this_leaf| {
-    //             const new_buf = try a.dupe(u8, chars);
-    //             const new_leaf = try Leaf.new(a, new_buf);
-    //             if (this_leaf.buf.len == 0) return new_leaf;
-    //             return Node.new(a, self, new_leaf);
-    //         },
-    //         .branch => {},
-    //     }
-    //
-    //     _ = target_index;
-    //
-    //     return self;
-    // }
+    fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
+        const InsertCharsCtx = struct {
+            a: Allocator,
+            buf: []const u8,
+            current_index: *usize,
+            target_index: usize,
 
-    // test insertChars {
-    //     const a = idc_if_it_leaks;
-    //     {
-    //         const root = try Node.fromString(a, "");
-    //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
-    //         try eqStr("A", new_root.leaf.buf);
-    //     }
-    //     {
-    //         const root = try Node.fromString(a, "BCD");
-    //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
-    //         try eqStr("A", new_root.branch.left.leaf.buf);
-    //         try eqStr("BCD", new_root.branch.right.leaf.buf);
-    //     }
-    // }
+            fn walker(cx_: *anyopaque, leaf_node: *const Node) WalkMutResult {
+                const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
+                const new_leaf_node = Leaf.new(cx.a, cx.buf) catch |err| return .{ .err = err };
+
+                const leaf_is_empty = leaf_node.leaf.buf.len == 0;
+                if (leaf_is_empty) return WalkMutResult{ .replace = new_leaf_node };
+
+                const insert_at_start = cx.current_index.* == cx.target_index;
+                if (insert_at_start) {
+                    const replacement = Node.new(cx.a, new_leaf_node, leaf_node) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
+                const insert_at_end = cx.current_index.* + leaf_node.leaf.buf.len == cx.target_index;
+                if (insert_at_end) {
+                    const replacement = Node.new(cx.a, leaf_node, new_leaf_node) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
+                // TODO: insert in the middle of the leaf
+
+                return WalkMutResult.found;
+            }
+        };
+
+        if (target_index > self.weights().len) return error.IndexOutOfBounds;
+
+        const buf = try a.dupe(u8, chars);
+        var current_index: usize = 0;
+        var ctx = InsertCharsCtx{ .a = a, .buf = buf, .current_index = &current_index, .target_index = target_index };
+        const walk_result = self.walkToTargetIndexMut(a, &current_index, target_index, InsertCharsCtx.walker, &ctx);
+
+        if (walk_result.err) |e| return e;
+        if (walk_result.replace) |replacement| return replacement;
+        return error.NotFound;
+    }
+
+    test insertChars {
+        const a = idc_if_it_leaks;
+        {
+            const root = try Node.fromString(a, "");
+            const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            try eqStr("A", new_root.leaf.buf);
+        }
+        {
+            const root = try Node.fromString(a, "BCD");
+            const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            try eqStr("A", new_root.branch.left.leaf.buf);
+            try eqStr("BCD", new_root.branch.right.leaf.buf);
+        }
+    }
 
     ///////////////////////////// walkToTargetIndexMut
 
-    fn walkToTargetIndexMut(self: *const Node, a: Allocator, current_index: *usize, target_index: usize, f: Walker, ctx: *anyopaque) WalkMutResult {
+    fn walkToTargetIndexMut(self: *const Node, a: Allocator, current_index: *usize, target_index: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
         switch (self.*) {
             .branch => |*branch| {
                 const left_end = current_index.* + branch.left.weights().len;
 
                 if (target_index < left_end) {
-                    const left_result = branch.left.walkToTargetIndexMut(current_index, target_index, f, ctx);
+                    const left_result = branch.left.walkToTargetIndexMut(a, current_index, target_index, f, ctx);
                     return WalkMutResult{
                         .err = left_result.err,
                         .found = left_result.found,
                         .replace = if (left_result.replace) |replacement|
-                            Node.new(a, replacement, branch.right) catch |e| return WalkerMut{ .err = e }
+                            Node.new(a, replacement, branch.right) catch |e| return WalkMutResult{ .err = e }
                         else
                             null,
                     };
                 }
 
                 current_index.* = left_end;
-                const right_result = branch.right.walkToTargetIndexMut(current_index, target_index, f, ctx);
+                const right_result = branch.right.walkToTargetIndexMut(a, current_index, target_index, f, ctx);
                 return WalkMutResult{
                     .err = right_result.err,
                     .found = right_result.found,
                     .replace = if (right_result.replace) |replacement|
-                        Node.new(a, branch.left, replacement) catch |e| return WalkerMut{ .err = e }
+                        Node.new(a, branch.left, replacement) catch |e| return WalkMutResult{ .err = e }
                     else
                         null,
                 };
@@ -210,7 +225,7 @@ const Node = union(enum) {
 
     /// Wrapper & Test Helper for`Node.walkToTargetIndex()`.
     fn getLeafAtIndex(self: *const Node, target_index: usize) !*const Node {
-        if (target_index > self.weights().len - 1) return error.NotFound;
+        if (target_index > self.weights().len - 1) return error.IndexOutOfBounds;
 
         const GetLeafAtIndexCtx = struct {
             result: ?*const Node = null,
@@ -263,8 +278,8 @@ const Node = union(enum) {
         try eq(root.branch.right.branch.right, try root.getLeafAtIndex(17));
 
         // out of bounds
-        try shouldErr(error.NotFound, root.getLeafAtIndex(18));
-        try shouldErr(error.NotFound, root.getLeafAtIndex(1000));
+        try shouldErr(error.IndexOutOfBounds, root.getLeafAtIndex(18));
+        try shouldErr(error.IndexOutOfBounds, root.getLeafAtIndex(1000));
     }
 
     /// Recursively walk through this Node, ignoring Brances that end before `target_index`.
