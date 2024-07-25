@@ -172,7 +172,7 @@ const Node = union(enum) {
         var collected_nodes = std.ArrayList(*const Node).init(std.testing.allocator);
         defer collected_nodes.deinit();
         var ctx: TestTraverseNodesCtx = .{ .nodes = &collected_nodes };
-        const walk_result = root.walk(TestTraverseNodesCtx.walker, &ctx);
+        const walk_result = root.walkAll(TestTraverseNodesCtx.walker, &ctx);
 
         try eq(WalkResult.keep_walking, walk_result);
         try eq(expected.len, collected_nodes.items.len);
@@ -183,25 +183,26 @@ const Node = union(enum) {
         }
     }
 
-    /// Recursively walk the Node and execute walker callback function on every Node encountered,
+    /// Recursively walk through all of the Node's descendants
+    /// and execute walker callback function on descendant Node encountered,
     /// regardless if it's a Branch or a Leaf.
-    fn walk(self: *const Node, f: WalkResult.F, ctx: *anyopaque) WalkResult {
+    fn walkAll(self: *const Node, f: WalkResult.F, ctx: *anyopaque) WalkResult {
         const current = f(ctx, self);
         switch (self.*) {
             .branch => |*branch| {
                 if (!current.keep_walking) return current;
 
-                const left = branch.left.walk(f, ctx);
+                const left = branch.left.walkAll(f, ctx);
                 if (left.found) return left;
 
-                const right = branch.right.walk(f, ctx);
+                const right = branch.right.walkAll(f, ctx);
                 return left.merge(right);
             },
 
             .leaf => |_| return current,
         }
     }
-    test walk {
+    test walkAll {
         const a = idc_if_it_leaks;
         {
             const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, "_two"));
