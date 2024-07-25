@@ -130,6 +130,37 @@ const Node = union(enum) {
 
     ///////////////////////////// Balancing
 
+    fn rotateRight(self: *const Node, allocator: Allocator) !*const Node {
+        const other = self.branch.left;
+        const a = try Node.new(allocator, other.branch.right, self.branch.right);
+        const b = try Node.new(allocator, other.branch.left, a);
+        return b;
+    }
+    test rotateRight {
+        const a = idc_if_it_leaks;
+        {
+            const abc = try Node.fromString(a, "ACD");
+            const abcd = try abc.insertChars(a, 1, "B");
+            const root = try abcd.insertChars(a, 1, "a");
+
+            const node_to_rotate = root.branch.right;
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, node_to_rotate.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, node_to_rotate.branch.left.weights());
+            try eqStr("a", node_to_rotate.branch.left.branch.left.leaf.buf);
+            try eqStr("B", node_to_rotate.branch.left.branch.right.leaf.buf);
+            try eqDeep(Weights{ .depth = 1, .len = 2 }, node_to_rotate.branch.right.weights());
+            try eqStr("CD", node_to_rotate.branch.right.leaf.buf);
+
+            const result = try node_to_rotate.rotateRight(a);
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, result.weights());
+            try eqDeep(Weights{ .depth = 1, .len = 1 }, result.branch.left.weights());
+            try eqStr("a", result.branch.left.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, result.branch.right.weights());
+            try eqStr("B", result.branch.right.branch.left.leaf.buf);
+            try eqStr("CD", result.branch.right.branch.right.leaf.buf);
+        }
+    }
+
     fn rotateLeft(self: *const Node, allocator: Allocator) !*const Node {
         const other = self.branch.right;
         const a = try Node.new(allocator, self.branch.left, other.branch.left);
