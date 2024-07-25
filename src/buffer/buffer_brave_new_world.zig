@@ -71,8 +71,7 @@ const Node = union(enum) {
         const a = idc_if_it_leaks;
         {
             const root = try Node.fromString(a, "hello\nworld");
-            var expected = [_]struct { *const Node, ?[]const u8 }{.{ root, "hello\nworld" }};
-            try testNodesTraversed(root, &expected);
+            try eqDeep(Node{ .leaf = .{ .buf = "hello\nworld" } }, root.*);
         }
     }
 
@@ -91,68 +90,7 @@ const Node = union(enum) {
 
     ///////////////////////////// Walk
 
-    /// Helper function to assert the traversal order of those who use `Node.walk() method.`
-    fn testNodesTraversed(root: *const Node, expected: []struct { *const Node, ?[]const u8 }) !void {
-        const TestTraverseNodesCtx = struct {
-            nodes: *ArrayList(*const Node),
-            fn walker(ctx_: *anyopaque, node: *const Node) WalkResult {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                ctx.nodes.append(node) catch |e| return WalkResult{ .err = e };
-                return WalkResult.keep_walking;
-            }
-        };
-
-        var collected_nodes = std.ArrayList(*const Node).init(std.testing.allocator);
-        defer collected_nodes.deinit();
-        var ctx: TestTraverseNodesCtx = .{ .nodes = &collected_nodes };
-        const walk_result = root.walkAll(TestTraverseNodesCtx.walker, &ctx);
-
-        try eq(WalkResult.keep_walking, walk_result);
-        try eq(expected.len, collected_nodes.items.len);
-        for (expected, 0..) |e, i| {
-            const expected_node, const may_expected_str = e;
-            try eq(expected_node, collected_nodes.items[i]);
-            if (may_expected_str) |str| try eqStr(str, collected_nodes.items[i].leaf.buf);
-        }
-    }
-
-    /// Recursively walk through all of the Node's descendants
-    /// and execute walker callback function on descendant Node encountered,
-    /// regardless if it's a Branch or a Leaf.
-    fn walkAll(self: *const Node, f: WalkResult.F, ctx: *anyopaque) WalkResult {
-        const current = f(ctx, self);
-        switch (self.*) {
-            .branch => |*branch| {
-                if (!current.keep_walking) return current;
-
-                const left = branch.left.walkAll(f, ctx);
-                if (left.found) return left;
-
-                const right = branch.right.walkAll(f, ctx);
-                return left.merge(right);
-            },
-
-            .leaf => |_| return current,
-        }
-    }
-    test walkAll {
-        const a = idc_if_it_leaks;
-        {
-            const one_two = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, "_two"));
-            const three_four = try Node.new(a, try Leaf.new(a, "_three"), try Leaf.new(a, "_four"));
-            const root = try Node.new(a, one_two, three_four);
-            var expected = [_]struct { *const Node, ?[]const u8 }{
-                .{ root, null },
-                .{ root.branch.left, null },
-                .{ root.branch.left.branch.left, "one" },
-                .{ root.branch.left.branch.right, "_two" },
-                .{ root.branch.right, null },
-                .{ root.branch.right.branch.left, "_three" },
-                .{ root.branch.right.branch.right, "_four" },
-            };
-            try testNodesTraversed(root, &expected);
-        }
-    }
+    // TODO:
 
     ///////////////////////////// Node Info
 
