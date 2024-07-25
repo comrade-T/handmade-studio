@@ -490,7 +490,7 @@ test Leaf {
 /// Contains 2 fields: `len` and `depth`.
 const Weights = struct {
     len: usize = 0,
-    depth: usize = 1,
+    depth: u16 = 1,
 
     /// Mutates `self` in place.
     /// Mutated length is self.len + other.len.
