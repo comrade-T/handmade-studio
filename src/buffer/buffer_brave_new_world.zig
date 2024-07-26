@@ -200,8 +200,8 @@ const Node = union(enum) {
 
     const MAX_IMBALANCE = 1;
 
-    fn calculateBalanceFactor(left: *const Node, right: *const Node) i32 {
-        var balance_factor: i32 = @intCast(left.weights().depth);
+    fn calculateBalanceFactor(left: *const Node, right: *const Node) i64 {
+        var balance_factor: i64 = @intCast(left.weights().depth);
         balance_factor -= right.weights().depth;
         return balance_factor;
     }
@@ -731,7 +731,7 @@ const Weights = struct {
     bols: u32 = 0,
     eols: u32 = 0,
     len: u32 = 0,
-    depth: u16 = 1,
+    depth: u32 = 1,
 
     fn add(self: *Weights, other: Weights) void {
         self.bols += other.bols;
@@ -761,26 +761,27 @@ const Weights = struct {
     }
 };
 
-test "GPA_limit" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{
-        .enable_memory_limit = true,
-    }){
-        .requested_memory_limit = 2 * 1024,
-    };
+test "Freeing a Node" {
+    std.debug.print("@sizeOf(Node) is {d}\n", .{@sizeOf(Node)});
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){ .requested_memory_limit = 1 * 1024 * 1024 };
     defer _ = gpa.deinit();
     const a = gpa.allocator();
+    std.debug.print("gpa.requested_memory_limit in bytes: {d}\n", .{gpa.requested_memory_limit});
+    std.debug.print("gpa.total_requested_bytes right after creating GPA: {d}\n", .{gpa.total_requested_bytes});
 
-    const str = try std.fmt.allocPrint(a, "hello {s}", .{"world"});
-    std.debug.print("str = {s}\n", .{str});
-    a.free(str);
+    const left = try Leaf.new(a, "hello", false, false);
+    std.debug.print("gpa.total_requested_bytes after creating `left`: {d}\n", .{gpa.total_requested_bytes});
 
-    std.debug.print("gpa.total_requested_bytes: {d}\n", .{gpa.total_requested_bytes});
-    std.debug.print("gpa.requested_memory_limit: {d}\n", .{gpa.requested_memory_limit});
+    const right = try Leaf.new(a, "_world", false, false);
+    std.debug.print("gpa.total_requested_bytes after creating `right`: {d}\n", .{gpa.total_requested_bytes});
 
-    const str2 = try std.fmt.allocPrint(a, "hello {s}", .{"venus"});
-    defer a.free(str2);
-    std.debug.print("str2 = {s}\n", .{str2});
+    const root = try Node.new(a, left, right);
+    std.debug.print("gpa.total_requested_bytes after creating `root`: {d}\n", .{gpa.total_requested_bytes});
 
-    std.debug.print("gpa.total_requested_bytes: {d}\n", .{gpa.total_requested_bytes});
-    std.debug.print("gpa.requested_memory_limit: {d}\n", .{gpa.requested_memory_limit});
+    a.destroy(left);
+    a.destroy(right);
+    a.destroy(root);
+
+    std.debug.print("gpa.total_requested_bytes after destroying the Leaf: {d}\n", .{gpa.total_requested_bytes});
 }
