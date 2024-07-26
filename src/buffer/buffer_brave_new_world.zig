@@ -760,3 +760,27 @@ const Weights = struct {
         }
     }
 };
+
+test "GPA_limit" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{
+        .enable_memory_limit = true,
+    }){
+        .requested_memory_limit = 2 * 1024,
+    };
+    defer _ = gpa.deinit();
+    const a = gpa.allocator();
+
+    const str = try std.fmt.allocPrint(a, "hello {s}", .{"world"});
+    std.debug.print("str = {s}\n", .{str});
+    a.free(str);
+
+    std.debug.print("gpa.total_requested_bytes: {d}\n", .{gpa.total_requested_bytes});
+    std.debug.print("gpa.requested_memory_limit: {d}\n", .{gpa.requested_memory_limit});
+
+    const str2 = try std.fmt.allocPrint(a, "hello {s}", .{"venus"});
+    defer a.free(str2);
+    std.debug.print("str2 = {s}\n", .{str2});
+
+    std.debug.print("gpa.total_requested_bytes: {d}\n", .{gpa.total_requested_bytes});
+    std.debug.print("gpa.requested_memory_limit: {d}\n", .{gpa.requested_memory_limit});
+}
