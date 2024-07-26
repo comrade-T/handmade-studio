@@ -210,11 +210,12 @@ const Node = union(enum) {
         switch (self.*) {
             .leaf => return self,
             .branch => |branch| {
+                var result: *const Node = undefined;
+                defer if (result != self) a.destroy(self);
+
                 const left = try branch.left.balance(a);
                 const right = try branch.right.balance(a);
-
                 const balance_factor = calculateBalanceFactor(left, right);
-                var result: *const Node = undefined;
 
                 if (@abs(balance_factor) > MAX_IMBALANCE) {
                     if (balance_factor < 0) {
@@ -242,13 +243,8 @@ const Node = union(enum) {
                     result = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
                 }
 
-                if (result.* == .branch and @abs(calculateBalanceFactor(result.branch.left, result.branch.right)) > MAX_IMBALANCE) {
-                    result = try result.balance(a);
-                }
-
-                if (result.* == .branch and @abs(calculateBalanceFactor(result.branch.left, result.branch.right)) > MAX_IMBALANCE) {
-                    std.debug.print("what the fuck\n", .{});
-                }
+                const should_balance_again = result.* == .branch and @abs(calculateBalanceFactor(result.branch.left, result.branch.right)) > MAX_IMBALANCE;
+                if (should_balance_again) result = try result.balance(a);
 
                 return result;
             },
@@ -285,33 +281,38 @@ const Node = union(enum) {
             try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
         }
         // {
-        //     const source = "abcdefghijklmnopqrstuvwxyz1234567890" ** 30;
-        //     const root = try __inputCharsAndRebalanceOneAfterAnother(a, source);
+        //     const source = "abcdefghijklmnopqrstuvwxyz1234567890";
+        //     const root = try __inputCharsAndRebalanceOneAfterAnother(a, source, 100);
         //     const balanced_root = try root.balance(a);
-        //     const balanced_root_debug_str =
-        //         \\            1 `8`
-        //     ;
-        //     try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
+        //     try eqStr("doesn't matter, just checking the output since it's too large", try balanced_root.debugPrint());
         // }
     }
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
         var root = try Node.fromString(a, "", false);
         for (0..chars.len) |i| {
             root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
+            if (i == chars.len - 1) std.debug.print("finished __inputCharsOneAfterAnother i == {d}\n", .{i});
         }
         return root;
     }
-    fn __inputCharsAndRebalanceOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
+    fn __inputCharsAndRebalanceOneAfterAnother(a: Allocator, chars: []const u8, multiplier: usize) !*const Node {
         var root = try Node.fromString(a, "", false);
-        for (0..chars.len) |i| {
-            root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
-            root = try root.balance(a);
+        var count: usize = 0;
+        for (0..multiplier) |_| {
+            for (0..chars.len) |i| {
+                root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
+                root = try root.balance(a);
+                count += 1;
+            }
         }
+        std.debug.print("finished __inputCharsAndRebalanceOneAfterAnother count == {d}\n", .{count});
         return root;
     }
 
     fn rotateRight(self: *const Node, allocator: Allocator) !*const Node {
         const other = self.branch.left;
+        defer allocator.destroy(self);
+        defer allocator.destroy(other);
         const a = try Node.new(allocator, other.branch.right, self.branch.right);
         const b = try Node.new(allocator, other.branch.left, a);
         return b;
@@ -343,6 +344,8 @@ const Node = union(enum) {
 
     fn rotateLeft(self: *const Node, allocator: Allocator) !*const Node {
         const other = self.branch.right;
+        defer allocator.destroy(self);
+        defer allocator.destroy(other);
         const a = try Node.new(allocator, self.branch.left, other.branch.left);
         const b = try Node.new(allocator, a, other.branch.right);
         return b;
@@ -656,9 +659,6 @@ const Node = union(enum) {
         }
     }
 };
-test Node {
-    _ = Node{ .leaf = empty_leaf.leaf };
-}
 
 const Branch = struct {
     left: *const Node,
@@ -697,9 +697,6 @@ const Leaf = struct {
         return self.buf.len == 0 and !self.bol and !self.eol;
     }
 };
-test Leaf {
-    _ = Leaf{ .buf = "" };
-}
 
 const Weights = struct {
     bols: u32 = 0,
@@ -734,3 +731,7 @@ const Weights = struct {
         }
     }
 };
+
+test {
+    std.testing.refAllDeclsRecursive(Node);
+}
