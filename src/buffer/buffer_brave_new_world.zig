@@ -449,46 +449,21 @@ const Node = union(enum) {
 
     ///////////////////////////// Node Info
 
-    /// Either returns a Branch's `weights` field value
-    /// or a Leaf.buffer's length as `Weights`.
     fn weights(self: *const Node) Weights {
         return switch (self.*) {
             .branch => |*b| b.weights,
             .leaf => |*l| l.weights(),
         };
     }
-    // test weights {
-    //     const a = idc_if_it_leaks;
-    //     const node = try Node.new(a, try Leaf.new(a, "one"), try Leaf.new(a, " two"));
-    //     try eqStr("one", node.branch.left.leaf.buf);
-    //     try eqStr(" two", node.branch.right.leaf.buf);
-    //     try eqDeep(Weights{ .len = 7, .depth = 2 }, node.weights());
-    //     try eqDeep(Weights{ .len = 3, .depth = 1 }, node.branch.left.weights());
-    //     try eqDeep(Weights{ .len = 4, .depth = 1 }, node.branch.right.weights());
-    // }
-
-    /// Recursively walk through self and check if all the leaves' buffers are empty.
-    fn isEmpty(self: *const Node) bool {
-        return switch (self.*) {
-            .branch => |*b| b.left.isEmpty() and b.right.isEmpty(),
-            .leaf => |*l| l.isEmpty(),
-        };
+    test weights {
+        const a = idc_if_it_leaks;
+        const node = try Node.new(a, try Leaf.new(a, "one", true, false), try Leaf.new(a, "_two", false, true));
+        try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "one" }, node.branch.left.leaf);
+        try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "_two" }, node.branch.right.leaf);
+        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 8, .depth = 2 }, node.weights());
+        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 3, .depth = 1 }, node.branch.left.weights());
+        try eqDeep(Weights{ .bols = 0, .eols = 1, .len = 5, .depth = 1 }, node.branch.right.weights());
     }
-    // test isEmpty {
-    //     const a = idc_if_it_leaks;
-    //     {
-    //         const node = try Node.new(a, try Leaf.new(a, ""), try Leaf.new(a, ""));
-    //         try eq(true, node.isEmpty());
-    //         try eq(true, node.branch.left.isEmpty());
-    //         try eq(true, node.branch.right.isEmpty());
-    //     }
-    //     {
-    //         const node = try Node.new(a, try Leaf.new(a, ""), try Leaf.new(a, "two"));
-    //         try eq(false, node.isEmpty());
-    //         try eq(true, node.branch.left.isEmpty());
-    //         try eq(false, node.branch.right.isEmpty());
-    //     }
-    // }
 
     ///////////////////////////// Debug Print
 
@@ -527,7 +502,7 @@ const Leaf = struct {
         return node;
     }
 
-    inline fn weights(self: *const Leaf) Weights {
+    fn weights(self: *const Leaf) Weights {
         var len = self.buf.len;
         if (self.eol) len += 1;
         return Weights{
@@ -537,7 +512,7 @@ const Leaf = struct {
         };
     }
 
-    inline fn is_empty(self: *const Leaf) bool {
+    fn is_empty(self: *const Leaf) bool {
         return self.buf.len == 0 and !self.bol and !self.eol;
     }
 };
@@ -556,5 +531,25 @@ const Weights = struct {
         self.eols += other.eols;
         self.len += other.len;
         self.depth = @max(self.depth, other.depth);
+    }
+    test add {
+        {
+            var w1 = Weights{};
+            const w2 = Weights{};
+            w1.add(w2);
+            try eqDeep(Weights{}, w1);
+        }
+        {
+            var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
+            const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 1 };
+            w1.add(w2);
+            try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 1 }, w1);
+        }
+        {
+            var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
+            const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 2 };
+            w1.add(w2);
+            try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 2 }, w1);
+        }
     }
 };
