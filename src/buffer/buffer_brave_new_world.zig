@@ -467,18 +467,31 @@ const Node = union(enum) {
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, new_root.branch.right.branch.right.leaf);
         }
 
-        // {
-        //     const acd = try Node.fromString(a, "ACD");
-        //     const abcd = try acd.insertChars(idc_if_it_leaks, 1, "B");
-        //     const abcde = try abcd.insertChars(idc_if_it_leaks, 4, "E");
-        //     try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
-        //     try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
-        //     try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
-        //     try eqStr("A", abcde.branch.left.leaf.buf);
-        //     try eqStr("B", abcde.branch.right.branch.left.leaf.buf);
-        //     try eqStr("CD", abcde.branch.right.branch.right.branch.left.leaf.buf);
-        //     try eqStr("E", abcde.branch.right.branch.right.branch.right.leaf.buf);
-        // }
+        // consecutive insertions
+        {
+            const acd = try Leaf.new(a, "ACD", false, false);
+            const abcd = try acd.insertChars(a, 1, "B");
+            const abcde = try abcd.insertChars(a, 4, "E");
+            try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, abcde.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B" }, abcde.branch.right.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, abcde.branch.right.branch.right.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "E" }, abcde.branch.right.branch.right.branch.right.leaf);
+        }
+        {
+            const acd = try Leaf.new(a, "ACD", true, true);
+            const abcd = try acd.insertChars(a, 1, "B");
+            const abcde = try abcd.insertChars(a, 4, "E");
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 4, .len = 6 }, abcde.weights());
+            try eqDeep(Weights{ .bols = 0, .eols = 1, .depth = 3, .len = 5 }, abcde.branch.right.weights());
+            try eqDeep(Weights{ .bols = 0, .eols = 1, .depth = 2, .len = 4 }, abcde.branch.right.branch.right.weights());
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, abcde.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B" }, abcde.branch.right.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, abcde.branch.right.branch.right.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "E" }, abcde.branch.right.branch.right.branch.right.leaf);
+        }
     }
 
     ///////////////////////////// walkToTargetIndexMut
