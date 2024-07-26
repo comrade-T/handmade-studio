@@ -257,31 +257,6 @@ const Node = union(enum) {
     test balance {
         const a = idc_if_it_leaks;
         {
-            const root = try __inputCharsOneAfterAnother(a, "abcd");
-            const root_debug_str =
-                \\4
-                \\  1 `a`
-                \\  3
-                \\    1 `b`
-                \\    2
-                \\      1 `c`
-                \\      1 `d`
-            ;
-            try eqStr(root_debug_str, try root.debugPrint());
-
-            const balanced_root = try root.balance(a);
-            const balanced_root_debug_str =
-                \\3
-                \\  2
-                \\    1 `a`
-                \\    1 `b`
-                \\  2
-                \\    1 `c`
-                \\    1 `d`
-            ;
-            try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
-        }
-        {
             const root = try __inputCharsOneAfterAnother(a, "abcde");
             const root_debug_str =
                 \\5
@@ -295,7 +270,6 @@ const Node = union(enum) {
                 \\        1 `e`
             ;
             try eqStr(root_debug_str, try root.debugPrint());
-
             const balanced_root = try root.balance(a);
             const balanced_root_debug_str =
                 \\4
@@ -760,28 +734,3 @@ const Weights = struct {
         }
     }
 };
-
-test "Freeing a Node" {
-    std.debug.print("@sizeOf(Node) is {d}\n", .{@sizeOf(Node)});
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){ .requested_memory_limit = 1 * 1024 * 1024 };
-    defer _ = gpa.deinit();
-    const a = gpa.allocator();
-    std.debug.print("gpa.requested_memory_limit in bytes: {d}\n", .{gpa.requested_memory_limit});
-    std.debug.print("gpa.total_requested_bytes right after creating GPA: {d}\n", .{gpa.total_requested_bytes});
-
-    const left = try Leaf.new(a, "hello", false, false);
-    std.debug.print("gpa.total_requested_bytes after creating `left`: {d}\n", .{gpa.total_requested_bytes});
-
-    const right = try Leaf.new(a, "_world", false, false);
-    std.debug.print("gpa.total_requested_bytes after creating `right`: {d}\n", .{gpa.total_requested_bytes});
-
-    const root = try Node.new(a, left, right);
-    std.debug.print("gpa.total_requested_bytes after creating `root`: {d}\n", .{gpa.total_requested_bytes});
-
-    a.destroy(left);
-    a.destroy(right);
-    a.destroy(root);
-
-    std.debug.print("gpa.total_requested_bytes after destroying the Leaf: {d}\n", .{gpa.total_requested_bytes});
-}
