@@ -15,7 +15,7 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Node) WalkMutResult;
+const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutResult;
 
 /// Represents the result of a walk operation on a Node.
 /// This walk operation should never mutate the current Node and can potentially return a new Node.
@@ -343,38 +343,42 @@ const Node = union(enum) {
             current_index: *usize,
             target_index: usize,
 
-            fn walker(cx_: *anyopaque, leaf_node: *const Node) WalkMutResult {
+            fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
                 const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
-                const new_leaf_node = Leaf.new(cx.a, cx.buf) catch |err| return .{ .err = err };
+                var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
 
-                const leaf_is_empty = leaf_node.leaf.buf.len == 0;
-                if (leaf_is_empty) return WalkMutResult{ .replace = new_leaf_node };
+                if (leaf.isEmpty()) return WalkMutResult{ .replace = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err } };
 
                 const insert_at_start = cx.current_index.* == cx.target_index;
                 if (insert_at_start) {
-                    const replacement = Node.new(cx.a, new_leaf_node, leaf_node) catch |err| return .{ .err = err };
+                    new_leaves[0].leaf.bol = leaf.bol;
+                    const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                    const right = Leaf.new(cx.a, leaf.buf, false, leaf.eol) catch |err| return .{ .err = err };
+                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
                     return WalkMutResult{ .replace = replacement };
                 }
 
-                const insert_at_end = cx.current_index.* + leaf_node.leaf.buf.len == cx.target_index;
-                if (insert_at_end) {
-                    const replacement = Node.new(cx.a, leaf_node, new_leaf_node) catch |err| return .{ .err = err };
-                    return WalkMutResult{ .replace = replacement };
-                }
+                unreachable;
 
-                const old_buf = leaf_node.leaf.buf;
-                const split_index = cx.target_index - cx.current_index.*;
-
-                const upper_left_content = old_buf[0..split_index];
-                const upper_left = Leaf.new(cx.a, upper_left_content) catch |err| return .{ .err = err };
-
-                const left = new_leaf_node;
-                const right_content = old_buf[split_index..old_buf.len];
-                const right = Leaf.new(cx.a, right_content) catch |err| return .{ .err = err };
-                const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-
-                const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
-                return WalkMutResult{ .replace = replacement };
+                // const insert_at_end = cx.current_index.* + leaf_node.leaf.buf.len == cx.target_index;
+                // if (insert_at_end) {
+                //     const replacement = Node.new(cx.a, leaf_node, new_leaf_node) catch |err| return .{ .err = err };
+                //     return WalkMutResult{ .replace = replacement };
+                // }
+                //
+                // const old_buf = leaf_node.leaf.buf;
+                // const split_index = cx.target_index - cx.current_index.*;
+                //
+                // const upper_left_content = old_buf[0..split_index];
+                // const upper_left = Leaf.new(cx.a, upper_left_content) catch |err| return .{ .err = err };
+                //
+                // const left = new_leaf_node;
+                // const right_content = old_buf[split_index..old_buf.len];
+                // const right = Leaf.new(cx.a, right_content) catch |err| return .{ .err = err };
+                // const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                //
+                // const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
+                // return WalkMutResult{ .replace = replacement };
             }
         };
 
@@ -390,51 +394,70 @@ const Node = union(enum) {
         return error.NotFound;
     }
 
-    // test insertChars {
-    //     const a = idc_if_it_leaks;
-    //
-    //     { // replace empty Leaf with new Leaf with new content
-    //         const root = try Node.fromString(a, "");
-    //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
-    //         try eqStr("A", new_root.leaf.buf);
-    //     }
-    //     // { // target_index at start of Leaf
-    //     //     const root = try Node.fromString(a, "BCD");
-    //     //     const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
-    //     //     try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
-    //     //     try eqStr("A", new_root.branch.left.leaf.buf);
-    //     //     try eqStr("BCD", new_root.branch.right.leaf.buf);
-    //     // }
-    //     // { // target_index at end of Leaf
-    //     //     const root = try Node.fromString(a, "A");
-    //     //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-    //     //     try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
-    //     //     try eqStr("A", new_root.branch.left.leaf.buf);
-    //     //     try eqStr("BCD", new_root.branch.right.leaf.buf);
-    //     // }
-    //     // { // target_index at middle of Leaf
-    //     //     const root = try Node.fromString(a, "ACD");
-    //     //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "B");
-    //     //     try eqDeep(Weights{ .depth = 3, .len = 4 }, new_root.weights());
-    //     //     try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
-    //     //     try eqStr("A", new_root.branch.left.leaf.buf);
-    //     //     try eqStr("B", new_root.branch.right.branch.left.leaf.buf);
-    //     //     try eqStr("CD", new_root.branch.right.branch.right.leaf.buf);
-    //     // }
-    //     //
-    //     // {
-    //     //     const acd = try Node.fromString(a, "ACD");
-    //     //     const abcd = try acd.insertChars(idc_if_it_leaks, 1, "B");
-    //     //     const abcde = try abcd.insertChars(idc_if_it_leaks, 4, "E");
-    //     //     try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
-    //     //     try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
-    //     //     try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
-    //     //     try eqStr("A", abcde.branch.left.leaf.buf);
-    //     //     try eqStr("B", abcde.branch.right.branch.left.leaf.buf);
-    //     //     try eqStr("CD", abcde.branch.right.branch.right.branch.left.leaf.buf);
-    //     //     try eqStr("E", abcde.branch.right.branch.right.branch.right.leaf.buf);
-    //     // }
-    // }
+    test insertChars {
+        const a = idc_if_it_leaks;
+
+        // replace empty Leaf with new Leaf with new content
+        {
+            const root = try Node.fromString(a, "", false);
+            const new_root = try root.insertChars(a, 0, "A");
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.leaf);
+        }
+        {
+            const root = try Node.fromString(a, "", false);
+            const new_root = try root.insertChars(a, 0, "hello\nworld");
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 11, .depth = 2 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, new_root.branch.right.leaf);
+        }
+
+        // target_index at start of Leaf
+        {
+            const root = try Node.fromString(a, "BCD", false);
+            const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
+        {
+            const root = try Node.fromString(a, "BCD", true);
+            const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            try eqDeep(Weights{ .bols = 1, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
+
+        // { // target_index at end of Leaf
+        //     const root = try Node.fromString(a, "A");
+        //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+        //     try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
+        //     try eqStr("A", new_root.branch.left.leaf.buf);
+        //     try eqStr("BCD", new_root.branch.right.leaf.buf);
+        // }
+
+        // { // target_index at middle of Leaf
+        //     const root = try Node.fromString(a, "ACD");
+        //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "B");
+        //     try eqDeep(Weights{ .depth = 3, .len = 4 }, new_root.weights());
+        //     try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
+        //     try eqStr("A", new_root.branch.left.leaf.buf);
+        //     try eqStr("B", new_root.branch.right.branch.left.leaf.buf);
+        //     try eqStr("CD", new_root.branch.right.branch.right.leaf.buf);
+        // }
+        //
+        // {
+        //     const acd = try Node.fromString(a, "ACD");
+        //     const abcd = try acd.insertChars(idc_if_it_leaks, 1, "B");
+        //     const abcde = try abcd.insertChars(idc_if_it_leaks, 4, "E");
+        //     try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
+        //     try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
+        //     try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
+        //     try eqStr("A", abcde.branch.left.leaf.buf);
+        //     try eqStr("B", abcde.branch.right.branch.left.leaf.buf);
+        //     try eqStr("CD", abcde.branch.right.branch.right.branch.left.leaf.buf);
+        //     try eqStr("E", abcde.branch.right.branch.right.branch.right.leaf.buf);
+        // }
+    }
 
     ///////////////////////////// walkToTargetIndexMut
 
@@ -466,7 +489,7 @@ const Node = union(enum) {
                         null,
                 };
             },
-            .leaf => return f(ctx, self),
+            .leaf => |leaf| return f(ctx, &leaf),
         }
     }
 
@@ -535,7 +558,7 @@ const Leaf = struct {
         };
     }
 
-    fn is_empty(self: *const Leaf) bool {
+    fn isEmpty(self: *const Leaf) bool {
         return self.buf.len == 0 and !self.bol and !self.eol;
     }
 };
