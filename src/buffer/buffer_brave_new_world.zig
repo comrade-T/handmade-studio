@@ -358,14 +358,17 @@ const Node = union(enum) {
                     return WalkMutResult{ .replace = replacement };
                 }
 
+                const insert_at_end = cx.current_index.* + leaf.buf.len == cx.target_index;
+                if (insert_at_end) {
+                    new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
+                    const left = Leaf.new(cx.a, leaf.buf, leaf.bol, false) catch |err| return .{ .err = err };
+                    const right = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
                 unreachable;
 
-                // const insert_at_end = cx.current_index.* + leaf_node.leaf.buf.len == cx.target_index;
-                // if (insert_at_end) {
-                //     const replacement = Node.new(cx.a, leaf_node, new_leaf_node) catch |err| return .{ .err = err };
-                //     return WalkMutResult{ .replace = replacement };
-                // }
-                //
                 // const old_buf = leaf_node.leaf.buf;
                 // const split_index = cx.target_index - cx.current_index.*;
                 //
@@ -414,26 +417,48 @@ const Node = union(enum) {
         // target_index at start of Leaf
         {
             const root = try Node.fromString(a, "BCD", false);
-            const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            const new_root = try root.insertChars(a, 0, "A");
             try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
         }
         {
             const root = try Node.fromString(a, "BCD", true);
-            const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+            const new_root = try root.insertChars(a, 0, "A");
             try eqDeep(Weights{ .bols = 1, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
         }
+        {
+            const root = try Leaf.new(a, "BCD", true, true);
+            const new_root = try root.insertChars(a, 0, "A");
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 5 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
 
-        // { // target_index at end of Leaf
-        //     const root = try Node.fromString(a, "A");
-        //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-        //     try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
-        //     try eqStr("A", new_root.branch.left.leaf.buf);
-        //     try eqStr("BCD", new_root.branch.right.leaf.buf);
-        // }
+        // target_index at end of Leaf
+        {
+            const root = try Node.fromString(a, "A", false);
+            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
+        {
+            const root = try Node.fromString(a, "A", true);
+            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            try eqDeep(Weights{ .bols = 1, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
+        {
+            const root = try Leaf.new(idc_if_it_leaks, "A", true, true);
+            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 5 }, new_root.weights());
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
 
         // { // target_index at middle of Leaf
         //     const root = try Node.fromString(a, "ACD");
