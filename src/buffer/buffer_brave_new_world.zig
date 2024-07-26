@@ -247,15 +247,28 @@ const Node = union(enum) {
         const a = idc_if_it_leaks;
         {
             const root = try __inputCharsOneAfterAnother(a, "abcd");
-            try eqDeep(Weights{ .depth = 4, .len = 4 }, root.weights());
+            const root_debug_str =
+                \\4
+                \\  1 `a`
+                \\  3
+                \\    1 `b`
+                \\    2
+                \\      1 `c`
+                \\      1 `d`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
             const balanced_root = try root.balance(a);
-            try eqDeep(Weights{ .depth = 3, .len = 4 }, balanced_root.weights());
-            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.left.weights());
-            try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
-            try eqStr("b", balanced_root.branch.left.branch.right.leaf.buf);
-            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
-            try eqStr("c", balanced_root.branch.right.branch.left.leaf.buf);
-            try eqStr("d", balanced_root.branch.right.branch.right.leaf.buf);
+            const balanced_root_debug_str =
+                \\3
+                \\  2
+                \\    1 `a`
+                \\    1 `b`
+                \\  2
+                \\    1 `c`
+                \\    1 `d`
+            ;
+            try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
         }
         {
             const root = try __inputCharsOneAfterAnother(a, "abcde");
@@ -579,6 +592,13 @@ const Node = union(enum) {
                 try branch.right._debugPrint(a, result, indent_level + 2);
             },
             .leaf => |leaf| {
+                if (!leaf.bol and !leaf.eol) {
+                    const content = try std.fmt.allocPrint(a, "1 `{s}`", .{leaf.buf});
+                    defer a.free(content);
+                    try result.appendSlice(content);
+                    return;
+                }
+
                 var leaf_status = [_]u8{ ' ', '|', ' ' };
                 if (leaf.bol) leaf_status[0] = 'B';
                 if (leaf.eol) leaf_status[2] = 'E';
@@ -591,6 +611,19 @@ const Node = union(enum) {
 
     test debugPrint {
         const a = idc_if_it_leaks;
+        {
+            const root = try __inputCharsOneAfterAnother(a, "abcd");
+            const expected =
+                \\4
+                \\  1 `a`
+                \\  3
+                \\    1 `b`
+                \\    2
+                \\      1 `c`
+                \\      1 `d`
+            ;
+            try eqStr(expected, try root.debugPrint());
+        }
         {
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
             const expected =
