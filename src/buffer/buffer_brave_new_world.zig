@@ -243,37 +243,37 @@ const Node = union(enum) {
             },
         }
     }
-    // test balance {
-    //     const a = idc_if_it_leaks;
-    //     {
-    //         const root = try __inputCharsOneAfterAnother(a, "abcd");
-    //         try eqDeep(Weights{ .depth = 4, .len = 4 }, root.weights());
-    //         const balanced_root = try root.balance(a);
-    //         try eqDeep(Weights{ .depth = 3, .len = 4 }, balanced_root.weights());
-    //         try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.left.weights());
-    //         try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
-    //         try eqStr("b", balanced_root.branch.left.branch.right.leaf.buf);
-    //         try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
-    //         try eqStr("c", balanced_root.branch.right.branch.left.leaf.buf);
-    //         try eqStr("d", balanced_root.branch.right.branch.right.leaf.buf);
-    //     }
-    //     {
-    //         const root = try __inputCharsOneAfterAnother(a, "abcde");
-    //         try eqDeep(Weights{ .depth = 5, .len = 5 }, root.weights());
-    //         const balanced_root = try root.balance(a);
-    //         try eqDeep(Weights{ .depth = 4, .len = 5 }, balanced_root.weights());
-    //         try eqDeep(Weights{ .depth = 3, .len = 3 }, balanced_root.branch.left.weights());
-    //         try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
-    //         try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
-    //         try eqStr("b", balanced_root.branch.left.branch.right.branch.left.leaf.buf);
-    //         try eqStr("c", balanced_root.branch.left.branch.right.branch.right.leaf.buf);
-    //         try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
-    //         try eqStr("d", balanced_root.branch.right.branch.left.leaf.buf);
-    //         try eqStr("e", balanced_root.branch.right.branch.right.leaf.buf);
-    //     }
-    // }
+    test balance {
+        const a = idc_if_it_leaks;
+        {
+            const root = try __inputCharsOneAfterAnother(a, "abcd");
+            try eqDeep(Weights{ .depth = 4, .len = 4 }, root.weights());
+            const balanced_root = try root.balance(a);
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, balanced_root.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.left.weights());
+            try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
+            try eqStr("b", balanced_root.branch.left.branch.right.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+            try eqStr("c", balanced_root.branch.right.branch.left.leaf.buf);
+            try eqStr("d", balanced_root.branch.right.branch.right.leaf.buf);
+        }
+        {
+            const root = try __inputCharsOneAfterAnother(a, "abcde");
+            try eqDeep(Weights{ .depth = 5, .len = 5 }, root.weights());
+            const balanced_root = try root.balance(a);
+            try eqDeep(Weights{ .depth = 4, .len = 5 }, balanced_root.weights());
+            try eqDeep(Weights{ .depth = 3, .len = 3 }, balanced_root.branch.left.weights());
+            try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+            try eqStr("b", balanced_root.branch.left.branch.right.branch.left.leaf.buf);
+            try eqStr("c", balanced_root.branch.left.branch.right.branch.right.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
+            try eqStr("d", balanced_root.branch.right.branch.left.leaf.buf);
+            try eqStr("e", balanced_root.branch.right.branch.right.leaf.buf);
+        }
+    }
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
-        var root = try Node.fromString(a, "");
+        var root = try Node.fromString(a, "", false);
         for (0..chars.len) |i| {
             root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
         }
@@ -286,30 +286,30 @@ const Node = union(enum) {
         const b = try Node.new(allocator, other.branch.left, a);
         return b;
     }
-    // test rotateRight {
-    //     const a = idc_if_it_leaks;
-    //     {
-    //         const abc = try Node.fromString(a, "ACD");
-    //         const abcd = try abc.insertChars(a, 1, "B");
-    //         const root = try abcd.insertChars(a, 1, "a");
-    //
-    //         const node_to_rotate = root.branch.right;
-    //         try eqDeep(Weights{ .depth = 3, .len = 4 }, node_to_rotate.weights());
-    //         try eqDeep(Weights{ .depth = 2, .len = 2 }, node_to_rotate.branch.left.weights());
-    //         try eqStr("a", node_to_rotate.branch.left.branch.left.leaf.buf);
-    //         try eqStr("B", node_to_rotate.branch.left.branch.right.leaf.buf);
-    //         try eqDeep(Weights{ .depth = 1, .len = 2 }, node_to_rotate.branch.right.weights());
-    //         try eqStr("CD", node_to_rotate.branch.right.leaf.buf);
-    //
-    //         const result = try node_to_rotate.rotateRight(a);
-    //         try eqDeep(Weights{ .depth = 3, .len = 4 }, result.weights());
-    //         try eqDeep(Weights{ .depth = 1, .len = 1 }, result.branch.left.weights());
-    //         try eqStr("a", result.branch.left.leaf.buf);
-    //         try eqDeep(Weights{ .depth = 2, .len = 3 }, result.branch.right.weights());
-    //         try eqStr("B", result.branch.right.branch.left.leaf.buf);
-    //         try eqStr("CD", result.branch.right.branch.right.leaf.buf);
-    //     }
-    // }
+    test rotateRight {
+        const a = idc_if_it_leaks;
+        {
+            const abc = try Node.fromString(a, "ACD", false);
+            const abcd = try abc.insertChars(a, 1, "B");
+            const root = try abcd.insertChars(a, 1, "a");
+
+            const node_to_rotate = root.branch.right;
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, node_to_rotate.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, node_to_rotate.branch.left.weights());
+            try eqStr("a", node_to_rotate.branch.left.branch.left.leaf.buf);
+            try eqStr("B", node_to_rotate.branch.left.branch.right.leaf.buf);
+            try eqDeep(Weights{ .depth = 1, .len = 2 }, node_to_rotate.branch.right.weights());
+            try eqStr("CD", node_to_rotate.branch.right.leaf.buf);
+
+            const result = try node_to_rotate.rotateRight(a);
+            try eqDeep(Weights{ .depth = 3, .len = 4 }, result.weights());
+            try eqDeep(Weights{ .depth = 1, .len = 1 }, result.branch.left.weights());
+            try eqStr("a", result.branch.left.leaf.buf);
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, result.branch.right.weights());
+            try eqStr("B", result.branch.right.branch.left.leaf.buf);
+            try eqStr("CD", result.branch.right.branch.right.leaf.buf);
+        }
+    }
 
     fn rotateLeft(self: *const Node, allocator: Allocator) !*const Node {
         const other = self.branch.right;
@@ -317,22 +317,22 @@ const Node = union(enum) {
         const b = try Node.new(allocator, a, other.branch.right);
         return b;
     }
-    // test rotateLeft {
-    //     const a = idc_if_it_leaks;
-    //     {
-    //         const acd = try Node.fromString(a, "ACD");
-    //         const abcd = try acd.insertChars(a, 1, "B");
-    //         const old_root = try abcd.insertChars(a, 4, "E");
-    //         const new_root = try old_root.rotateLeft(a);
-    //         try eqDeep(Weights{ .depth = 3, .len = 5 }, new_root.weights());
-    //         try eqDeep(Weights{ .depth = 2, .len = 2 }, new_root.branch.left.weights());
-    //         try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
-    //         try eqStr("A", new_root.branch.left.branch.left.leaf.buf);
-    //         try eqStr("B", new_root.branch.left.branch.right.leaf.buf);
-    //         try eqStr("CD", new_root.branch.right.branch.left.leaf.buf);
-    //         try eqStr("E", new_root.branch.right.branch.right.leaf.buf);
-    //     }
-    // }
+    test rotateLeft {
+        const a = idc_if_it_leaks;
+        {
+            const acd = try Node.fromString(a, "ACD", false);
+            const abcd = try acd.insertChars(a, 1, "B");
+            const old_root = try abcd.insertChars(a, 4, "E");
+            const new_root = try old_root.rotateLeft(a);
+            try eqDeep(Weights{ .depth = 3, .len = 5 }, new_root.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 2 }, new_root.branch.left.weights());
+            try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
+            try eqStr("A", new_root.branch.left.branch.left.leaf.buf);
+            try eqStr("B", new_root.branch.left.branch.right.leaf.buf);
+            try eqStr("CD", new_root.branch.right.branch.left.leaf.buf);
+            try eqStr("E", new_root.branch.right.branch.right.leaf.buf);
+        }
+    }
 
     ///////////////////////////// Insert Chars
 
@@ -618,7 +618,7 @@ const Weights = struct {
     bols: u32 = 0,
     eols: u32 = 0,
     len: u32 = 0,
-    depth: u32 = 1,
+    depth: u16 = 1,
 
     fn add(self: *Weights, other: Weights) void {
         self.bols += other.bols;
