@@ -492,6 +492,19 @@ const Node = union(enum) {
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, abcde.branch.right.branch.right.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "E" }, abcde.branch.right.branch.right.branch.right.leaf);
         }
+
+        // multi line insert in the middle
+        {
+            const abcd = try Leaf.new(a, "ABCD", false, false);
+            const new_root = try abcd.insertChars(a, 1, "1\n22"); // should result in `A1\n22BCD`
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 4, .len = 8 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 3, .len = 7 }, new_root.branch.right.weights());
+            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 4 }, new_root.branch.right.branch.left.weights());
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "1" }, new_root.branch.right.branch.left.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "22" }, new_root.branch.right.branch.left.branch.right.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.branch.right.leaf);
+        }
     }
 
     ///////////////////////////// walkToTargetIndexMut
