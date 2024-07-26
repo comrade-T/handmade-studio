@@ -214,32 +214,43 @@ const Node = union(enum) {
                 const right = try branch.right.balance(a);
 
                 const balance_factor = calculateBalanceFactor(left, right);
+                var result: *const Node = undefined;
 
                 if (@abs(balance_factor) > MAX_IMBALANCE) {
                     if (balance_factor < 0) {
                         const right_balance_factor = calculateBalanceFactor(right.branch.left, right.branch.right);
                         if (right_balance_factor <= 0) {
                             const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
-                            return try this.rotateLeft(a);
+                            result = try this.rotateLeft(a);
+                        } else {
+                            const new_right = try right.rotateRight(a);
+                            const this = try Node.new(a, left, new_right);
+                            result = try this.rotateLeft(a);
                         }
-
-                        const new_right = try right.rotateRight(a);
-                        const this = try Node.new(a, left, new_right);
-                        return try this.rotateLeft(a);
+                    } else {
+                        const left_balance_factor = calculateBalanceFactor(left.branch.left, left.branch.right);
+                        if (left_balance_factor >= 0) {
+                            const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
+                            result = try this.rotateRight(a);
+                        } else {
+                            const new_left = try left.rotateLeft(a);
+                            const this = try Node.new(a, new_left, right);
+                            result = try this.rotateRight(a);
+                        }
                     }
-
-                    const left_balance_factor = calculateBalanceFactor(left.branch.left, left.branch.right);
-                    if (left_balance_factor >= 0) {
-                        const this = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
-                        return try this.rotateRight(a);
-                    }
-
-                    const new_left = try left.rotateLeft(a);
-                    const this = try Node.new(a, new_left, right);
-                    return try this.rotateRight(a);
+                } else {
+                    result = if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
                 }
 
-                return if (branch.left != left or branch.right != right) try Node.new(a, left, right) else self;
+                if (result.* == .branch and @abs(calculateBalanceFactor(result.branch.left, result.branch.right)) > MAX_IMBALANCE) {
+                    result = try result.balance(a);
+                }
+
+                if (result.* == .branch and @abs(calculateBalanceFactor(result.branch.left, result.branch.right)) > MAX_IMBALANCE) {
+                    std.debug.print("what the fuck\n", .{});
+                }
+
+                return result;
             },
         }
     }
@@ -299,11 +310,28 @@ const Node = union(enum) {
             ;
             try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
         }
+        // {
+        //     const source = "abcdefghijklmnopqrstuvwxyz1234567890" ** 30;
+        //     const root = try __inputCharsAndRebalanceOneAfterAnother(a, source);
+        //     const balanced_root = try root.balance(a);
+        //     const balanced_root_debug_str =
+        //         \\            1 `8`
+        //     ;
+        //     try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
+        // }
     }
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
         var root = try Node.fromString(a, "", false);
         for (0..chars.len) |i| {
             root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
+        }
+        return root;
+    }
+    fn __inputCharsAndRebalanceOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
+        var root = try Node.fromString(a, "", false);
+        for (0..chars.len) |i| {
+            root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
+            root = try root.balance(a);
         }
         return root;
     }
