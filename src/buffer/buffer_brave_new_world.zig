@@ -272,17 +272,32 @@ const Node = union(enum) {
         }
         {
             const root = try __inputCharsOneAfterAnother(a, "abcde");
-            try eqDeep(Weights{ .depth = 5, .len = 5 }, root.weights());
+            const root_debug_str =
+                \\5
+                \\  1 `a`
+                \\  4
+                \\    1 `b`
+                \\    3
+                \\      1 `c`
+                \\      2
+                \\        1 `d`
+                \\        1 `e`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
             const balanced_root = try root.balance(a);
-            try eqDeep(Weights{ .depth = 4, .len = 5 }, balanced_root.weights());
-            try eqDeep(Weights{ .depth = 3, .len = 3 }, balanced_root.branch.left.weights());
-            try eqStr("a", balanced_root.branch.left.branch.left.leaf.buf);
-            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
-            try eqStr("b", balanced_root.branch.left.branch.right.branch.left.leaf.buf);
-            try eqStr("c", balanced_root.branch.left.branch.right.branch.right.leaf.buf);
-            try eqDeep(Weights{ .depth = 2, .len = 2 }, balanced_root.branch.right.weights());
-            try eqStr("d", balanced_root.branch.right.branch.left.leaf.buf);
-            try eqStr("e", balanced_root.branch.right.branch.right.leaf.buf);
+            const balanced_root_debug_str =
+                \\4
+                \\  3
+                \\    1 `a`
+                \\    2
+                \\      1 `b`
+                \\      1 `c`
+                \\  2
+                \\    1 `d`
+                \\    1 `e`
+            ;
+            try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
         }
     }
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
