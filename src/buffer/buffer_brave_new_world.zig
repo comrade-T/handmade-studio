@@ -559,13 +559,50 @@ const Node = union(enum) {
         try eqDeep(Weights{ .bols = 0, .eols = 1, .len = 5, .depth = 1 }, node.branch.right.weights());
     }
 
-    ///////////////////////////// Debug Print
+    ///////////////////////////// Debug Print Node
 
-    /// Prints a Node's info.
-    fn debugPrint(self: *const Node) void {
+    fn debugPrint(self: *const Node) ![]const u8 {
+        var result = std.ArrayList(u8).init(idc_if_it_leaks);
+        try self._debugPrint(idc_if_it_leaks, &result, 0);
+        return try result.toOwnedSlice();
+    }
+
+    fn _debugPrint(self: *const Node, a: Allocator, result: *std.ArrayList(u8), indent_level: usize) !void {
+        if (indent_level > 0) try result.append('\n');
+        for (0..indent_level) |_| try result.append(' ');
         switch (self.*) {
-            .branch => std.debug.print("Branch: depth: {d} | len: {d}\n", .{ self.weights().depth, self.weights().len }),
-            .leaf => std.debug.print("Leaf: `{s}` | len: {d}\n", .{ self.leaf.buf, self.leaf.buf.len }),
+            .branch => |branch| {
+                const content = try std.fmt.allocPrint(a, "{d}", .{branch.weights.depth});
+                defer a.free(content);
+                try result.appendSlice(content);
+                try branch.left._debugPrint(a, result, indent_level + 2);
+                try branch.right._debugPrint(a, result, indent_level + 2);
+            },
+            .leaf => |leaf| {
+                var leaf_status = [_]u8{ ' ', '|', ' ' };
+                if (leaf.bol) leaf_status[0] = 'B';
+                if (leaf.eol) leaf_status[2] = 'E';
+                const content = try std.fmt.allocPrint(a, "1 {s} `{s}`", .{ &leaf_status, leaf.buf });
+                defer a.free(content);
+                try result.appendSlice(content);
+            },
+        }
+    }
+
+    test debugPrint {
+        const a = idc_if_it_leaks;
+        {
+            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+            const expected =
+                \\3
+                \\  2
+                \\    1 B|E `one`
+                \\    1 B|E `two`
+                \\  2
+                \\    1 B|E `three`
+                \\    1 B|  `four`
+            ;
+            try eqStr(expected, try root.debugPrint());
         }
     }
 };
