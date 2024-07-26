@@ -105,19 +105,26 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn fromString(a: Allocator, source: []const u8) !*const Node {
+    pub fn fromString(a: Allocator, source: []const u8, first_bol: bool) !*const Node {
         var stream = std.io.fixedBufferStream(source);
-        return Node.fromReader(a, stream.reader(), source.len);
+        return Node.fromReader(a, stream.reader(), source.len, first_bol);
     }
     test fromString {
-        const root = try Node.fromString(idc_if_it_leaks, "hello\nworld");
-        try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "hello" }, root.branch.left.leaf);
-        try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, root.branch.right.leaf);
+        {
+            const root = try Node.fromString(idc_if_it_leaks, "hello\nworld", false);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, root.branch.right.leaf);
+        }
+        {
+            const root = try Node.fromString(idc_if_it_leaks, "hello\nworld", true);
+            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "hello" }, root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, root.branch.right.leaf);
+        }
     }
 
     /// Use `reader` to read into a buffer, create leaves by new line from that buffer,
     /// then recursively merge those leaves.
-    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize) !*const Node {
+    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, first_bol: bool) !*const Node {
         const buf = try a.alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
@@ -126,7 +133,8 @@ const Node = union(enum) {
         const final_read = try reader.read(buf);
         if (final_read != 0) @panic("unexpected data in final read");
 
-        const leaves = try createLeavesByNewLine(a, buf);
+        var leaves = try createLeavesByNewLine(a, buf);
+        leaves[0].leaf.bol = first_bol;
         return try mergeLeaves(a, leaves);
     }
 
@@ -153,8 +161,21 @@ const Node = union(enum) {
         const rest = buf[b..];
         leaves[cur_leaf] = .{ .leaf = .{ .buf = rest, .bol = true, .eol = false } };
 
+        leaves[0].leaf.bol = false; // always make first Leaf NOT a .bol
+
         if (leaves.len != cur_leaf + 1) return error.Unexpected;
         return leaves;
+    }
+    test createLeavesByNewLine {
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "");
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "" }, leaves[0].leaf);
+        }
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "hello\nworld");
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, leaves[0].leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, leaves[1].leaf);
+        }
     }
 
     /// Recursively create and return Nodes given a slice of Leaves.
@@ -165,12 +186,14 @@ const Node = union(enum) {
         return Node.new(a, try mergeLeaves(a, leaves[0..mid]), try mergeLeaves(a, leaves[mid..]));
     }
     test mergeLeaves {
-        const leaves = try createLeavesByNewLine(idc_if_it_leaks, "one\ntwo\nthree\nfour");
-        const root = try mergeLeaves(idc_if_it_leaks, leaves);
-        try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "one" }, root.branch.left.branch.left.leaf);
-        try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "two" }, root.branch.left.branch.right.leaf);
-        try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "three" }, root.branch.right.branch.left.leaf);
-        try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "four" }, root.branch.right.branch.right.leaf);
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "one\ntwo\nthree\nfour");
+            const root = try mergeLeaves(idc_if_it_leaks, leaves);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "one" }, root.branch.left.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "two" }, root.branch.left.branch.right.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "three" }, root.branch.right.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "four" }, root.branch.right.branch.right.leaf);
+        }
     }
 
     ///////////////////////////// Balancing
@@ -375,42 +398,42 @@ const Node = union(enum) {
     //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
     //         try eqStr("A", new_root.leaf.buf);
     //     }
-    //     { // target_index at start of Leaf
-    //         const root = try Node.fromString(a, "BCD");
-    //         const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
-    //         try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
-    //         try eqStr("A", new_root.branch.left.leaf.buf);
-    //         try eqStr("BCD", new_root.branch.right.leaf.buf);
-    //     }
-    //     { // target_index at end of Leaf
-    //         const root = try Node.fromString(a, "A");
-    //         const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-    //         try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
-    //         try eqStr("A", new_root.branch.left.leaf.buf);
-    //         try eqStr("BCD", new_root.branch.right.leaf.buf);
-    //     }
-    //     { // target_index at middle of Leaf
-    //         const root = try Node.fromString(a, "ACD");
-    //         const new_root = try root.insertChars(idc_if_it_leaks, 1, "B");
-    //         try eqDeep(Weights{ .depth = 3, .len = 4 }, new_root.weights());
-    //         try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
-    //         try eqStr("A", new_root.branch.left.leaf.buf);
-    //         try eqStr("B", new_root.branch.right.branch.left.leaf.buf);
-    //         try eqStr("CD", new_root.branch.right.branch.right.leaf.buf);
-    //     }
-    //
-    //     {
-    //         const acd = try Node.fromString(a, "ACD");
-    //         const abcd = try acd.insertChars(idc_if_it_leaks, 1, "B");
-    //         const abcde = try abcd.insertChars(idc_if_it_leaks, 4, "E");
-    //         try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
-    //         try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
-    //         try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
-    //         try eqStr("A", abcde.branch.left.leaf.buf);
-    //         try eqStr("B", abcde.branch.right.branch.left.leaf.buf);
-    //         try eqStr("CD", abcde.branch.right.branch.right.branch.left.leaf.buf);
-    //         try eqStr("E", abcde.branch.right.branch.right.branch.right.leaf.buf);
-    //     }
+    //     // { // target_index at start of Leaf
+    //     //     const root = try Node.fromString(a, "BCD");
+    //     //     const new_root = try root.insertChars(idc_if_it_leaks, 0, "A");
+    //     //     try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
+    //     //     try eqStr("A", new_root.branch.left.leaf.buf);
+    //     //     try eqStr("BCD", new_root.branch.right.leaf.buf);
+    //     // }
+    //     // { // target_index at end of Leaf
+    //     //     const root = try Node.fromString(a, "A");
+    //     //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+    //     //     try eqDeep(Weights{ .depth = 2, .len = 4 }, new_root.weights());
+    //     //     try eqStr("A", new_root.branch.left.leaf.buf);
+    //     //     try eqStr("BCD", new_root.branch.right.leaf.buf);
+    //     // }
+    //     // { // target_index at middle of Leaf
+    //     //     const root = try Node.fromString(a, "ACD");
+    //     //     const new_root = try root.insertChars(idc_if_it_leaks, 1, "B");
+    //     //     try eqDeep(Weights{ .depth = 3, .len = 4 }, new_root.weights());
+    //     //     try eqDeep(Weights{ .depth = 2, .len = 3 }, new_root.branch.right.weights());
+    //     //     try eqStr("A", new_root.branch.left.leaf.buf);
+    //     //     try eqStr("B", new_root.branch.right.branch.left.leaf.buf);
+    //     //     try eqStr("CD", new_root.branch.right.branch.right.leaf.buf);
+    //     // }
+    //     //
+    //     // {
+    //     //     const acd = try Node.fromString(a, "ACD");
+    //     //     const abcd = try acd.insertChars(idc_if_it_leaks, 1, "B");
+    //     //     const abcde = try abcd.insertChars(idc_if_it_leaks, 4, "E");
+    //     //     try eqDeep(Weights{ .depth = 4, .len = 5 }, abcde.weights());
+    //     //     try eqDeep(Weights{ .depth = 3, .len = 4 }, abcde.branch.right.weights());
+    //     //     try eqDeep(Weights{ .depth = 2, .len = 3 }, abcde.branch.right.branch.right.weights());
+    //     //     try eqStr("A", abcde.branch.left.leaf.buf);
+    //     //     try eqStr("B", abcde.branch.right.branch.left.leaf.buf);
+    //     //     try eqStr("CD", abcde.branch.right.branch.right.branch.left.leaf.buf);
+    //     //     try eqStr("E", abcde.branch.right.branch.right.branch.right.leaf.buf);
+    //     // }
     // }
 
     ///////////////////////////// walkToTargetIndexMut
