@@ -32,7 +32,7 @@ const WalkMutResult = struct {
     const found = WalkMutResult{ .found = true };
     const removed = WalkMutResult{ .removed = true };
 
-    fn merge(a: Allocator, b: Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
+    fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
         var result = WalkMutResult{};
         result.err = if (left.err) |_| left.err else right.err;
         result.keep_walking = left.keep_walking and right.keep_walking;
@@ -41,7 +41,7 @@ const WalkMutResult = struct {
         if (!result.removed) result.replace = _getReplacement(a, b, left, right) catch |err| return .{ .err = err };
         return result;
     }
-    fn _getReplacement(a: Allocator, b: Branch, left: WalkMutResult, right: WalkMutResult) !?*const Node {
+    fn _getReplacement(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) !?*const Node {
         const left_replace = if (left.replace) |p| p else b.left;
         const right_replace = if (right.replace) |p| p else b.right;
         if (left.removed) return right_replace;
@@ -59,20 +59,20 @@ const WalkMutResult = struct {
             const left_result = WalkMutResult.keep_walking;
             const right_replace = try Leaf.new(a, "_2", true, false);
             const right_result = WalkMutResult{ .found = true, .replace = right_replace };
-            const merge_result = WalkMutResult.merge(a, node.branch, left_result, right_result);
+            const merge_result = WalkMutResult.merge(a, &node.branch, left_result, right_result);
             try eq(left, merge_result.replace.?.branch.left);
             try eq(right_replace, merge_result.replace.?.branch.right);
         }
         {
-            const merge_result = WalkMutResult.merge(a, node.branch, WalkMutResult.removed, WalkMutResult.found);
+            const merge_result = WalkMutResult.merge(a, &node.branch, WalkMutResult.removed, WalkMutResult.found);
             try eq(right, merge_result.replace.?);
         }
         {
-            const merge_result = WalkMutResult.merge(a, node.branch, WalkMutResult.found, WalkMutResult.removed);
+            const merge_result = WalkMutResult.merge(a, &node.branch, WalkMutResult.keep_walking, WalkMutResult.removed);
             try eq(left, merge_result.replace.?);
         }
         {
-            const merge_result = WalkMutResult.merge(a, node.branch, WalkMutResult.removed, WalkMutResult.removed);
+            const merge_result = WalkMutResult.merge(a, &node.branch, WalkMutResult.removed, WalkMutResult.removed);
             try eq(null, merge_result.replace);
             try eq(true, merge_result.removed);
         }
@@ -408,6 +408,94 @@ const Node = union(enum) {
         }
     }
 
+    ///////////////////////////// Delete Bytes
+
+    fn deleteBytes(self: *const Node, a: Allocator, start_byte: usize, num_of_bytes_to_delete: usize) !*const Node {
+        const DeleteBytesCtx = struct {
+            a: Allocator,
+            bytes_deleted: usize = 0,
+            current_index: *usize,
+            num_of_bytes_to_delete: usize,
+            start_byte: usize,
+            end_byte: usize,
+
+            fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
+                const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
+
+                if (cx.start_byte >= cx.current_index.*) {
+                    const split_index = cx.start_byte - cx.current_index.*;
+                    const right_split = leaf.buf[split_index + cx.num_of_bytes_to_delete .. leaf.buf.len];
+                    if (right_split.len == 0) return WalkMutResult.removed;
+                    const replace = Leaf.new(cx.a, right_split, leaf.bol, false) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replace };
+                }
+
+                unreachable;
+            }
+        };
+
+        const end_byte = start_byte + num_of_bytes_to_delete;
+        if (start_byte > self.weights().len or end_byte > self.weights().len) return error.IndexOutOfBounds;
+
+        var current_index: usize = 0;
+        var ctx = DeleteBytesCtx{
+            .a = a,
+            .current_index = &current_index,
+            .num_of_bytes_to_delete = num_of_bytes_to_delete,
+            .start_byte = start_byte,
+            .end_byte = end_byte,
+        };
+        const walk_result = self.walkToDelete(a, &current_index, start_byte, end_byte, DeleteBytesCtx.walker, &ctx);
+
+        if (walk_result.err) |e| return e;
+        return if (walk_result.replace) |replacement| replacement else try Leaf.new(a, "", true, false);
+    }
+
+    test deleteBytes {
+        const a = idc_if_it_leaks;
+        {
+            const root = try Leaf.new(a, "ABCD", true, false);
+            const new_root = try root.deleteBytes(a, 0, 1);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "BCD" }, new_root.leaf);
+        }
+        {
+            const root = try Leaf.new(a, "ABCD", true, false);
+            const new_root = try root.deleteBytes(a, 0, 2);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "CD" }, new_root.leaf);
+        }
+        {
+            const root = try Leaf.new(a, "ABCD", true, false);
+            const new_root = try root.deleteBytes(a, 0, 4);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "" }, new_root.leaf);
+        }
+        // {
+        //     const root = try Leaf.new(a, "ABCD", true, false);
+        //     const new_root = try root.deleteBytes(a, 1, 1);
+        //     try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "ACD" }, new_root.leaf);
+        // }
+    }
+
+    fn walkToDelete(self: *const Node, a: Allocator, current_index: *usize, start_byte: usize, end_byte: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
+        if (current_index.* > end_byte) return WalkMutResult.stop;
+
+        switch (self.*) {
+            .branch => |*branch| {
+                const left_end = current_index.* + branch.left.weights().len;
+
+                const left_result = if (start_byte < left_end)
+                    branch.left.walkToDelete(a, current_index, start_byte, end_byte, f, ctx)
+                else
+                    WalkMutResult.keep_walking;
+
+                current_index.* = left_end;
+                const right_result = branch.right.walkToDelete(a, current_index, start_byte, end_byte, f, ctx);
+
+                return WalkMutResult.merge(a, branch, left_result, right_result);
+            },
+            .leaf => |*leaf| return f(ctx, leaf),
+        }
+    }
+
     ///////////////////////////// Insert Chars
 
     fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
@@ -460,7 +548,7 @@ const Node = union(enum) {
         const buf = try a.dupe(u8, chars);
         var current_index: usize = 0;
         var ctx = InsertCharsCtx{ .a = a, .buf = buf, .current_index = &current_index, .target_index = target_index };
-        const walk_result = self.walkToTargetIndexMut(a, &current_index, target_index, InsertCharsCtx.walker, &ctx);
+        const walk_result = self.walkToInsert(a, &current_index, target_index, InsertCharsCtx.walker, &ctx);
 
         if (walk_result.err) |e| return e;
         if (walk_result.replace) |replacement| return replacement;
@@ -581,15 +669,17 @@ const Node = union(enum) {
         }
     }
 
-    ///////////////////////////// walkToTargetIndexMut
+    ///////////////////////////// walkToInsert
 
-    fn walkToTargetIndexMut(self: *const Node, a: Allocator, current_index: *usize, target_index: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
+    fn walkToInsert(self: *const Node, a: Allocator, current_index: *usize, target_index: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
+        if (current_index.* > target_index) return WalkMutResult.stop;
+
         switch (self.*) {
             .branch => |*branch| {
                 const left_end = current_index.* + branch.left.weights().len;
 
                 if (target_index < left_end) {
-                    const left_result = branch.left.walkToTargetIndexMut(a, current_index, target_index, f, ctx);
+                    const left_result = branch.left.walkToInsert(a, current_index, target_index, f, ctx);
                     return WalkMutResult{
                         .err = left_result.err,
                         .found = left_result.found,
@@ -601,7 +691,7 @@ const Node = union(enum) {
                 }
 
                 current_index.* = left_end;
-                const right_result = branch.right.walkToTargetIndexMut(a, current_index, target_index, f, ctx);
+                const right_result = branch.right.walkToInsert(a, current_index, target_index, f, ctx);
                 return WalkMutResult{
                     .err = right_result.err,
                     .found = right_result.found,
