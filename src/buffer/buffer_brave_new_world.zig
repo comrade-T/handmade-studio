@@ -413,31 +413,41 @@ const Node = union(enum) {
     fn deleteBytes(self: *const Node, a: Allocator, start_byte: usize, num_of_bytes_to_delete: usize) !*const Node {
         const DeleteBytesCtx = struct {
             a: Allocator,
-            bytes_deleted: usize = 0,
-            current_index: *usize,
-            first_affected_leaf_bol: ?bool = null,
-            num_of_bytes_to_delete: usize,
+
+            first_leaf_encountered: bool = false,
+            first_leaf_removed_bol: ?bool = null,
+
             start_byte: usize,
+            num_of_bytes_to_delete: usize,
             end_byte: usize,
+
+            current_index: *usize,
+            bytes_deleted: usize = 0,
 
             fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
                 const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
 
-                if (cx.first_affected_leaf_bol == null) cx.first_affected_leaf_bol = leaf.bol;
                 if (cx.end_byte == cx.current_index.*) {
-                    if (cx.first_affected_leaf_bol) |bol| {
+                    if (cx.first_leaf_removed_bol) |bol| {
                         const replace = Leaf.new(cx.a, leaf.buf, bol, leaf.eol) catch |err| return .{ .err = err };
                         return WalkMutResult{ .replace = replace };
                     }
                     return WalkMutResult.stop;
                 }
 
-                if (cx.start_byte >= cx.current_index.*) {
+                const start_byte_in_leaf_range = cx.current_index.* <= cx.start_byte;
+                const end_byte_in_leaf_range = cx.current_index.* + leaf.buf.len >= cx.end_byte;
+                const leaf_covers_entire_delete_range = start_byte_in_leaf_range and end_byte_in_leaf_range;
+
+                if (leaf_covers_entire_delete_range) {
                     const split_index = cx.start_byte - cx.current_index.*;
                     const left_split = leaf.buf[0..split_index];
                     const right_split = leaf.buf[split_index + cx.num_of_bytes_to_delete .. leaf.buf.len];
 
-                    if (left_split.len == 0 and right_split.len == 0) return WalkMutResult.removed;
+                    if (left_split.len == 0 and right_split.len == 0) {
+                        if (!cx.first_leaf_encountered and cx.first_leaf_removed_bol == null) cx.first_leaf_removed_bol = leaf.bol;
+                        return WalkMutResult.removed;
+                    }
 
                     if (left_split.len == 0) {
                         const right = Leaf.new(cx.a, right_split, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
@@ -455,7 +465,7 @@ const Node = union(enum) {
                     return WalkMutResult{ .replace = replace };
                 }
 
-                unreachable;
+                return WalkMutResult.stop;
             }
         };
 
@@ -537,10 +547,12 @@ const Node = union(enum) {
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
             }
             {
-                const new_root = try one_two_three_four.deleteBytes(a, 0, 3);
+                const new_root = try one_two_three_four.deleteBytes(a, 3, 2);
                 const new_root_debug_str =
                     \\3
-                    \\  1 B| `_two`
+                    \\  2
+                    \\    1 B| `one`
+                    \\    1 `wo`
                     \\  2
                     \\    1 `_three`
                     \\    1 `_four` |E
@@ -548,12 +560,10 @@ const Node = union(enum) {
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
             }
             {
-                const new_root = try one_two_three_four.deleteBytes(a, 3, 2);
+                const new_root = try one_two_three_four.deleteBytes(a, 0, 3);
                 const new_root_debug_str =
                     \\3
-                    \\  2
-                    \\    1 B| `one`
-                    \\    1 `wo`
+                    \\  1 B| `_two`
                     \\  2
                     \\    1 `_three`
                     \\    1 `_four` |E
