@@ -414,8 +414,8 @@ const Node = union(enum) {
         const DeleteBytesCtx = struct {
             a: Allocator,
 
-            first_leaf_encountered: bool = false,
-            first_leaf_removed_bol: ?bool = null,
+            leaves_encountered: usize = 0,
+            bol_of_first_leaf_encountered_got_wiped_out: ?bool = null,
 
             start_byte: usize,
             num_of_bytes_to_delete: usize,
@@ -426,46 +426,70 @@ const Node = union(enum) {
 
             fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
                 const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
+                defer cx.leaves_encountered += 1;
 
-                if (cx.end_byte == cx.current_index.*) {
-                    if (cx.first_leaf_removed_bol) |bol| {
+                const this_leaf_is_after_and_outside_delete_range = cx.current_index.* >= cx.end_byte;
+                if (this_leaf_is_after_and_outside_delete_range) {
+                    if (cx.bol_of_first_leaf_encountered_got_wiped_out) |bol| {
                         const replace = Leaf.new(cx.a, leaf.buf, bol, leaf.eol) catch |err| return .{ .err = err };
                         return WalkMutResult{ .replace = replace };
                     }
                     return WalkMutResult.stop;
                 }
 
+                const start_byte_before_leaf = cx.start_byte <= cx.current_index.*;
+                const end_byte_after_leaf = cx.end_byte >= cx.current_index.* + leaf.buf.len - 1;
+                const delete_range_completely_covers_this_leaf = start_byte_before_leaf and end_byte_after_leaf;
+
+                if (delete_range_completely_covers_this_leaf) {
+                    if (cx.leaves_encountered == 0 and cx.bol_of_first_leaf_encountered_got_wiped_out == null) cx.bol_of_first_leaf_encountered_got_wiped_out = leaf.bol;
+                    cx.bytes_deleted += leaf.buf.len;
+                    return WalkMutResult.removed;
+                }
+
                 const start_byte_in_leaf_range = cx.current_index.* <= cx.start_byte;
                 const end_byte_in_leaf_range = cx.current_index.* + leaf.buf.len >= cx.end_byte;
-                const leaf_covers_entire_delete_range = start_byte_in_leaf_range and end_byte_in_leaf_range;
+                const this_leaf_completely_covers_delete_range = start_byte_in_leaf_range and end_byte_in_leaf_range;
 
-                if (leaf_covers_entire_delete_range) {
+                if (this_leaf_completely_covers_delete_range) {
                     const split_index = cx.start_byte - cx.current_index.*;
-                    const left_split = leaf.buf[0..split_index];
-                    const right_split = leaf.buf[split_index + cx.num_of_bytes_to_delete .. leaf.buf.len];
+                    const left_side_content = leaf.buf[0..split_index];
+                    const right_side_content = leaf.buf[split_index + cx.num_of_bytes_to_delete .. leaf.buf.len];
 
-                    if (left_split.len == 0 and right_split.len == 0) {
-                        if (!cx.first_leaf_encountered and cx.first_leaf_removed_bol == null) cx.first_leaf_removed_bol = leaf.bol;
-                        return WalkMutResult.removed;
+                    const left_side_wiped_out = left_side_content.len == 0;
+                    if (left_side_wiped_out) {
+                        const right_side = Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                        return WalkMutResult{ .replace = right_side };
                     }
 
-                    if (left_split.len == 0) {
-                        const right = Leaf.new(cx.a, right_split, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
-                        return WalkMutResult{ .replace = right };
+                    const right_side_wiped_out = right_side_content.len == 0;
+                    if (right_side_wiped_out) {
+                        const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                        return WalkMutResult{ .replace = left_side };
                     }
 
-                    if (right_split.len == 0) {
-                        const left = Leaf.new(cx.a, left_split, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
-                        return WalkMutResult{ .replace = left };
-                    }
-
-                    const left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
-                    const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
-                    const replace = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                    const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, false) catch |err| return .{ .err = err };
+                    const right_side = Leaf.new(cx.a, right_side_content, false, leaf.eol) catch |err| return .{ .err = err };
+                    const replace = Node.new(cx.a, left_side, right_side) catch |err| return .{ .err = err };
                     return WalkMutResult{ .replace = replace };
                 }
 
-                return WalkMutResult.stop;
+                if (start_byte_in_leaf_range) {
+                    const split_index = cx.start_byte - cx.current_index.*;
+                    const left_side_content = leaf.buf[0..split_index];
+                    const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                    cx.bytes_deleted += leaf.buf.len - left_side_content.len;
+                    return WalkMutResult{ .replace = left_side };
+                }
+
+                if (end_byte_in_leaf_range) {
+                    const bytes_left_to_delete = cx.num_of_bytes_to_delete - cx.bytes_deleted;
+                    const right_side_content = leaf.buf[bytes_left_to_delete..];
+                    const right_side = Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = right_side };
+                }
+
+                unreachable;
             }
         };
 
@@ -572,11 +596,58 @@ const Node = union(enum) {
             }
         }
 
-        // TODO: Delete operation spans across multiple Leaves
+        { // Delete operation spans across multiple Leaves
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 1, 3);
+                const new_root_debug_str =
+                    \\3
+                    \\  2
+                    \\    1 B| `o`
+                    \\    1 `two`
+                    \\  2
+                    \\    1 `_three`
+                    \\    1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 1, 4);
+                const new_root_debug_str =
+                    \\3
+                    \\  2
+                    \\    1 B| `o`
+                    \\    1 `wo`
+                    \\  2
+                    \\    1 `_three`
+                    \\    1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 1, 6);
+                const new_root_debug_str =
+                    \\3
+                    \\  1 B| `o`
+                    \\  2
+                    \\    1 `_three`
+                    \\    1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 0, 6);
+                const new_root_debug_str =
+                    \\2
+                    \\  1 B| `_three`
+                    \\  1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+        }
     }
 
     fn walkToDelete(self: *const Node, a: Allocator, current_index: *usize, start_byte: usize, end_byte: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
-        if (current_index.* > end_byte) return WalkMutResult.stop;
+        if (current_index.* > end_byte + 1) return WalkMutResult.stop;
 
         switch (self.*) {
             .branch => |*branch| {
