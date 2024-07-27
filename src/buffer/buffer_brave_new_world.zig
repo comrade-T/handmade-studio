@@ -18,39 +18,36 @@ const idc_if_it_leaks = std.heap.page_allocator;
 const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutResult;
 
 /// Represents the result of a walk operation on a Node.
-/// This walk operation should never mutate the current Node and can potentially return a new Node.
+/// This walk operation never mutates the current Node and may create new Nodes.
 const WalkMutResult = struct {
     keep_walking: bool = false,
     found: bool = false,
     err: ?anyerror = null,
 
     replace: ?*const Node = null,
+    removed: bool = false,
 
     const keep_walking = WalkMutResult{ .keep_walking = true };
     const stop = WalkMutResult{ .keep_walking = false };
     const found = WalkMutResult{ .found = true };
 
-    // fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
-    //     return WalkerMut{
-    //         .err = if (left.err) |_| left.err else right.err,
-    //         .keep_walking = left.keep_walking and right.keep_walking,
-    //         .found = left.found or right.found,
-    //         .replace = if (left.replace == null and right.replace == null)
-    //             null
-    //         else
-    //             _mergeReplacements(a, b, left, right) catch |e| return WalkerMut{ .err = e },
-    //     };
-    // }
-    //
-    // fn _mergeReplacements(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) !*const Node {
-    //     const new_left = if (left.replace) |p| p else b.left;
-    //     const new_right = if (right.replace) |p| p else b.right;
-    //
-    //     if (new_left.is_empty()) return new_right;
-    //     if (new_right.is_empty()) return new_left;
-    //
-    //     return Node.new(a, new_left, new_right);
-    // }
+    fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
+        var result = WalkMutResult{};
+        result.err = if (left.err) |_| left.err else right.err;
+        result.keep_walking = left.keep_walking and right.keep_walking;
+        result.found = left.found or right.found;
+        result.removed = left.removed and right.removed;
+        if (!result.removed) result.replace = _getReplacement(a, b, left, right);
+        return result;
+    }
+    fn _getReplacement(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) ?*const Node {
+        if (left.removed) return right.replace;
+        if (right.removed) return left.replace;
+        if (left.replace == null and right.replace == null) return null;
+        const left_replace = if (left.replace) |p| p else b.left;
+        const right_replace = if (right.replace) |p| p else b.right;
+        return Node.new(a, left_replace, right_replace);
+    }
 };
 
 const Walker = *const fn (ctx: *anyopaque, node: *const Node) WalkResult;
