@@ -415,12 +415,22 @@ const Node = union(enum) {
             a: Allocator,
             bytes_deleted: usize = 0,
             current_index: *usize,
+            first_affected_leaf_bol: ?bool = null,
             num_of_bytes_to_delete: usize,
             start_byte: usize,
             end_byte: usize,
 
             fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
                 const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
+
+                if (cx.first_affected_leaf_bol == null) cx.first_affected_leaf_bol = leaf.bol;
+                if (cx.end_byte == cx.current_index.*) {
+                    if (cx.first_affected_leaf_bol) |bol| {
+                        const replace = Leaf.new(cx.a, leaf.buf, bol, leaf.eol) catch |err| return .{ .err = err };
+                        return WalkMutResult{ .replace = replace };
+                    }
+                    return WalkMutResult.stop;
+                }
 
                 if (cx.start_byte >= cx.current_index.*) {
                     const split_index = cx.start_byte - cx.current_index.*;
@@ -469,35 +479,90 @@ const Node = union(enum) {
     test deleteBytes {
         const a = idc_if_it_leaks;
 
-        // Delete operation contained only in 1 single Leaf node:
-        const abcd = try Leaf.new(a, "ABCD", true, false);
-        {
-            const new_root = try abcd.deleteBytes(a, 0, 1);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "BCD" }, new_root.leaf);
-        }
-        {
-            const new_root = try abcd.deleteBytes(a, 0, 2);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "CD" }, new_root.leaf);
-        }
-        {
-            const new_root = try abcd.deleteBytes(a, 0, 4);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "" }, new_root.leaf);
-        }
-        {
-            const new_root = try abcd.deleteBytes(a, 1, 1);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, new_root.branch.right.leaf);
-        }
-        {
-            const new_root = try abcd.deleteBytes(a, 1, 3);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.leaf);
-        }
-        {
-            const new_root = try abcd.deleteBytes(a, 3, 1);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "ABC" }, new_root.leaf);
+        { // Delete operation contained only in 1 single Leaf node, with Leaf as root:
+            const abcd = try Leaf.new(a, "ABCD", true, false);
+            {
+                const new_root = try abcd.deleteBytes(a, 0, 1);
+                try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "BCD" }, new_root.leaf);
+            }
+            {
+                const new_root = try abcd.deleteBytes(a, 0, 2);
+                try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "CD" }, new_root.leaf);
+            }
+            {
+                const new_root = try abcd.deleteBytes(a, 0, 4);
+                try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "" }, new_root.leaf);
+            }
+            {
+                const new_root = try abcd.deleteBytes(a, 1, 1);
+                try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+                try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, new_root.branch.right.leaf);
+            }
+            {
+                const new_root = try abcd.deleteBytes(a, 1, 3);
+                try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.leaf);
+            }
+            {
+                const new_root = try abcd.deleteBytes(a, 3, 1);
+                try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "ABC" }, new_root.leaf);
+            }
         }
 
-        // Delete operation spans across multiple Leaf nodes:
+        const one_two = try Node.new(a, try Leaf.new(a, "one", true, false), try Leaf.new(a, "_two", false, false));
+        const three_four = try Node.new(a, try Leaf.new(a, "_three", false, false), try Leaf.new(a, "_four", false, true));
+        const one_two_three_four = try Node.new(a, one_two, three_four);
+        const one_two_three_four_str =
+            \\3
+            \\  2
+            \\    1 B| `one`
+            \\    1 `_two`
+            \\  2
+            \\    1 `_three`
+            \\    1 `_four` |E
+        ;
+        try eqStr(one_two_three_four_str, try one_two_three_four.debugPrint());
+
+        { // Delete operation contained only in 1 single Leaf node, with Branch as root:
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 0, 1);
+                const new_root_debug_str =
+                    \\3
+                    \\  2
+                    \\    1 B| `ne`
+                    \\    1 `_two`
+                    \\  2
+                    \\    1 `_three`
+                    \\    1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 0, 3);
+                const new_root_debug_str =
+                    \\3
+                    \\  1 B| `_two`
+                    \\  2
+                    \\    1 `_three`
+                    \\    1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try one_two_three_four.deleteBytes(a, 3, 2);
+                const new_root_debug_str =
+                    \\3
+                    \\  2
+                    \\    1 B| `one`
+                    \\    1 `wo`
+                    \\  2
+                    \\    1 `_three`
+                    \\    1 `_four` |E
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+        }
+
+        // TODO: Delete operation spans across multiple Leaves
     }
 
     fn walkToDelete(self: *const Node, a: Allocator, current_index: *usize, start_byte: usize, end_byte: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
@@ -768,19 +833,12 @@ const Node = union(enum) {
                 try branch.right._debugPrint(a, result, indent_level + 2);
             },
             .leaf => |leaf| {
-                if (!leaf.bol and !leaf.eol) {
-                    const content = try std.fmt.allocPrint(a, "1 `{s}`", .{leaf.buf});
-                    defer a.free(content);
-                    try result.appendSlice(content);
-                    return;
-                }
-
-                var leaf_status = [_]u8{ ' ', '|', ' ' };
-                if (leaf.bol) leaf_status[0] = 'B';
-                if (leaf.eol) leaf_status[2] = 'E';
-                const content = try std.fmt.allocPrint(a, "1 {s} `{s}`", .{ &leaf_status, leaf.buf });
-                defer a.free(content);
-                try result.appendSlice(content);
+                try result.appendSlice("1 ");
+                if (leaf.bol) try result.appendSlice("B| ");
+                try result.append('`');
+                try result.appendSlice(leaf.buf);
+                try result.append('`');
+                if (leaf.eol) try result.appendSlice(" |E");
             },
         }
     }
@@ -805,11 +863,11 @@ const Node = union(enum) {
             const expected =
                 \\3
                 \\  2
-                \\    1 B|E `one`
-                \\    1 B|E `two`
+                \\    1 B| `one` |E
+                \\    1 B| `two` |E
                 \\  2
-                \\    1 B|E `three`
-                \\    1 B|  `four`
+                \\    1 B| `three` |E
+                \\    1 B| `four`
             ;
             try eqStr(expected, try root.debugPrint());
         }
