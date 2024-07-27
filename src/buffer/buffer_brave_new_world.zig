@@ -30,23 +30,52 @@ const WalkMutResult = struct {
     const keep_walking = WalkMutResult{ .keep_walking = true };
     const stop = WalkMutResult{ .keep_walking = false };
     const found = WalkMutResult{ .found = true };
+    const removed = WalkMutResult{ .removed = true };
 
-    fn merge(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
+    fn merge(a: Allocator, b: Branch, left: WalkMutResult, right: WalkMutResult) WalkMutResult {
         var result = WalkMutResult{};
         result.err = if (left.err) |_| left.err else right.err;
         result.keep_walking = left.keep_walking and right.keep_walking;
         result.found = left.found or right.found;
         result.removed = left.removed and right.removed;
-        if (!result.removed) result.replace = _getReplacement(a, b, left, right);
+        if (!result.removed) result.replace = _getReplacement(a, b, left, right) catch |err| return .{ .err = err };
         return result;
     }
-    fn _getReplacement(a: Allocator, b: *const Branch, left: WalkMutResult, right: WalkMutResult) ?*const Node {
-        if (left.removed) return right.replace;
-        if (right.removed) return left.replace;
-        if (left.replace == null and right.replace == null) return null;
+    fn _getReplacement(a: Allocator, b: Branch, left: WalkMutResult, right: WalkMutResult) !?*const Node {
         const left_replace = if (left.replace) |p| p else b.left;
         const right_replace = if (right.replace) |p| p else b.right;
-        return Node.new(a, left_replace, right_replace);
+        if (left.removed) return right_replace;
+        if (right.removed) return left_replace;
+        if (left.replace == null and right.replace == null) return null;
+        return try Node.new(a, left_replace, right_replace);
+    }
+
+    test merge {
+        const a = idc_if_it_leaks;
+        const left = try Leaf.new(a, "one", true, false);
+        const right = try Leaf.new(a, "_two", false, true);
+        const node = try Node.new(a, left, right);
+        {
+            const left_result = WalkMutResult.keep_walking;
+            const right_replace = try Leaf.new(a, "_2", true, false);
+            const right_result = WalkMutResult{ .found = true, .replace = right_replace };
+            const merge_result = WalkMutResult.merge(a, node.branch, left_result, right_result);
+            try eq(left, merge_result.replace.?.branch.left);
+            try eq(right_replace, merge_result.replace.?.branch.right);
+        }
+        {
+            const merge_result = WalkMutResult.merge(a, node.branch, WalkMutResult.removed, WalkMutResult.found);
+            try eq(right, merge_result.replace.?);
+        }
+        {
+            const merge_result = WalkMutResult.merge(a, node.branch, WalkMutResult.found, WalkMutResult.removed);
+            try eq(left, merge_result.replace.?);
+        }
+        {
+            const merge_result = WalkMutResult.merge(a, node.branch, WalkMutResult.removed, WalkMutResult.removed);
+            try eq(null, merge_result.replace);
+            try eq(true, merge_result.removed);
+        }
     }
 };
 
