@@ -424,9 +424,24 @@ const Node = union(enum) {
 
                 if (cx.start_byte >= cx.current_index.*) {
                     const split_index = cx.start_byte - cx.current_index.*;
+                    const left_split = leaf.buf[0..split_index];
                     const right_split = leaf.buf[split_index + cx.num_of_bytes_to_delete .. leaf.buf.len];
-                    if (right_split.len == 0) return WalkMutResult.removed;
-                    const replace = Leaf.new(cx.a, right_split, leaf.bol, false) catch |err| return .{ .err = err };
+
+                    if (left_split.len == 0 and right_split.len == 0) return WalkMutResult.removed;
+
+                    if (left_split.len == 0) {
+                        const right = Leaf.new(cx.a, right_split, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                        return WalkMutResult{ .replace = right };
+                    }
+
+                    if (right_split.len == 0) {
+                        const left = Leaf.new(cx.a, left_split, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                        return WalkMutResult{ .replace = left };
+                    }
+
+                    const left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
+                    const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
+                    const replace = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
                     return WalkMutResult{ .replace = replace };
                 }
 
@@ -453,26 +468,36 @@ const Node = union(enum) {
 
     test deleteBytes {
         const a = idc_if_it_leaks;
+
+        // Delete operation contained only in 1 single Leaf node:
+        const abcd = try Leaf.new(a, "ABCD", true, false);
         {
-            const root = try Leaf.new(a, "ABCD", true, false);
-            const new_root = try root.deleteBytes(a, 0, 1);
+            const new_root = try abcd.deleteBytes(a, 0, 1);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "BCD" }, new_root.leaf);
         }
         {
-            const root = try Leaf.new(a, "ABCD", true, false);
-            const new_root = try root.deleteBytes(a, 0, 2);
+            const new_root = try abcd.deleteBytes(a, 0, 2);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "CD" }, new_root.leaf);
         }
         {
-            const root = try Leaf.new(a, "ABCD", true, false);
-            const new_root = try root.deleteBytes(a, 0, 4);
+            const new_root = try abcd.deleteBytes(a, 0, 4);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "" }, new_root.leaf);
         }
-        // {
-        //     const root = try Leaf.new(a, "ABCD", true, false);
-        //     const new_root = try root.deleteBytes(a, 1, 1);
-        //     try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "ACD" }, new_root.leaf);
-        // }
+        {
+            const new_root = try abcd.deleteBytes(a, 1, 1);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, new_root.branch.right.leaf);
+        }
+        {
+            const new_root = try abcd.deleteBytes(a, 1, 3);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.leaf);
+        }
+        {
+            const new_root = try abcd.deleteBytes(a, 3, 1);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "ABC" }, new_root.leaf);
+        }
+
+        // Delete operation spans across multiple Leaf nodes:
     }
 
     fn walkToDelete(self: *const Node, a: Allocator, current_index: *usize, start_byte: usize, end_byte: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
