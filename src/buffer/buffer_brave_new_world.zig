@@ -676,61 +676,87 @@ const Node = union(enum) {
 
     ///////////////////////////// Insert Chars
 
-    fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
-        const InsertCharsCtx = struct {
-            a: Allocator,
-            buf: []const u8,
-            current_index: *usize,
-            target_index: usize,
+    const InsertCharsCtx = struct {
+        a: Allocator,
+        buf: []const u8,
+        target_index: usize,
+        current_index: usize = 0,
 
-            fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
-                const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
-                var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
+        fn walkToInsert(ctx: *@This(), node: *const Node) WalkMutResult {
+            if (ctx.current_index > ctx.target_index) return WalkMutResult.stop;
+            switch (node.*) {
+                .branch => |*branch| {
+                    const left_end = ctx.current_index + branch.left.weights().len;
+                    if (ctx.target_index < left_end) {
+                        const left_result = ctx.walkToInsert(branch.left);
+                        return WalkMutResult{
+                            .err = left_result.err,
+                            .found = left_result.found,
+                            .replace = if (left_result.replace) |replacement|
+                                Node.new(ctx.a, replacement, branch.right) catch |e| return WalkMutResult{ .err = e }
+                            else
+                                null,
+                        };
+                    }
+                    ctx.current_index = left_end;
+                    const right_result = ctx.walkToInsert(branch.right);
+                    return WalkMutResult{
+                        .err = right_result.err,
+                        .found = right_result.found,
+                        .replace = if (right_result.replace) |replacement|
+                            Node.new(ctx.a, branch.left, replacement) catch |e| return WalkMutResult{ .err = e }
+                        else
+                            null,
+                    };
+                },
+                .leaf => |leaf| return ctx.walker(&leaf),
+            }
+        }
 
-                if (leaf.isEmpty()) return WalkMutResult{ .replace = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err } };
+        fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
 
-                const insert_at_start = cx.current_index.* == cx.target_index;
-                if (insert_at_start) {
-                    new_leaves[0].leaf.bol = leaf.bol;
-                    const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                    const right = Leaf.new(cx.a, leaf.buf, false, leaf.eol) catch |err| return .{ .err = err };
-                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-                    return WalkMutResult{ .replace = replacement };
-                }
+            if (leaf.isEmpty()) return WalkMutResult{ .replace = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err } };
 
-                const insert_at_end = cx.current_index.* + leaf.buf.len == cx.target_index;
-                if (insert_at_end) {
-                    new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
-                    const left = Leaf.new(cx.a, leaf.buf, leaf.bol, false) catch |err| return .{ .err = err };
-                    const right = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-                    return WalkMutResult{ .replace = replacement };
-                }
-
-                const split_index = cx.target_index - cx.current_index.*;
-                const left_split = leaf.buf[0..split_index];
-                const right_split = leaf.buf[split_index..leaf.buf.len];
-
+            const insert_at_start = cx.current_index == cx.target_index;
+            if (insert_at_start) {
+                new_leaves[0].leaf.bol = leaf.bol;
                 const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
-                const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
-                const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-
-                const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
+                const right = Leaf.new(cx.a, leaf.buf, false, leaf.eol) catch |err| return .{ .err = err };
+                const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
                 return WalkMutResult{ .replace = replacement };
             }
-        };
 
+            const insert_at_end = cx.current_index + leaf.buf.len == cx.target_index;
+            if (insert_at_end) {
+                new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
+                const left = Leaf.new(cx.a, leaf.buf, leaf.bol, false) catch |err| return .{ .err = err };
+                const right = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                return WalkMutResult{ .replace = replacement };
+            }
+
+            // insert in middle
+            const split_index = cx.target_index - cx.current_index;
+            const left_split = leaf.buf[0..split_index];
+            const right_split = leaf.buf[split_index..leaf.buf.len];
+
+            const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+            const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
+            const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
+            const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+
+            const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
+            return WalkMutResult{ .replace = replacement };
+        }
+    };
+
+    fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
         if (target_index > self.weights().len) return error.IndexOutOfBounds;
-
         const buf = try a.dupe(u8, chars);
-        var current_index: usize = 0;
-        var ctx = InsertCharsCtx{ .a = a, .buf = buf, .current_index = &current_index, .target_index = target_index };
-        const walk_result = self.walkToInsert(a, &current_index, target_index, InsertCharsCtx.walker, &ctx);
-
-        if (walk_result.err) |e| return e;
-        if (walk_result.replace) |replacement| return replacement;
-        return error.NotFound;
+        var ctx = InsertCharsCtx{ .a = a, .buf = buf, .target_index = target_index };
+        const walk_result = ctx.walkToInsert(self);
+        return if (walk_result.err) |e| e else walk_result.replace.?;
     }
 
     test insertChars {
@@ -745,6 +771,7 @@ const Node = union(enum) {
         {
             const root = try Node.fromString(a, "", false);
             const new_root = try root.insertChars(a, 0, "hello\nworld");
+
             try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 11, .depth = 2 }, new_root.weights());
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, new_root.branch.right.leaf);
@@ -844,42 +871,6 @@ const Node = union(enum) {
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "1" }, new_root.branch.right.branch.left.branch.left.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "22" }, new_root.branch.right.branch.left.branch.right.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.branch.right.leaf);
-        }
-    }
-
-    ///////////////////////////// walkToInsert
-
-    fn walkToInsert(self: *const Node, a: Allocator, current_index: *usize, target_index: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
-        if (current_index.* > target_index) return WalkMutResult.stop;
-
-        switch (self.*) {
-            .branch => |*branch| {
-                const left_end = current_index.* + branch.left.weights().len;
-
-                if (target_index < left_end) {
-                    const left_result = branch.left.walkToInsert(a, current_index, target_index, f, ctx);
-                    return WalkMutResult{
-                        .err = left_result.err,
-                        .found = left_result.found,
-                        .replace = if (left_result.replace) |replacement|
-                            Node.new(a, replacement, branch.right) catch |e| return WalkMutResult{ .err = e }
-                        else
-                            null,
-                    };
-                }
-
-                current_index.* = left_end;
-                const right_result = branch.right.walkToInsert(a, current_index, target_index, f, ctx);
-                return WalkMutResult{
-                    .err = right_result.err,
-                    .found = right_result.found,
-                    .replace = if (right_result.replace) |replacement|
-                        Node.new(a, branch.left, replacement) catch |e| return WalkMutResult{ .err = e }
-                    else
-                        null,
-                };
-            },
-            .leaf => |leaf| return f(ctx, &leaf),
         }
     }
 
