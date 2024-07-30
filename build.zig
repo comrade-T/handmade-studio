@@ -44,6 +44,8 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
+    _ = addTestableModule(&bops, "src/buffer/write_struct_to_file.zig", &.{}, zig_build_test_step);
+
     _ = addTestableModule(&bops, "src/keyboard/state.zig", &.{
         .{ .name = "raylib", .module = raylib.module("raylib") },
     }, zig_build_test_step);
