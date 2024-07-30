@@ -1,6 +1,11 @@
 const std = @import("std");
 const s2s = @import("s2s");
 
+const Allocator = std.mem.Allocator;
+const eql = std.mem.eql;
+const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn testSerDesAlloc(comptime cmp_type: enum { eq, eqSlices, eqSlicesStringContent, eqPtrContent }, comptime T: type, value: T) !void {
@@ -21,6 +26,50 @@ fn testSerDesAlloc(comptime cmp_type: enum { eq, eqSlices, eqSlicesStringContent
             for (0..value.len) |i| try std.testing.expectEqualStrings(value[i], deserialized[i]);
         },
         .eqPtrContent => try std.testing.expectEqual(value.*, deserialized.*),
+    }
+}
+
+// TODO: see if it's possible append to the end of a file instead of rewriting the entire file
+
+test "write plain text to file, then append more plain text to that file" {
+    const file_path = "test_text.txt";
+
+    { // 1st write
+        const file = try std.fs.cwd().createFile(file_path, .{ .read = true });
+        defer file.close();
+        _ = try file.write("Hello File!");
+    }
+
+    { // 1st read
+        const file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
+        defer file.close();
+        const stat = try file.stat();
+        const buf = try std.testing.allocator.alloc(u8, stat.size);
+        defer std.testing.allocator.free(buf);
+        _ = try file.reader().read(buf);
+        try eqStr("Hello File!", buf);
+    }
+
+    { // 2nd write
+        const file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_write });
+        defer file.close();
+        const stat = try file.stat();
+        try file.seekTo(stat.size);
+        _ = try file.write("\nHello Venus!");
+    }
+
+    { // 2nd read
+        const file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
+        defer file.close();
+        const stat = try file.stat();
+        const buf = try std.testing.allocator.alloc(u8, stat.size);
+        defer std.testing.allocator.free(buf);
+        _ = try file.reader().read(buf);
+        try eqStr("Hello File!\nHello Venus!", buf);
+    }
+
+    { // Clean up
+        try std.fs.cwd().deleteFile(file_path);
     }
 }
 
