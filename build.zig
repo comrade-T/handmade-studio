@@ -23,6 +23,8 @@ pub fn build(b: *std.Build) void {
 
     const logz = b.dependency("logz", .{ .target = target, .optimize = optimize });
 
+    const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
+
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
     const tree_sitter = b.addStaticLibrary(.{
@@ -44,7 +46,9 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
-    _ = addTestableModule(&bops, "src/buffer/write_struct_to_file.zig", &.{}, zig_build_test_step);
+    _ = addTestableModule(&bops, "src/buffer/write_struct_to_file.zig", &.{
+        .{ .name = "s2s", .module = s2s },
+    }, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/keyboard/state.zig", &.{
         .{ .name = "raylib", .module = raylib.module("raylib") },
