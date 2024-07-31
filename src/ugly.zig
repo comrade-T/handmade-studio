@@ -54,7 +54,16 @@ pub fn main() anyerror!void {
         y: i32 = 0,
         width: i32 = 100,
         height: i32 = 100,
-        color: rl.Color = rl.Color.yellow,
+        color: rl.Color = rl.Color.ray_white,
+
+        fn collidesWithMouse(self: *const @This()) bool {
+            const mouseX = rl.getMouseX();
+            const mouseY = rl.getMouseY();
+            const mouse_in_x_range = (self.x <= mouseX) and (mouseX <= self.x + self.width);
+            const mouse_in_y_range = (self.y <= mouseY) and (mouseY <= self.y + self.height);
+            if (mouse_in_x_range and mouse_in_y_range) return true;
+            return false;
+        }
     };
     var rectangles = std.ArrayList(Rectangle).init(gpa);
     defer rectangles.deinit();
@@ -82,8 +91,6 @@ pub fn main() anyerror!void {
 
                 if (!eql(u8, trigger, "")) {
                     defer picker.a.free(trigger);
-
-                    if (eql(u8, trigger, "c")) try rectangles.append(Rectangle{ .x = rl.getMouseX(), .y = rl.getMouseY() });
                 }
             }
         }
@@ -95,10 +102,27 @@ pub fn main() anyerror!void {
         {
             rl.clearBackground(rl.Color.blank);
 
+            if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_right) and rectangles.items.len > 0) {
+                var i: usize = rectangles.items.len -| 1;
+                while (true) {
+                    if (rectangles.items[i].collidesWithMouse()) _ = rectangles.orderedRemove(i);
+                    if (i == 0) break;
+                    i -|= 1;
+                }
+            }
+
+            if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
+                try rectangles.append(Rectangle{ .x = rl.getMouseX(), .y = rl.getMouseY() });
+            }
+
             { // draw rectangles
 
                 for (rectangles.items) |rec| {
-                    rl.drawRectangle(rec.x, rec.y, rec.width, rec.height, rec.color);
+                    if (rec.collidesWithMouse()) {
+                        rl.drawRectangle(rec.x, rec.y, rec.width, rec.height, rl.Color.gray);
+                    } else {
+                        rl.drawRectangle(rec.x, rec.y, rec.width, rec.height, rec.color);
+                    }
                 }
             }
         }
