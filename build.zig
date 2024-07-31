@@ -83,6 +83,24 @@ pub fn build(b: *std.Build) void {
     ////////////////////////////////////////////////////////////////////////////// Executable
 
     {
+        const ugly = b.addExecutable(.{
+            .name = "ugly",
+            .root_source_file = b.path("src/ugly.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+
+        ugly.linkLibrary(raylib.artifact("raylib"));
+        ugly.root_module.addImport("raylib", raylib.module("raylib"));
+
+        const run_cmd = b.addRunArtifact(ugly);
+        run_cmd.step.dependOn(b.getInstallStep());
+
+        const run_step = b.step("ugly", "Ugly");
+        run_step.dependOn(&run_cmd.step);
+    }
+
+    {
         const exe = b.addExecutable(.{
             .name = "communism",
             .root_source_file = b.path("src/main.zig"),

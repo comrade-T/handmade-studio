@@ -29,7 +29,7 @@ fn testSerDesAlloc(comptime cmp_type: enum { eq, eqSlices, eqSlicesStringContent
     }
 }
 
-// TODO: see if it's possible append to the end of a file instead of rewriting the entire file
+// TODO: see if it's possible append binary data to the end of a file instead of rewriting the entire file
 
 test "write plain text to file, then append more plain text to that file" {
     const file_path = "test_text.txt";
@@ -43,6 +43,7 @@ test "write plain text to file, then append more plain text to that file" {
     { // 1st read
         const file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
         defer file.close();
+
         const stat = try file.stat();
         const buf = try std.testing.allocator.alloc(u8, stat.size);
         defer std.testing.allocator.free(buf);
