@@ -8,8 +8,8 @@ const eql = std.mem.eql;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const screen_width = 800;
-const screen_height = 450;
+const screen_width = 1920;
+const screen_height = 1080;
 
 pub fn main() anyerror!void {
     ///////////////////////////// Window Initialization
@@ -22,7 +22,7 @@ pub fn main() anyerror!void {
     rl.setTargetFPS(60);
     rl.setExitKey(rl.KeyboardKey.key_null);
 
-    ///////////////////////////// Game State
+    ///////////////////////////// Controller
 
     var gpa__ = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa__.deinit();
@@ -47,6 +47,18 @@ pub fn main() anyerror!void {
     var picker = try TriggerPicker.init(gpa, &trigger_map);
     defer picker.deinit();
 
+    ///////////////////////////// Model
+
+    const Rectangle = struct {
+        x: i32 = 0,
+        y: i32 = 0,
+        width: i32 = 100,
+        height: i32 = 100,
+        color: rl.Color = rl.Color.yellow,
+    };
+    var rectangles = std.ArrayList(Rectangle).init(gpa);
+    defer rectangles.deinit();
+
     ///////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -66,22 +78,29 @@ pub fn main() anyerror!void {
                 if (insert_mode_active) {
                     const may_final_trigger = try picker.getFinalTrigger(step.old, step.new, step.time, candidate);
                     if (may_final_trigger) |t| trigger = t;
-                    if (candidate != null or may_final_trigger != null) {
-                        std.debug.print("trigger: {s}\n", .{trigger});
-                    }
                 }
 
                 if (!eql(u8, trigger, "")) {
                     defer picker.a.free(trigger);
 
-                    // TODO:
+                    if (eql(u8, trigger, "c")) try rectangles.append(Rectangle{ .x = rl.getMouseX(), .y = rl.getMouseY() });
                 }
             }
         }
         try kem.finishHandlingInputs();
 
+        // View
         rl.beginDrawing();
         defer rl.endDrawing();
-        rl.clearBackground(rl.Color.blank);
+        {
+            rl.clearBackground(rl.Color.blank);
+
+            { // draw rectangles
+
+                for (rectangles.items) |rec| {
+                    rl.drawRectangle(rec.x, rec.y, rec.width, rec.height, rec.color);
+                }
+            }
+        }
     }
 }
