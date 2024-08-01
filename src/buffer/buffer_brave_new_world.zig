@@ -220,6 +220,55 @@ const Node = union(enum) {
 
     ///////////////////////////// Get Content
 
+    // Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
+    fn getDocument(self: *const Node, a: Allocator) !ArrayList(u8) {
+        const GetDocumentCtx = struct {
+            result_list: *ArrayList(u8),
+
+            fn walk(cx: *@This(), node: *const Node) WalkResult {
+                switch (node.*) {
+                    .branch => |branch| {
+                        const left_result = cx.walk(branch.left);
+                        const right_result = cx.walk(branch.right);
+                        return WalkResult.merge(left_result, right_result);
+                    },
+                    .leaf => |leaf| return cx.walker(&leaf),
+                }
+            }
+
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                cx.result_list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
+                if (leaf.eol) cx.result_list.append('\n') catch |err| return .{ .err = err };
+                return WalkResult.keep_walking;
+            }
+        };
+
+        var result_list = ArrayList(u8).init(a);
+        var ctx = GetDocumentCtx{ .result_list = &result_list };
+        const walk_result = ctx.walk(self);
+        if (walk_result.err) |err| {
+            result_list.deinit();
+            return err;
+        }
+        return result_list;
+    }
+
+    test getDocument {
+        const a = idc_if_it_leaks;
+        {
+            const source = "";
+            const root = try Node.fromString(a, source, true);
+            const result = try root.getDocument(a);
+            try eqStr(source, result.items);
+        }
+        {
+            const source = "one\ntwo\nthree\nfour";
+            const root = try Node.fromString(a, source, true);
+            const result = try root.getDocument(a);
+            try eqStr(source, result.items);
+        }
+    }
+
     fn getLine(self: *const Node, a: Allocator, linenr: u32) !ArrayList(u8) {
         const GetLineCtx = struct {
             target_linenr: u32,
