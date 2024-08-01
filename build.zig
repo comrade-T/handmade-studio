@@ -83,20 +83,20 @@ pub fn build(b: *std.Build) void {
     ////////////////////////////////////////////////////////////////////////////// Executable
 
     {
-        const ugly = b.addExecutable(.{
-            .name = "ugly",
-            .root_source_file = b.path("src/ugly.zig"),
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{
+            .name = "spawn_rec_by_clicking",
+            .root_source_file = b.path("src/spawn_rec_by_clicking.zig"),
             .target = target,
             .optimize = optimize,
         });
 
-        ugly.linkLibrary(raylib.artifact("raylib"));
-        ugly.root_module.addImport("raylib", raylib.module("raylib"));
+        spawn_rec_by_clicking_exe.linkLibrary(raylib.artifact("raylib"));
+        spawn_rec_by_clicking_exe.root_module.addImport("raylib", raylib.module("raylib"));
 
-        const run_cmd = b.addRunArtifact(ugly);
+        const run_cmd = b.addRunArtifact(spawn_rec_by_clicking_exe);
         run_cmd.step.dependOn(b.getInstallStep());
 
-        const run_step = b.step("ugly", "Ugly");
+        const run_step = b.step("spawn_rec_by_clicking", "spawn_rec_by_clicking");
         run_step.dependOn(&run_cmd.step);
     }
 
