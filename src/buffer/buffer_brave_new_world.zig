@@ -15,8 +15,6 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WalkerMut = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutResult;
-
 /// Represents the result of a walk operation on a Node.
 /// This walk operation never mutates the current Node and may create new Nodes.
 const WalkMutResult = struct {
@@ -79,8 +77,6 @@ const WalkMutResult = struct {
     }
 };
 
-const Walker = *const fn (ctx: *anyopaque, node: *const Node) WalkResult;
-
 /// Represents the result of a walk operation on a Node.
 /// This walk operation should never mutate the current Node or create a new Node.
 const WalkResult = struct {
@@ -92,19 +88,19 @@ const WalkResult = struct {
     const stop = WalkResult{ .keep_walking = false };
     const found = WalkResult{ .found = true };
 
-    // /// Produce a merged walk result from `self` and another WalkResult.
-    // fn merge(self: WalkResult, right: WalkResult) WalkResult {
-    //     return WalkResult{
-    //         .err = if (self.err) |_| self.err else right.err,
-    //         .keep_walking = self.keep_walking and right.keep_walking,
-    //         .found = self.found or right.found,
-    //     };
-    // }
-    // test merge {
-    //     try eqDeep(WalkResult.found, merge(WalkResult.found, WalkResult.keep_walking));
-    //     try eqDeep(WalkResult.keep_walking, merge(WalkResult.keep_walking, WalkResult.keep_walking));
-    //     try eqDeep(WalkResult.stop, merge(WalkResult.stop, WalkResult.keep_walking));
-    // }
+    /// Produce a merged walk result from `self` and another WalkResult.
+    fn merge(self: WalkResult, right: WalkResult) WalkResult {
+        return WalkResult{
+            .err = if (self.err) |_| self.err else right.err,
+            .keep_walking = self.keep_walking and right.keep_walking,
+            .found = self.found or right.found,
+        };
+    }
+    test merge {
+        try eqDeep(WalkResult.found, merge(WalkResult.found, WalkResult.keep_walking));
+        try eqDeep(WalkResult.keep_walking, merge(WalkResult.keep_walking, WalkResult.keep_walking));
+        try eqDeep(WalkResult.stop, merge(WalkResult.stop, WalkResult.keep_walking));
+    }
 };
 
 const empty_leaf: Node = .{ .leaf = .{ .buf = "" } };
@@ -219,6 +215,125 @@ const Node = union(enum) {
             try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "two" }, root.branch.left.branch.right.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "three" }, root.branch.right.branch.left.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "four" }, root.branch.right.branch.right.leaf);
+        }
+    }
+
+    ///////////////////////////// Get Content
+
+    fn getLine(self: *const Node, a: Allocator, linenr: u32) !ArrayList(u8) {
+        const GetLineCtx = struct {
+            target_linenr: u32,
+            current_linenr: u32 = 0,
+            result_list: *ArrayList(u8),
+            should_stop: bool = false,
+
+            fn walk(cx: *@This(), node: *const Node) WalkResult {
+                if (cx.should_stop) return WalkResult.stop;
+                switch (node.*) {
+                    .branch => |branch| {
+                        const left_end = cx.current_linenr + branch.left.weights().bols;
+                        var left_result = WalkResult.keep_walking;
+                        if (cx.target_linenr == cx.current_linenr or cx.target_linenr < left_end) left_result = cx.walk(branch.left);
+                        cx.current_linenr = left_end;
+                        const right_result = cx.walk(branch.right);
+                        return WalkResult.merge(left_result, right_result);
+                    },
+                    .leaf => |leaf| return cx.walker(&leaf),
+                }
+            }
+
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                cx.result_list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
+                if (leaf.eol) {
+                    cx.should_stop = true;
+                    return WalkResult.stop;
+                }
+                return WalkResult.keep_walking;
+            }
+        };
+
+        if (linenr + 1 > self.weights().bols) return error.NotFound;
+        var result_list = ArrayList(u8).init(a);
+        var ctx = GetLineCtx{ .target_linenr = linenr, .result_list = &result_list };
+
+        const walk_result = ctx.walk(self);
+        if (walk_result.err) |err| {
+            result_list.deinit();
+            return err;
+        }
+        return result_list;
+    }
+
+    test getLine {
+        const a = idc_if_it_leaks;
+
+        { // can get line that contained in 1 single Leaf
+            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+            {
+                const line = try root.getLine(a, 0);
+                try eqStr("one", line.items);
+            }
+            {
+                const line = try root.getLine(a, 1);
+                try eqStr("two", line.items);
+            }
+            {
+                const line = try root.getLine(a, 2);
+                try eqStr("three", line.items);
+            }
+            {
+                const line = try root.getLine(a, 3);
+                try eqStr("four", line.items);
+            }
+        }
+
+        // can get line that spans across multiple Leaves
+        {
+            const old = try Node.fromString(a, "one\ntwo\nthree", true);
+            const root = try old.insertChars(a, 3, "_1");
+            {
+                const line = try root.getLine(a, 0);
+                try eqStr("one_1", line.items);
+            }
+            {
+                const line = try root.getLine(a, 1);
+                try eqStr("two", line.items);
+            }
+            {
+                const line = try root.getLine(a, 2);
+                try eqStr("three", line.items);
+            }
+            try shouldErr(error.NotFound, root.getLine(a, 3));
+        }
+        {
+            const one = try Leaf.new(a, "one", true, false);
+            const two = try Leaf.new(a, "_two", false, false);
+            const three = try Leaf.new(a, "_three", false, true);
+            const four = try Leaf.new(a, "four", true, true);
+            const two_three = try Node.new(a, two, three);
+            const one_two_three = try Node.new(a, one, two_three);
+            {
+                const root = try Node.new(a, one_two_three, four);
+                {
+                    const line = try root.getLine(a, 0);
+                    try eqStr("one_two_three", line.items);
+                }
+                {
+                    const line = try root.getLine(a, 1);
+                    try eqStr("four", line.items);
+                }
+            }
+            {
+                const root = try Node.new(a, four, one_two_three);
+                {
+                    const line = try root.getLine(a, 0);
+                    try eqStr("four", line.items);
+                }
+                {
+                    const line = try root.getLine(a, 1);
+                    try eqStr("one_two_three", line.items);
+                }
+            }
         }
     }
 
@@ -820,6 +935,22 @@ const Node = union(enum) {
             try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 5 }, new_root.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD" }, new_root.branch.right.leaf);
+        }
+        {
+            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+            const new_root = try root.insertChars(a, 3, "_1");
+            const new_root_debug_str =
+                \\4
+                \\  3
+                \\    2
+                \\      1 B| `one`
+                \\      1 `_1` |E
+                \\    1 B| `two` |E
+                \\  2
+                \\    1 B| `three` |E
+                \\    1 B| `four`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
 
         // target_index at middle of Leaf
