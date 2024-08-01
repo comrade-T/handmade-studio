@@ -424,8 +424,28 @@ const Node = union(enum) {
             current_index: *usize,
             bytes_deleted: usize = 0,
 
-            fn walker(cx_: *anyopaque, leaf: *const Leaf) WalkMutResult {
-                const cx = @as(*@This(), @ptrCast(@alignCast(cx_)));
+            fn walk(cx: *@This(), allocator: Allocator, node: *const Node) WalkMutResult {
+                if (cx.current_index.* > cx.end_byte + 1) return WalkMutResult.stop;
+
+                switch (node.*) {
+                    .branch => |*branch| {
+                        const left_end = cx.current_index.* + branch.left.weights().len;
+
+                        const left_result = if (cx.start_byte < left_end)
+                            cx.walk(allocator, branch.left)
+                        else
+                            WalkMutResult.keep_walking;
+
+                        cx.current_index.* = left_end;
+                        const right_result = cx.walk(allocator, branch.right);
+
+                        return WalkMutResult.merge(allocator, branch, left_result, right_result);
+                    },
+                    .leaf => |leaf| return cx.walker(&leaf),
+                }
+            }
+
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
                 defer cx.leaves_encountered += 1;
 
                 const leaf_outside_delete_range = cx.current_index.* >= cx.end_byte;
@@ -511,7 +531,7 @@ const Node = union(enum) {
             .start_byte = start_byte,
             .end_byte = end_byte,
         };
-        const walk_result = self.walkToDelete(a, &current_index, start_byte, end_byte, DeleteBytesCtx.walker, &ctx);
+        const walk_result = ctx.walk(a, self);
 
         if (walk_result.err) |e| return e;
         return if (walk_result.replace) |replacement| replacement else try Leaf.new(a, "", true, false);
@@ -650,27 +670,6 @@ const Node = union(enum) {
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
             }
-        }
-    }
-
-    fn walkToDelete(self: *const Node, a: Allocator, current_index: *usize, start_byte: usize, end_byte: usize, f: WalkerMut, ctx: *anyopaque) WalkMutResult {
-        if (current_index.* > end_byte + 1) return WalkMutResult.stop;
-
-        switch (self.*) {
-            .branch => |*branch| {
-                const left_end = current_index.* + branch.left.weights().len;
-
-                const left_result = if (start_byte < left_end)
-                    branch.left.walkToDelete(a, current_index, start_byte, end_byte, f, ctx)
-                else
-                    WalkMutResult.keep_walking;
-
-                current_index.* = left_end;
-                const right_result = branch.right.walkToDelete(a, current_index, start_byte, end_byte, f, ctx);
-
-                return WalkMutResult.merge(a, branch, left_result, right_result);
-            },
-            .leaf => |*leaf| return f(ctx, leaf),
         }
     }
 
