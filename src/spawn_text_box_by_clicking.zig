@@ -11,6 +11,48 @@ const ArrayList = std.ArrayList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const EditableTextBuffer = struct {
+    external_allocator: Allocator,
+    arena: std.heap.ArenaAllocator,
+    a: Allocator,
+
+    root: *const rope.Node,
+    document: ArrayList(u8),
+
+    x: i32,
+    y: i32,
+
+    fn insertChars(self: *@This(), chars: []const u8) !void {
+        const target_index = if (self.document.items.len == 0) 0 else self.document.items.len - 1;
+        const new_root = try self.root.insertChars(self.a, target_index, chars);
+        self.root = new_root;
+        self.document.deinit();
+        self.document = try self.root.getDocument(self.a);
+    }
+
+    fn spawn(external_allocator: Allocator, content: []const u8) !*@This() {
+        var self = try external_allocator.create(@This());
+        self.external_allocator = external_allocator;
+        self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        self.a = self.arena.allocator();
+
+        self.root = try rope.Node.fromString(self.a, content, true);
+        self.document = try self.root.getDocument(self.a);
+
+        self.x = rl.getMouseX();
+        self.y = rl.getMouseY();
+
+        return self;
+    }
+
+    fn destroy(self: *@This()) void {
+        self.arena.deinit();
+        self.external_allocator.destroy(self);
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const screen_width = 1920;
 const screen_height = 1080;
 
@@ -52,43 +94,12 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Models
 
-    const EditableTextBuffer = struct {
-        external_allocator: Allocator,
-        arena: std.heap.ArenaAllocator,
-        a: Allocator,
-
-        root: *const rope.Node,
-        document: ArrayList(u8),
-
-        x: i32,
-        y: i32,
-
-        fn spawn(external_allocator: Allocator, content: []const u8) !*@This() {
-            var self = try external_allocator.create(@This());
-            self.external_allocator = external_allocator;
-            self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            self.a = self.arena.allocator();
-
-            self.root = try rope.Node.fromString(self.a, content, true);
-            self.document = try self.root.getDocument(self.a);
-
-            self.x = rl.getMouseX();
-            self.y = rl.getMouseY();
-
-            return self;
-        }
-
-        fn destroy(self: *const @This()) void {
-            self.arena.deinit();
-            self.external_allocator.destroy(self);
-        }
-    };
-
     var buf_list = std.ArrayList(*EditableTextBuffer).init(gpa);
     defer {
         for (buf_list.items) |buf| buf.destroy();
         buf_list.deinit();
     }
+    var active_buf: ?*EditableTextBuffer = null;
 
     ///////////////////////////// Main Loop
 
@@ -113,6 +124,8 @@ pub fn main() anyerror!void {
 
                 if (!eql(u8, trigger, "")) {
                     defer picker.a.free(trigger);
+
+                    try triggerCallback(&trigger_map, trigger, active_buf);
                 }
             }
         }
@@ -120,7 +133,8 @@ pub fn main() anyerror!void {
 
         { // Spawn
             if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
-                const buf = try EditableTextBuffer.spawn(gpa, "Hello World!");
+                const buf = try EditableTextBuffer.spawn(gpa, "");
+                active_buf = buf;
                 try buf_list.append(buf);
             }
         }
@@ -133,10 +147,24 @@ pub fn main() anyerror!void {
 
             {
                 for (buf_list.items) |buf| {
-                    const content = @as([*:0]const u8, @ptrCast(buf.document.items));
-                    rl.drawText(content, buf.x, buf.y, 30, rl.Color.ray_white);
+                    if (buf.document.items.len > 0) {
+                        const content = @as([*:0]const u8, @ptrCast(buf.document.items));
+                        rl.drawText(content, buf.x, buf.y, 30, rl.Color.ray_white);
+                    }
                 }
             }
         }
+    }
+}
+
+fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, may_buf: ?*EditableTextBuffer) !void {
+    if (may_buf) |buf| {
+        var action: exp.TriggerAction = undefined;
+        if (trigger_map.get(trigger)) |a| action = a else return;
+
+        try switch (action) {
+            .insert => |chars| buf.insertChars(chars),
+            .custom => {},
+        };
     }
 }

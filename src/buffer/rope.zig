@@ -914,7 +914,7 @@ pub const Node = union(enum) {
         }
     };
 
-    fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
+    pub fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
         if (target_index > self.weights().len) return error.IndexOutOfBounds;
         const buf = try a.dupe(u8, chars);
         var ctx = InsertCharsCtx{ .a = a, .buf = buf, .target_index = target_index };
