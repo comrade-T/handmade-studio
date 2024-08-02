@@ -926,7 +926,11 @@ pub const Node = union(enum) {
         fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
             var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
 
-            if (leaf.isEmpty()) return WalkMutResult{ .replace = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err } };
+            if (leaf.buf.len == 0) {
+                new_leaves[0].leaf.bol = leaf.bol;
+                const replacement = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                return WalkMutResult{ .replace = replacement };
+            }
 
             const insert_at_start = cx.current_index == cx.target_index;
             if (insert_at_start) {
@@ -979,58 +983,78 @@ pub const Node = union(enum) {
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, new_root.leaf);
         }
         {
+            const root = try Node.fromString(a, "", true);
+            const new_root = try root.insertChars(a, 0, "hello\nworld");
+            const new_root_debug_str =
+                \\2
+                \\  1 B| `hello` |E
+                \\  1 B| `world`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+        {
             const root = try Node.fromString(a, "", false);
             const new_root = try root.insertChars(a, 0, "hello\nworld");
-
-            try eqDeep(Weights{ .bols = 1, .len = 11, .depth = 2, .noc = 10 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello", .noc = 5 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world", .noc = 5 }, new_root.branch.right.leaf);
+            const new_root_debug_str =
+                \\2
+                \\  1 `hello` |E
+                \\  1 B| `world`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
 
         // target_index at start of Leaf
         {
             const root = try Node.fromString(a, "BCD", false);
             const new_root = try root.insertChars(a, 0, "A");
-            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 4, .noc = 4 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD", .noc = 3 }, new_root.branch.right.leaf);
+            const new_root_debug_str =
+                \\2
+                \\  1 `A`
+                \\  1 `BCD`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
         {
             const root = try Node.fromString(a, "BCD", true);
             const new_root = try root.insertChars(a, 0, "A");
-            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 4, .noc = 4 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD", .noc = 3 }, new_root.branch.right.leaf);
+            const new_root_debug_str =
+                \\2
+                \\  1 B| `A`
+                \\  1 `BCD`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
         {
             const root = try Leaf.new(a, "BCD", true, true);
             const new_root = try root.insertChars(a, 0, "A");
-            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 5, .noc = 4 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD", .noc = 3 }, new_root.branch.right.leaf);
+            const new_root_debug_str =
+                \\2
+                \\  1 B| `A`
+                \\  1 `BCD` |E
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
 
         // target_index at end of Leaf
         {
             const root = try Node.fromString(a, "A", false);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 4, .noc = 4 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD", .noc = 3 }, new_root.branch.right.leaf);
-        }
-        {
-            const root = try Node.fromString(a, "A", true);
-            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 4, .noc = 4 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD", .noc = 3 }, new_root.branch.right.leaf);
+            const new_root_debug_str =
+                \\2
+                \\  1 `A`
+                \\  1 `BCD`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
         {
             const root = try Leaf.new(idc_if_it_leaks, "A", true, true);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 5, .noc = 4 }, new_root.weights());
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD", .noc = 3 }, new_root.branch.right.leaf);
+            const new_root_debug_str =
+                \\2
+                \\  1 B| `A`
+                \\  1 `BCD` |E
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
         {
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
@@ -1053,11 +1077,14 @@ pub const Node = union(enum) {
         {
             const root = try Leaf.new(a, "ACD", false, false);
             const new_root = try root.insertChars(a, 1, "B");
-            try eqDeep(Weights{ .bols = 0, .depth = 3, .len = 4, .noc = 4 }, new_root.weights());
-            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 3, .noc = 3 }, new_root.branch.right.weights());
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B", .noc = 1 }, new_root.branch.right.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD", .noc = 2 }, new_root.branch.right.branch.right.leaf);
+            const new_root_debug_str =
+                \\3
+                \\  1 `A`
+                \\  2
+                \\    1 `B`
+                \\    1 `CD`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
 
         // consecutive insertions
@@ -1065,38 +1092,47 @@ pub const Node = union(enum) {
             const acd = try Leaf.new(a, "ACD", false, false);
             const abcd = try acd.insertChars(a, 1, "B");
             const abcde = try abcd.insertChars(a, 4, "E");
-            try eqDeep(Weights{ .depth = 4, .len = 5, .noc = 5 }, abcde.weights());
-            try eqDeep(Weights{ .depth = 3, .len = 4, .noc = 4 }, abcde.branch.right.weights());
-            try eqDeep(Weights{ .depth = 2, .len = 3, .noc = 3 }, abcde.branch.right.branch.right.weights());
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, abcde.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B", .noc = 1 }, abcde.branch.right.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD", .noc = 2 }, abcde.branch.right.branch.right.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "E", .noc = 1 }, abcde.branch.right.branch.right.branch.right.leaf);
+            const new_root_debug_str =
+                \\4
+                \\  1 `A`
+                \\  3
+                \\    1 `B`
+                \\    2
+                \\      1 `CD`
+                \\      1 `E`
+            ;
+            try eqStr(new_root_debug_str, try abcde.debugPrint());
         }
         {
             const acd = try Leaf.new(a, "ACD", true, true);
             const abcd = try acd.insertChars(a, 1, "B");
             const abcde = try abcd.insertChars(a, 4, "E");
-            try eqDeep(Weights{ .bols = 1, .depth = 4, .len = 6, .noc = 5 }, abcde.weights());
-            try eqDeep(Weights{ .bols = 0, .depth = 3, .len = 5, .noc = 4 }, abcde.branch.right.weights());
-            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 4, .noc = 3 }, abcde.branch.right.branch.right.weights());
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A", .noc = 1 }, abcde.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B", .noc = 1 }, abcde.branch.right.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD", .noc = 2 }, abcde.branch.right.branch.right.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "E", .noc = 1 }, abcde.branch.right.branch.right.branch.right.leaf);
+            const new_root_debug_str =
+                \\4
+                \\  1 B| `A`
+                \\  3
+                \\    1 `B`
+                \\    2
+                \\      1 `CD`
+                \\      1 `E` |E
+            ;
+            try eqStr(new_root_debug_str, try abcde.debugPrint());
         }
 
         // multi line insert in the middle
         {
-            const abcd = try Leaf.new(a, "ABCD", false, false);
-            const new_root = try abcd.insertChars(a, 1, "1\n22"); // should result in `A1\n22BCD`
-            try eqDeep(Weights{ .bols = 1, .depth = 4, .len = 8, .noc = 7 }, new_root.weights());
-            try eqDeep(Weights{ .bols = 1, .depth = 3, .len = 7, .noc = 6 }, new_root.branch.right.weights());
-            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 4, .noc = 3 }, new_root.branch.right.branch.left.weights());
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, new_root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "1", .noc = 1 }, new_root.branch.right.branch.left.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "22", .noc = 2 }, new_root.branch.right.branch.left.branch.right.leaf);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD", .noc = 3 }, new_root.branch.right.branch.right.leaf);
+            const abcd = try Leaf.new(a, "ABCD", true, false);
+            const new_root = try abcd.insertChars(a, 1, "1\n22");
+            const new_root_debug_str =
+                \\4
+                \\  1 B| `A`
+                \\  3
+                \\    2
+                \\      1 `1` |E
+                \\      1 B| `22`
+                \\    1 `BCD`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
     }
 
