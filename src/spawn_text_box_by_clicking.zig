@@ -56,10 +56,14 @@ pub fn main() anyerror!void {
         external_allocator: Allocator,
         arena: std.heap.ArenaAllocator,
         a: Allocator,
+
         root: *const rope.Node,
         document: ArrayList(u8),
 
-        fn init(external_allocator: Allocator, content: []const u8) !*@This() {
+        x: i32,
+        y: i32,
+
+        fn spawn(external_allocator: Allocator, content: []const u8) !*@This() {
             var self = try external_allocator.create(@This());
             self.external_allocator = external_allocator;
             self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -68,17 +72,23 @@ pub fn main() anyerror!void {
             self.root = try rope.Node.fromString(self.a, content, true);
             self.document = try self.root.getDocument(self.a);
 
+            self.x = rl.getMouseX();
+            self.y = rl.getMouseY();
+
             return self;
         }
 
-        fn deinit(self: *@This()) void {
+        fn destroy(self: *const @This()) void {
             self.arena.deinit();
             self.external_allocator.destroy(self);
         }
     };
 
-    const buf = try EditableTextBuffer.init(gpa, "Hello World!");
-    defer buf.deinit();
+    var buf_list = std.ArrayList(*EditableTextBuffer).init(gpa);
+    defer {
+        for (buf_list.items) |buf| buf.destroy();
+        buf_list.deinit();
+    }
 
     ///////////////////////////// Main Loop
 
@@ -108,16 +118,25 @@ pub fn main() anyerror!void {
         }
         try kem.finishHandlingInputs();
 
+        { // Spawn
+            if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
+                const buf = try EditableTextBuffer.spawn(gpa, "Hello World!");
+                try buf_list.append(buf);
+            }
+        }
+
         // View
         rl.beginDrawing();
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
 
-            const content = @as([*:0]const u8, @ptrCast(buf.document.items));
-
-            rl.drawText(content, 100, 100, 30, rl.Color.ray_white);
-            rl.drawText("Hello World!", 100, 200, 30, rl.Color.ray_white);
+            {
+                for (buf_list.items) |buf| {
+                    const content = @as([*:0]const u8, @ptrCast(buf.document.items));
+                    rl.drawText(content, buf.x, buf.y, 30, rl.Color.ray_white);
+                }
+            }
         }
     }
 }
