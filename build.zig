@@ -83,21 +83,25 @@ pub fn build(b: *std.Build) void {
     ////////////////////////////////////////////////////////////////////////////// Executable
 
     {
+        const path = "src/spawn_rec_by_clicking.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "spawn_rec_by_clicking",
-            .root_source_file = b.path("src/spawn_rec_by_clicking.zig"),
+            .root_source_file = b.path(path),
             .target = target,
             .optimize = optimize,
         });
+        addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
+    }
 
-        spawn_rec_by_clicking_exe.linkLibrary(raylib.artifact("raylib"));
-        spawn_rec_by_clicking_exe.root_module.addImport("raylib", raylib.module("raylib"));
-
-        const run_cmd = b.addRunArtifact(spawn_rec_by_clicking_exe);
-        run_cmd.step.dependOn(b.getInstallStep());
-
-        const run_step = b.step("spawn_rec_by_clicking", "spawn_rec_by_clicking");
-        run_step.dependOn(&run_cmd.step);
+    {
+        const path = "src/spawn_text_box_by_clicking.zig";
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{
+            .name = "spawn_text_box_by_clicking",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
 
     {
@@ -125,6 +129,21 @@ pub fn build(b: *std.Build) void {
         run_step.dependOn(&run_cmd.step);
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn addRunnableRaylibFile(b: *std.Build, compile: *std.Build.Step.Compile, raylib: *std.Build.Dependency, path: []const u8) void {
+    compile.linkLibrary(raylib.artifact("raylib"));
+    compile.root_module.addImport("raylib", raylib.module("raylib"));
+
+    const run_cmd = b.addRunArtifact(compile);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    const run_step = b.step(path, path);
+    run_step.dependOn(&run_cmd.step);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 const TestableModule = struct {
     module: *std.Build.Module,
