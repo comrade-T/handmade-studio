@@ -38,6 +38,7 @@ pub const Line = struct {
 
     pub fn getText(self: *const Line, cells: []const Cell, source: []const u8) []const u8 {
         const line_cells = cells[self.start..self.end];
+        if (line_cells.len == 0) return "";
         return source[line_cells[0].start_byte..line_cells[line_cells.len - 1].end_byte];
     }
 

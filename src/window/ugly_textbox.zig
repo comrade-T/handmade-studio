@@ -71,7 +71,7 @@ const UglyTextBox = struct {
         self.cursor.up(count);
     }
     fn moveCursorDown(self: *UglyTextBox, count: usize) void {
-        self.cursor.down(count, self.lines.len);
+        self.cursor.down(count, self.lines.items.len);
     }
 
     ///////////////////////////// Insert
@@ -79,7 +79,7 @@ const UglyTextBox = struct {
     fn insertChars(self: *UglyTextBox, chars: []const u8) !void {
         const current_line = self.lines.items[self.cursor.line];
         const cell_at_cursor = current_line.cell(self.cells.items, self.cursor.col);
-        const insert_index = if (cell_at_cursor) |cell| cell.start_byte else current_line.numOfCells();
+        const insert_index = if (cell_at_cursor) |cell| cell.start_byte else self.document.items.len;
 
         const new_root = try self.root.insertChars(self.a, insert_index, chars);
         self.root = new_root;
@@ -98,9 +98,19 @@ const UglyTextBox = struct {
             defer box.destroy();
             try box.insertChars("OK! ");
             try eqStr("OK! Hello World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+
             box.moveCursorRight(100);
             try box.insertChars(" Here I go!");
             try eqStr("OK! Hello World! Here I go!", box.lines.items[0].getText(box.cells.items, box.document.items));
+
+            box.moveCursorRight(100);
+            try box.insertChars("\n");
+            try eqStr("", box.lines.items[1].getText(box.cells.items, box.document.items));
+
+            box.cursor.set(1, 0);
+            try box.insertChars("...");
+            try eqStr("OK! Hello World! Here I go!", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try eqStr("...", box.lines.items[1].getText(box.cells.items, box.document.items));
         }
     }
 };
