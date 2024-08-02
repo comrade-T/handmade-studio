@@ -243,7 +243,7 @@ pub const Node = union(enum) {
             }
         };
 
-        var result_list = ArrayList(u8).init(a);
+        var result_list = try ArrayList(u8).initCapacity(a, self.weights().len);
         var ctx = GetDocumentCtx{ .result_list = &result_list };
         const walk_result = ctx.walk(self);
         if (walk_result.err) |err| {

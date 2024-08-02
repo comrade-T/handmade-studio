@@ -114,7 +114,10 @@ pub fn main() anyerror!void {
         {
             rl.clearBackground(rl.Color.blank);
 
-            // TODO:
+            const content = @as([*:0]const u8, @ptrCast(buf.document.items));
+
+            rl.drawText(content, 100, 100, 30, rl.Color.ray_white);
+            rl.drawText("Hello World!", 100, 200, 30, rl.Color.ray_white);
         }
     }
 }
