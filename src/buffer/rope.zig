@@ -214,48 +214,50 @@ pub const Node = union(enum) {
         }
     }
 
-    // ///////////////////////////// Get Index from Line & Col
+    ///////////////////////////// Get Index from Line & Col
+
+    // pub fn getByteOffsetFromLineAndCol(self: *const Node, line: u32, col: u32) !void {
+    //     const GetByteOffsetFromLineAndColCtx = struct {
+    //         target_line: u32,
+    //         target_col: u32,
+    //         current_line: u32 = 0,
+    //         current_col: u32 = 0,
+    //         should_stop: bool = false,
     //
-    // // pub fn getByteOffsetFromLineAndCol(self: *const Node, line: u32, col: u32) !void {
-    // //     const GetByteOffsetFromLineAndColCtx = struct {
-    // //         target_line: u32,
-    // //         target_col: u32,
-    // //         current_line: u32 = 0,
-    // //         current_col: u32 = 0,
-    // //         should_stop: bool = false,
-    // //
-    // //         fn walk(cx: *@This(), node: *const Node) WalkResult {
-    // //             if (cx.should_stop) return WalkResult.stop;
-    // //             if (cx.current_line > cx.target_line) unreachable;
-    // //             switch (node.*) {
-    // //                 .branch => |branch| {
-    // //                     if (cx.current_line < cx.target_line) {
-    // //                         const left_line_end = cx.current_line + branch.left.weights().bols;
-    // //                         var left_result = WalkResult.keep_walking;
-    // //                         if (cx.target_line == cx.current_line or cx.target_line < left_line_end) left_result = cx.walk(branch.left);
-    // //                         cx.current_line = left_line_end;
-    // //                         const right_result = cx.walk(branch.right);
-    // //                         return WalkResult.merge(left_result, right_result);
-    // //                     }
-    // //                     const left_col_end = cx.current_line + branch.left.weights().len; // TODO: we need num_of_chars, not len
-    // //                     var left_result = WalkResult.keep_walking;
-    // //                     if (cx.target_col < left_col_end) left_result = cx.walk(branch.left);
-    // //                     cx.current_col = left_col_end;
-    // //                     const right_result = cx.walk(branch.right);
-    // //                     return WalkResult.merge(left_result, right_result);
-    // //                 },
-    // //                 .leaf => |leaf| return cx.walker(&leaf),
-    // //             }
-    // //         }
-    // //
-    // //         fn walker() WalkResult {
-    // //             // TODO:
-    // //         }
-    // //     };
-    // //
-    // //     var ctx = GetByteOffsetFromLineAndColCtx{ .target_line = line, .target_col = col };
-    // //     const walk_result = ctx.walk(self);
-    // // }
+    //         fn walk(cx: *@This(), node: *const Node) WalkResult {
+    //             if (cx.should_stop) return WalkResult.stop;
+    //             if (cx.current_line > cx.target_line) unreachable;
+    //             switch (node.*) {
+    //                 .branch => |branch| {
+    //                     if (cx.current_line < cx.target_line) {
+    //                         const left_line_end = cx.current_line + branch.left.weights().bols;
+    //                         var left_result = WalkResult.keep_walking;
+    //                         if (cx.target_line == cx.current_line or cx.target_line < left_line_end) left_result = cx.walk(branch.left);
+    //                         cx.current_line = left_line_end;
+    //                         const right_result = cx.walk(branch.right);
+    //                         return WalkResult.merge(left_result, right_result);
+    //                     }
+    //
+    //                     const left_col_end = cx.current_line + branch.left.weights().len; // TODO: we need num_of_chars, not len
+    //
+    //                     var left_result = WalkResult.keep_walking;
+    //                     if (cx.target_col < left_col_end) left_result = cx.walk(branch.left);
+    //                     cx.current_col = left_col_end;
+    //                     const right_result = cx.walk(branch.right);
+    //                     return WalkResult.merge(left_result, right_result);
+    //                 },
+    //                 .leaf => |leaf| return cx.walker(&leaf),
+    //             }
+    //         }
+    //
+    //         fn walker() WalkResult {
+    //             // TODO:
+    //         }
+    //     };
+    //
+    //     var ctx = GetByteOffsetFromLineAndColCtx{ .target_line = line, .target_col = col };
+    //     const walk_result = ctx.walk(self);
+    // }
     //
     // test getByteOffsetFromLineAndCol {
     //     const a = idc_if_it_leaks;
@@ -492,26 +494,26 @@ pub const Node = union(enum) {
         {
             const root = try __inputCharsOneAfterAnother(a, "abcde");
             const root_debug_str =
-                \\5
+                \\5 0/5/5
                 \\  1 `a`
-                \\  4
+                \\  4 0/4/4
                 \\    1 `b`
-                \\    3
+                \\    3 0/3/3
                 \\      1 `c`
-                \\      2
+                \\      2 0/2/2
                 \\        1 `d`
                 \\        1 `e`
             ;
             try eqStr(root_debug_str, try root.debugPrint());
             const balanced_root = try root.balance(a);
             const balanced_root_debug_str =
-                \\4
-                \\  3
+                \\4 0/5/5
+                \\  3 0/3/3
                 \\    1 `a`
-                \\    2
+                \\    2 0/2/2
                 \\      1 `b`
                 \\      1 `c`
-                \\  2
+                \\  2 0/2/2
                 \\    1 `d`
                 \\    1 `e`
             ;
@@ -562,8 +564,8 @@ pub const Node = union(enum) {
             const root = try abcd.insertChars(a, 1, "a");
             const node_to_rotate = root.branch.right;
             const node_to_rotate_print =
-                \\3
-                \\  2
+                \\3 0/4/4
+                \\  2 0/2/2
                 \\    1 `a`
                 \\    1 `B`
                 \\  1 `CD`
@@ -571,9 +573,9 @@ pub const Node = union(enum) {
             try eqStr(node_to_rotate_print, try node_to_rotate.debugPrint());
             const result = try node_to_rotate.rotateRight(a);
             const result_print =
-                \\3
+                \\3 0/4/4
                 \\  1 `a`
-                \\  2
+                \\  2 0/3/3
                 \\    1 `B`
                 \\    1 `CD`
             ;
@@ -596,22 +598,22 @@ pub const Node = union(enum) {
             const abcd = try acd.insertChars(a, 1, "B");
             const old_root = try abcd.insertChars(a, 4, "E");
             const old_root_print =
-                \\4
+                \\4 0/5/5
                 \\  1 `A`
-                \\  3
+                \\  3 0/4/4
                 \\    1 `B`
-                \\    2
+                \\    2 0/3/3
                 \\      1 `CD`
                 \\      1 `E`
             ;
             try eqStr(old_root_print, try old_root.debugPrint());
             const new_root = try old_root.rotateLeft(a);
             const new_root_print =
-                \\3
-                \\  2
+                \\3 0/5/5
+                \\  2 0/2/2
                 \\    1 `A`
                 \\    1 `B`
-                \\  2
+                \\  2 0/3/3
                 \\    1 `CD`
                 \\    1 `E`
             ;
@@ -784,11 +786,11 @@ pub const Node = union(enum) {
         const three_four = try Node.new(a, try Leaf.new(a, "_three", false, false), try Leaf.new(a, "_four", false, true));
         const one_two_three_four = try Node.new(a, one_two, three_four);
         const one_two_three_four_str =
-            \\3
-            \\  2
+            \\3 1/19/18
+            \\  2 1/7/7
             \\    1 B| `one`
             \\    1 `_two`
-            \\  2
+            \\  2 0/12/11
             \\    1 `_three`
             \\    1 `_four` |E
         ;
@@ -798,11 +800,11 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 0, 1);
                 const new_root_debug_str =
-                    \\3
-                    \\  2
+                    \\3 1/18/17
+                    \\  2 1/6/6
                     \\    1 B| `ne`
                     \\    1 `_two`
-                    \\  2
+                    \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
                 ;
@@ -811,11 +813,11 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 3, 2);
                 const new_root_debug_str =
-                    \\3
-                    \\  2
+                    \\3 1/17/16
+                    \\  2 1/5/5
                     \\    1 B| `one`
                     \\    1 `wo`
-                    \\  2
+                    \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
                 ;
@@ -824,9 +826,9 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 0, 3);
                 const new_root_debug_str =
-                    \\3
+                    \\3 1/16/15
                     \\  1 B| `_two`
-                    \\  2
+                    \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
                 ;
@@ -838,11 +840,11 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 1, 3);
                 const new_root_debug_str =
-                    \\3
-                    \\  2
+                    \\3 1/16/15
+                    \\  2 1/4/4
                     \\    1 B| `o`
                     \\    1 `two`
-                    \\  2
+                    \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
                 ;
@@ -851,11 +853,11 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 1, 4);
                 const new_root_debug_str =
-                    \\3
-                    \\  2
+                    \\3 1/15/14
+                    \\  2 1/3/3
                     \\    1 B| `o`
                     \\    1 `wo`
-                    \\  2
+                    \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
                 ;
@@ -864,9 +866,9 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 1, 6);
                 const new_root_debug_str =
-                    \\3
+                    \\3 1/13/12
                     \\  1 B| `o`
-                    \\  2
+                    \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
                 ;
@@ -875,7 +877,7 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 0, 6);
                 const new_root_debug_str =
-                    \\2
+                    \\2 1/12/11
                     \\  1 B| `_three`
                     \\  1 `_four` |E
                 ;
@@ -986,7 +988,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "", true);
             const new_root = try root.insertChars(a, 0, "hello\nworld");
             const new_root_debug_str =
-                \\2
+                \\2 2/11/10
                 \\  1 B| `hello` |E
                 \\  1 B| `world`
             ;
@@ -996,7 +998,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "", false);
             const new_root = try root.insertChars(a, 0, "hello\nworld");
             const new_root_debug_str =
-                \\2
+                \\2 1/11/10
                 \\  1 `hello` |E
                 \\  1 B| `world`
             ;
@@ -1008,7 +1010,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "BCD", false);
             const new_root = try root.insertChars(a, 0, "A");
             const new_root_debug_str =
-                \\2
+                \\2 0/4/4
                 \\  1 `A`
                 \\  1 `BCD`
             ;
@@ -1018,7 +1020,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "BCD", true);
             const new_root = try root.insertChars(a, 0, "A");
             const new_root_debug_str =
-                \\2
+                \\2 1/4/4
                 \\  1 B| `A`
                 \\  1 `BCD`
             ;
@@ -1028,7 +1030,7 @@ pub const Node = union(enum) {
             const root = try Leaf.new(a, "BCD", true, true);
             const new_root = try root.insertChars(a, 0, "A");
             const new_root_debug_str =
-                \\2
+                \\2 1/5/4
                 \\  1 B| `A`
                 \\  1 `BCD` |E
             ;
@@ -1040,7 +1042,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "A", false);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
             const new_root_debug_str =
-                \\2
+                \\2 0/4/4
                 \\  1 `A`
                 \\  1 `BCD`
             ;
@@ -1050,7 +1052,7 @@ pub const Node = union(enum) {
             const root = try Leaf.new(idc_if_it_leaks, "A", true, true);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
             const new_root_debug_str =
-                \\2
+                \\2 1/5/4
                 \\  1 B| `A`
                 \\  1 `BCD` |E
             ;
@@ -1060,13 +1062,13 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
             const new_root = try root.insertChars(a, 3, "_1");
             const new_root_debug_str =
-                \\4
-                \\  3
-                \\    2
+                \\4 4/20/17
+                \\  3 2/10/8
+                \\    2 1/6/5
                 \\      1 B| `one`
                 \\      1 `_1` |E
                 \\    1 B| `two` |E
-                \\  2
+                \\  2 2/10/9
                 \\    1 B| `three` |E
                 \\    1 B| `four`
             ;
@@ -1078,9 +1080,9 @@ pub const Node = union(enum) {
             const root = try Leaf.new(a, "ACD", false, false);
             const new_root = try root.insertChars(a, 1, "B");
             const new_root_debug_str =
-                \\3
+                \\3 0/4/4
                 \\  1 `A`
-                \\  2
+                \\  2 0/3/3
                 \\    1 `B`
                 \\    1 `CD`
             ;
@@ -1093,11 +1095,11 @@ pub const Node = union(enum) {
             const abcd = try acd.insertChars(a, 1, "B");
             const abcde = try abcd.insertChars(a, 4, "E");
             const new_root_debug_str =
-                \\4
+                \\4 0/5/5
                 \\  1 `A`
-                \\  3
+                \\  3 0/4/4
                 \\    1 `B`
-                \\    2
+                \\    2 0/3/3
                 \\      1 `CD`
                 \\      1 `E`
             ;
@@ -1108,11 +1110,11 @@ pub const Node = union(enum) {
             const abcd = try acd.insertChars(a, 1, "B");
             const abcde = try abcd.insertChars(a, 4, "E");
             const new_root_debug_str =
-                \\4
+                \\4 1/6/5
                 \\  1 B| `A`
-                \\  3
+                \\  3 0/5/4
                 \\    1 `B`
-                \\    2
+                \\    2 0/4/3
                 \\      1 `CD`
                 \\      1 `E` |E
             ;
@@ -1124,10 +1126,10 @@ pub const Node = union(enum) {
             const abcd = try Leaf.new(a, "ABCD", true, false);
             const new_root = try abcd.insertChars(a, 1, "1\n22");
             const new_root_debug_str =
-                \\4
+                \\4 2/8/7
                 \\  1 B| `A`
-                \\  3
-                \\    2
+                \\  3 1/7/6
+                \\    2 1/4/3
                 \\      1 `1` |E
                 \\      1 B| `22`
                 \\    1 `BCD`
@@ -1167,7 +1169,7 @@ pub const Node = union(enum) {
         for (0..indent_level) |_| try result.append(' ');
         switch (self.*) {
             .branch => |branch| {
-                const content = try std.fmt.allocPrint(a, "{d}", .{branch.weights.depth});
+                const content = try std.fmt.allocPrint(a, "{d} {d}/{d}/{d}", .{ branch.weights.depth, branch.weights.bols, branch.weights.len, branch.weights.noc });
                 defer a.free(content);
                 try result.appendSlice(content);
                 try branch.left._debugPrint(a, result, indent_level + 2);
@@ -1189,11 +1191,11 @@ pub const Node = union(enum) {
         {
             const root = try __inputCharsOneAfterAnother(a, "abcd");
             const expected =
-                \\4
+                \\4 0/4/4
                 \\  1 `a`
-                \\  3
+                \\  3 0/3/3
                 \\    1 `b`
-                \\    2
+                \\    2 0/2/2
                 \\      1 `c`
                 \\      1 `d`
             ;
@@ -1202,11 +1204,11 @@ pub const Node = union(enum) {
         {
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
             const expected =
-                \\3
-                \\  2
+                \\3 4/18/15
+                \\  2 2/8/6
                 \\    1 B| `one` |E
                 \\    1 B| `two` |E
-                \\  2
+                \\  2 2/10/9
                 \\    1 B| `three` |E
                 \\    1 B| `four`
             ;
