@@ -228,59 +228,6 @@ pub const Node = union(enum) {
         }
     }
 
-    ///////////////////////////// Get Index from Line & Col
-
-    // pub fn getByteOffsetFromLineAndCol(self: *const Node, line: u32, col: u32) !void {
-    //     const GetByteOffsetFromLineAndColCtx = struct {
-    //         target_line: u32,
-    //         target_col: u32,
-    //         current_line: u32 = 0,
-    //         current_col: u32 = 0,
-    //         should_stop: bool = false,
-    //
-    //         fn walk(cx: *@This(), node: *const Node) WalkResult {
-    //             if (cx.should_stop) return WalkResult.stop;
-    //             if (cx.current_line > cx.target_line) unreachable;
-    //             switch (node.*) {
-    //                 .branch => |branch| {
-    //                     if (cx.current_line < cx.target_line) {
-    //                         const left_line_end = cx.current_line + branch.left.weights().bols;
-    //                         var left_result = WalkResult.keep_walking;
-    //                         if (cx.target_line == cx.current_line or cx.target_line < left_line_end) left_result = cx.walk(branch.left);
-    //                         cx.current_line = left_line_end;
-    //                         const right_result = cx.walk(branch.right);
-    //                         return WalkResult.merge(left_result, right_result);
-    //                     }
-    //
-    //                     const left_col_end = cx.current_line + branch.left.weights().len; // TODO: we need num_of_chars, not len
-    //
-    //                     var left_result = WalkResult.keep_walking;
-    //                     if (cx.target_col < left_col_end) left_result = cx.walk(branch.left);
-    //                     cx.current_col = left_col_end;
-    //                     const right_result = cx.walk(branch.right);
-    //                     return WalkResult.merge(left_result, right_result);
-    //                 },
-    //                 .leaf => |leaf| return cx.walker(&leaf),
-    //             }
-    //         }
-    //
-    //         fn walker() WalkResult {
-    //             // TODO:
-    //         }
-    //     };
-    //
-    //     var ctx = GetByteOffsetFromLineAndColCtx{ .target_line = line, .target_col = col };
-    //     const walk_result = ctx.walk(self);
-    // }
-    //
-    // test getByteOffsetFromLineAndCol {
-    //     const a = idc_if_it_leaks;
-    //     {
-    //         const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-    //         try eq(0, root.getByteOffsetFromLineAndCol(0, 0));
-    //     }
-    // }
-
     ///////////////////////////// Get Content
 
     // Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
@@ -332,12 +279,13 @@ pub const Node = union(enum) {
         }
     }
 
-    pub fn getLine(self: *const Node, a: Allocator, linenr: u32) !ArrayList(u8) {
+    pub fn getLine(self: *const Node, a: Allocator, linenr: u32) !struct { ArrayList(u8), u32 } {
         const GetLineCtx = struct {
             target_linenr: u32,
             current_linenr: u32 = 0,
             result_list: *ArrayList(u8),
             should_stop: bool = false,
+            num_of_chars: u32 = 0,
 
             fn walk(cx: *@This(), node: *const Node) WalkResult {
                 if (cx.should_stop) return WalkResult.stop;
@@ -356,6 +304,7 @@ pub const Node = union(enum) {
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
                 cx.result_list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
+                cx.num_of_chars += leaf.noc;
                 if (leaf.eol) {
                     cx.should_stop = true;
                     return WalkResult.stop;
@@ -373,7 +322,7 @@ pub const Node = union(enum) {
             result_list.deinit();
             return err;
         }
-        return result_list;
+        return .{ result_list, ctx.num_of_chars };
     }
 
     test getLine {
@@ -382,20 +331,24 @@ pub const Node = union(enum) {
         { // can get line that contained in 1 single Leaf
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
             {
-                const line = try root.getLine(a, 0);
+                const line, const noc = try root.getLine(a, 0);
                 try eqStr("one", line.items);
+                try eq(3, noc);
             }
             {
-                const line = try root.getLine(a, 1);
+                const line, const noc = try root.getLine(a, 1);
                 try eqStr("two", line.items);
+                try eq(3, noc);
             }
             {
-                const line = try root.getLine(a, 2);
+                const line, const noc = try root.getLine(a, 2);
                 try eqStr("three", line.items);
+                try eq(5, noc);
             }
             {
-                const line = try root.getLine(a, 3);
+                const line, const noc = try root.getLine(a, 3);
                 try eqStr("four", line.items);
+                try eq(4, noc);
             }
         }
 
@@ -404,16 +357,19 @@ pub const Node = union(enum) {
             const old = try Node.fromString(a, "one\ntwo\nthree", true);
             const root = try old.insertChars(a, 3, "_1");
             {
-                const line = try root.getLine(a, 0);
+                const line, const noc = try root.getLine(a, 0);
                 try eqStr("one_1", line.items);
+                try eq(5, noc);
             }
             {
-                const line = try root.getLine(a, 1);
+                const line, const noc = try root.getLine(a, 1);
                 try eqStr("two", line.items);
+                try eq(3, noc);
             }
             {
-                const line = try root.getLine(a, 2);
+                const line, const noc = try root.getLine(a, 2);
                 try eqStr("three", line.items);
+                try eq(5, noc);
             }
             try shouldErr(error.NotFound, root.getLine(a, 3));
         }
@@ -427,23 +383,27 @@ pub const Node = union(enum) {
             {
                 const root = try Node.new(a, one_two_three, four);
                 {
-                    const line = try root.getLine(a, 0);
+                    const line, const noc = try root.getLine(a, 0);
                     try eqStr("one_two_three", line.items);
+                    try eq(13, noc);
                 }
                 {
-                    const line = try root.getLine(a, 1);
+                    const line, const noc = try root.getLine(a, 1);
                     try eqStr("four", line.items);
+                    try eq(4, noc);
                 }
             }
             {
                 const root = try Node.new(a, four, one_two_three);
                 {
-                    const line = try root.getLine(a, 0);
+                    const line, const noc = try root.getLine(a, 0);
                     try eqStr("four", line.items);
+                    try eq(4, noc);
                 }
                 {
-                    const line = try root.getLine(a, 1);
+                    const line, const noc = try root.getLine(a, 1);
                     try eqStr("one_two_three", line.items);
+                    try eq(13, noc);
                 }
             }
         }
