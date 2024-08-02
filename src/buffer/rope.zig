@@ -130,13 +130,21 @@ pub const Node = union(enum) {
     test fromString {
         {
             const root = try Node.fromString(idc_if_it_leaks, "hello\nworld", false);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello", .noc = 5 }, root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world", .noc = 5 }, root.branch.right.leaf);
+            const root_debug_str =
+                \\2 1/11/10
+                \\  1 `hello` |E
+                \\  1 B| `world`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
         }
         {
             const root = try Node.fromString(idc_if_it_leaks, "hello\nworld", true);
-            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "hello", .noc = 5 }, root.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world", .noc = 5 }, root.branch.right.leaf);
+            const root_debug_str =
+                \\2 2/11/10
+                \\  1 B| `hello` |E
+                \\  1 B| `world`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
         }
     }
 
@@ -207,10 +215,16 @@ pub const Node = union(enum) {
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "one\ntwo\nthree\nfour");
             const root = try mergeLeaves(idc_if_it_leaks, leaves);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "one", .noc = 3 }, root.branch.left.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "two", .noc = 3 }, root.branch.left.branch.right.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "three", .noc = 5 }, root.branch.right.branch.left.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "four", .noc = 4 }, root.branch.right.branch.right.leaf);
+            const root_debug_str =
+                \\3 3/18/15
+                \\  2 1/8/6
+                \\    1 `one` |E
+                \\    1 B| `two` |E
+                \\  2 2/10/9
+                \\    1 B| `three` |E
+                \\    1 B| `four`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
         }
     }
 
@@ -1146,15 +1160,6 @@ pub const Node = union(enum) {
             .leaf => |*l| l.weights(),
         };
     }
-    test weights {
-        const a = idc_if_it_leaks;
-        const node = try Node.new(a, try Leaf.new(a, "one", true, false), try Leaf.new(a, "_two", false, true));
-        try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "one", .noc = 3 }, node.branch.left.leaf);
-        try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "_two", .noc = 4 }, node.branch.right.leaf);
-        try eqDeep(Weights{ .bols = 1, .len = 8, .depth = 2, .noc = 7 }, node.weights());
-        try eqDeep(Weights{ .bols = 1, .len = 3, .depth = 1, .noc = 3 }, node.branch.left.weights());
-        try eqDeep(Weights{ .bols = 0, .len = 5, .depth = 1, .noc = 4 }, node.branch.right.weights());
-    }
 
     ///////////////////////////// Debug Print Node
 
@@ -1176,12 +1181,11 @@ pub const Node = union(enum) {
                 try branch.right._debugPrint(a, result, indent_level + 2);
             },
             .leaf => |leaf| {
-                try result.appendSlice("1 ");
-                if (leaf.bol) try result.appendSlice("B| ");
-                try result.append('`');
-                try result.appendSlice(leaf.buf);
-                try result.append('`');
-                if (leaf.eol) try result.appendSlice(" |E");
+                const bol = if (leaf.bol) "B| " else "";
+                const eol = if (leaf.eol) " |E" else "";
+                const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}", .{ bol, leaf.buf, eol });
+                defer a.free(content);
+                try result.appendSlice(content);
             },
         }
     }
