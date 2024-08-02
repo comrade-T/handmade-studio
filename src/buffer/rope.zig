@@ -103,11 +103,6 @@ const WalkResult = struct {
     }
 };
 
-const empty_leaf: Node = .{ .leaf = .{ .buf = "" } };
-const empty_bol_leaf: Node = .{ .leaf = .{ .buf = "", .bol = true, .eol = false } };
-const empty_eol_leaf: Node = .{ .leaf = .{ .buf = "", .bol = false, .eol = true } };
-const empty_line_leaf: Node = .{ .leaf = .{ .buf = "", .bol = true, .eol = true } };
-
 /// Primary data structure to manage an editable text buffer.
 /// Can either be a Branch or a Leaf.
 pub const Node = union(enum) {
@@ -1144,12 +1139,7 @@ const Leaf = struct {
     eol: bool = true,
 
     fn new(a: Allocator, piece: []const u8, bol: bool, eol: bool) !*const Node {
-        if (piece.len == 0) {
-            if (!bol and !eol) return &empty_leaf;
-            if (bol and !eol) return &empty_bol_leaf;
-            if (!bol and eol) return &empty_eol_leaf;
-            return &empty_line_leaf;
-        }
+        if (piece.len == 0) return &Node{ .leaf = .{ .buf = "", .bol = bol, .eol = eol } };
         const node = try a.create(Node);
         node.* = .{ .leaf = .{ .buf = piece, .bol = bol, .eol = eol } };
         return node;
