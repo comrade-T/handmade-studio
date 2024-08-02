@@ -213,6 +213,57 @@ pub const Node = union(enum) {
         }
     }
 
+    // ///////////////////////////// Get Index from Line & Col
+    //
+    // // pub fn getByteOffsetFromLineAndCol(self: *const Node, line: u32, col: u32) !void {
+    // //     const GetByteOffsetFromLineAndColCtx = struct {
+    // //         target_line: u32,
+    // //         target_col: u32,
+    // //         current_line: u32 = 0,
+    // //         current_col: u32 = 0,
+    // //         should_stop: bool = false,
+    // //
+    // //         fn walk(cx: *@This(), node: *const Node) WalkResult {
+    // //             if (cx.should_stop) return WalkResult.stop;
+    // //             if (cx.current_line > cx.target_line) unreachable;
+    // //             switch (node.*) {
+    // //                 .branch => |branch| {
+    // //                     if (cx.current_line < cx.target_line) {
+    // //                         const left_line_end = cx.current_line + branch.left.weights().bols;
+    // //                         var left_result = WalkResult.keep_walking;
+    // //                         if (cx.target_line == cx.current_line or cx.target_line < left_line_end) left_result = cx.walk(branch.left);
+    // //                         cx.current_line = left_line_end;
+    // //                         const right_result = cx.walk(branch.right);
+    // //                         return WalkResult.merge(left_result, right_result);
+    // //                     }
+    // //                     const left_col_end = cx.current_line + branch.left.weights().len; // TODO: we need num_of_chars, not len
+    // //                     var left_result = WalkResult.keep_walking;
+    // //                     if (cx.target_col < left_col_end) left_result = cx.walk(branch.left);
+    // //                     cx.current_col = left_col_end;
+    // //                     const right_result = cx.walk(branch.right);
+    // //                     return WalkResult.merge(left_result, right_result);
+    // //                 },
+    // //                 .leaf => |leaf| return cx.walker(&leaf),
+    // //             }
+    // //         }
+    // //
+    // //         fn walker() WalkResult {
+    // //             // TODO:
+    // //         }
+    // //     };
+    // //
+    // //     var ctx = GetByteOffsetFromLineAndColCtx{ .target_line = line, .target_col = col };
+    // //     const walk_result = ctx.walk(self);
+    // // }
+    //
+    // test getByteOffsetFromLineAndCol {
+    //     const a = idc_if_it_leaks;
+    //     {
+    //         const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+    //         try eq(0, root.getByteOffsetFromLineAndCol(0, 0));
+    //     }
+    // }
+
     ///////////////////////////// Get Content
 
     // Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
@@ -930,7 +981,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "", false);
             const new_root = try root.insertChars(a, 0, "hello\nworld");
 
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 11, .depth = 2 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .len = 11, .depth = 2 }, new_root.weights());
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, new_root.branch.right.leaf);
         }
@@ -939,21 +990,21 @@ pub const Node = union(enum) {
         {
             const root = try Node.fromString(a, "BCD", false);
             const new_root = try root.insertChars(a, 0, "A");
-            try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 4 }, new_root.weights());
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
         }
         {
             const root = try Node.fromString(a, "BCD", true);
             const new_root = try root.insertChars(a, 0, "A");
-            try eqDeep(Weights{ .bols = 1, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 4 }, new_root.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
         }
         {
             const root = try Leaf.new(a, "BCD", true, true);
             const new_root = try root.insertChars(a, 0, "A");
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 5 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 5 }, new_root.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD" }, new_root.branch.right.leaf);
         }
@@ -962,21 +1013,21 @@ pub const Node = union(enum) {
         {
             const root = try Node.fromString(a, "A", false);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-            try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 4 }, new_root.weights());
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
         }
         {
             const root = try Node.fromString(a, "A", true);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-            try eqDeep(Weights{ .bols = 1, .eols = 0, .depth = 2, .len = 4 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 4 }, new_root.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "BCD" }, new_root.branch.right.leaf);
         }
         {
             const root = try Leaf.new(idc_if_it_leaks, "A", true, true);
             const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 5 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 5 }, new_root.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "BCD" }, new_root.branch.right.leaf);
         }
@@ -1001,8 +1052,8 @@ pub const Node = union(enum) {
         {
             const root = try Leaf.new(a, "ACD", false, false);
             const new_root = try root.insertChars(a, 1, "B");
-            try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 3, .len = 4 }, new_root.weights());
-            try eqDeep(Weights{ .bols = 0, .eols = 0, .depth = 2, .len = 3 }, new_root.branch.right.weights());
+            try eqDeep(Weights{ .bols = 0, .depth = 3, .len = 4 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 3 }, new_root.branch.right.weights());
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B" }, new_root.branch.right.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, new_root.branch.right.branch.right.leaf);
@@ -1025,9 +1076,9 @@ pub const Node = union(enum) {
             const acd = try Leaf.new(a, "ACD", true, true);
             const abcd = try acd.insertChars(a, 1, "B");
             const abcde = try abcd.insertChars(a, 4, "E");
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 4, .len = 6 }, abcde.weights());
-            try eqDeep(Weights{ .bols = 0, .eols = 1, .depth = 3, .len = 5 }, abcde.branch.right.weights());
-            try eqDeep(Weights{ .bols = 0, .eols = 1, .depth = 2, .len = 4 }, abcde.branch.right.branch.right.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 4, .len = 6 }, abcde.weights());
+            try eqDeep(Weights{ .bols = 0, .depth = 3, .len = 5 }, abcde.branch.right.weights());
+            try eqDeep(Weights{ .bols = 0, .depth = 2, .len = 4 }, abcde.branch.right.branch.right.weights());
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "A" }, abcde.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "B" }, abcde.branch.right.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "CD" }, abcde.branch.right.branch.right.branch.left.leaf);
@@ -1038,9 +1089,9 @@ pub const Node = union(enum) {
         {
             const abcd = try Leaf.new(a, "ABCD", false, false);
             const new_root = try abcd.insertChars(a, 1, "1\n22"); // should result in `A1\n22BCD`
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 4, .len = 8 }, new_root.weights());
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 3, .len = 7 }, new_root.branch.right.weights());
-            try eqDeep(Weights{ .bols = 1, .eols = 1, .depth = 2, .len = 4 }, new_root.branch.right.branch.left.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 4, .len = 8 }, new_root.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 3, .len = 7 }, new_root.branch.right.weights());
+            try eqDeep(Weights{ .bols = 1, .depth = 2, .len = 4 }, new_root.branch.right.branch.left.weights());
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A" }, new_root.branch.left.leaf);
             try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "1" }, new_root.branch.right.branch.left.branch.left.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "22" }, new_root.branch.right.branch.left.branch.right.leaf);
@@ -1061,9 +1112,9 @@ pub const Node = union(enum) {
         const node = try Node.new(a, try Leaf.new(a, "one", true, false), try Leaf.new(a, "_two", false, true));
         try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "one" }, node.branch.left.leaf);
         try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "_two" }, node.branch.right.leaf);
-        try eqDeep(Weights{ .bols = 1, .eols = 1, .len = 8, .depth = 2 }, node.weights());
-        try eqDeep(Weights{ .bols = 1, .eols = 0, .len = 3, .depth = 1 }, node.branch.left.weights());
-        try eqDeep(Weights{ .bols = 0, .eols = 1, .len = 5, .depth = 1 }, node.branch.right.weights());
+        try eqDeep(Weights{ .bols = 1, .len = 8, .depth = 2 }, node.weights());
+        try eqDeep(Weights{ .bols = 1, .len = 3, .depth = 1 }, node.branch.left.weights());
+        try eqDeep(Weights{ .bols = 0, .len = 5, .depth = 1 }, node.branch.right.weights());
     }
 
     ///////////////////////////// Debug Print Node
@@ -1150,7 +1201,6 @@ const Leaf = struct {
         if (self.eol) len += 1;
         return Weights{
             .bols = if (self.bol) 1 else 0,
-            .eols = if (self.eol) 1 else 0,
             .len = @intCast(len),
         };
     }
@@ -1162,13 +1212,11 @@ const Leaf = struct {
 
 const Weights = struct {
     bols: u32 = 0,
-    eols: u32 = 0,
     len: u32 = 0,
     depth: u32 = 1,
 
     fn add(self: *Weights, other: Weights) void {
         self.bols += other.bols;
-        self.eols += other.eols;
         self.len += other.len;
         self.depth = @max(self.depth, other.depth);
     }
@@ -1180,16 +1228,16 @@ const Weights = struct {
             try eqDeep(Weights{}, w1);
         }
         {
-            var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
-            const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 1 };
+            var w1 = Weights{ .bols = 1, .len = 5, .depth = 1 };
+            const w2 = Weights{ .bols = 1, .len = 3, .depth = 1 };
             w1.add(w2);
-            try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 1 }, w1);
+            try eqDeep(Weights{ .bols = 2, .len = 8, .depth = 1 }, w1);
         }
         {
-            var w1 = Weights{ .bols = 1, .eols = 1, .len = 5, .depth = 1 };
-            const w2 = Weights{ .bols = 1, .eols = 1, .len = 3, .depth = 2 };
+            var w1 = Weights{ .bols = 1, .len = 5, .depth = 1 };
+            const w2 = Weights{ .bols = 1, .len = 3, .depth = 2 };
             w1.add(w2);
-            try eqDeep(Weights{ .bols = 2, .eols = 2, .len = 8, .depth = 2 }, w1);
+            try eqDeep(Weights{ .bols = 2, .len = 8, .depth = 2 }, w1);
         }
     }
 };
