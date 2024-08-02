@@ -22,6 +22,11 @@ const EditableTextBuffer = struct {
     x: i32,
     y: i32,
 
+    fn getDocument(self: @This()) [*:0]const u8 {
+        if (self.document.items.len > 0) return @ptrCast(self.document.items);
+        return "";
+    }
+
     fn insertChars(self: *@This(), chars: []const u8) !void {
         const target_index = if (self.document.items.len == 0) 0 else self.document.items.len - 1;
         const new_root = try self.root.insertChars(self.a, target_index, chars);
@@ -101,6 +106,9 @@ pub fn main() anyerror!void {
     }
     var active_buf: ?*EditableTextBuffer = null;
 
+    const static_buf = try EditableTextBuffer.spawn(gpa, "");
+    defer static_buf.destroy();
+
     ///////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -126,6 +134,7 @@ pub fn main() anyerror!void {
                     defer picker.a.free(trigger);
 
                     try triggerCallback(&trigger_map, trigger, active_buf);
+                    try triggerCallback(&trigger_map, trigger, static_buf);
                 }
             }
         }
@@ -144,14 +153,9 @@ pub fn main() anyerror!void {
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
-
             {
-                for (buf_list.items) |buf| {
-                    if (buf.document.items.len > 0) {
-                        const content = @as([*:0]const u8, @ptrCast(buf.document.items));
-                        rl.drawText(content, buf.x, buf.y, 30, rl.Color.ray_white);
-                    }
-                }
+                rl.drawText(static_buf.getDocument(), 300, 300, 30, rl.Color.ray_white);
+                for (buf_list.items) |buf| rl.drawText(buf.getDocument(), buf.x, buf.y, 30, rl.Color.ray_white);
             }
         }
     }
