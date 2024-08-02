@@ -284,7 +284,7 @@ pub const Node = union(enum) {
     ///////////////////////////// Get Content
 
     // Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
-    pub fn getDocument(self: *const Node, a: Allocator) !ArrayList(u8) {
+    pub fn getContent(self: *const Node, a: Allocator) !ArrayList(u8) {
         const GetDocumentCtx = struct {
             result_list: *ArrayList(u8),
 
@@ -316,18 +316,18 @@ pub const Node = union(enum) {
         return result_list;
     }
 
-    test getDocument {
+    test getContent {
         const a = idc_if_it_leaks;
         {
             const source = "";
             const root = try Node.fromString(a, source, true);
-            const result = try root.getDocument(a);
+            const result = try root.getContent(a);
             try eqStr(source, result.items);
         }
         {
             const source = "one\ntwo\nthree\nfour";
             const root = try Node.fromString(a, source, true);
-            const result = try root.getDocument(a);
+            const result = try root.getContent(a);
             try eqStr(source, result.items);
         }
     }

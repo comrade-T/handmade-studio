@@ -32,7 +32,7 @@ const EditableTextBuffer = struct {
         const new_root = try self.root.insertChars(self.a, target_index, chars);
         self.root = new_root;
         self.document.deinit();
-        self.document = try self.root.getDocument(self.a);
+        self.document = try self.root.getContent(self.a);
     }
 
     fn spawn(external_allocator: Allocator, content: []const u8) !*@This() {
@@ -42,7 +42,7 @@ const EditableTextBuffer = struct {
         self.a = self.arena.allocator();
 
         self.root = try rope.Node.fromString(self.a, content, true);
-        self.document = try self.root.getDocument(self.a);
+        self.document = try self.root.getContent(self.a);
 
         self.x = rl.getMouseX();
         self.y = rl.getMouseY();
