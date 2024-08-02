@@ -3,8 +3,11 @@ const rl = @import("raylib");
 
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
+const rope = @import("rope");
 
 const eql = std.mem.eql;
+const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -47,26 +50,35 @@ pub fn main() anyerror!void {
     var picker = try TriggerPicker.init(gpa, &trigger_map);
     defer picker.deinit();
 
-    ///////////////////////////// Model
+    ///////////////////////////// Models
 
-    const Rectangle = struct {
-        x: i32 = 0,
-        y: i32 = 0,
-        width: i32 = 100,
-        height: i32 = 100,
-        color: rl.Color = rl.Color.ray_white,
+    const EditableTextBuffer = struct {
+        external_allocator: Allocator,
+        arena: std.heap.ArenaAllocator,
+        a: Allocator,
+        root: *const rope.Node,
+        document: ArrayList(u8),
 
-        fn collidesWithMouse(self: *const @This()) bool {
-            const mouseX = rl.getMouseX();
-            const mouseY = rl.getMouseY();
-            const mouse_in_x_range = (self.x <= mouseX) and (mouseX <= self.x + self.width);
-            const mouse_in_y_range = (self.y <= mouseY) and (mouseY <= self.y + self.height);
-            if (mouse_in_x_range and mouse_in_y_range) return true;
-            return false;
+        fn init(external_allocator: Allocator, content: []const u8) !*@This() {
+            var self = try external_allocator.create(@This());
+            self.external_allocator = external_allocator;
+            self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            self.a = self.arena.allocator();
+
+            self.root = try rope.Node.fromString(self.a, content, true);
+            self.document = try self.root.getDocument(self.a);
+
+            return self;
+        }
+
+        fn deinit(self: *@This()) void {
+            self.arena.deinit();
+            self.external_allocator.destroy(self);
         }
     };
-    var rectangles = std.ArrayList(Rectangle).init(gpa);
-    defer rectangles.deinit();
+
+    const buf = try EditableTextBuffer.init(gpa, "Hello World!");
+    defer buf.deinit();
 
     ///////////////////////////// Main Loop
 
@@ -102,29 +114,7 @@ pub fn main() anyerror!void {
         {
             rl.clearBackground(rl.Color.blank);
 
-            if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_right) and rectangles.items.len > 0) {
-                var i: usize = rectangles.items.len -| 1;
-                while (true) {
-                    if (rectangles.items[i].collidesWithMouse()) _ = rectangles.orderedRemove(i);
-                    if (i == 0) break;
-                    i -|= 1;
-                }
-            }
-
-            if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
-                try rectangles.append(Rectangle{ .x = rl.getMouseX(), .y = rl.getMouseY() });
-            }
-
-            { // draw rectangles
-
-                for (rectangles.items) |rec| {
-                    if (rec.collidesWithMouse()) {
-                        rl.drawRectangle(rec.x, rec.y, rec.width, rec.height, rl.Color.gray);
-                    } else {
-                        rl.drawRectangle(rec.x, rec.y, rec.width, rec.height, rec.color);
-                    }
-                }
-            }
+            // TODO:
         }
     }
 }

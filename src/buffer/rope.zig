@@ -110,7 +110,7 @@ const empty_line_leaf: Node = .{ .leaf = .{ .buf = "", .bol = true, .eol = true 
 
 /// Primary data structure to manage an editable text buffer.
 /// Can either be a Branch or a Leaf.
-const Node = union(enum) {
+pub const Node = union(enum) {
     branch: Branch,
     leaf: Leaf,
 
@@ -221,7 +221,7 @@ const Node = union(enum) {
     ///////////////////////////// Get Content
 
     // Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
-    fn getDocument(self: *const Node, a: Allocator) !ArrayList(u8) {
+    pub fn getDocument(self: *const Node, a: Allocator) !ArrayList(u8) {
         const GetDocumentCtx = struct {
             result_list: *ArrayList(u8),
 
@@ -269,7 +269,7 @@ const Node = union(enum) {
         }
     }
 
-    fn getLine(self: *const Node, a: Allocator, linenr: u32) !ArrayList(u8) {
+    pub fn getLine(self: *const Node, a: Allocator, linenr: u32) !ArrayList(u8) {
         const GetLineCtx = struct {
             target_linenr: u32,
             current_linenr: u32 = 0,
