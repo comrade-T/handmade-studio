@@ -46,12 +46,6 @@ const UglyTextBox = struct {
 
         return self;
     }
-    test spawn {
-        const a = std.testing.allocator;
-        const box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
-        defer box.destroy();
-        try eqStr("Hello World!", box.lines.items[0].getText(box.cells.items, box.document.items));
-    }
 
     fn destroy(self: *UglyTextBox) void {
         self.arena.deinit();
@@ -111,6 +105,38 @@ const UglyTextBox = struct {
             try box.insertChars("...");
             try eqStr("OK! Hello World! Here I go!", box.lines.items[0].getText(box.cells.items, box.document.items));
             try eqStr("...", box.lines.items[1].getText(box.cells.items, box.document.items));
+        }
+    }
+
+    ///////////////////////////// Delete
+
+    fn backspace(self: *UglyTextBox) !void {
+        const line = self.lines.items[self.cursor.line];
+        var cell = line.cell(self.cells.items, self.cursor.col);
+        if (cell == null) {
+            if (line.numOfCells() == 0) @panic("not implemented");
+            cell = line.cell(self.cells.items, line.numOfCells() - 1);
+        }
+
+        const new_root = try self.root.deleteBytes(self.a, cell.?.start_byte, cell.?.len());
+        self.root = new_root;
+
+        self.document.deinit();
+        self.document = try self.root.getContent(self.a);
+
+        self.cells.deinit();
+        self.lines.deinit();
+        self.cells, self.lines = try _cell.createCellListAndLineList(self.a, self.document.items);
+    }
+
+    test backspace {
+        const a = std.testing.allocator;
+        {
+            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            defer box.destroy();
+            box.moveCursorRight(100);
+            try box.backspace();
+            try eqStr("Hello World", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
     }
 };

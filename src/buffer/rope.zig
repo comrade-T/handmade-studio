@@ -597,7 +597,7 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Delete Bytes
 
-    fn deleteBytes(self: *const Node, a: Allocator, start_byte: usize, num_of_bytes_to_delete: usize) !*const Node {
+    pub fn deleteBytes(self: *const Node, a: Allocator, start_byte: usize, num_of_bytes_to_delete: usize) !*const Node {
         const DeleteBytesCtx = struct {
             a: Allocator,
 
