@@ -108,8 +108,16 @@ pub fn main() anyerror!void {
         {
             rl.clearBackground(rl.Color.blank);
             {
-                rl.drawText(static_utb.getDocument(), 300, 300, 30, rl.Color.ray_white);
-                for (buf_list.items) |utb| rl.drawText(utb.getDocument(), utb.x, utb.y, 30, rl.Color.ray_white);
+                {
+                    const content = try std.fmt.allocPrintZ(gpa, "{s}", .{static_utb.document.items});
+                    defer gpa.free(content);
+                    rl.drawText(content, 300, 300, 30, rl.Color.ray_white);
+                }
+                for (buf_list.items) |utb| {
+                    const content = try std.fmt.allocPrintZ(gpa, "{s}", .{utb.document.items});
+                    defer gpa.free(content);
+                    rl.drawText(content, utb.x, utb.y, 30, rl.Color.ray_white);
+                }
             }
         }
     }

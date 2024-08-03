@@ -52,13 +52,6 @@ pub const UglyTextBox = struct {
         self.external_allocator.destroy(self);
     }
 
-    ///////////////////////////// Get Document
-
-    pub fn getDocument(self: *UglyTextBox) [*:0]const u8 {
-        if (self.document.items.len > 0) return @ptrCast(self.document.items);
-        return "";
-    }
-
     ///////////////////////////// Basic Cursor Movement
 
     pub fn moveCursorLeft(self: *UglyTextBox, count: usize) void {
