@@ -639,7 +639,7 @@ pub const Node = union(enum) {
                 if (leaf_outside_delete_range) return _amendBol(cx, leaf);
 
                 const start_before_leaf = cx.start_byte <= cx.current_index.*;
-                const end_after_leaf = cx.end_byte >= cx.current_index.* + leaf.buf.len - 1;
+                const end_after_leaf = cx.end_byte >= cx.current_index.* + leaf.weights().len - 1;
                 const delete_covers_leaf = start_before_leaf and end_after_leaf;
                 if (delete_covers_leaf) return _removed(cx, leaf);
 
@@ -663,8 +663,12 @@ pub const Node = union(enum) {
             }
 
             fn _removed(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+                cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
-                cx.bytes_deleted += leaf.buf.len;
+                if (leaf.eol) {
+                    const replace = Leaf.new(cx.a, "", false, true) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replace };
+                }
                 return WalkMutResult.removed;
             }
 
@@ -694,8 +698,10 @@ pub const Node = union(enum) {
             fn _leftSide(cx: *@This(), leaf: *const Leaf) WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index.*;
                 const left_side_content = leaf.buf[0..split_index];
-                const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                const left_eol = if (left_side_content.len == leaf.buf.len) false else leaf.eol;
+                const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, left_eol) catch |err| return .{ .err = err };
                 cx.bytes_deleted += leaf.buf.len - left_side_content.len;
+                if (left_side_content.len == leaf.buf.len) cx.bytes_deleted += 1;
                 return WalkMutResult{ .replace = left_side };
             }
 
@@ -856,6 +862,92 @@ pub const Node = union(enum) {
                     \\  1 `_four` |E
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+        }
+
+        // delete operation spans aceoss lines
+        {
+            const root = try Node.fromString(a, "Hello\nWorld!", true);
+            const root_debug_str =
+                \\2 2/12/11
+                \\  1 B| `Hello` |E
+                \\  1 B| `World!`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+            const new_root = try root.deleteBytes(a, 5, 1);
+            const new_root_debug_str =
+                \\2 2/11/11
+                \\  1 B| `Hello`
+                \\  1 B| `World!`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+        {
+            const root = try Node.fromString(a, "Hello\nfrom\nEarth", true);
+            const root_debug_str =
+                \\3 3/16/14
+                \\  1 B| `Hello` |E
+                \\  2 2/10/9
+                \\    1 B| `from` |E
+                \\    1 B| `Earth`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+            {
+                const new_root = try root.deleteBytes(a, 5, 1);
+                const new_root_debug_str =
+                    \\3 3/15/14
+                    \\  1 B| `Hello`
+                    \\  2 2/10/9
+                    \\    1 B| `from` |E
+                    \\    1 B| `Earth`
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try root.deleteBytes(a, 5, 2);
+                const new_root_debug_str =
+                    \\3 3/14/13
+                    \\  1 B| `Hello`
+                    \\  2 2/9/8
+                    \\    1 B| `rom` |E
+                    \\    1 B| `Earth`
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try root.deleteBytes(a, 5, 3);
+                const new_root_debug_str =
+                    \\3 3/13/12
+                    \\  1 B| `Hello`
+                    \\  2 2/8/7
+                    \\    1 B| `om` |E
+                    \\    1 B| `Earth`
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try root.deleteBytes(a, 5, 4);
+                const new_root_debug_str =
+                    \\3 3/12/11
+                    \\  1 B| `Hello`
+                    \\  2 2/7/6
+                    \\    1 B| `m` |E
+                    \\    1 B| `Earth`
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+            }
+            {
+                const new_root = try root.deleteBytes(a, 5, 5);
+                const new_root_debug_str =
+                    \\3 2/11/10
+                    \\  1 B| `Hello`
+                    \\  2 1/6/5
+                    \\    1 `` |E
+                    \\    1 B| `Earth`
+                ;
+                try eqStr(new_root_debug_str, try new_root.debugPrint());
+                const new_document = try new_root.getContent(a);
+                try eqStr("Hello\nEarth", new_document.items);
             }
         }
     }
@@ -1143,7 +1235,8 @@ pub const Node = union(enum) {
             .leaf => |leaf| {
                 const bol = if (leaf.bol) "B| " else "";
                 const eol = if (leaf.eol) " |E" else "";
-                const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}", .{ bol, leaf.buf, eol });
+                const leaf_content = if (leaf.buf.len > 0) leaf.buf else "";
+                const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}", .{ bol, leaf_content, eol });
                 defer a.free(content);
                 try result.appendSlice(content);
             },
@@ -1193,8 +1286,18 @@ const Leaf = struct {
     eol: bool = true,
     noc: u32,
 
+    const empty_leaf: Node = .{ .leaf = .{ .buf = "", .noc = 0, .bol = false, .eol = false } };
+    const empty_bol_leaf: Node = .{ .leaf = .{ .buf = "", .noc = 0, .bol = true, .eol = false } };
+    const empty_eol_leaf: Node = .{ .leaf = .{ .buf = "", .noc = 0, .bol = false, .eol = true } };
+    const empty_line_leaf: Node = .{ .leaf = .{ .buf = "", .noc = 0, .bol = true, .eol = true } };
+
     fn new(a: Allocator, source: []const u8, bol: bool, eol: bool) !*const Node {
-        if (source.len == 0) return &Node{ .leaf = .{ .buf = "", .noc = 0, .bol = bol, .eol = eol } };
+        if (source.len == 0) {
+            if (!bol and !eol) return &empty_leaf;
+            if (bol and !eol) return &empty_bol_leaf;
+            if (!bol and eol) return &empty_eol_leaf;
+            return &empty_line_leaf;
+        }
         const node = try a.create(Node);
         node.* = .{ .leaf = .{ .buf = source, .bol = bol, .eol = eol, .noc = getNumOfChars(source) } };
         return node;

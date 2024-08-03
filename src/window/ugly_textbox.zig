@@ -111,15 +111,24 @@ const UglyTextBox = struct {
     ///////////////////////////// Delete
 
     fn backspace(self: *UglyTextBox) !void {
-        const line = self.lines.items[self.cursor.line];
+        if (self.cursor.line == 0 and self.cursor.col == 0) return;
 
-        if (self.cursor.col == 0 or line.numOfCells() == 0) {
-            @panic("not implemented");
+        var start_byte: usize = 0;
+        var byte_count: usize = 0;
+
+        if (self.cursor.col == 0) {
+            const prev_line = self.lines.items[self.cursor.line - 1];
+            const prev_line_last_cell = prev_line.cell(self.cells.items, prev_line.numOfCells()).?;
+            start_byte = prev_line_last_cell.end_byte - 1;
+            byte_count = 1;
+        } else {
+            const line = self.lines.items[self.cursor.line];
+            const cell = line.cell(self.cells.items, self.cursor.col - 1).?;
+            start_byte = cell.start_byte;
+            byte_count = cell.len();
         }
 
-        const cell = line.cell(self.cells.items, self.cursor.col - 1);
-
-        const new_root = try self.root.deleteBytes(self.a, cell.?.start_byte, cell.?.len());
+        const new_root = try self.root.deleteBytes(self.a, start_byte, byte_count);
         self.root = new_root;
 
         self.document.deinit();
@@ -132,20 +141,36 @@ const UglyTextBox = struct {
 
     test backspace {
         const a = std.testing.allocator;
-        {
+        { // backspace at end of line
             var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
             defer box.destroy();
             box.moveCursorRight(100);
             try box.backspace();
             try eqStr("Hello World", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
-        {
+        { // backspace in middle of line
             var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
             defer box.destroy();
             box.moveCursorRight(100);
             box.moveCursorLeft(1);
             try box.backspace();
             try eqStr("Hello Worl!", box.lines.items[0].getText(box.cells.items, box.document.items));
+        }
+        { // backspace at start of document, should do nothing
+            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            defer box.destroy();
+            try box.backspace();
+            try eqStr("Hello World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+        }
+        { // backspace at start of line that's not the first line of document
+            var box = try UglyTextBox.spawn(a, "Hello\nWorld!", 0, 0);
+            defer box.destroy();
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try eqStr("World!", box.lines.items[1].getText(box.cells.items, box.document.items));
+
+            box.cursor.set(1, 0);
+            try box.backspace();
+            try eq(1, box.lines.items.len);
         }
     }
 };
