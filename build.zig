@@ -62,7 +62,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/window/ugly_textbox.zig", &.{
+    const ugly_textbox = addTestableModule(&bops, "src/window/ugly_textbox.zig", &.{
         .{ .name = "rope", .module = rope.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
@@ -108,6 +108,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         spawn_rec_by_clicking_exe.root_module.addImport("rope", rope.module);
+        spawn_rec_by_clicking_exe.root_module.addImport("ugly_textbox", ugly_textbox.module);
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
 

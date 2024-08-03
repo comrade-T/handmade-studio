@@ -15,7 +15,7 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const UglyTextBox = struct {
+pub const UglyTextBox = struct {
     external_allocator: Allocator,
     arena: std.heap.ArenaAllocator,
     a: Allocator,
@@ -30,7 +30,7 @@ const UglyTextBox = struct {
     x: i32,
     y: i32,
 
-    fn spawn(external_allocator: Allocator, content: []const u8, x: i32, y: i32) !*@This() {
+    pub fn spawn(external_allocator: Allocator, content: []const u8, x: i32, y: i32) !*@This() {
         var self = try external_allocator.create(@This());
         self.external_allocator = external_allocator;
         self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -47,39 +47,44 @@ const UglyTextBox = struct {
 
         return self;
     }
-
-    fn destroy(self: *UglyTextBox) void {
+    pub fn destroy(self: *UglyTextBox) void {
         self.arena.deinit();
         self.external_allocator.destroy(self);
     }
 
+    ///////////////////////////// Get Document
+
+    pub fn getDocument(self: *UglyTextBox) [*:0]const u8 {
+        if (self.document.items.len > 0) return @ptrCast(self.document.items);
+        return "";
+    }
+
     ///////////////////////////// Basic Cursor Movement
 
-    fn moveCursorLeft(self: *UglyTextBox, count: usize) void {
+    pub fn moveCursorLeft(self: *UglyTextBox, count: usize) void {
         self.cursor.left(count);
     }
-    fn moveCursorRight(self: *UglyTextBox, count: usize) void {
+    pub fn moveCursorRight(self: *UglyTextBox, count: usize) void {
         const current_line = self.lines.items[self.cursor.line];
         self.cursor.right(count, current_line.numOfCells());
     }
-    fn moveCursorUp(self: *UglyTextBox, count: usize) void {
+    pub fn moveCursorUp(self: *UglyTextBox, count: usize) void {
         self.cursor.up(count);
     }
-    fn moveCursorDown(self: *UglyTextBox, count: usize) void {
+    pub fn moveCursorDown(self: *UglyTextBox, count: usize) void {
         self.cursor.down(count, self.lines.items.len);
     }
 
     ///////////////////////////// Move by word
 
-    fn moveCursorBackwardsByWord(self: *UglyTextBox, destination: WordBoundaryType) void {
+    pub fn moveCursorBackwardsByWord(self: *UglyTextBox, destination: WordBoundaryType) void {
         const new_line, const new_col = _cell.backwardsByWord(destination, self.document.items, self.cells.items, self.lines.items, self.cursor.line, self.cursor.col);
         self.cursor.set(new_line, new_col);
     }
-    fn moveCursorForwardByWord(self: *UglyTextBox, destination: WordBoundaryType) void {
+    pub fn moveCursorForwardByWord(self: *UglyTextBox, destination: WordBoundaryType) void {
         const new_line, const new_col = _cell.forwardByWord(destination, self.document.items, self.cells.items, self.lines.items, self.cursor.line, self.cursor.col);
         self.cursor.set(new_line, new_col);
     }
-
     test "move cursor forward / backward by word" {
         const a = std.testing.allocator;
         {
@@ -112,7 +117,7 @@ const UglyTextBox = struct {
 
     ///////////////////////////// Insert
 
-    fn insertChars(self: *UglyTextBox, chars: []const u8) !void {
+    pub fn insertChars(self: *UglyTextBox, chars: []const u8) !void {
         const current_line = self.lines.items[self.cursor.line];
         const cell_at_cursor = current_line.cell(self.cells.items, self.cursor.col);
         const insert_index = if (cell_at_cursor) |cell| cell.start_byte else self.document.items.len;
@@ -152,7 +157,7 @@ const UglyTextBox = struct {
 
     ///////////////////////////// Delete
 
-    fn backspace(self: *UglyTextBox) !void {
+    pub fn backspace(self: *UglyTextBox) !void {
         if (self.cursor.line == 0 and self.cursor.col == 0) return;
 
         var start_byte: usize = 0;
@@ -180,7 +185,6 @@ const UglyTextBox = struct {
         self.lines.deinit();
         self.cells, self.lines = try _cell.createCellListAndLineList(self.a, self.document.items);
     }
-
     test backspace {
         const a = std.testing.allocator;
         { // backspace at end of line

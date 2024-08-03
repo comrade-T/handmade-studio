@@ -4,57 +4,11 @@ const rl = @import("raylib");
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
 const rope = @import("rope");
+const UglyTextBox = @import("ugly_textbox").UglyTextBox;
 
 const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const EditableTextBuffer = struct {
-    external_allocator: Allocator,
-    arena: std.heap.ArenaAllocator,
-    a: Allocator,
-
-    root: *const rope.Node,
-    document: ArrayList(u8),
-
-    x: i32,
-    y: i32,
-
-    fn getDocument(self: @This()) [*:0]const u8 {
-        if (self.document.items.len > 0) return @ptrCast(self.document.items);
-        return "";
-    }
-
-    fn insertChars(self: *@This(), chars: []const u8) !void {
-        const target_index = if (self.document.items.len == 0) 0 else self.document.items.len - 1;
-        const new_root = try self.root.insertChars(self.a, target_index, chars);
-        self.root = new_root;
-        self.document.deinit();
-        self.document = try self.root.getContent(self.a);
-    }
-
-    fn spawn(external_allocator: Allocator, content: []const u8) !*@This() {
-        var self = try external_allocator.create(@This());
-        self.external_allocator = external_allocator;
-        self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        self.a = self.arena.allocator();
-
-        self.root = try rope.Node.fromString(self.a, content, true);
-        self.document = try self.root.getContent(self.a);
-
-        self.x = rl.getMouseX();
-        self.y = rl.getMouseY();
-
-        return self;
-    }
-
-    fn destroy(self: *@This()) void {
-        self.arena.deinit();
-        self.external_allocator.destroy(self);
-    }
-};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -99,15 +53,15 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Models
 
-    var buf_list = std.ArrayList(*EditableTextBuffer).init(gpa);
+    var buf_list = std.ArrayList(*UglyTextBox).init(gpa);
     defer {
         for (buf_list.items) |buf| buf.destroy();
         buf_list.deinit();
     }
-    var active_buf: ?*EditableTextBuffer = null;
+    var active_buf: ?*UglyTextBox = null;
 
-    const static_buf = try EditableTextBuffer.spawn(gpa, "");
-    defer static_buf.destroy();
+    const static_utb = try UglyTextBox.spawn(gpa, "", 400, 300);
+    defer static_utb.destroy();
 
     ///////////////////////////// Main Loop
 
@@ -134,7 +88,7 @@ pub fn main() anyerror!void {
                     defer picker.a.free(trigger);
 
                     try triggerCallback(&trigger_map, trigger, active_buf);
-                    try triggerCallback(&trigger_map, trigger, static_buf);
+                    try triggerCallback(&trigger_map, trigger, static_utb);
                 }
             }
         }
@@ -142,7 +96,7 @@ pub fn main() anyerror!void {
 
         { // Spawn
             if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
-                const buf = try EditableTextBuffer.spawn(gpa, "");
+                const buf = try UglyTextBox.spawn(gpa, "", rl.getMouseX(), rl.getMouseY());
                 active_buf = buf;
                 try buf_list.append(buf);
             }
@@ -154,15 +108,15 @@ pub fn main() anyerror!void {
         {
             rl.clearBackground(rl.Color.blank);
             {
-                rl.drawText(static_buf.getDocument(), 300, 300, 30, rl.Color.ray_white);
-                for (buf_list.items) |buf| rl.drawText(buf.getDocument(), buf.x, buf.y, 30, rl.Color.ray_white);
+                rl.drawText(static_utb.getDocument(), 300, 300, 30, rl.Color.ray_white);
+                for (buf_list.items) |utb| rl.drawText(utb.getDocument(), utb.x, utb.y, 30, rl.Color.ray_white);
             }
         }
     }
 }
 
-fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, may_buf: ?*EditableTextBuffer) !void {
-    if (may_buf) |buf| {
+fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, may_utb: ?*UglyTextBox) !void {
+    if (may_utb) |buf| {
         var action: exp.TriggerAction = undefined;
         if (trigger_map.get(trigger)) |a| action = a else return;
 
