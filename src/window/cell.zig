@@ -202,7 +202,7 @@ const CharType = enum {
     }
 };
 
-const WordBoundaryType = enum {
+pub const WordBoundaryType = enum {
     start,
     end,
     both,
@@ -248,7 +248,7 @@ fn foundTargetBoundary(source: []const u8, cells: []const Cell, curr_line: Line,
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn forwardByWord(
+pub fn forwardByWord(
     destination: WordBoundaryType,
     source: []const u8,
     cells: []const Cell,
@@ -485,7 +485,7 @@ test "forwardByWord.start" {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn backByWord(
+pub fn backwardsByWord(
     destination: WordBoundaryType,
     source: []const u8,
     cells: []const Cell,
@@ -508,7 +508,7 @@ fn backByWord(
     return .{ linenr, colnr };
 }
 
-test backByWord {
+test backwardsByWord {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -516,66 +516,66 @@ test backByWord {
     {
         const source = "";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 0, 0));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 100, 0));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 0, 200));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 0));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 100, 0));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 200));
     }
     {
         const source = "one;two--3|||four;";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 0, 13 }, backByWord(.start, source, cells, lines, 0, 17));
-        try eq(.{ 0, 13 }, backByWord(.start, source, cells, lines, 0, 16));
-        try eq(.{ 0, 13 }, backByWord(.start, source, cells, lines, 0, 15));
-        try eq(.{ 0, 13 }, backByWord(.start, source, cells, lines, 0, 14));
+        try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 17));
+        try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 16));
+        try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 15));
+        try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 14));
         try eqStr("f", lines[0].cell(cells, 13).?.getText(source));
-        try eq(.{ 0, 10 }, backByWord(.start, source, cells, lines, 0, 13));
-        try eq(.{ 0, 10 }, backByWord(.start, source, cells, lines, 0, 12));
-        try eq(.{ 0, 10 }, backByWord(.start, source, cells, lines, 0, 11));
+        try eq(.{ 0, 10 }, backwardsByWord(.start, source, cells, lines, 0, 13));
+        try eq(.{ 0, 10 }, backwardsByWord(.start, source, cells, lines, 0, 12));
+        try eq(.{ 0, 10 }, backwardsByWord(.start, source, cells, lines, 0, 11));
         try eqStr("|", lines[0].cell(cells, 10).?.getText(source));
-        try eq(.{ 0, 9 }, backByWord(.start, source, cells, lines, 0, 10));
+        try eq(.{ 0, 9 }, backwardsByWord(.start, source, cells, lines, 0, 10));
         try eqStr("3", lines[0].cell(cells, 9).?.getText(source));
-        try eq(.{ 0, 7 }, backByWord(.start, source, cells, lines, 0, 9));
-        try eq(.{ 0, 7 }, backByWord(.start, source, cells, lines, 0, 8));
+        try eq(.{ 0, 7 }, backwardsByWord(.start, source, cells, lines, 0, 9));
+        try eq(.{ 0, 7 }, backwardsByWord(.start, source, cells, lines, 0, 8));
         try eqStr("-", lines[0].cell(cells, 7).?.getText(source));
-        try eq(.{ 0, 4 }, backByWord(.start, source, cells, lines, 0, 7));
-        try eq(.{ 0, 4 }, backByWord(.start, source, cells, lines, 0, 6));
-        try eq(.{ 0, 4 }, backByWord(.start, source, cells, lines, 0, 5));
+        try eq(.{ 0, 4 }, backwardsByWord(.start, source, cells, lines, 0, 7));
+        try eq(.{ 0, 4 }, backwardsByWord(.start, source, cells, lines, 0, 6));
+        try eq(.{ 0, 4 }, backwardsByWord(.start, source, cells, lines, 0, 5));
         try eqStr("t", lines[0].cell(cells, 4).?.getText(source));
-        try eq(.{ 0, 3 }, backByWord(.start, source, cells, lines, 0, 4));
+        try eq(.{ 0, 3 }, backwardsByWord(.start, source, cells, lines, 0, 4));
         try eqStr(";", lines[0].cell(cells, 3).?.getText(source));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 0, 3));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 0, 2));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 0, 1));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 3));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 2));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 1));
         try eqStr("o", lines[0].cell(cells, 0).?.getText(source));
     }
 
     {
         const source = "one\ntwo";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 1, 0 }, backByWord(.start, source, cells, lines, 1, 2));
-        try eq(.{ 1, 0 }, backByWord(.start, source, cells, lines, 1, 1));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 1, 0));
+        try eq(.{ 1, 0 }, backwardsByWord(.start, source, cells, lines, 1, 2));
+        try eq(.{ 1, 0 }, backwardsByWord(.start, source, cells, lines, 1, 1));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 1, 0));
     }
     {
         const source = "draw forth\na map";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 1, 2 }, backByWord(.start, source, cells, lines, 1, 4));
-        try eq(.{ 1, 2 }, backByWord(.start, source, cells, lines, 1, 3));
+        try eq(.{ 1, 2 }, backwardsByWord(.start, source, cells, lines, 1, 4));
+        try eq(.{ 1, 2 }, backwardsByWord(.start, source, cells, lines, 1, 3));
         try eqStr("m", lines[1].cell(cells, 2).?.getText(source));
-        try eq(.{ 1, 0 }, backByWord(.start, source, cells, lines, 1, 2));
-        try eq(.{ 1, 0 }, backByWord(.start, source, cells, lines, 1, 1));
+        try eq(.{ 1, 0 }, backwardsByWord(.start, source, cells, lines, 1, 2));
+        try eq(.{ 1, 0 }, backwardsByWord(.start, source, cells, lines, 1, 1));
         try eqStr("a", lines[1].cell(cells, 0).?.getText(source));
-        try eq(.{ 0, 5 }, backByWord(.start, source, cells, lines, 1, 0));
+        try eq(.{ 0, 5 }, backwardsByWord(.start, source, cells, lines, 1, 0));
         try eqStr("f", lines[0].cell(cells, 5).?.getText(source));
-        try eq(.{ 0, 0 }, backByWord(.start, source, cells, lines, 0, 5));
+        try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 5));
         try eqStr("d", lines[0].cell(cells, 0).?.getText(source));
     }
     {
         const source = "draw forth;\na map";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 0, 10 }, backByWord(.start, source, cells, lines, 1, 0));
+        try eq(.{ 0, 10 }, backwardsByWord(.start, source, cells, lines, 1, 0));
         try eqStr(";", lines[0].cell(cells, 10).?.getText(source));
-        try eq(.{ 0, 5 }, backByWord(.start, source, cells, lines, 0, 10));
+        try eq(.{ 0, 5 }, backwardsByWord(.start, source, cells, lines, 0, 10));
     }
 }
 
@@ -587,74 +587,74 @@ test "backByWord.end" {
     {
         const source = "";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 0, 0 }, backByWord(.end, source, cells, lines, 0, 0));
-        try eq(.{ 0, 0 }, backByWord(.end, source, cells, lines, 100, 0));
-        try eq(.{ 0, 0 }, backByWord(.end, source, cells, lines, 0, 200));
+        try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 0));
+        try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 100, 0));
+        try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 200));
     }
     {
         const source = "one;two--3|||four;;;;";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 0, 16 }, backByWord(.end, source, cells, lines, 0, 20));
-        try eq(.{ 0, 16 }, backByWord(.end, source, cells, lines, 0, 19));
-        try eq(.{ 0, 16 }, backByWord(.end, source, cells, lines, 0, 18));
-        try eq(.{ 0, 16 }, backByWord(.end, source, cells, lines, 0, 17));
+        try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 20));
+        try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 19));
+        try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 18));
+        try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 17));
         try eqStr("r", lines[0].cell(cells, 16).?.getText(source));
-        try eq(.{ 0, 12 }, backByWord(.end, source, cells, lines, 0, 16));
-        try eq(.{ 0, 12 }, backByWord(.end, source, cells, lines, 0, 15));
-        try eq(.{ 0, 12 }, backByWord(.end, source, cells, lines, 0, 14));
-        try eq(.{ 0, 12 }, backByWord(.end, source, cells, lines, 0, 13));
+        try eq(.{ 0, 12 }, backwardsByWord(.end, source, cells, lines, 0, 16));
+        try eq(.{ 0, 12 }, backwardsByWord(.end, source, cells, lines, 0, 15));
+        try eq(.{ 0, 12 }, backwardsByWord(.end, source, cells, lines, 0, 14));
+        try eq(.{ 0, 12 }, backwardsByWord(.end, source, cells, lines, 0, 13));
         try eqStr("|", lines[0].cell(cells, 12).?.getText(source));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 0, 12));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 0, 11));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 0, 10));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 0, 12));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 0, 11));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 0, 10));
         try eqStr("3", lines[0].cell(cells, 9).?.getText(source));
-        try eq(.{ 0, 8 }, backByWord(.end, source, cells, lines, 0, 9));
+        try eq(.{ 0, 8 }, backwardsByWord(.end, source, cells, lines, 0, 9));
         try eqStr("-", lines[0].cell(cells, 8).?.getText(source));
-        try eq(.{ 0, 6 }, backByWord(.end, source, cells, lines, 0, 8));
-        try eq(.{ 0, 6 }, backByWord(.end, source, cells, lines, 0, 7));
+        try eq(.{ 0, 6 }, backwardsByWord(.end, source, cells, lines, 0, 8));
+        try eq(.{ 0, 6 }, backwardsByWord(.end, source, cells, lines, 0, 7));
         try eqStr("o", lines[0].cell(cells, 6).?.getText(source));
-        try eq(.{ 0, 3 }, backByWord(.end, source, cells, lines, 0, 6));
-        try eq(.{ 0, 3 }, backByWord(.end, source, cells, lines, 0, 5));
-        try eq(.{ 0, 3 }, backByWord(.end, source, cells, lines, 0, 4));
+        try eq(.{ 0, 3 }, backwardsByWord(.end, source, cells, lines, 0, 6));
+        try eq(.{ 0, 3 }, backwardsByWord(.end, source, cells, lines, 0, 5));
+        try eq(.{ 0, 3 }, backwardsByWord(.end, source, cells, lines, 0, 4));
         try eqStr(";", lines[0].cell(cells, 3).?.getText(source));
-        try eq(.{ 0, 2 }, backByWord(.end, source, cells, lines, 0, 3));
+        try eq(.{ 0, 2 }, backwardsByWord(.end, source, cells, lines, 0, 3));
         try eqStr("e", lines[0].cell(cells, 2).?.getText(source));
-        try eq(.{ 0, 0 }, backByWord(.end, source, cells, lines, 0, 2));
-        try eq(.{ 0, 0 }, backByWord(.end, source, cells, lines, 0, 1));
-        try eq(.{ 0, 0 }, backByWord(.end, source, cells, lines, 0, 0));
+        try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 2));
+        try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 1));
+        try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 0));
         try eqStr("o", lines[0].cell(cells, 0).?.getText(source));
     }
     {
         const source = "draw forth\na map";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 1, 0 }, backByWord(.end, source, cells, lines, 1, 4));
+        try eq(.{ 1, 0 }, backwardsByWord(.end, source, cells, lines, 1, 4));
         try eqStr("a", lines[1].cell(cells, 0).?.getText(source));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 1, 0));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 1, 0));
         try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
-        try eq(.{ 0, 3 }, backByWord(.end, source, cells, lines, 0, 9));
+        try eq(.{ 0, 3 }, backwardsByWord(.end, source, cells, lines, 0, 9));
         try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
     }
     {
         const source = "draw forth\nmy map";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 1, 1 }, backByWord(.end, source, cells, lines, 1, 5));
+        try eq(.{ 1, 1 }, backwardsByWord(.end, source, cells, lines, 1, 5));
         try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 1, 1));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 1, 0));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 1, 1));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 1, 0));
         try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
-        try eq(.{ 0, 3 }, backByWord(.end, source, cells, lines, 0, 9));
+        try eq(.{ 0, 3 }, backwardsByWord(.end, source, cells, lines, 0, 9));
         try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
     }
     {
         const source = "draw forth;\nmy map";
         const cells, const lines = try createCellSliceAndLineSlice(a, source);
-        try eq(.{ 1, 1 }, backByWord(.end, source, cells, lines, 1, 5));
+        try eq(.{ 1, 1 }, backwardsByWord(.end, source, cells, lines, 1, 5));
         try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
-        try eq(.{ 0, 10 }, backByWord(.end, source, cells, lines, 1, 1));
+        try eq(.{ 0, 10 }, backwardsByWord(.end, source, cells, lines, 1, 1));
         try eqStr(";", lines[0].cell(cells, 10).?.getText(source));
-        try eq(.{ 0, 9 }, backByWord(.end, source, cells, lines, 0, 10));
+        try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 0, 10));
         try eqStr("h", lines[0].cell(cells, 9).?.getText(source));
-        try eq(.{ 0, 3 }, backByWord(.end, source, cells, lines, 0, 9));
+        try eq(.{ 0, 3 }, backwardsByWord(.end, source, cells, lines, 0, 9));
         try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
     }
 }

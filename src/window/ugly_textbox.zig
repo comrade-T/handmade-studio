@@ -4,6 +4,7 @@ const rope = @import("rope");
 const _cell = @import("cell.zig");
 const Cell = _cell.Cell;
 const Line = _cell.Line;
+const WordBoundaryType = _cell.WordBoundaryType;
 const Cursor = @import("cursor.zig").Cursor;
 
 const Allocator = std.mem.Allocator;
@@ -66,6 +67,47 @@ const UglyTextBox = struct {
     }
     fn moveCursorDown(self: *UglyTextBox, count: usize) void {
         self.cursor.down(count, self.lines.items.len);
+    }
+
+    ///////////////////////////// Move by word
+
+    fn moveCursorBackwardsByWord(self: *UglyTextBox, destination: WordBoundaryType) void {
+        const new_line, const new_col = _cell.backwardsByWord(destination, self.document.items, self.cells.items, self.lines.items, self.cursor.line, self.cursor.col);
+        self.cursor.set(new_line, new_col);
+    }
+    fn moveCursorForwardByWord(self: *UglyTextBox, destination: WordBoundaryType) void {
+        const new_line, const new_col = _cell.forwardByWord(destination, self.document.items, self.cells.items, self.lines.items, self.cursor.line, self.cursor.col);
+        self.cursor.set(new_line, new_col);
+    }
+
+    test "move cursor forward / backward by word" {
+        const a = std.testing.allocator;
+        {
+            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            defer box.destroy();
+
+            box.moveCursorForwardByWord(.start);
+            try box.insertChars("my ");
+            try eqStr("Hello my World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+
+            box.moveCursorForwardByWord(.end);
+            box.moveCursorRight(1);
+            try box.insertChars("ne");
+            try eqStr("Hello myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+
+            box.moveCursorBackwardsByWord(.start);
+            try box.insertChars("_");
+            try eqStr("Hello _myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+
+            box.moveCursorBackwardsByWord(.end);
+            box.moveCursorRight(1);
+            try box.insertChars("!");
+            try eqStr("Hello! _myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+
+            box.moveCursorBackwardsByWord(.start);
+            try box.insertChars("~");
+            try eqStr("~Hello! _myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
+        }
     }
 
     ///////////////////////////// Insert
