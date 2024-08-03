@@ -92,37 +92,37 @@ pub const UglyTextBox = struct {
             defer box.destroy();
 
             box.moveCursorForwardByWord(.start);
-            try box.insertChars("my ");
+            _, _ = try box.insertChars("my ");
             try eqStr("Hello my World!", box.lines.items[0].getText(box.cells.items, box.document.items));
 
             box.moveCursorForwardByWord(.end);
             box.moveCursorRight(1);
-            try box.insertChars("ne");
+            _, _ = try box.insertChars("ne");
             try eqStr("Hello myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
 
             box.moveCursorBackwardsByWord(.start);
-            try box.insertChars("_");
+            _, _ = try box.insertChars("_");
             try eqStr("Hello _myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
 
             box.moveCursorBackwardsByWord(.end);
             box.moveCursorRight(1);
-            try box.insertChars("!");
+            _, _ = try box.insertChars("!");
             try eqStr("Hello! _myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
 
             box.moveCursorBackwardsByWord(.start);
-            try box.insertChars("~");
+            _, _ = try box.insertChars("~");
             try eqStr("~Hello! _myne World!", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
     }
 
     ///////////////////////////// Insert
 
-    pub fn insertChars(self: *UglyTextBox, chars: []const u8) !void {
+    pub fn insertChars(self: *UglyTextBox, chars: []const u8) !struct { usize, usize } {
         const current_line = self.lines.items[self.cursor.line];
         const cell_at_cursor = current_line.cell(self.cells.items, self.cursor.col);
         const insert_index = if (cell_at_cursor) |cell| cell.start_byte else self.document.items.len;
 
-        const new_root = try self.root.insertChars(self.a, insert_index, chars);
+        const new_root, const num_new_lines, const new_col = try self.root.insertChars(self.a, insert_index, chars);
         self.root = new_root;
 
         self.document.deinit();
@@ -131,27 +131,91 @@ pub const UglyTextBox = struct {
         self.cells.deinit();
         self.lines.deinit();
         self.cells, self.lines = try _cell.createCellListAndLineList(self.a, self.document.items);
+
+        return .{ num_new_lines, new_col };
     }
     test insertChars {
         const a = std.testing.allocator;
         {
             var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
             defer box.destroy();
-            try box.insertChars("OK! ");
+            _, _ = try box.insertChars("OK! ");
             try eqStr("OK! Hello World!", box.lines.items[0].getText(box.cells.items, box.document.items));
 
             box.moveCursorRight(100);
-            try box.insertChars(" Here I go!");
+            _, _ = try box.insertChars(" Here I go!");
             try eqStr("OK! Hello World! Here I go!", box.lines.items[0].getText(box.cells.items, box.document.items));
 
             box.moveCursorRight(100);
-            try box.insertChars("\n");
+            _, _ = try box.insertChars("\n");
             try eqStr("", box.lines.items[1].getText(box.cells.items, box.document.items));
 
             box.cursor.set(1, 0);
-            try box.insertChars("...");
+            _, _ = try box.insertChars("...");
             try eqStr("OK! Hello World! Here I go!", box.lines.items[0].getText(box.cells.items, box.document.items));
             try eqStr("...", box.lines.items[1].getText(box.cells.items, box.document.items));
+        }
+        { // insertChars and move cursor
+            var box = try UglyTextBox.spawn(a, "", 0, 0);
+            defer box.destroy();
+            {
+                const num_new_lines, const new_col = try box.insertChars("H");
+                try eqStr("H", box.lines.items[0].getText(box.cells.items, box.document.items));
+                box.cursor.set(box.cursor.line + num_new_lines, new_col);
+            }
+            {
+                const num_new_lines, const new_col = try box.insertChars("e");
+                try eqStr("He", box.lines.items[0].getText(box.cells.items, box.document.items));
+                box.cursor.set(box.cursor.line + num_new_lines, new_col);
+            }
+        }
+    }
+
+    pub fn insertCharsAndMoveCursor(self: *UglyTextBox, chars: []const u8) !void {
+        const num_new_lines, const col_offset = try self.insertChars(chars);
+        self.cursor.set(self.cursor.line + num_new_lines, self.cursor.col + col_offset);
+    }
+    test insertCharsAndMoveCursor {
+        const a = std.testing.allocator;
+        {
+            var box = try UglyTextBox.spawn(a, "", 0, 0);
+            defer box.destroy();
+            try box.insertCharsAndMoveCursor("H");
+            try eqStr("H", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try box.insertCharsAndMoveCursor("e");
+            try eqStr("He", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try box.insertCharsAndMoveCursor("l");
+            try eqStr("Hel", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try box.insertCharsAndMoveCursor("l");
+            try eqStr("Hell", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try box.insertCharsAndMoveCursor("o");
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+        }
+        {
+            var box = try UglyTextBox.spawn(a, "", 0, 0);
+            defer box.destroy();
+            try box.insertCharsAndMoveCursor("H");
+            try eqStr("H", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try box.insertCharsAndMoveCursor("e");
+            try eqStr("He", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try box.insertCharsAndMoveCursor("llo");
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+
+            try box.insertCharsAndMoveCursor("\n");
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try eqStr("", box.lines.items[1].getText(box.cells.items, box.document.items));
+
+            try box.insertCharsAndMoveCursor("w");
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try eqStr("w", box.lines.items[1].getText(box.cells.items, box.document.items));
+
+            try box.insertCharsAndMoveCursor("o");
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try eqStr("wo", box.lines.items[1].getText(box.cells.items, box.document.items));
+
+            try box.insertCharsAndMoveCursor("rld");
+            try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
+            try eqStr("world", box.lines.items[1].getText(box.cells.items, box.document.items));
         }
     }
 

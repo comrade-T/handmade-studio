@@ -121,7 +121,7 @@ fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, may_utb: ?
         if (trigger_map.get(trigger)) |a| action = a else return;
 
         try switch (action) {
-            .insert => |chars| buf.insertChars(chars),
+            .insert => |chars| buf.insertCharsAndMoveCursor(chars),
             .custom => {},
         };
     }

@@ -355,7 +355,7 @@ pub const Node = union(enum) {
         // can get line that spans across multiple Leaves
         {
             const old = try Node.fromString(a, "one\ntwo\nthree", true);
-            const root = try old.insertChars(a, 3, "_1");
+            const root, _, _ = try old.insertChars(a, 3, "_1");
             {
                 const line, const noc = try root.getLine(a, 0);
                 try eqStr("one_1", line.items);
@@ -503,7 +503,7 @@ pub const Node = union(enum) {
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
         var root = try Node.fromString(a, "", false);
         for (0..chars.len) |i| {
-            root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
+            root, _, _ = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
             // if (i == chars.len - 1) std.debug.print("finished __inputCharsOneAfterAnother i == {d}\n", .{i});
         }
         return root;
@@ -534,8 +534,8 @@ pub const Node = union(enum) {
         const a = idc_if_it_leaks;
         {
             const abc = try Node.fromString(a, "ACD", false);
-            const abcd = try abc.insertChars(a, 1, "B");
-            const root = try abcd.insertChars(a, 1, "a");
+            const abcd, _, _ = try abc.insertChars(a, 1, "B");
+            const root, _, _ = try abcd.insertChars(a, 1, "a");
             const node_to_rotate = root.branch.right;
             const node_to_rotate_print =
                 \\3 0/4/4
@@ -569,8 +569,8 @@ pub const Node = union(enum) {
         const a = idc_if_it_leaks;
         {
             const acd = try Node.fromString(a, "ACD", false);
-            const abcd = try acd.insertChars(a, 1, "B");
-            const old_root = try abcd.insertChars(a, 4, "E");
+            const abcd, _, _ = try acd.insertChars(a, 1, "B");
+            const old_root, _, _ = try abcd.insertChars(a, 4, "E");
             const old_root_print =
                 \\4 0/5/5
                 \\  1 `A`
@@ -954,91 +954,100 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Insert Chars
 
-    const InsertCharsCtx = struct {
+    pub fn insertChars(
+        self: *const Node,
         a: Allocator,
-        buf: []const u8,
         target_index: usize,
-        current_index: usize = 0,
+        chars: []const u8,
+    ) !struct { *const Node, usize, usize } {
+        const InsertCharsCtx = struct {
+            a: Allocator,
+            buf: []const u8,
+            target_index: usize,
+            current_index: usize = 0,
+            num_of_new_lines: usize = 0,
+            last_new_leaf_noc: usize = 0,
 
-        fn walkToInsert(ctx: *@This(), node: *const Node) WalkMutResult {
-            if (ctx.current_index > ctx.target_index) return WalkMutResult.stop;
-            switch (node.*) {
-                .branch => |*branch| {
-                    const left_end = ctx.current_index + branch.left.weights().len;
-                    if (ctx.target_index < left_end) {
-                        const left_result = ctx.walkToInsert(branch.left);
+            fn walkToInsert(ctx: *@This(), node: *const Node) WalkMutResult {
+                if (ctx.current_index > ctx.target_index) return WalkMutResult.stop;
+                switch (node.*) {
+                    .branch => |*branch| {
+                        const left_end = ctx.current_index + branch.left.weights().len;
+                        if (ctx.target_index < left_end) {
+                            const left_result = ctx.walkToInsert(branch.left);
+                            return WalkMutResult{
+                                .err = left_result.err,
+                                .found = left_result.found,
+                                .replace = if (left_result.replace) |replacement|
+                                    Node.new(ctx.a, replacement, branch.right) catch |e| return WalkMutResult{ .err = e }
+                                else
+                                    null,
+                            };
+                        }
+                        ctx.current_index = left_end;
+                        const right_result = ctx.walkToInsert(branch.right);
                         return WalkMutResult{
-                            .err = left_result.err,
-                            .found = left_result.found,
-                            .replace = if (left_result.replace) |replacement|
-                                Node.new(ctx.a, replacement, branch.right) catch |e| return WalkMutResult{ .err = e }
+                            .err = right_result.err,
+                            .found = right_result.found,
+                            .replace = if (right_result.replace) |replacement|
+                                Node.new(ctx.a, branch.left, replacement) catch |e| return WalkMutResult{ .err = e }
                             else
                                 null,
                         };
-                    }
-                    ctx.current_index = left_end;
-                    const right_result = ctx.walkToInsert(branch.right);
-                    return WalkMutResult{
-                        .err = right_result.err,
-                        .found = right_result.found,
-                        .replace = if (right_result.replace) |replacement|
-                            Node.new(ctx.a, branch.left, replacement) catch |e| return WalkMutResult{ .err = e }
-                        else
-                            null,
-                    };
-                },
-                .leaf => |leaf| return ctx.walker(&leaf),
-            }
-        }
-
-        fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
-            var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
-
-            if (leaf.buf.len == 0) {
-                new_leaves[0].leaf.bol = leaf.bol;
-                const replacement = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                return WalkMutResult{ .replace = replacement };
+                    },
+                    .leaf => |leaf| return ctx.walker(&leaf),
+                }
             }
 
-            const insert_at_start = cx.current_index == cx.target_index;
-            if (insert_at_start) {
-                new_leaves[0].leaf.bol = leaf.bol;
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+                var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
+                if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
+                if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
+
+                if (leaf.buf.len == 0) {
+                    new_leaves[0].leaf.bol = leaf.bol;
+                    const replacement = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
+                const insert_at_start = cx.current_index == cx.target_index;
+                if (insert_at_start) {
+                    new_leaves[0].leaf.bol = leaf.bol;
+                    const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                    const right = Leaf.new(cx.a, leaf.buf, false, leaf.eol) catch |err| return .{ .err = err };
+                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
+                const insert_at_end = cx.current_index + leaf.buf.len == cx.target_index;
+                if (insert_at_end) {
+                    new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
+                    const left = Leaf.new(cx.a, leaf.buf, leaf.bol, false) catch |err| return .{ .err = err };
+                    const right = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
+                // insert in middle
+                const split_index = cx.target_index - cx.current_index;
+                const left_split = leaf.buf[0..split_index];
+                const right_split = leaf.buf[split_index..leaf.buf.len];
+
                 const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                const right = Leaf.new(cx.a, leaf.buf, false, leaf.eol) catch |err| return .{ .err = err };
-                const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
+                const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
+                const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+
+                const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
                 return WalkMutResult{ .replace = replacement };
             }
-
-            const insert_at_end = cx.current_index + leaf.buf.len == cx.target_index;
-            if (insert_at_end) {
-                new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
-                const left = Leaf.new(cx.a, leaf.buf, leaf.bol, false) catch |err| return .{ .err = err };
-                const right = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-                return WalkMutResult{ .replace = replacement };
-            }
-
-            // insert in middle
-            const split_index = cx.target_index - cx.current_index;
-            const left_split = leaf.buf[0..split_index];
-            const right_split = leaf.buf[split_index..leaf.buf.len];
-
-            const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-            const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
-            const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
-            const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-
-            const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
-            return WalkMutResult{ .replace = replacement };
-        }
-    };
-
-    pub fn insertChars(self: *const Node, a: Allocator, target_index: usize, chars: []const u8) !*const Node {
+        };
         if (target_index > self.weights().len) return error.IndexOutOfBounds;
         const buf = try a.dupe(u8, chars);
         var ctx = InsertCharsCtx{ .a = a, .buf = buf, .target_index = target_index };
         const walk_result = ctx.walkToInsert(self);
-        return if (walk_result.err) |e| e else walk_result.replace.?;
+        if (walk_result.err) |e| return e;
+        return .{ walk_result.replace.?, ctx.num_of_new_lines, ctx.last_new_leaf_noc };
     }
 
     test insertChars {
@@ -1047,12 +1056,12 @@ pub const Node = union(enum) {
         // replace empty Leaf with new Leaf with new content
         {
             const root = try Node.fromString(a, "", false);
-            const new_root = try root.insertChars(a, 0, "A");
+            const new_root, _, _ = try root.insertChars(a, 0, "A");
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "A", .noc = 1 }, new_root.leaf);
         }
         {
             const root = try Node.fromString(a, "", true);
-            const new_root = try root.insertChars(a, 0, "hello\nworld");
+            const new_root, _, _ = try root.insertChars(a, 0, "hello\nworld");
             const new_root_debug_str =
                 \\2 2/11/10
                 \\  1 B| `hello` |E
@@ -1062,7 +1071,7 @@ pub const Node = union(enum) {
         }
         {
             const root = try Node.fromString(a, "", false);
-            const new_root = try root.insertChars(a, 0, "hello\nworld");
+            const new_root, _, _ = try root.insertChars(a, 0, "hello\nworld");
             const new_root_debug_str =
                 \\2 1/11/10
                 \\  1 `hello` |E
@@ -1074,7 +1083,7 @@ pub const Node = union(enum) {
         // target_index at start of Leaf
         {
             const root = try Node.fromString(a, "BCD", false);
-            const new_root = try root.insertChars(a, 0, "A");
+            const new_root, _, _ = try root.insertChars(a, 0, "A");
             const new_root_debug_str =
                 \\2 0/4/4
                 \\  1 `A`
@@ -1084,7 +1093,7 @@ pub const Node = union(enum) {
         }
         {
             const root = try Node.fromString(a, "BCD", true);
-            const new_root = try root.insertChars(a, 0, "A");
+            const new_root, _, _ = try root.insertChars(a, 0, "A");
             const new_root_debug_str =
                 \\2 1/4/4
                 \\  1 B| `A`
@@ -1094,7 +1103,7 @@ pub const Node = union(enum) {
         }
         {
             const root = try Leaf.new(a, "BCD", true, true);
-            const new_root = try root.insertChars(a, 0, "A");
+            const new_root, _, _ = try root.insertChars(a, 0, "A");
             const new_root_debug_str =
                 \\2 1/5/4
                 \\  1 B| `A`
@@ -1106,7 +1115,7 @@ pub const Node = union(enum) {
         // target_index at end of Leaf
         {
             const root = try Node.fromString(a, "A", false);
-            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            const new_root, _, _ = try root.insertChars(idc_if_it_leaks, 1, "BCD");
             const new_root_debug_str =
                 \\2 0/4/4
                 \\  1 `A`
@@ -1116,7 +1125,7 @@ pub const Node = union(enum) {
         }
         {
             const root = try Leaf.new(idc_if_it_leaks, "A", true, true);
-            const new_root = try root.insertChars(idc_if_it_leaks, 1, "BCD");
+            const new_root, _, _ = try root.insertChars(idc_if_it_leaks, 1, "BCD");
             const new_root_debug_str =
                 \\2 1/5/4
                 \\  1 B| `A`
@@ -1126,7 +1135,7 @@ pub const Node = union(enum) {
         }
         {
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-            const new_root = try root.insertChars(a, 3, "_1");
+            const new_root, _, _ = try root.insertChars(a, 3, "_1");
             const new_root_debug_str =
                 \\4 4/20/17
                 \\  3 2/10/8
@@ -1144,7 +1153,7 @@ pub const Node = union(enum) {
         // target_index at middle of Leaf
         {
             const root = try Leaf.new(a, "ACD", false, false);
-            const new_root = try root.insertChars(a, 1, "B");
+            const new_root, _, _ = try root.insertChars(a, 1, "B");
             const new_root_debug_str =
                 \\3 0/4/4
                 \\  1 `A`
@@ -1158,8 +1167,8 @@ pub const Node = union(enum) {
         // consecutive insertions
         {
             const acd = try Leaf.new(a, "ACD", false, false);
-            const abcd = try acd.insertChars(a, 1, "B");
-            const abcde = try abcd.insertChars(a, 4, "E");
+            const abcd, _, _ = try acd.insertChars(a, 1, "B");
+            const abcde, _, _ = try abcd.insertChars(a, 4, "E");
             const new_root_debug_str =
                 \\4 0/5/5
                 \\  1 `A`
@@ -1173,8 +1182,8 @@ pub const Node = union(enum) {
         }
         {
             const acd = try Leaf.new(a, "ACD", true, true);
-            const abcd = try acd.insertChars(a, 1, "B");
-            const abcde = try abcd.insertChars(a, 4, "E");
+            const abcd, _, _ = try acd.insertChars(a, 1, "B");
+            const abcde, _, _ = try abcd.insertChars(a, 4, "E");
             const new_root_debug_str =
                 \\4 1/6/5
                 \\  1 B| `A`
@@ -1190,7 +1199,7 @@ pub const Node = union(enum) {
         // multi line insert in the middle
         {
             const abcd = try Leaf.new(a, "ABCD", true, false);
-            const new_root = try abcd.insertChars(a, 1, "1\n22");
+            const new_root, _, _ = try abcd.insertChars(a, 1, "1\n22");
             const new_root_debug_str =
                 \\4 2/8/7
                 \\  1 B| `A`
