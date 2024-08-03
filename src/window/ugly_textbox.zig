@@ -112,11 +112,12 @@ const UglyTextBox = struct {
 
     fn backspace(self: *UglyTextBox) !void {
         const line = self.lines.items[self.cursor.line];
-        var cell = line.cell(self.cells.items, self.cursor.col);
-        if (cell == null) {
-            if (line.numOfCells() == 0) @panic("not implemented");
-            cell = line.cell(self.cells.items, line.numOfCells() - 1);
+
+        if (self.cursor.col == 0 or line.numOfCells() == 0) {
+            @panic("not implemented");
         }
+
+        const cell = line.cell(self.cells.items, self.cursor.col - 1);
 
         const new_root = try self.root.deleteBytes(self.a, cell.?.start_byte, cell.?.len());
         self.root = new_root;
@@ -137,6 +138,14 @@ const UglyTextBox = struct {
             box.moveCursorRight(100);
             try box.backspace();
             try eqStr("Hello World", box.lines.items[0].getText(box.cells.items, box.document.items));
+        }
+        {
+            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            defer box.destroy();
+            box.moveCursorRight(100);
+            box.moveCursorLeft(1);
+            try box.backspace();
+            try eqStr("Hello Worl!", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
     }
 };
