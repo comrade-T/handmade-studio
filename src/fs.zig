@@ -53,7 +53,7 @@ fn getPatterns(a: Allocator, dir: std.fs.Dir) [][]const u8 {
     return patterns.toOwnedSlice() catch &.{};
 }
 
-fn getFileNamesRelativeToCwd(a: Allocator, sub_path: []const u8) [][]const u8 {
+pub fn getFileNamesRelativeToCwd(a: Allocator, sub_path: []const u8) [][]const u8 {
     var cwd_dir = std.fs.cwd().openDir(".", .{ .iterate = true }) catch {
         std.log.err("Unable to open cwd!", .{});
         return &.{};

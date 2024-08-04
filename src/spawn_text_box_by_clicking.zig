@@ -1,14 +1,65 @@
 const std = @import("std");
 const rl = @import("raylib");
 
+const rope = @import("rope");
+const fs = @import("fs.zig");
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
-const rope = @import("rope");
 const UglyTextBox = @import("ugly_textbox").UglyTextBox;
 
 const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const FileNavigator = struct {
+    external_allocator: Allocator,
+    arena: std.heap.ArenaAllocator,
+
+    file_paths: [][]const u8,
+    current_index: usize,
+
+    fn new(external_allocator: Allocator) !*@This() {
+        var self = try external_allocator.create(@This());
+        self.current_index = 0;
+        self.external_allocator = external_allocator;
+        self.arena = std.heap.ArenaAllocator.init(external_allocator);
+        self.file_paths = fs.getFileNamesRelativeToCwd(self.arena.allocator(), ".");
+        return self;
+    }
+    fn deinit(self: *@This()) void {
+        self.arena.deinit();
+        self.external_allocator.destroy(self);
+    }
+
+    fn update(self: *@This()) !void {
+        const current_path = try std.fmt.allocPrint(
+            self.external_allocator,
+            "{s}",
+            .{self.file_paths[self.current_index]},
+        );
+        defer self.external_allocator.free(current_path);
+
+        if (std.mem.endsWith(u8, current_path, "/")) {
+            self.arena.deinit();
+            self.arena = std.heap.ArenaAllocator.init(self.external_allocator);
+            const new_paths = fs.getFileNamesRelativeToCwd(self.arena.allocator(), current_path);
+            self.file_paths = new_paths;
+            self.current_index = 0;
+            return;
+        }
+
+        std.debug.print("the file path is: {s}\n", .{current_path});
+    }
+
+    fn moveUp(self: *@This()) void {
+        self.current_index = self.current_index -| 1;
+    }
+    fn moveDown(self: *@This()) void {
+        if (self.current_index + 1 < self.file_paths.len) self.current_index = self.current_index + 1;
+    }
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -53,6 +104,7 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Models
 
+    // UglyTextBox
     var buf_list = std.ArrayList(*UglyTextBox).init(gpa);
     defer {
         for (buf_list.items) |buf| buf.destroy();
@@ -62,6 +114,10 @@ pub fn main() anyerror!void {
 
     const static_utb = try UglyTextBox.spawn(gpa, "", 400, 300);
     defer static_utb.destroy();
+
+    // FileNavigator
+    var navigator = try FileNavigator.new(gpa);
+    defer navigator.deinit();
 
     ///////////////////////////// Main Loop
 
@@ -86,6 +142,12 @@ pub fn main() anyerror!void {
 
                 if (!eql(u8, trigger, "")) {
                     defer picker.a.free(trigger);
+
+                    { // navigator stuffs
+                        if (eql(u8, trigger, "lctrl j")) navigator.moveDown();
+                        if (eql(u8, trigger, "lctrl k")) navigator.moveUp();
+                        if (eql(u8, trigger, "lctrl l")) try navigator.update();
+                    }
 
                     try triggerCallback(&trigger_map, trigger, active_buf);
                     try triggerCallback(&trigger_map, trigger, static_utb);
@@ -117,6 +179,15 @@ pub fn main() anyerror!void {
                     const content = try std.fmt.allocPrintZ(gpa, "{s}", .{utb.document.items});
                     defer gpa.free(content);
                     rl.drawText(content, utb.x, utb.y, 30, rl.Color.ray_white);
+                }
+            }
+            {
+                for (navigator.file_paths, 0..) |path, i| {
+                    const text = try std.fmt.allocPrintZ(gpa, "{s}", .{path});
+                    defer gpa.free(text);
+                    const idx: i32 = @intCast(i);
+                    const color = if (i == navigator.current_index) rl.Color.sky_blue else rl.Color.ray_white;
+                    rl.drawText(text, 100, 100 + idx * 40, 30, color);
                 }
             }
         }

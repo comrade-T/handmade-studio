@@ -895,24 +895,25 @@ test GenericTriggerPicker {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const supported_keys = [_]Key{
-    Key.key_a,         Key.key_b,            Key.key_c,             Key.key_d,
-    Key.key_e,         Key.key_f,            Key.key_g,             Key.key_h,
-    Key.key_i,         Key.key_j,            Key.key_k,             Key.key_l,
-    Key.key_m,         Key.key_n,            Key.key_o,             Key.key_p,
-    Key.key_q,         Key.key_r,            Key.key_s,             Key.key_t,
-    Key.key_u,         Key.key_v,            Key.key_w,             Key.key_x,
-    Key.key_y,         Key.key_z,            Key.key_tab,           Key.key_space,
-    Key.key_enter,     Key.key_backspace,    Key.key_delete,        Key.key_down,
-    Key.key_up,        Key.key_left,         Key.key_right,         Key.key_home,
-    Key.key_end,       Key.key_one,          Key.key_two,           Key.key_three,
-    Key.key_four,      Key.key_five,         Key.key_six,           Key.key_seven,
-    Key.key_eight,     Key.key_nine,         Key.key_zero,          Key.key_f1,
-    Key.key_f2,        Key.key_f3,           Key.key_f4,            Key.key_f5,
-    Key.key_f6,        Key.key_f7,           Key.key_f8,            Key.key_f9,
-    Key.key_f10,       Key.key_f11,          Key.key_f12,           Key.key_equal,
-    Key.key_minus,     Key.key_left_bracket, Key.key_right_bracket, Key.key_backslash,
-    Key.key_semicolon, Key.key_apostrophe,   Key.key_comma,         Key.key_period,
-    Key.key_slash,     Key.key_grave,        Key.key_left_shift,    Key.key_right_shift,
+    Key.key_a,            Key.key_b,             Key.key_c,             Key.key_d,
+    Key.key_e,            Key.key_f,             Key.key_g,             Key.key_h,
+    Key.key_i,            Key.key_j,             Key.key_k,             Key.key_l,
+    Key.key_m,            Key.key_n,             Key.key_o,             Key.key_p,
+    Key.key_q,            Key.key_r,             Key.key_s,             Key.key_t,
+    Key.key_u,            Key.key_v,             Key.key_w,             Key.key_x,
+    Key.key_y,            Key.key_z,             Key.key_tab,           Key.key_space,
+    Key.key_enter,        Key.key_backspace,     Key.key_delete,        Key.key_down,
+    Key.key_up,           Key.key_left,          Key.key_right,         Key.key_home,
+    Key.key_end,          Key.key_one,           Key.key_two,           Key.key_three,
+    Key.key_four,         Key.key_five,          Key.key_six,           Key.key_seven,
+    Key.key_eight,        Key.key_nine,          Key.key_zero,          Key.key_f1,
+    Key.key_f2,           Key.key_f3,            Key.key_f4,            Key.key_f5,
+    Key.key_f6,           Key.key_f7,            Key.key_f8,            Key.key_f9,
+    Key.key_f10,          Key.key_f11,           Key.key_f12,           Key.key_equal,
+    Key.key_minus,        Key.key_left_bracket,  Key.key_right_bracket, Key.key_backslash,
+    Key.key_semicolon,    Key.key_apostrophe,    Key.key_comma,         Key.key_period,
+    Key.key_slash,        Key.key_grave,         Key.key_left_shift,    Key.key_right_shift,
+    Key.key_left_control, Key.key_right_control,
 };
 
 fn getStringRepresentationOfKey(key: Key) []const u8 {
@@ -983,6 +984,8 @@ fn getStringRepresentationOfKey(key: Key) []const u8 {
 
         Key.key_left_shift => "lshift",
         Key.key_right_shift => "rshift",
+        Key.key_left_control => "lctrl",
+        Key.key_right_control => "rctrl",
 
         Key.key_f1 => "<f1>",
         Key.key_f2 => "<f2>",

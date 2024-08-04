@@ -32,12 +32,19 @@ pub fn createTriggerMap(a: std.mem.Allocator) !TriggerMap {
     {
         comptime var lshift_triggers = [_][]const u8{undefined} ** letters_and_numbers.len;
         comptime var rshift_triggers = [_][]const u8{undefined} ** letters_and_numbers.len;
+        comptime var lctrl_triggers = [_][]const u8{undefined} ** letters_and_numbers.len;
+        comptime var rctrl_triggers = [_][]const u8{undefined} ** letters_and_numbers.len;
         inline for (letters_and_numbers, 0..) |char, i| lshift_triggers[i] = "lshift " ++ char;
         inline for (letters_and_numbers, 0..) |char, i| rshift_triggers[i] = "rshift " ++ char;
+        inline for (letters_and_numbers, 0..) |char, i| lctrl_triggers[i] = "lctrl " ++ char;
+        inline for (letters_and_numbers, 0..) |char, i| rctrl_triggers[i] = "rctrl " ++ char;
 
         for (letters_and_numbers) |char| try map.put(char, .{ .insert = char });
         for (letters_and_numbers_upper, 0..) |char, i| try map.put(lshift_triggers[i], .{ .insert = char });
         for (letters_and_numbers_upper, 0..) |char, i| try map.put(rshift_triggers[i], .{ .insert = char });
+
+        for (letters_and_numbers_upper, 0..) |_, i| try map.put(lctrl_triggers[i], .{ .custom = true });
+        for (letters_and_numbers_upper, 0..) |_, i| try map.put(rctrl_triggers[i], .{ .custom = true });
     }
 
     for (other_inserts) |mapping| try map.put(mapping[0], .{ .insert = mapping[1] });
@@ -63,6 +70,7 @@ pub fn createPrefixMap(a: std.mem.Allocator) !PrefixMap {
     try map.put("w", true);
     try map.put("lshift", true);
     try map.put("rshift", true);
+    try map.put("lctrl", true);
 
     return map;
 }
