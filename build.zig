@@ -69,6 +69,8 @@ pub fn build(b: *std.Build) void {
 
     _ = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
 
+    _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);
+
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
         .{ .name = "regex", .module = regex },
     }, zig_build_test_step);
