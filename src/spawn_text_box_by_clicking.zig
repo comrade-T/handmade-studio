@@ -40,7 +40,7 @@ const FileNavigator = struct {
     fn getCurrentRelativePath(self: *@This()) !ArrayList(u8) {
         var result = std.ArrayList(u8).init(self.exa);
         if (self.history.items.len == 0) {
-            try result.appendSlice("./");
+            try result.appendSlice(".");
         } else {
             const last_history = self.history.items[self.history.items.len - 1];
             try result.appendSlice(last_history.items);
@@ -70,7 +70,7 @@ const FileNavigator = struct {
         const current_short_path = self.short_paths[self.index];
 
         var new_relative_path = std.ArrayList(u8).init(self.exa);
-        try new_relative_path.appendSlice(current_relative_path.items);
+        if (self.history.items.len > 0) try new_relative_path.appendSlice(current_relative_path.items);
         try new_relative_path.appendSlice(current_short_path);
 
         if (std.mem.endsWith(u8, current_short_path, "/")) {
