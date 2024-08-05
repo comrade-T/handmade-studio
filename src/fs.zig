@@ -73,16 +73,21 @@ pub fn getFileNamesRelativeToCwd(a: Allocator, sub_path: []const u8) [][]const u
     iter_loop: while (iter.next()) |maybe_entry| {
         const entry = maybe_entry orelse break;
 
-        const relative_path = if (entry.kind == .directory)
+        const short_path = if (entry.kind == .directory)
             std.fmt.allocPrint(a, "{s}/", .{entry.name}) catch continue
         else
             std.fmt.allocPrint(a, "{s}", .{entry.name}) catch continue;
 
+        const relative_path = if (eql(u8, sub_path, "."))
+            short_path
+        else
+            std.fmt.allocPrint(a, "{s}{s}", .{ sub_path, short_path }) catch continue;
+
         for (patterns) |p| if (match(p, relative_path)) continue :iter_loop;
         if (relative_path.len == 0) continue;
 
-        paths.append(relative_path) catch |err| {
-            std.log.err("Error appending pattern '{s}': {s}\n", .{ relative_path, @typeName(@TypeOf(err)) });
+        paths.append(short_path) catch |err| {
+            std.log.err("Error appending path '{s}': {s}\n", .{ short_path, @typeName(@TypeOf(err)) });
             continue;
         };
     } else |err| {
