@@ -30,7 +30,25 @@ pub const UglyTextBox = struct {
     x: i32,
     y: i32,
 
-    pub fn spawn(external_allocator: Allocator, content: []const u8, x: i32, y: i32) !*@This() {
+    pub fn fromFile(external_allocator: Allocator, path: []const u8, x: i32, y: i32) !*@This() {
+        var self = try external_allocator.create(@This());
+        self.external_allocator = external_allocator;
+        self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        self.a = self.arena.allocator();
+
+        self.root = try rope.Node.fromFile(self.a, path);
+        self.document = try self.root.getContent(self.a);
+        self.cells, self.lines = try _cell.createCellListAndLineList(self.a, self.document.items);
+
+        self.cursor = Cursor{};
+
+        self.x = x;
+        self.y = y;
+
+        return self;
+    }
+
+    pub fn fromString(external_allocator: Allocator, content: []const u8, x: i32, y: i32) !*@This() {
         var self = try external_allocator.create(@This());
         self.external_allocator = external_allocator;
         self.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -81,7 +99,7 @@ pub const UglyTextBox = struct {
     test "move cursor forward / backward by word" {
         const a = std.testing.allocator;
         {
-            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            var box = try UglyTextBox.fromString(a, "Hello World!", 0, 0);
             defer box.destroy();
 
             box.moveCursorForwardByWord(.start);
@@ -130,7 +148,7 @@ pub const UglyTextBox = struct {
     test insertChars {
         const a = std.testing.allocator;
         {
-            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            var box = try UglyTextBox.fromString(a, "Hello World!", 0, 0);
             defer box.destroy();
             _, _ = try box.insertChars("OK! ");
             try eqStr("OK! Hello World!", box.lines.items[0].getText(box.cells.items, box.document.items));
@@ -149,7 +167,7 @@ pub const UglyTextBox = struct {
             try eqStr("...", box.lines.items[1].getText(box.cells.items, box.document.items));
         }
         { // insertChars and move cursor
-            var box = try UglyTextBox.spawn(a, "", 0, 0);
+            var box = try UglyTextBox.fromString(a, "", 0, 0);
             defer box.destroy();
             {
                 const num_new_lines, const new_col = try box.insertChars("H");
@@ -171,7 +189,7 @@ pub const UglyTextBox = struct {
     test insertCharsAndMoveCursor {
         const a = std.testing.allocator;
         {
-            var box = try UglyTextBox.spawn(a, "", 0, 0);
+            var box = try UglyTextBox.fromString(a, "", 0, 0);
             defer box.destroy();
             try box.insertCharsAndMoveCursor("H");
             try eqStr("H", box.lines.items[0].getText(box.cells.items, box.document.items));
@@ -185,7 +203,7 @@ pub const UglyTextBox = struct {
             try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
         {
-            var box = try UglyTextBox.spawn(a, "", 0, 0);
+            var box = try UglyTextBox.fromString(a, "", 0, 0);
             defer box.destroy();
             try box.insertCharsAndMoveCursor("H");
             try eqStr("H", box.lines.items[0].getText(box.cells.items, box.document.items));
@@ -245,14 +263,14 @@ pub const UglyTextBox = struct {
     test backspace {
         const a = std.testing.allocator;
         { // backspace at end of line
-            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            var box = try UglyTextBox.fromString(a, "Hello World!", 0, 0);
             defer box.destroy();
             box.moveCursorRight(100);
             try box.backspace();
             try eqStr("Hello World", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
         { // backspace in middle of line
-            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            var box = try UglyTextBox.fromString(a, "Hello World!", 0, 0);
             defer box.destroy();
             box.moveCursorRight(100);
             box.moveCursorLeft(1);
@@ -260,13 +278,13 @@ pub const UglyTextBox = struct {
             try eqStr("Hello Worl!", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
         { // backspace at start of document, should do nothing
-            var box = try UglyTextBox.spawn(a, "Hello World!", 0, 0);
+            var box = try UglyTextBox.fromString(a, "Hello World!", 0, 0);
             defer box.destroy();
             try box.backspace();
             try eqStr("Hello World!", box.lines.items[0].getText(box.cells.items, box.document.items));
         }
         { // backspace at start of line that's not the first line of document
-            var box = try UglyTextBox.spawn(a, "Hello\nWorld!", 0, 0);
+            var box = try UglyTextBox.fromString(a, "Hello\nWorld!", 0, 0);
             defer box.destroy();
             try eqStr("Hello", box.lines.items[0].getText(box.cells.items, box.document.items));
             try eqStr("World!", box.lines.items[1].getText(box.cells.items, box.document.items));

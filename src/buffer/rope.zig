@@ -123,6 +123,13 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Load
 
+    pub fn fromFile(a: Allocator, file_path: []const u8) !*const Node {
+        const file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
+        defer file.close();
+        const stat = try file.stat();
+        return Node.fromReader(a, file.reader(), stat.size, true);
+    }
+
     pub fn fromString(a: Allocator, source: []const u8, first_bol: bool) !*const Node {
         var stream = std.io.fixedBufferStream(source);
         return Node.fromReader(a, stream.reader(), source.len, first_bol);

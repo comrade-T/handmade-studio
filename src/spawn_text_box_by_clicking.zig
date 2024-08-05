@@ -147,7 +147,8 @@ pub fn main() anyerror!void {
     }
     var active_buf: ?*UglyTextBox = null;
 
-    const static_utb = try UglyTextBox.spawn(gpa, "", 400, 300);
+    const static_x, const static_y = .{ 400, 100 };
+    var static_utb = try UglyTextBox.fromString(gpa, "", static_x, static_y);
     defer static_utb.destroy();
 
     // FileNavigator
@@ -183,15 +184,16 @@ pub fn main() anyerror!void {
                         if (eql(u8, trigger, "lctrl k")) navigator.moveUp();
                         if (eql(u8, trigger, "lctrl l")) {
                             if (try navigator.forward()) |path| {
-                                std.debug.print("new_relative_file_path: {s}\n", .{path.items});
                                 defer path.deinit();
+                                static_utb.destroy();
+                                static_utb = try UglyTextBox.fromFile(gpa, path.items, static_x, static_y);
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
                     }
 
                     try triggerCallback(&trigger_map, trigger, active_buf);
-                    try triggerCallback(&trigger_map, trigger, static_utb);
+                    // try triggerCallback(&trigger_map, trigger, static_utb);
                 }
             }
         }
@@ -199,7 +201,7 @@ pub fn main() anyerror!void {
 
         { // Spawn
             if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
-                const buf = try UglyTextBox.spawn(gpa, "", rl.getMouseX(), rl.getMouseY());
+                const buf = try UglyTextBox.fromString(gpa, "", rl.getMouseX(), rl.getMouseY());
                 active_buf = buf;
                 try buf_list.append(buf);
             }
@@ -214,7 +216,7 @@ pub fn main() anyerror!void {
                 {
                     const content = try std.fmt.allocPrintZ(gpa, "{s}", .{static_utb.document.items});
                     defer gpa.free(content);
-                    rl.drawText(content, 300, 300, 30, rl.Color.ray_white);
+                    rl.drawText(content, static_utb.x, static_utb.y, 30, rl.Color.ray_white);
                 }
                 for (buf_list.items) |utb| {
                     const content = try std.fmt.allocPrintZ(gpa, "{s}", .{utb.document.items});
