@@ -240,3 +240,65 @@ test "InputEdit_delete_char_backwards" {
     const new_source = "std";
     try testInputEdit(old_source, patterns, null, edit, new_source, "std");
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn debugPrintTSNode(node: b.Node) ![]const u8 {
+    var result = std.ArrayList(u8).init(std.heap.page_allocator);
+    try _debugPrintNode(node, std.heap.page_allocator, &result, 0);
+    return try result.toOwnedSlice();
+}
+
+fn _debugPrintNode(node: b.Node, a: std.mem.Allocator, result: *std.ArrayList(u8), indent_level: usize) !void {
+    if (indent_level > 0) try result.append('\n');
+    for (0..indent_level) |_| try result.append(' ');
+
+    const node_type = node.getType();
+    const is_named = node.isNamed();
+    if (!is_named) {
+        const content = try std.fmt.allocPrint(a, "\"{s}\"", .{node_type});
+        try result.appendSlice(content);
+    } else {
+        try result.appendSlice(node_type);
+    }
+
+    for (0..node.getChildCount()) |i| {
+        const child = node.getChild(@intCast(i));
+        if (!child.isNull()) try _debugPrintNode(child, a, result, indent_level + 2);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test "InputEdit_NEW" {
+    const ziglang = try b.Language.get("zig");
+    var parser = try b.Parser.create();
+    try parser.setLanguage(ziglang);
+
+    var state: usize = 0;
+    const input: b.Input = .{
+        .payload = &state,
+        .read = struct {
+            fn read(payload: ?*anyopaque, _: u32, position: b.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
+                const ctx: *usize = @ptrCast(@alignCast(payload orelse return ""));
+                defer ctx.* += 1;
+
+                std.debug.print("requesting {any}\n", .{position});
+
+                const result = switch (ctx.*) {
+                    0 => "const",
+                    1 => " ",
+                    2 => "= ",
+                    else => "",
+                };
+
+                bytes_read.* = @intCast(result.len);
+                return "const";
+            }
+        }.read,
+        .encoding = .utf_8,
+    };
+
+    const tree = try parser.parse(null, input);
+    std.debug.print("{s}\n", .{try debugPrintTSNode(tree.getRootNode())});
+}

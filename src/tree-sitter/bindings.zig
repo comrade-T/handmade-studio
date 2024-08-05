@@ -153,7 +153,7 @@ pub const Parser = opaque {
     }
 
     pub const ParseError = error{ NoLanguage, Unknown };
-    pub fn parse(parser: Parser, old_tree: ?*Tree, input: Input) ParseError!*Tree {
+    pub fn parse(parser: *Parser, old_tree: ?*Tree, input: Input) ParseError!*Tree {
         return if (externs.ts_parser_parse(parser, old_tree, input)) |tree|
             tree
         else
