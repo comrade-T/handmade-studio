@@ -14,50 +14,69 @@ const ArrayList = std.ArrayList;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const FileNavigator = struct {
-    external_allocator: Allocator,
+    exa: Allocator,
     arena: std.heap.ArenaAllocator,
 
-    file_paths: [][]const u8,
+    current_short_paths: [][]const u8,
+    history: ArrayList(ArrayList(u8)),
     current_index: usize,
 
     fn new(external_allocator: Allocator) !*@This() {
         var self = try external_allocator.create(@This());
+        self.exa = external_allocator;
+        self.arena = std.heap.ArenaAllocator.init(self.exa);
+        self.current_short_paths = fs.getFileNamesRelativeToCwd(self.arena.allocator(), ".");
+        self.history = ArrayList(ArrayList(u8)).init(self.exa);
         self.current_index = 0;
-        self.external_allocator = external_allocator;
-        self.arena = std.heap.ArenaAllocator.init(external_allocator);
-        self.file_paths = fs.getFileNamesRelativeToCwd(self.arena.allocator(), ".");
         return self;
     }
     fn deinit(self: *@This()) void {
         self.arena.deinit();
-        self.external_allocator.destroy(self);
+        for (self.history.items) |path| path.deinit();
+        self.history.deinit();
+        self.exa.destroy(self);
     }
 
-    fn update(self: *@This()) !void {
-        const current_path = try std.fmt.allocPrint(
-            self.external_allocator,
-            "{s}",
-            .{self.file_paths[self.current_index]},
-        );
-        defer self.external_allocator.free(current_path);
+    fn getRelativePath(self: *@This()) !ArrayList(u8) {
+        var result = std.ArrayList(u8).init(self.exa);
+        if (self.history.items.len == 0) {
+            try result.appendSlice("./");
+        } else {
+            const last_history = self.history.items[self.history.items.len - 1];
+            try result.appendSlice(last_history.items);
+        }
+        return result;
+    }
 
-        if (std.mem.endsWith(u8, current_path, "/")) {
+    fn forward(self: *@This()) !?ArrayList(u8) {
+        const current_relative_path = try self.getRelativePath();
+        defer current_relative_path.deinit();
+        const current_short_path = self.current_short_paths[self.current_index];
+
+        var new_relative_path = std.ArrayList(u8).init(self.exa);
+        try new_relative_path.appendSlice(current_relative_path.items);
+        try new_relative_path.appendSlice(current_short_path);
+
+        if (std.mem.endsWith(u8, current_short_path, "/")) {
             self.arena.deinit();
-            self.arena = std.heap.ArenaAllocator.init(self.external_allocator);
-            const new_paths = fs.getFileNamesRelativeToCwd(self.arena.allocator(), current_path);
-            self.file_paths = new_paths;
+            self.arena = std.heap.ArenaAllocator.init(self.exa);
+
+            const new_current_paths = fs.getFileNamesRelativeToCwd(self.arena.allocator(), new_relative_path.items);
+            self.current_short_paths = new_current_paths;
             self.current_index = 0;
-            return;
+
+            try self.history.append(new_relative_path);
+            return null;
         }
 
-        std.debug.print("the file path is: {s}\n", .{current_path});
+        return new_relative_path;
     }
 
     fn moveUp(self: *@This()) void {
         self.current_index = self.current_index -| 1;
     }
     fn moveDown(self: *@This()) void {
-        if (self.current_index + 1 < self.file_paths.len) self.current_index = self.current_index + 1;
+        if (self.current_index + 1 < self.current_short_paths.len) self.current_index = self.current_index + 1;
     }
 };
 
@@ -146,7 +165,12 @@ pub fn main() anyerror!void {
                     { // navigator stuffs
                         if (eql(u8, trigger, "lctrl j")) navigator.moveDown();
                         if (eql(u8, trigger, "lctrl k")) navigator.moveUp();
-                        if (eql(u8, trigger, "lctrl l")) try navigator.update();
+                        if (eql(u8, trigger, "lctrl l")) {
+                            if (try navigator.forward()) |path| {
+                                std.debug.print("new_relative_file_path: {s}\n", .{path.items});
+                                defer path.deinit();
+                            }
+                        }
                     }
 
                     try triggerCallback(&trigger_map, trigger, active_buf);
@@ -182,7 +206,7 @@ pub fn main() anyerror!void {
                 }
             }
             {
-                for (navigator.file_paths, 0..) |path, i| {
+                for (navigator.current_short_paths, 0..) |path, i| {
                     const text = try std.fmt.allocPrintZ(gpa, "{s}", .{path});
                     defer gpa.free(text);
                     const idx: i32 = @intCast(i);
