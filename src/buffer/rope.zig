@@ -1052,21 +1052,23 @@ pub const Node = union(enum) {
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
 
-                var trimmed_buf = cx.buf[0..];
-
                 var first_eol = false;
-                if (cx.buf[0] == '\n') {
-                    first_eol = true;
-                    trimmed_buf = cx.buf[1..];
+                if (cx.buf[0] == '\n') first_eol = true;
+
+                var last_bol = false;
+                if (new_leaves.len > 1) {
+                    const last_leaf = new_leaves[new_leaves.len - 1];
+                    if (last_leaf.leaf.buf.len == 0 and last_leaf.leaf.bol) last_bol = true;
                 }
 
                 const first = Node{ .leaf = .{ .buf = left_split, .noc = getNumOfChars(left_split), .bol = leaf.bol, .eol = first_eol } };
-                const last = Node{ .leaf = .{ .buf = right_split, .noc = getNumOfChars(right_split), .bol = false, .eol = leaf.eol } };
+                const last = Node{ .leaf = .{ .buf = right_split, .noc = getNumOfChars(right_split), .bol = last_bol, .eol = leaf.eol } };
 
                 var list = std.ArrayList(Node).initCapacity(cx.a, new_leaves.len + 2) catch |err| return .{ .err = err };
                 list.append(first) catch |err| return .{ .err = err };
                 for (new_leaves, 0..) |nl, i| {
                     if (i == 0 and cx.buf[0] == '\n') continue;
+                    if (i == new_leaves.len - 1 and last_bol == true) continue;
                     list.append(nl) catch |err| return .{ .err = err };
                 }
                 list.append(last) catch |err| return .{ .err = err };
@@ -1259,15 +1261,13 @@ pub const Node = union(enum) {
             const root = try Leaf.new(a, "const str =;", true, false);
             const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
             const new_root_debug_str =
-                \\4 4/37/34
+                \\3 4/37/34
                 \\  2 2/24/22
                 \\    1 B| `const str =` |E
                 \\    1 B| `    \\hello` |E
-                \\  3 2/13/12
+                \\  2 2/13/12
                 \\    1 B| `    \\world` |E
-                \\    2 1/1/1
-                \\      1 B| ``
-                \\      1 `;`
+                \\    1 B| `;`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
@@ -1414,23 +1414,9 @@ pub const Node = union(enum) {
                 try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 5));
             }
         }
-        // this test tries to make sure that `walker` encounters a bol before checking for eol
         {
             const root = try Node.fromString(a, "const str =;", true);
             const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
-            const new_root_debug_str =
-                \\4 4/37/34
-                \\  2 2/24/22
-                \\    1 B| `const str =` |E
-                \\    1 B| `    \\hello` |E
-                \\  3 2/13/12
-                \\    1 B| `    \\world` |E
-                \\    2 1/1/1
-                \\      1 B| ``
-                \\      1 `;`
-            ;
-            try eqStr(new_root_debug_str, try new_root.debugPrint());
-
             try eq(11, new_root.getByteOffsetOfPosition(0, 11));
             try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(0, 12));
             try eq(23, new_root.getByteOffsetOfPosition(1, 11));
