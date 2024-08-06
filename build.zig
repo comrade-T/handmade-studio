@@ -76,6 +76,12 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     ts.compile.linkLibrary(tree_sitter);
 
+    const neo_buffer = addTestableModule(&bops, "src/buffer/neo_buffer.zig", &.{
+        .{ .name = "rope", .module = rope.module },
+        .{ .name = "ts", .module = ts.module },
+    }, zig_build_test_step);
+    neo_buffer.compile.linkLibrary(tree_sitter);
+
     _ = addTestableModule(&bops, "src/window/cell.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
