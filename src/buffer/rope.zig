@@ -172,6 +172,12 @@ pub const Node = union(enum) {
     }
 
     fn createLeavesByNewLine(a: std.mem.Allocator, buf: []const u8) ![]Node {
+        if (std.mem.eql(u8, buf, "\n")) {
+            var leaves = try a.alloc(Node, 1);
+            leaves[0] = .{ .leaf = .{ .buf = "", .noc = 0, .bol = false, .eol = true } };
+            return leaves;
+        }
+
         const eol = '\n';
 
         var leaf_count: usize = 1;
@@ -202,7 +208,13 @@ pub const Node = union(enum) {
     test createLeavesByNewLine {
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "");
+            try eq(1, leaves.len);
             try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "", .noc = 0 }, leaves[0].leaf);
+        }
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "\n");
+            try eq(1, leaves.len);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "", .noc = 0 }, leaves[0].leaf);
         }
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "hello\nworld");
@@ -1040,28 +1052,16 @@ pub const Node = union(enum) {
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
 
-                if (new_leaves.len > 0 and new_leaves[0].leaf.eol and !leaf.eol) {
-                    const left_split_leaf = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
-                    const upper_left = Node.new(cx.a, left_split_leaf, &new_leaves[0]) catch |err| return .{ .err = err };
+                const first = Node{ .leaf = .{ .buf = left_split, .noc = getNumOfChars(left_split), .bol = leaf.bol, .eol = false } };
+                const last = Node{ .leaf = .{ .buf = right_split, .noc = getNumOfChars(right_split), .bol = false, .eol = leaf.eol } };
 
-                    const right_split_leaf = Leaf.new(cx.a, right_split, leaf.bol, false) catch |err| return .{ .err = err };
-                    var upper_right = right_split_leaf;
-                    if (new_leaves.len > 1) {
-                        const merged = mergeLeaves(cx.a, new_leaves[1..]) catch |err| return .{ .err = err };
-                        upper_right = Node.new(cx.a, merged, right_split_leaf) catch |err| return .{ .err = err };
-                    }
+                var list = std.ArrayList(Node).initCapacity(cx.a, new_leaves.len + 2) catch |err| return .{ .err = err };
+                list.append(first) catch |err| return .{ .err = err };
+                for (new_leaves) |nl| list.append(nl) catch |err| return .{ .err = err };
+                list.append(last) catch |err| return .{ .err = err };
 
-                    const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
-                    return WalkMutResult{ .replace = replacement };
-                }
-
-                const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
-                const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
-                const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
-
-                const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
-                return WalkMutResult{ .replace = replacement };
+                const merged = mergeLeaves(cx.a, list.items) catch |err| return .{ .err = err };
+                return WalkMutResult{ .replace = merged };
             }
         };
         if (target_index > self.weights().len) return error.IndexOutOfBounds;
@@ -1221,13 +1221,11 @@ pub const Node = union(enum) {
             const root = try Leaf.new(a, "const str =;", true, false);
             const new_root, _, _ = try root.insertChars(a, 11, "\n");
             const new_root_debug_str =
-                \\3 3/13/12
-                \\  2 1/12/11
-                \\    1 B| `const str =`
+                \\3 1/13/12
+                \\  1 B| `const str =`
+                \\  2 0/2/1
                 \\    1 `` |E
-                \\  2 2/1/1
-                \\    1 B| ``
-                \\    1 B| `;`
+                \\    1 `;`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
@@ -1237,13 +1235,31 @@ pub const Node = union(enum) {
             const abcd = try Leaf.new(a, "ABCD", true, false);
             const new_root, _, _ = try abcd.insertChars(a, 1, "1\n22");
             const new_root_debug_str =
-                \\3 3/8/7
+                \\3 2/8/7
                 \\  2 1/3/2
                 \\    1 B| `A`
                 \\    1 `1` |E
-                \\  2 2/5/5
+                \\  2 1/5/5
                 \\    1 B| `22`
-                \\    1 B| `BCD`
+                \\    1 `BCD`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+        {
+            const root = try Leaf.new(a, "const str =;", true, false);
+            const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
+            const new_root_debug_str =
+                \\4 4/37/34
+                \\  3 2/24/22
+                \\    1 B| `const str =`
+                \\    2 1/13/11
+                \\      1 `` |E
+                \\      1 B| `    \\hello` |E
+                \\  3 2/13/12
+                \\    1 B| `    \\world` |E
+                \\    2 1/1/1
+                \\      1 B| ``
+                \\      1 `;`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
