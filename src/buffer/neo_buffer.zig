@@ -85,6 +85,7 @@ pub const Buffer = struct {
     fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !void {
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
         self.roperoot, const num_of_new_lines, const new_col = try self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars);
+        self.roperoot = try self.roperoot.balance(self.rope_arena.allocator());
 
         _ = num_of_new_lines;
         _ = new_col;
@@ -99,11 +100,37 @@ pub const Buffer = struct {
         // };
     }
     test insertChars {
-        const buf = try Buffer.create(testing_allocator, .string, "const");
-        defer buf.destroy();
-        try buf.insertChars(" std", 0, 5);
-        const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-        try eqStr("const std", content.items);
+        {
+            const buf = try Buffer.create(testing_allocator, .string, "const");
+            defer buf.destroy();
+            try buf.insertChars(" std", 0, 5);
+            const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+            try eqStr("const std", content.items);
+        }
+        {
+            const buf = try Buffer.create(testing_allocator, .string, "const str =;");
+            defer buf.destroy();
+            {
+                try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr(
+                    \\const str =
+                    \\    \\hello
+                    \\    \\world
+                    \\;
+                , content.items);
+            }
+            {
+                try buf.insertChars(" my", 1, 11);
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr(
+                    \\const str =
+                    \\    \\hello my
+                    \\    \\world
+                    \\;
+                , content.items);
+            }
+        }
     }
 };
 
