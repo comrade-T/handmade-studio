@@ -1057,8 +1057,8 @@ pub const Node = union(enum) {
 
                 var last_bol = false;
                 if (new_leaves.len > 1) {
-                    const last_leaf = new_leaves[new_leaves.len - 1];
-                    if (last_leaf.leaf.buf.len == 0 and last_leaf.leaf.bol) last_bol = true;
+                    const last_new_leaf = new_leaves[new_leaves.len - 1].leaf;
+                    if (last_new_leaf.buf.len == 0 and last_new_leaf.bol) last_bol = true;
                 }
 
                 const first = Node{ .leaf = .{ .buf = left_split, .noc = getNumOfChars(left_split), .bol = leaf.bol, .eol = first_eol } };
@@ -1072,6 +1072,7 @@ pub const Node = union(enum) {
                     list.append(nl) catch |err| return .{ .err = err };
                 }
                 list.append(last) catch |err| return .{ .err = err };
+                defer cx.a.free(new_leaves);
 
                 const merged = mergeLeaves(cx.a, list.items) catch |err| return .{ .err = err };
                 return WalkMutResult{ .replace = merged };
