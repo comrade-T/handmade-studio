@@ -81,6 +81,30 @@ pub const Buffer = struct {
             \\    "const"
         , try buf.tstree.?.getRootNode().debugPrint());
     }
+
+    fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !void {
+        const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
+        self.roperoot, const num_of_new_lines, const new_col = try self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars);
+
+        _ = num_of_new_lines;
+        _ = new_col;
+
+        // const edit = ts.InputEdit{
+        //     .start_byte = @intCast(start_byte),
+        //     .old_end_byte = @intCast(old_end_byte),
+        //     .new_end_byte = @intCast(new_end_byte),
+        //     .start_point = start_point,
+        //     .old_end_point = old_end_point,
+        //     .new_end_point = new_end_point,
+        // };
+    }
+    test insertChars {
+        const buf = try Buffer.create(testing_allocator, .string, "const");
+        defer buf.destroy();
+        try buf.insertChars(" std", 0, 5);
+        const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+        try eqStr("const std", content.items);
+    }
 };
 
 test {
