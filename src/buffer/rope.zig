@@ -1273,6 +1273,7 @@ pub const Node = union(enum) {
             current_linenr: usize = 0,
             current_colnr: usize = 0,
             should_stop: bool = false,
+            encountered_bol: bool = false,
             target_linenr: usize,
             target_colnr: usize,
 
@@ -1293,6 +1294,8 @@ pub const Node = union(enum) {
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                if (leaf.bol) cx.encountered_bol = true;
+
                 if (cx.target_colnr == 0) {
                     cx.should_stop = true;
                     return WalkResult.stop;
@@ -1311,10 +1314,12 @@ pub const Node = union(enum) {
                         if (cx.current_colnr >= cx.target_colnr) break;
                     }
                 }
-                if (sum >= cx.target_colnr or leaf.eol) {
+                if ((leaf.eol and cx.encountered_bol) or (sum >= cx.target_colnr)) {
                     cx.should_stop = true;
                     return WalkResult.stop;
                 }
+
+                if (leaf.eol) cx.byte_offset += 1;
                 return WalkResult.keep_walking;
             }
         };
@@ -1400,6 +1405,35 @@ pub const Node = union(enum) {
                 try eq(18, root.getByteOffsetOfPosition(1, 4));
                 try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 5));
             }
+        }
+        // this test tries to make sure that `walker` encounters a bol before checking for eol
+        {
+            const root = try Node.fromString(a, "const str =;", true);
+            const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
+            const new_root_debug_str =
+                \\4 4/37/34
+                \\  3 2/24/22
+                \\    1 B| `const str =`
+                \\    2 1/13/11
+                \\      1 `` |E
+                \\      1 B| `    \\hello` |E
+                \\  3 2/13/12
+                \\    1 B| `    \\world` |E
+                \\    2 1/1/1
+                \\      1 B| ``
+                \\      1 `;`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+
+            try eq(11, new_root.getByteOffsetOfPosition(0, 11));
+            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(0, 12));
+            try eq(23, new_root.getByteOffsetOfPosition(1, 11));
+            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(1, 12));
+            try eq(35, new_root.getByteOffsetOfPosition(2, 11));
+            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(2, 12));
+            try eq(36, new_root.getByteOffsetOfPosition(3, 0));
+            try eq(37, new_root.getByteOffsetOfPosition(3, 1));
+            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(3, 2));
         }
     }
 
