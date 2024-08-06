@@ -1014,36 +1014,36 @@ pub const Node = union(enum) {
                                 null,
                         };
                     },
-                    .leaf => |leaf| return ctx.walker(&leaf),
+                    .leaf => |leaf| return ctx.walker(&leaf) catch |err| return .{ .err = err },
                 }
             }
 
-            fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
-                var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| return .{ .err = err };
+            fn walker(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
+                var new_leaves = try createLeavesByNewLine(cx.a, cx.buf);
                 if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
                 if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
 
                 if (leaf.buf.len == 0) {
                     new_leaves[0].leaf.bol = leaf.bol;
-                    const replacement = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
+                    const replacement = try mergeLeaves(cx.a, new_leaves);
                     return WalkMutResult{ .replace = replacement };
                 }
 
                 const insert_at_start = cx.current_index == cx.target_index;
                 if (insert_at_start) {
                     new_leaves[0].leaf.bol = leaf.bol;
-                    const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                    const right = Leaf.new(cx.a, leaf.buf, false, leaf.eol) catch |err| return .{ .err = err };
-                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                    const left = try mergeLeaves(cx.a, new_leaves);
+                    const right = try Leaf.new(cx.a, leaf.buf, false, leaf.eol);
+                    const replacement = try Node.new(cx.a, left, right);
                     return WalkMutResult{ .replace = replacement };
                 }
 
                 const insert_at_end = cx.current_index + leaf.buf.len == cx.target_index;
                 if (insert_at_end) {
                     new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
-                    const left = Leaf.new(cx.a, leaf.buf, leaf.bol, false) catch |err| return .{ .err = err };
-                    const right = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
-                    const replacement = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
+                    const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, false);
+                    const right = try mergeLeaves(cx.a, new_leaves);
+                    const replacement = try Node.new(cx.a, left, right);
                     return WalkMutResult{ .replace = replacement };
                 }
 
@@ -1064,17 +1064,17 @@ pub const Node = union(enum) {
                 const first = Node{ .leaf = .{ .buf = left_split, .noc = getNumOfChars(left_split), .bol = leaf.bol, .eol = first_eol } };
                 const last = Node{ .leaf = .{ .buf = right_split, .noc = getNumOfChars(right_split), .bol = last_bol, .eol = leaf.eol } };
 
-                var list = std.ArrayList(Node).initCapacity(cx.a, new_leaves.len + 2) catch |err| return .{ .err = err };
-                list.append(first) catch |err| return .{ .err = err };
+                var list = try std.ArrayList(Node).initCapacity(cx.a, new_leaves.len + 2);
+                try list.append(first);
                 for (new_leaves, 0..) |nl, i| {
                     if (i == 0 and cx.buf[0] == '\n') continue;
                     if (i == new_leaves.len - 1 and last_bol == true) continue;
-                    list.append(nl) catch |err| return .{ .err = err };
+                    try list.append(nl);
                 }
-                list.append(last) catch |err| return .{ .err = err };
+                try list.append(last);
                 defer cx.a.free(new_leaves);
 
-                const merged = mergeLeaves(cx.a, list.items) catch |err| return .{ .err = err };
+                const merged = try mergeLeaves(cx.a, list.items);
                 return WalkMutResult{ .replace = merged };
             }
         };
