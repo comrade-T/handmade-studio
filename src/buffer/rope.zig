@@ -1220,6 +1220,144 @@ pub const Node = union(enum) {
         }
     }
 
+    ///////////////////////////// Get Byte Offset from Position
+
+    pub fn getByteOffsetOfPosition(self: *const Node, line: usize, col: usize) !usize {
+        const GetByteOffsetCtx = struct {
+            byte_offset: usize = 0,
+            current_linenr: usize = 0,
+            current_colnr: usize = 0,
+            should_stop: bool = false,
+            target_linenr: usize,
+            target_colnr: usize,
+
+            fn walk(cx: *@This(), node: *const Node) WalkResult {
+                if (cx.should_stop) return WalkResult.stop;
+                switch (node.*) {
+                    .branch => |branch| {
+                        const left_bols_end = cx.current_linenr + branch.left.weights().bols;
+                        var left_result = WalkResult.keep_walking;
+                        if (cx.target_linenr == cx.current_linenr or cx.target_linenr < left_bols_end) left_result = cx.walk(branch.left);
+                        if (cx.target_linenr > cx.current_linenr) cx.byte_offset += branch.left.weights().len;
+                        cx.current_linenr = left_bols_end;
+                        const right_result = cx.walk(branch.right);
+                        return WalkResult.merge(left_result, right_result);
+                    },
+                    .leaf => |leaf| return cx.walker(&leaf),
+                }
+            }
+
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                if (cx.target_colnr == 0) {
+                    cx.should_stop = true;
+                    return WalkResult.stop;
+                }
+
+                const sum = cx.current_colnr + leaf.noc;
+                if (sum <= cx.target_colnr) {
+                    cx.current_colnr += leaf.noc;
+                    cx.byte_offset += leaf.buf.len;
+                }
+                if (sum > cx.target_colnr) {
+                    var iter = code_point.Iterator{ .bytes = leaf.buf };
+                    while (iter.next()) |cp| {
+                        cx.current_colnr += 1;
+                        cx.byte_offset += cp.len;
+                        if (cx.current_colnr >= cx.target_colnr) break;
+                    }
+                }
+                if (sum >= cx.target_colnr or leaf.eol) {
+                    cx.should_stop = true;
+                    return WalkResult.stop;
+                }
+                return WalkResult.keep_walking;
+            }
+        };
+
+        if (line > self.weights().bols) return error.NotFound;
+        var ctx = GetByteOffsetCtx{ .target_linenr = line, .target_colnr = col };
+        if (ctx.walk(self).err) |err| return err else {
+            if (ctx.current_colnr < col) return error.NotFound;
+            return ctx.byte_offset;
+        }
+    }
+    test getByteOffsetOfPosition {
+        const a = idc_if_it_leaks;
+        {
+            const root = try Node.fromString(a, "Hello World!", true);
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(3, 0));
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(2, 0));
+            try eq(0, root.getByteOffsetOfPosition(0, 0));
+            try eq(1, root.getByteOffsetOfPosition(0, 1));
+            try eq(2, root.getByteOffsetOfPosition(0, 2));
+            try eq(11, root.getByteOffsetOfPosition(0, 11));
+            try eq(12, root.getByteOffsetOfPosition(0, 12));
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(0, 13));
+        }
+        {
+            const source = "one\ntwo\nthree\nfour";
+            const root = try Node.fromString(a, source, true);
+
+            try eqStr("o", source[0..1]);
+            try eq(0, root.getByteOffsetOfPosition(0, 0));
+            try eqStr("e", source[2..3]);
+            try eq(2, root.getByteOffsetOfPosition(0, 2));
+            try eqStr("\n", source[3..4]);
+            try eq(3, root.getByteOffsetOfPosition(0, 3));
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(0, 4));
+
+            try eqStr("t", source[4..5]);
+            try eq(4, root.getByteOffsetOfPosition(1, 0));
+            try eqStr("o", source[6..7]);
+            try eq(6, root.getByteOffsetOfPosition(1, 2));
+            try eqStr("\n", source[7..8]);
+            try eq(7, root.getByteOffsetOfPosition(1, 3));
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(1, 4));
+
+            try eqStr("t", source[8..9]);
+            try eq(8, root.getByteOffsetOfPosition(2, 0));
+            try eqStr("e", source[12..13]);
+            try eq(12, root.getByteOffsetOfPosition(2, 4));
+            try eqStr("\n", source[13..14]);
+            try eq(13, root.getByteOffsetOfPosition(2, 5));
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(2, 6));
+
+            try eqStr("f", source[14..15]);
+            try eq(14, root.getByteOffsetOfPosition(3, 0));
+            try eqStr("r", source[17..18]);
+            try eq(17, root.getByteOffsetOfPosition(3, 3));
+            // no eol on this line
+            try eq(18, source.len);
+            try eq(18, root.getByteOffsetOfPosition(3, 4));
+            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(3, 5));
+        }
+        {
+            const one = try Leaf.new(a, "one", true, false);
+            const two = try Leaf.new(a, "_two", false, false);
+            const three = try Leaf.new(a, "_three", false, true);
+            const four = try Leaf.new(a, "four", true, true);
+            const two_three = try Node.new(a, two, three);
+            const one_two_three = try Node.new(a, one, two_three);
+            {
+                const root = try Node.new(a, one_two_three, four);
+                const txt = "one_two_three\nfour";
+
+                try eqStr("o", txt[0..1]);
+                try eq(0, root.getByteOffsetOfPosition(0, 0));
+                try eqStr("e", txt[12..13]);
+                try eq(13, root.getByteOffsetOfPosition(0, 13));
+                try eqStr("\n", txt[13..14]);
+                try shouldErr(error.NotFound, root.getByteOffsetOfPosition(0, 14));
+
+                try eqStr("f", txt[14..15]);
+                try eq(14, root.getByteOffsetOfPosition(1, 0));
+                try eqStr("r", txt[17..18]);
+                try eq(18, root.getByteOffsetOfPosition(1, 4));
+                try shouldErr(error.NotFound, root.getByteOffsetOfPosition(1, 5));
+            }
+        }
+    }
+
     ///////////////////////////// Node Info
 
     fn weights(self: *const Node) Weights {
