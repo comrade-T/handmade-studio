@@ -1305,7 +1305,7 @@ pub const Node = union(enum) {
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
                 if (leaf.bol) cx.encountered_bol = true;
 
-                if (cx.target_colnr == 0) {
+                if (cx.encountered_bol and cx.target_colnr == 0) {
                     cx.should_stop = true;
                     return WalkResult.stop;
                 }
@@ -1323,7 +1323,7 @@ pub const Node = union(enum) {
                         if (cx.current_colnr >= cx.target_colnr) break;
                     }
                 }
-                if ((leaf.eol and cx.encountered_bol) or (sum >= cx.target_colnr)) {
+                if (cx.encountered_bol and (leaf.eol or sum >= cx.target_colnr)) {
                     cx.should_stop = true;
                     return WalkResult.stop;
                 }
