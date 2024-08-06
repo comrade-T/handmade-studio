@@ -286,14 +286,16 @@ test "InputEdit_NEW" {
                 std.debug.print("requesting {any}\n", .{position});
 
                 const result = switch (ctx.*) {
+                    // 0 => "const std = @import(\"std\");",
                     0 => "const",
-                    1 => " ",
+                    1 => " std ",
                     2 => "= ",
+                    3 => "@import(\"std\");",
                     else => "",
                 };
 
                 bytes_read.* = @intCast(result.len);
-                return "const";
+                return result;
             }
         }.read,
         .encoding = .utf_8,
