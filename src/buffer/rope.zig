@@ -426,7 +426,7 @@ pub const Node = union(enum) {
         return balance_factor;
     }
 
-    fn balance(self: *const Node, a: Allocator) !*const Node {
+    pub fn balance(self: *const Node, a: Allocator) !*const Node {
         switch (self.*) {
             .leaf => return self,
             .branch => |branch| {
@@ -1040,9 +1040,24 @@ pub const Node = union(enum) {
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
 
+                if (new_leaves.len > 0 and new_leaves[0].leaf.eol and !leaf.eol) {
+                    const left_split_leaf = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
+                    const upper_left = Node.new(cx.a, left_split_leaf, &new_leaves[0]) catch |err| return .{ .err = err };
+
+                    const right_split_leaf = Leaf.new(cx.a, right_split, leaf.bol, false) catch |err| return .{ .err = err };
+                    var upper_right = right_split_leaf;
+                    if (new_leaves.len > 1) {
+                        const merged = mergeLeaves(cx.a, new_leaves[1..]) catch |err| return .{ .err = err };
+                        upper_right = Node.new(cx.a, merged, right_split_leaf) catch |err| return .{ .err = err };
+                    }
+
+                    const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
+                    return WalkMutResult{ .replace = replacement };
+                }
+
+                const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
                 const left = mergeLeaves(cx.a, new_leaves) catch |err| return .{ .err = err };
                 const right = Leaf.new(cx.a, right_split, false, leaf.eol) catch |err| return .{ .err = err };
-                const upper_left = Leaf.new(cx.a, left_split, leaf.bol, false) catch |err| return .{ .err = err };
                 const upper_right = Node.new(cx.a, left, right) catch |err| return .{ .err = err };
 
                 const replacement = Node.new(cx.a, upper_left, upper_right) catch |err| return .{ .err = err };
@@ -1202,19 +1217,33 @@ pub const Node = union(enum) {
             ;
             try eqStr(new_root_debug_str, try abcde.debugPrint());
         }
+        {
+            const root = try Leaf.new(a, "const str =;", true, false);
+            const new_root, _, _ = try root.insertChars(a, 11, "\n");
+            const new_root_debug_str =
+                \\3 3/13/12
+                \\  2 1/12/11
+                \\    1 B| `const str =`
+                \\    1 `` |E
+                \\  2 2/1/1
+                \\    1 B| ``
+                \\    1 B| `;`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
 
         // multi line insert in the middle
         {
             const abcd = try Leaf.new(a, "ABCD", true, false);
             const new_root, _, _ = try abcd.insertChars(a, 1, "1\n22");
             const new_root_debug_str =
-                \\4 2/8/7
-                \\  1 B| `A`
-                \\  3 1/7/6
-                \\    2 1/4/3
-                \\      1 `1` |E
-                \\      1 B| `22`
-                \\    1 `BCD`
+                \\3 3/8/7
+                \\  2 1/3/2
+                \\    1 B| `A`
+                \\    1 `1` |E
+                \\  2 2/5/5
+                \\    1 B| `22`
+                \\    1 B| `BCD`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
@@ -1274,10 +1303,10 @@ pub const Node = union(enum) {
             }
         };
 
-        if (line > self.weights().bols) return error.NotFound;
+        if (line > self.weights().bols) return error.LineOutOfBounds;
         var ctx = GetByteOffsetCtx{ .target_linenr = line, .target_colnr = col };
         if (ctx.walk(self).err) |err| return err else {
-            if (ctx.current_colnr < col) return error.NotFound;
+            if (ctx.current_colnr < col) return error.ColOutOfBounds;
             return ctx.byte_offset;
         }
     }
@@ -1285,14 +1314,14 @@ pub const Node = union(enum) {
         const a = idc_if_it_leaks;
         {
             const root = try Node.fromString(a, "Hello World!", true);
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(3, 0));
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(2, 0));
+            try shouldErr(error.LineOutOfBounds, root.getByteOffsetOfPosition(3, 0));
+            try shouldErr(error.LineOutOfBounds, root.getByteOffsetOfPosition(2, 0));
             try eq(0, root.getByteOffsetOfPosition(0, 0));
             try eq(1, root.getByteOffsetOfPosition(0, 1));
             try eq(2, root.getByteOffsetOfPosition(0, 2));
             try eq(11, root.getByteOffsetOfPosition(0, 11));
             try eq(12, root.getByteOffsetOfPosition(0, 12));
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(0, 13));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 13));
         }
         {
             const source = "one\ntwo\nthree\nfour";
@@ -1304,7 +1333,7 @@ pub const Node = union(enum) {
             try eq(2, root.getByteOffsetOfPosition(0, 2));
             try eqStr("\n", source[3..4]);
             try eq(3, root.getByteOffsetOfPosition(0, 3));
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(0, 4));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 4));
 
             try eqStr("t", source[4..5]);
             try eq(4, root.getByteOffsetOfPosition(1, 0));
@@ -1312,7 +1341,7 @@ pub const Node = union(enum) {
             try eq(6, root.getByteOffsetOfPosition(1, 2));
             try eqStr("\n", source[7..8]);
             try eq(7, root.getByteOffsetOfPosition(1, 3));
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(1, 4));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 4));
 
             try eqStr("t", source[8..9]);
             try eq(8, root.getByteOffsetOfPosition(2, 0));
@@ -1320,7 +1349,7 @@ pub const Node = union(enum) {
             try eq(12, root.getByteOffsetOfPosition(2, 4));
             try eqStr("\n", source[13..14]);
             try eq(13, root.getByteOffsetOfPosition(2, 5));
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(2, 6));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 6));
 
             try eqStr("f", source[14..15]);
             try eq(14, root.getByteOffsetOfPosition(3, 0));
@@ -1329,7 +1358,7 @@ pub const Node = union(enum) {
             // no eol on this line
             try eq(18, source.len);
             try eq(18, root.getByteOffsetOfPosition(3, 4));
-            try shouldErr(error.NotFound, root.getByteOffsetOfPosition(3, 5));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(3, 5));
         }
         {
             const one = try Leaf.new(a, "one", true, false);
@@ -1347,13 +1376,13 @@ pub const Node = union(enum) {
                 try eqStr("e", txt[12..13]);
                 try eq(13, root.getByteOffsetOfPosition(0, 13));
                 try eqStr("\n", txt[13..14]);
-                try shouldErr(error.NotFound, root.getByteOffsetOfPosition(0, 14));
+                try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 14));
 
                 try eqStr("f", txt[14..15]);
                 try eq(14, root.getByteOffsetOfPosition(1, 0));
                 try eqStr("r", txt[17..18]);
                 try eq(18, root.getByteOffsetOfPosition(1, 4));
-                try shouldErr(error.NotFound, root.getByteOffsetOfPosition(1, 5));
+                try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 5));
             }
         }
     }
@@ -1369,7 +1398,7 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Debug Print Node
 
-    fn debugPrint(self: *const Node) ![]const u8 {
+    pub fn debugPrint(self: *const Node) ![]const u8 {
         var result = std.ArrayList(u8).init(idc_if_it_leaks);
         try self._debugPrint(idc_if_it_leaks, &result, 0);
         return try result.toOwnedSlice();
