@@ -4,6 +4,7 @@ const ts = @import("ts").b;
 
 const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
+const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
@@ -20,12 +21,12 @@ const eqStr = std.testing.expectEqualStrings;
 
 const SupportedLanguages = enum { zig };
 
-fn getTSParser(lang: SupportedLanguages) !ts.Parser {
-    const tslang: ts.Language = switch (lang) {
-        .zig => ts.Language.get("zig"),
+fn getTSParser(lang: SupportedLanguages) !*ts.Parser {
+    const tslang = switch (lang) {
+        .zig => try ts.Language.get("zig"),
     };
     var parser = try ts.Parser.create();
-    parser.setLanguage(tslang);
+    try parser.setLanguage(tslang);
     return parser;
 }
 
@@ -51,8 +52,7 @@ pub const Buffer = struct {
         return self;
     }
     test create {
-        const a = std.testing.allocator;
-        const buf = try Buffer.create(a, .string, "hello");
+        const buf = try Buffer.create(testing_allocator, .string, "hello");
         defer buf.destroy();
         try eq(null, buf.tsparser);
         try eq(null, buf.tstree);
@@ -60,7 +60,26 @@ pub const Buffer = struct {
 
     pub fn destroy(self: *@This()) void {
         self.rope_arena.deinit();
-        self.exa.destroy(self);
+        if (self.tsparser) |parser| parser.destroy();
+        if (self.tstree) |tree| tree.destroy();
+        defer self.exa.destroy(self);
+    }
+
+    fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
+        self.tsparser = try getTSParser(lang);
+        const content = try self.roperoot.getContent(self.rope_arena.allocator());
+        defer content.deinit();
+        self.tstree = try self.tsparser.?.parseString(null, content.items);
+    }
+    test initiateTreeSitter {
+        const buf = try Buffer.create(testing_allocator, .string, "const");
+        defer buf.destroy();
+        try buf.initiateTreeSitter(.zig);
+        try eqStr(
+            \\source_file
+            \\  ERROR
+            \\    "const"
+        , try buf.tstree.?.getRootNode().debugPrint());
     }
 };
 
