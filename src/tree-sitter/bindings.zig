@@ -408,6 +408,30 @@ pub const Node = extern struct {
         }
     };
 
+    pub fn debugPrint(node: Node) ![]const u8 {
+        var result = std.ArrayList(u8).init(std.heap.page_allocator);
+        try _debugPrintNode(node, std.heap.page_allocator, &result, 0);
+        return try result.toOwnedSlice();
+    }
+    fn _debugPrintNode(node: Node, a: std.mem.Allocator, result: *std.ArrayList(u8), indent_level: usize) !void {
+        if (indent_level > 0) try result.append('\n');
+        for (0..indent_level) |_| try result.append(' ');
+
+        const node_type = node.getType();
+        const is_named = node.isNamed();
+        if (!is_named) {
+            const content = try std.fmt.allocPrint(a, "\"{s}\"", .{node_type});
+            try result.appendSlice(content);
+        } else {
+            try result.appendSlice(node_type);
+        }
+
+        for (0..node.getChildCount()) |i| {
+            const child = node.getChild(@intCast(i));
+            if (!child.isNull()) try _debugPrintNode(child, a, result, indent_level + 2);
+        }
+    }
+
     pub fn getTree(node: Node) Tree {
         return node.tree.?;
     }
