@@ -647,87 +647,87 @@ pub const Node = union(enum) {
 
                         return WalkMutResult.merge(allocator, branch, left_result, right_result);
                     },
-                    .leaf => |leaf| return cx.walker(&leaf),
+                    .leaf => |leaf| return cx.walker(&leaf) catch |err| return .{ .err = err },
                 }
             }
 
-            fn walker(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            fn walker(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 defer cx.leaves_encountered += 1;
 
                 const leaf_outside_delete_range = cx.current_index.* >= cx.end_byte;
-                if (leaf_outside_delete_range) return _amendBol(cx, leaf);
+                if (leaf_outside_delete_range) return try _amendBol(cx, leaf);
 
                 const start_before_leaf = cx.start_byte <= cx.current_index.*;
                 const end_after_leaf = cx.end_byte >= cx.current_index.* + leaf.weights().len - 1;
                 const delete_covers_leaf = start_before_leaf and end_after_leaf;
-                if (delete_covers_leaf) return _removed(cx, leaf);
+                if (delete_covers_leaf) return try _removed(cx, leaf);
 
                 const start_in_leaf = cx.current_index.* <= cx.start_byte;
                 const end_in_leaf = cx.current_index.* + leaf.buf.len >= cx.end_byte;
                 const leaf_covers_delete = start_in_leaf and end_in_leaf;
 
-                if (leaf_covers_delete) return _trimmedLeftAndTrimmedRight(cx, leaf);
-                if (start_in_leaf) return _leftSide(cx, leaf);
-                if (end_in_leaf) return _rightSide(cx, leaf);
+                if (leaf_covers_delete) return try _trimmedLeftAndTrimmedRight(cx, leaf);
+                if (start_in_leaf) return try _leftSide(cx, leaf);
+                if (end_in_leaf) return try _rightSide(cx, leaf);
 
                 unreachable;
             }
 
-            fn _amendBol(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            fn _amendBol(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 if (cx.first_leaf_bol) |bol| {
-                    const replace = Leaf.new(cx.a, leaf.buf, bol, leaf.eol) catch |err| return .{ .err = err };
+                    const replace = try Leaf.new(cx.a, leaf.buf, bol, leaf.eol);
                     return WalkMutResult{ .replace = replace };
                 }
                 return WalkMutResult.stop;
             }
 
-            fn _removed(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            fn _removed(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
                 if (leaf.eol) {
-                    const replace = Leaf.new(cx.a, "", false, true) catch |err| return .{ .err = err };
+                    const replace = try Leaf.new(cx.a, "", false, true);
                     return WalkMutResult{ .replace = replace };
                 }
                 return WalkMutResult.removed;
             }
 
-            fn _trimmedLeftAndTrimmedRight(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            fn _trimmedLeftAndTrimmedRight(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index.*;
                 const left_side_content = leaf.buf[0..split_index];
                 const right_side_content = leaf.buf[split_index + cx.num_of_bytes_to_delete .. leaf.buf.len];
 
                 const left_side_wiped_out = left_side_content.len == 0;
                 if (left_side_wiped_out) {
-                    const right_side = Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                    const right_side = try Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol);
                     return WalkMutResult{ .replace = right_side };
                 }
 
                 const right_side_wiped_out = right_side_content.len == 0;
                 if (right_side_wiped_out) {
-                    const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                    const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, leaf.eol);
                     return WalkMutResult{ .replace = left_side };
                 }
 
-                const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, false) catch |err| return .{ .err = err };
-                const right_side = Leaf.new(cx.a, right_side_content, false, leaf.eol) catch |err| return .{ .err = err };
-                const replace = Node.new(cx.a, left_side, right_side) catch |err| return .{ .err = err };
+                const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, false);
+                const right_side = try Leaf.new(cx.a, right_side_content, false, leaf.eol);
+                const replace = try Node.new(cx.a, left_side, right_side);
                 return WalkMutResult{ .replace = replace };
             }
 
-            fn _leftSide(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            fn _leftSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index.*;
                 const left_side_content = leaf.buf[0..split_index];
                 const left_eol = if (left_side_content.len == leaf.buf.len) false else leaf.eol;
-                const left_side = Leaf.new(cx.a, left_side_content, leaf.bol, left_eol) catch |err| return .{ .err = err };
+                const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, left_eol);
                 cx.bytes_deleted += leaf.buf.len - left_side_content.len;
                 if (left_side_content.len == leaf.buf.len) cx.bytes_deleted += 1;
                 return WalkMutResult{ .replace = left_side };
             }
 
-            fn _rightSide(cx: *@This(), leaf: *const Leaf) WalkMutResult {
+            fn _rightSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 const bytes_left_to_delete = cx.num_of_bytes_to_delete - cx.bytes_deleted;
                 const right_side_content = leaf.buf[bytes_left_to_delete..];
-                const right_side = Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol) catch |err| return .{ .err = err };
+                const right_side = try Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol);
                 return WalkMutResult{ .replace = right_side };
             }
         };
