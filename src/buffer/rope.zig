@@ -1052,18 +1052,30 @@ pub const Node = union(enum) {
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
 
-                const first = Node{ .leaf = .{ .buf = left_split, .noc = getNumOfChars(left_split), .bol = leaf.bol, .eol = false } };
+                var trimmed_buf = cx.buf[0..];
+
+                var first_eol = false;
+                if (cx.buf[0] == '\n') {
+                    first_eol = true;
+                    trimmed_buf = cx.buf[1..];
+                }
+
+                const first = Node{ .leaf = .{ .buf = left_split, .noc = getNumOfChars(left_split), .bol = leaf.bol, .eol = first_eol } };
                 const last = Node{ .leaf = .{ .buf = right_split, .noc = getNumOfChars(right_split), .bol = false, .eol = leaf.eol } };
 
                 var list = std.ArrayList(Node).initCapacity(cx.a, new_leaves.len + 2) catch |err| return .{ .err = err };
                 list.append(first) catch |err| return .{ .err = err };
-                for (new_leaves) |nl| list.append(nl) catch |err| return .{ .err = err };
+                for (new_leaves, 0..) |nl, i| {
+                    if (i == 0 and cx.buf[0] == '\n') continue;
+                    list.append(nl) catch |err| return .{ .err = err };
+                }
                 list.append(last) catch |err| return .{ .err = err };
 
                 const merged = mergeLeaves(cx.a, list.items) catch |err| return .{ .err = err };
                 return WalkMutResult{ .replace = merged };
             }
         };
+        if (chars.len == 0) return error.EmptyStringNotAllowed;
         if (target_index > self.weights().len) return error.IndexOutOfBounds;
         const buf = try a.dupe(u8, chars);
         var ctx = InsertCharsCtx{ .a = a, .buf = buf, .target_index = target_index };
@@ -1221,11 +1233,9 @@ pub const Node = union(enum) {
             const root = try Leaf.new(a, "const str =;", true, false);
             const new_root, _, _ = try root.insertChars(a, 11, "\n");
             const new_root_debug_str =
-                \\3 1/13/12
-                \\  1 B| `const str =`
-                \\  2 0/2/1
-                \\    1 `` |E
-                \\    1 `;`
+                \\2 1/13/12
+                \\  1 B| `const str =` |E
+                \\  1 `;`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
@@ -1250,11 +1260,9 @@ pub const Node = union(enum) {
             const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
             const new_root_debug_str =
                 \\4 4/37/34
-                \\  3 2/24/22
-                \\    1 B| `const str =`
-                \\    2 1/13/11
-                \\      1 `` |E
-                \\      1 B| `    \\hello` |E
+                \\  2 2/24/22
+                \\    1 B| `const str =` |E
+                \\    1 B| `    \\hello` |E
                 \\  3 2/13/12
                 \\    1 B| `    \\world` |E
                 \\    2 1/1/1
@@ -1412,11 +1420,9 @@ pub const Node = union(enum) {
             const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
             const new_root_debug_str =
                 \\4 4/37/34
-                \\  3 2/24/22
-                \\    1 B| `const str =`
-                \\    2 1/13/11
-                \\      1 `` |E
-                \\      1 B| `    \\hello` |E
+                \\  2 2/24/22
+                \\    1 B| `const str =` |E
+                \\    1 B| `    \\hello` |E
                 \\  3 2/13/12
                 \\    1 B| `    \\world` |E
                 \\    2 1/1/1
