@@ -330,7 +330,7 @@ pub const Node = union(enum) {
 
                 if (cx.bytes_written + rest.len > cx.buf_size) {
                     const room_left = cx.buf_size -| cx.bytes_written;
-                    var end = leaf.buf.len - room_left;
+                    var end = num_of_bytes_to_not_include + room_left;
                     while (end > 0) {
                         if (leaf.buf[end - 1] < 128) break;
                         end -= 1;
@@ -358,8 +358,8 @@ pub const Node = union(enum) {
     }
     test getRestOfLine {
         const a = idc_if_it_leaks;
-        const buf_size = 1024;
         { // basic
+            const buf_size = 1024;
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
             {
                 var buf: [buf_size]u8 = undefined;
@@ -385,6 +385,40 @@ pub const Node = union(enum) {
                 var buf: [buf_size]u8 = undefined;
                 const result = try root.getRestOfLine(14, &buf, buf_size);
                 try eqStr("four", result);
+            }
+        }
+        { // buf_size overflow
+            const buf_size = 3;
+            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(0, &buf, buf_size);
+                try eqStr("one", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(4, &buf, buf_size);
+                try eqStr("two", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(8, &buf, buf_size);
+                try eqStr("thr", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(9, &buf, buf_size);
+                try eqStr("hre", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(10, &buf, buf_size);
+                try eqStr("ree", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(14, &buf, buf_size);
+                try eqStr("fou", result);
             }
         }
     }
