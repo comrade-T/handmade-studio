@@ -1415,18 +1415,38 @@ pub const Node = union(enum) {
                 try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 5));
             }
         }
+
+        // make sure that getByteOffsetOfPosition() works properly with ugly tree structure,
+        // where bol is in one leaf, and eol is in another leaf in a different branch.
         {
-            const root = try Node.fromString(a, "const str =;", true);
-            const new_root, _, _ = try root.insertChars(a, 11, "\n    \\\\hello\n    \\\\world\n");
-            try eq(11, new_root.getByteOffsetOfPosition(0, 11));
-            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(0, 12));
-            try eq(23, new_root.getByteOffsetOfPosition(1, 11));
-            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(1, 12));
-            try eq(35, new_root.getByteOffsetOfPosition(2, 11));
-            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(2, 12));
-            try eq(36, new_root.getByteOffsetOfPosition(3, 0));
-            try eq(37, new_root.getByteOffsetOfPosition(3, 1));
-            try shouldErr(error.ColOutOfBounds, new_root.getByteOffsetOfPosition(3, 2));
+            const eol_hello = try Node.new(a, try Leaf.new(a, "", false, true), try Leaf.new(a, "    \\\\hello", true, true));
+            const const_hello = try Node.new(a, try Leaf.new(a, "const str =", true, false), eol_hello);
+            const semicolon = try Node.new(a, try Leaf.new(a, "", true, false), try Leaf.new(a, ";", false, false));
+            const world_semicolon = try Node.new(a, try Leaf.new(a, "    \\\\world", true, true), semicolon);
+            const root = try Node.new(a, const_hello, world_semicolon);
+            const root_debug_str =
+                \\4 4/37/34
+                \\  3 2/24/22
+                \\    1 B| `const str =`
+                \\    2 1/13/11
+                \\      1 `` |E
+                \\      1 B| `    \\hello` |E
+                \\  3 2/13/12
+                \\    1 B| `    \\world` |E
+                \\    2 1/1/1
+                \\      1 B| ``
+                \\      1 `;`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+            try eq(11, root.getByteOffsetOfPosition(0, 11));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 12));
+            try eq(23, root.getByteOffsetOfPosition(1, 11));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 12));
+            try eq(35, root.getByteOffsetOfPosition(2, 11));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 12));
+            try eq(36, root.getByteOffsetOfPosition(3, 0));
+            try eq(37, root.getByteOffsetOfPosition(3, 1));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(3, 2));
         }
     }
 
