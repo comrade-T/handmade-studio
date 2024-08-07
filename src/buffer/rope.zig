@@ -351,6 +351,7 @@ pub const Node = union(enum) {
             }
         };
 
+        if (start_byte > self.weights().len) return "";
         var ctx = GetRestOfLineCtx{ .start_byte = start_byte, .buf = buf, .buf_size = buf_size };
         const walk_result = ctx.walk(self);
         if (walk_result.err) |err| return err;
@@ -361,66 +362,46 @@ pub const Node = union(enum) {
         { // basic
             const buf_size = 1024;
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(0, &buf, buf_size);
-                try eqStr("one", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(1, &buf, buf_size);
-                try eqStr("ne", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(4, &buf, buf_size);
-                try eqStr("two", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(8, &buf, buf_size);
-                try eqStr("three", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(14, &buf, buf_size);
-                try eqStr("four", result);
-            }
+            try testGetRestOfLine(root, buf_size, 0, "one");
+            try testGetRestOfLine(root, buf_size, 1, "ne");
+            try testGetRestOfLine(root, buf_size, 2, "e");
+            try testGetRestOfLine(root, buf_size, 3, ""); // \n
+            try testGetRestOfLine(root, buf_size, 4, "two");
+            try testGetRestOfLine(root, buf_size, 8, "three");
+            try testGetRestOfLine(root, buf_size, 9, "hree");
+            try testGetRestOfLine(root, buf_size, 10, "ree");
+            try testGetRestOfLine(root, buf_size, 14, "four");
         }
         { // buf_size overflow
             const buf_size = 3;
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(0, &buf, buf_size);
-                try eqStr("one", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(4, &buf, buf_size);
-                try eqStr("two", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(8, &buf, buf_size);
-                try eqStr("thr", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(9, &buf, buf_size);
-                try eqStr("hre", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(10, &buf, buf_size);
-                try eqStr("ree", result);
-            }
-            {
-                var buf: [buf_size]u8 = undefined;
-                const result = try root.getRestOfLine(14, &buf, buf_size);
-                try eqStr("fou", result);
-            }
+            try testGetRestOfLine(root, buf_size, 0, "one");
+            try testGetRestOfLine(root, buf_size, 1, "ne");
+            try testGetRestOfLine(root, buf_size, 2, "e");
+            try testGetRestOfLine(root, buf_size, 3, ""); // \n
+            try testGetRestOfLine(root, buf_size, 4, "two");
+            try testGetRestOfLine(root, buf_size, 5, "wo");
+            try testGetRestOfLine(root, buf_size, 6, "o");
+            try testGetRestOfLine(root, buf_size, 7, ""); // \n
+            try testGetRestOfLine(root, buf_size, 8, "thr");
+            try testGetRestOfLine(root, buf_size, 9, "hre");
+            try testGetRestOfLine(root, buf_size, 10, "ree");
+            try testGetRestOfLine(root, buf_size, 11, "ee");
+            try testGetRestOfLine(root, buf_size, 12, "e");
+            try testGetRestOfLine(root, buf_size, 13, ""); // \n
+            try testGetRestOfLine(root, buf_size, 14, "fou");
+            try testGetRestOfLine(root, buf_size, 15, "our");
+            try testGetRestOfLine(root, buf_size, 16, "ur");
+            try testGetRestOfLine(root, buf_size, 17, "r");
+            try testGetRestOfLine(root, buf_size, 18, ""); // out of bounds
+            try testGetRestOfLine(root, buf_size, 19, ""); // out of bounds
+            try testGetRestOfLine(root, buf_size, 100, ""); // out of bounds
         }
+    }
+    fn testGetRestOfLine(root: *const Node, comptime buf_size: usize, index: usize, str: []const u8) !void {
+        var buf: [buf_size]u8 = undefined;
+        const result = try root.getRestOfLine(index, &buf, buf_size);
+        try eqStr(str, result);
     }
 
     pub fn getLine(self: *const Node, a: Allocator, linenr: u32) !struct { ArrayList(u8), u32 } {
