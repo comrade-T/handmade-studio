@@ -65,22 +65,7 @@ pub const Buffer = struct {
         defer self.exa.destroy(self);
     }
 
-    fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
-        self.tsparser = try getTSParser(lang);
-        const content = try self.roperoot.getContent(self.rope_arena.allocator());
-        defer content.deinit();
-        self.tstree = try self.tsparser.?.parseString(null, content.items);
-    }
-    test initiateTreeSitter {
-        const buf = try Buffer.create(testing_allocator, .string, "const");
-        defer buf.destroy();
-        try buf.initiateTreeSitter(.zig);
-        try eqStr(
-            \\source_file
-            \\  ERROR
-            \\    "const"
-        , try buf.tstree.?.getRootNode().debugPrint());
-    }
+    ///////////////////////////// Insert
 
     fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !void {
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
@@ -146,7 +131,7 @@ pub const Buffer = struct {
         // }
     }
 
-    ///////////////////////////// Parse
+    ///////////////////////////// Tree Sitter Parsing
 
     const PARSE_BUFFER_SIZE = 1024;
 
@@ -170,13 +155,17 @@ pub const Buffer = struct {
     test parse {
         var buf = try Buffer.create(testing_allocator, .string, "const");
         defer buf.destroy();
-        buf.tsparser = try getTSParser(.zig);
-        try buf.parse();
+        try buf.initiateTreeSitter(.zig);
         try eqStr(
             \\source_file
             \\  ERROR
             \\    "const"
         , try buf.tstree.?.getRootNode().debugPrint());
+    }
+
+    fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
+        self.tsparser = try getTSParser(lang);
+        try self.parse();
     }
 };
 
