@@ -67,13 +67,18 @@ pub const Buffer = struct {
 
     ///////////////////////////// Insert
 
-    fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !void {
+    fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { usize, usize } {
         const start_point = ts.Point{ .row = @intCast(line), .column = @intCast(col) };
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
-        self.roperoot, const num_of_new_lines, const new_col = try self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars);
+
+        self.roperoot, const num_of_new_lines, const last_new_leaf_noc =
+            try self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars);
         self.roperoot = try self.roperoot.balance(self.rope_arena.allocator());
 
-        if (self.tstree == null) return;
+        var new_col = last_new_leaf_noc;
+        if (num_of_new_lines == 0) new_col = col + last_new_leaf_noc;
+
+        if (self.tstree == null) return .{ line + num_of_new_lines, new_col };
 
         const old_end_byte = start_byte; // since it's insert operation, not delete or replace.
         const old_end_point = start_point;
@@ -89,9 +94,10 @@ pub const Buffer = struct {
             .old_end_point = old_end_point,
             .new_end_point = new_end_point,
         };
-
         self.tstree.?.edit(&edit);
         try self.parse();
+
+        return .{ line + num_of_new_lines, new_col };
     }
     test insertChars {
         // Insert only
@@ -99,7 +105,9 @@ pub const Buffer = struct {
             const buf = try Buffer.create(testing_allocator, .string, "const str =;");
             defer buf.destroy();
             {
-                try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
+                const new_line, const new_col = try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
+                try eq(3, new_line);
+                try eq(0, new_col);
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr(
                     \\const str =
@@ -109,7 +117,9 @@ pub const Buffer = struct {
                 , content.items);
             }
             {
-                try buf.insertChars(" my", 1, 11);
+                const new_line, const new_col = try buf.insertChars(" my", 1, 11);
+                try eq(1, new_line);
+                try eq(14, new_col);
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr(
                     \\const str =
@@ -119,8 +129,10 @@ pub const Buffer = struct {
                 , content.items);
             }
             {
-                try buf.insertChars("!", 2, 11);
+                const new_line, const new_col = try buf.insertChars("!", 2, 11);
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eq(2, new_line);
+                try eq(12, new_col);
                 try eqStr(
                     \\const str =
                     \\    \\hello my
@@ -136,7 +148,9 @@ pub const Buffer = struct {
             defer buf.destroy();
             try buf.initiateTreeSitter(.zig);
             {
-                try buf.insertChars(" std", 0, 5);
+                const new_line, const new_col = try buf.insertChars(" std", 0, 5);
+                try eq(0, new_line);
+                try eq(9, new_col);
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr("const std", content.items);
                 try eqStr(
