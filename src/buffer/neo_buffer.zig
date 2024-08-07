@@ -68,21 +68,30 @@ pub const Buffer = struct {
     ///////////////////////////// Insert
 
     fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !void {
+        const start_point = ts.Point{ .row = @intCast(line), .column = @intCast(col) };
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
         self.roperoot, const num_of_new_lines, const new_col = try self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars);
         self.roperoot = try self.roperoot.balance(self.rope_arena.allocator());
 
-        _ = num_of_new_lines;
-        _ = new_col;
+        if (self.tstree == null) return;
 
-        // const edit = ts.InputEdit{
-        //     .start_byte = @intCast(start_byte),
-        //     .old_end_byte = @intCast(old_end_byte),
-        //     .new_end_byte = @intCast(new_end_byte),
-        //     .start_point = start_point,
-        //     .old_end_point = old_end_point,
-        //     .new_end_point = new_end_point,
-        // };
+        const old_end_byte = start_byte; // since it's insert operation, not delete or replace.
+        const old_end_point = start_point;
+
+        const new_end_byte = start_byte + chars.len;
+        const new_end_point = ts.Point{ .row = @intCast(line + num_of_new_lines), .column = @intCast(new_col) };
+
+        const edit = ts.InputEdit{
+            .start_byte = @intCast(start_byte),
+            .old_end_byte = @intCast(old_end_byte),
+            .new_end_byte = @intCast(new_end_byte),
+            .start_point = start_point,
+            .old_end_point = old_end_point,
+            .new_end_point = new_end_point,
+        };
+
+        self.tstree.?.edit(&edit);
+        try self.parse();
     }
     test insertChars {
         // Insert only
@@ -121,14 +130,25 @@ pub const Buffer = struct {
             }
         }
 
-        // // Insert + Tree Sitter update
-        // {
-        //     const buf = try Buffer.create(testing_allocator, .string, "const");
-        //     defer buf.destroy();
-        //     try buf.insertChars(" std", 0, 5);
-        //     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-        //     try eqStr("const std", content.items);
-        // }
+        // Insert + Tree Sitter update
+        {
+            const buf = try Buffer.create(testing_allocator, .string, "const");
+            defer buf.destroy();
+            try buf.initiateTreeSitter(.zig);
+            {
+                try buf.insertChars(" std", 0, 5);
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr("const std", content.items);
+                try eqStr(
+                    \\source_file
+                    \\  Decl
+                    \\    VarDecl
+                    \\      "const"
+                    \\      IDENTIFIER
+                    \\      ";"
+                , try buf.tstree.?.getRootNode().debugPrint());
+            }
+        }
     }
 
     ///////////////////////////// Tree Sitter Parsing
@@ -137,6 +157,10 @@ pub const Buffer = struct {
 
     fn parse(self: *@This()) !void {
         if (self.tsparser == null) @panic("parse() is called on a Buffer with no parser!");
+
+        const may_old_tree = self.tstree;
+        defer if (may_old_tree) |old_tree| old_tree.destroy();
+
         const input: ts.Input = .{
             .payload = self,
             .read = struct {
