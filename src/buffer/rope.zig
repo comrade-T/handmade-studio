@@ -298,7 +298,7 @@ pub const Node = union(enum) {
         }
     }
 
-    pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) ![]u8 {
+    pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) []u8 {
         const GetRestOfLineCtx = struct {
             start_byte: usize,
             buf: []u8,
@@ -325,7 +325,7 @@ pub const Node = union(enum) {
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
                 const num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
-                if (num_of_bytes_to_not_include > leaf.buf.len) return .{ .err = error.NumOfBytesToNotIncludeLargerThanLeafLength };
+                if (num_of_bytes_to_not_include > leaf.buf.len) @panic("num_of_bytes_to_not_include > leaf.buf.len!");
                 var rest = leaf.buf[num_of_bytes_to_not_include..];
 
                 if (cx.bytes_written + rest.len > cx.buf_size) {
@@ -354,7 +354,7 @@ pub const Node = union(enum) {
         if (start_byte > self.weights().len) return "";
         var ctx = GetRestOfLineCtx{ .start_byte = start_byte, .buf = buf, .buf_size = buf_size };
         const walk_result = ctx.walk(self);
-        if (walk_result.err) |err| return err;
+        if (walk_result.err) |_| @panic("Node.getRestOfLine() shouldn't return any errors!");
         return ctx.buf[0..ctx.bytes_written];
     }
     test getRestOfLine {
@@ -397,10 +397,11 @@ pub const Node = union(enum) {
             try testGetRestOfLine(root, buf_size, 19, ""); // out of bounds
             try testGetRestOfLine(root, buf_size, 100, ""); // out of bounds
         }
+        // TODO: unicode test cases
     }
     fn testGetRestOfLine(root: *const Node, comptime buf_size: usize, index: usize, str: []const u8) !void {
         var buf: [buf_size]u8 = undefined;
-        const result = try root.getRestOfLine(index, &buf, buf_size);
+        const result = root.getRestOfLine(index, &buf, buf_size);
         try eqStr(str, result);
     }
 
