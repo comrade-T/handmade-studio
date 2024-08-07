@@ -100,13 +100,7 @@ pub const Buffer = struct {
         // };
     }
     test insertChars {
-        {
-            const buf = try Buffer.create(testing_allocator, .string, "const");
-            defer buf.destroy();
-            try buf.insertChars(" std", 0, 5);
-            const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-            try eqStr("const std", content.items);
-        }
+        // Insert only
         {
             const buf = try Buffer.create(testing_allocator, .string, "const str =;");
             defer buf.destroy();
@@ -130,7 +124,59 @@ pub const Buffer = struct {
                     \\;
                 , content.items);
             }
+            {
+                try buf.insertChars("!", 2, 11);
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr(
+                    \\const str =
+                    \\    \\hello my
+                    \\    \\world!
+                    \\;
+                , content.items);
+            }
         }
+
+        // // Insert + Tree Sitter update
+        // {
+        //     const buf = try Buffer.create(testing_allocator, .string, "const");
+        //     defer buf.destroy();
+        //     try buf.insertChars(" std", 0, 5);
+        //     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+        //     try eqStr("const std", content.items);
+        // }
+    }
+
+    ///////////////////////////// Parse
+
+    const PARSE_BUFFER_SIZE = 1024;
+
+    fn parse(self: *@This()) !void {
+        if (self.tsparser == null) @panic("parse() is called on a Buffer with no parser!");
+        const input: ts.Input = .{
+            .payload = self,
+            .read = struct {
+                fn read(payload: ?*anyopaque, start_byte: u32, _: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
+                    var buf: [PARSE_BUFFER_SIZE]u8 = undefined;
+                    const ctx: *Buffer = @ptrCast(@alignCast(payload orelse return ""));
+                    const result = ctx.roperoot.getRestOfLine(start_byte, &buf, PARSE_BUFFER_SIZE);
+                    bytes_read.* = @intCast(result.len);
+                    return @ptrCast(result.ptr);
+                }
+            }.read,
+            .encoding = .utf_8,
+        };
+        self.tstree = try self.tsparser.?.parse(self.tstree, input);
+    }
+    test parse {
+        var buf = try Buffer.create(testing_allocator, .string, "const");
+        defer buf.destroy();
+        buf.tsparser = try getTSParser(.zig);
+        try buf.parse();
+        try eqStr(
+            \\source_file
+            \\  ERROR
+            \\    "const"
+        , try buf.tstree.?.getRootNode().debugPrint());
     }
 };
 

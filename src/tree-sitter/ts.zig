@@ -252,11 +252,11 @@ test "InputEdit_NEW" {
     const input: b.Input = .{
         .payload = &state,
         .read = struct {
-            fn read(payload: ?*anyopaque, _: u32, position: b.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
+            fn read(payload: ?*anyopaque, byte_index: u32, position: b.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
                 const ctx: *usize = @ptrCast(@alignCast(payload orelse return ""));
                 defer ctx.* += 1;
 
-                std.debug.print("requesting {any}\n", .{position});
+                std.debug.print("requesting {any} | byte_index {d}\n", .{ position, byte_index });
 
                 const result = switch (ctx.*) {
                     // 0 => "const std = @import(\"std\");",
@@ -275,5 +275,8 @@ test "InputEdit_NEW" {
     };
 
     const tree = try parser.parse(null, input);
+    const source = "const std = @import(\"std\");";
+    const root = tree.getRootNode();
+    try eqStr(source, source[root.getStartByte()..root.getEndByte()]);
     std.debug.print("{s}\n", .{try tree.getRootNode().debugPrint()});
 }
