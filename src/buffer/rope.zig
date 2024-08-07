@@ -298,6 +298,97 @@ pub const Node = union(enum) {
         }
     }
 
+    pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) ![]u8 {
+        const GetRestOfLineCtx = struct {
+            start_byte: usize,
+            buf: []u8,
+            buf_size: usize,
+
+            should_stop: bool = false,
+            current_index: usize = 0,
+            bytes_written: usize = 0,
+
+            fn walk(cx: *@This(), node: *const Node) WalkResult {
+                if (cx.should_stop == true) return WalkResult.stop;
+                switch (node.*) {
+                    .branch => |*branch| {
+                        const left_end = cx.current_index + branch.left.weights().len;
+                        var left_result = WalkResult.keep_walking;
+                        if (cx.start_byte < left_end) left_result = cx.walk(branch.left);
+                        cx.current_index = left_end;
+                        const right_result = cx.walk(branch.right);
+                        return WalkResult.merge(left_result, right_result);
+                    },
+                    .leaf => |leaf| return cx.walker(&leaf),
+                }
+            }
+
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                const num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
+                if (num_of_bytes_to_not_include > leaf.buf.len) return .{ .err = error.NumOfBytesToNotIncludeLargerThanLeafLength };
+                var rest = leaf.buf[num_of_bytes_to_not_include..];
+
+                if (cx.bytes_written + rest.len > cx.buf_size) {
+                    const room_left = cx.buf_size -| cx.bytes_written;
+                    var end = leaf.buf.len - room_left;
+                    while (end > 0) {
+                        if (leaf.buf[end - 1] < 128) break;
+                        end -= 1;
+                    }
+                    rest = leaf.buf[num_of_bytes_to_not_include..end];
+                }
+
+                @memcpy(cx.buf[cx.bytes_written .. cx.bytes_written + rest.len], rest);
+
+                cx.bytes_written += rest.len;
+                cx.current_index += leaf.weights().len;
+
+                if (leaf.eol) {
+                    cx.should_stop = true;
+                    return WalkResult.stop;
+                }
+                return WalkResult.keep_walking;
+            }
+        };
+
+        var ctx = GetRestOfLineCtx{ .start_byte = start_byte, .buf = buf, .buf_size = buf_size };
+        const walk_result = ctx.walk(self);
+        if (walk_result.err) |err| return err;
+        return ctx.buf[0..ctx.bytes_written];
+    }
+    test getRestOfLine {
+        const a = idc_if_it_leaks;
+        const buf_size = 1024;
+        { // basic
+            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(0, &buf, buf_size);
+                try eqStr("one", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(1, &buf, buf_size);
+                try eqStr("ne", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(4, &buf, buf_size);
+                try eqStr("two", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(8, &buf, buf_size);
+                try eqStr("three", result);
+            }
+            {
+                var buf: [buf_size]u8 = undefined;
+                const result = try root.getRestOfLine(14, &buf, buf_size);
+                try eqStr("four", result);
+            }
+        }
+    }
+
     pub fn getLine(self: *const Node, a: Allocator, linenr: u32) !struct { ArrayList(u8), u32 } {
         const GetLineCtx = struct {
             target_linenr: u32,
