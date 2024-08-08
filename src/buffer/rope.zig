@@ -840,7 +840,7 @@ pub const Node = union(enum) {
         };
 
         const end_byte = start_byte + num_of_bytes_to_delete;
-        if (start_byte > self.weights().len or end_byte > self.weights().len) return error.IndexOutOfBounds;
+        if (end_byte > self.weights().len) return error.IndexOutOfBounds;
 
         var current_index: usize = 0;
         var ctx = DeleteBytesCtx{

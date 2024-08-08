@@ -165,6 +165,80 @@ pub const Buffer = struct {
         }
     }
 
+    ///////////////////////////// Delete
+
+    fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
+        if (a[0] == b[0] and a[1] == b[1]) return;
+
+        const offset_a = try self.roperoot.getByteOffsetOfPosition(a[0], a[1]);
+        const offset_b = try self.roperoot.getByteOffsetOfPosition(b[0], b[1]);
+
+        var start_byte = offset_a;
+        var old_end_byte = offset_b;
+        if (offset_a > offset_b) {
+            start_byte = offset_b;
+            old_end_byte = offset_a;
+        }
+
+        self.roperoot = try self.roperoot.deleteBytes(self.rope_arena.allocator(), start_byte, old_end_byte - start_byte);
+
+        if (self.tstree == null) return;
+        {
+            var start_point = ts.Point{ .row = @intCast(a[0]), .column = @intCast(a[1]) };
+            var old_end_point = ts.Point{ .row = @intCast(b[0]), .column = @intCast(b[1]) };
+            if (offset_a > offset_b) {
+                start_point = ts.Point{ .row = @intCast(b[0]), .column = @intCast(b[1]) };
+                old_end_point = ts.Point{ .row = @intCast(a[0]), .column = @intCast(a[1]) };
+            }
+
+            const new_end_byte = start_byte;
+            const new_end_point = start_point;
+
+            const edit = ts.InputEdit{
+                .start_byte = @intCast(start_byte),
+                .old_end_byte = @intCast(old_end_byte),
+                .new_end_byte = @intCast(new_end_byte),
+                .start_point = start_point,
+                .old_end_point = old_end_point,
+                .new_end_point = new_end_point,
+            };
+            self.tstree.?.edit(&edit);
+            try self.parse();
+        }
+    }
+    test deleteRange {
+        { // content only
+            var buf = try Buffer.create(testing_allocator, .string, "const");
+            defer buf.destroy();
+            try buf.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+            const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+            try eqStr("onst", content.items);
+        }
+        { // with Tree Sitter
+            var buf = try Buffer.create(testing_allocator, .string, "const std");
+            defer buf.destroy();
+            try buf.initiateTreeSitter(.zig);
+            try eqStr(
+                \\source_file
+                \\  Decl
+                \\    VarDecl
+                \\      "const"
+                \\      IDENTIFIER
+                \\      ";"
+            , try buf.tstree.?.getRootNode().debugPrint());
+
+            try buf.deleteRange(.{ 0, 5 }, .{ 0, 9 });
+
+            const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+            try eqStr("const", content.items);
+            try eqStr(
+                \\source_file
+                \\  ERROR
+                \\    "const"
+            , try buf.tstree.?.getRootNode().debugPrint());
+        }
+    }
+
     ///////////////////////////// Tree Sitter Parsing
 
     const PARSE_BUFFER_SIZE = 1024;
@@ -208,5 +282,5 @@ pub const Buffer = struct {
 };
 
 test {
-    std.testing.refAllDecls(Buffer);
+    std.testing.refAllDeclsRecursive(Buffer);
 }
