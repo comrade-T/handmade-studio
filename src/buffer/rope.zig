@@ -549,6 +549,11 @@ pub const Node = union(enum) {
         switch (self.*) {
             .leaf => return self,
             .branch => |branch| {
+                {
+                    const initial_balance_factor = calculateBalanceFactor(branch.left, branch.right);
+                    if (@abs(initial_balance_factor) < MAX_IMBALANCE) return self;
+                }
+
                 var result: *const Node = undefined;
                 defer if (result != self) a.destroy(self);
 
