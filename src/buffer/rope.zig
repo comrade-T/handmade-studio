@@ -325,31 +325,34 @@ pub const Node = union(enum) {
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
-                const num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
-                if (num_of_bytes_to_not_include > leaf.buf.len) @panic("num_of_bytes_to_not_include > leaf.buf.len!");
-
-                var end_index = leaf.buf.len;
-                const bytes_left_to_write = cx.end_byte - cx.bytes_written;
+                var num_of_bytes_to_write = leaf.buf.len;
+                const bytes_left_to_write = cx.end_byte - cx.start_byte - cx.bytes_written;
                 if (bytes_left_to_write < leaf.buf.len) {
                     const diff = leaf.buf.len - bytes_left_to_write;
-                    end_index -= diff;
+                    num_of_bytes_to_write -= diff;
                 }
 
-                var rest = leaf.buf[num_of_bytes_to_not_include..end_index];
+                // append Leaf's bytes
+                const start_index = cx.start_byte -| cx.current_index;
+                const end_index = start_index + num_of_bytes_to_write;
+                if (end_index <= leaf.buf.len) {
+                    var rest = leaf.buf[start_index..end_index];
 
-                if (cx.bytes_written + rest.len > cx.buf_size) {
-                    const room_left = cx.buf_size -| cx.bytes_written;
-                    var end = num_of_bytes_to_not_include + room_left;
-                    while (end > 0) {
-                        if (leaf.buf[end - 1] < 128) break;
-                        end -= 1;
+                    if (cx.bytes_written + rest.len > cx.buf_size) {
+                        const room_left = cx.buf_size -| cx.bytes_written;
+                        var end = start_index + room_left;
+                        while (end > 0) {
+                            if (leaf.buf[end - 1] < 128) break;
+                            end -= 1;
+                        }
+                        rest = leaf.buf[start_index..end];
                     }
-                    rest = leaf.buf[num_of_bytes_to_not_include..end];
+
+                    @memcpy(cx.buf[cx.bytes_written .. cx.bytes_written + rest.len], rest);
+                    cx.bytes_written += rest.len;
                 }
 
-                @memcpy(cx.buf[cx.bytes_written .. cx.bytes_written + rest.len], rest);
-
-                cx.bytes_written += rest.len;
+                // append '\n' character
                 cx.current_index += leaf.buf.len;
                 if (cx.current_index < cx.end_byte and leaf.eol) {
                     cx.buf[cx.bytes_written] = '\n';
@@ -383,11 +386,17 @@ pub const Node = union(enum) {
             try testGetRange(root, buf_size, 0, 4, "one\n");
             try testGetRange(root, buf_size, 0, 5, "one\nt");
             try testGetRange(root, buf_size, 0, 7, "one\ntwo");
+            try testGetRange(root, buf_size, 4, 5, "t");
+            try testGetRange(root, buf_size, 4, 6, "tw");
+            try testGetRange(root, buf_size, 5, 6, "w");
             try testGetRange(root, buf_size, 4, 7, "two");
             try testGetRange(root, buf_size, 5, 7, "wo");
             try testGetRange(root, buf_size, 6, 7, "o");
             try testGetRange(root, buf_size, 7, 8, "\n");
+            try testGetRange(root, buf_size, 7, 9, "\nt");
             try testGetRange(root, buf_size, 8, 9, "t");
+            try testGetRange(root, buf_size, 8, 13, "three");
+            try testGetRange(root, buf_size, 10, 13, "ree");
             try testGetRange(root, buf_size, 0, source.len, source);
         }
     }
