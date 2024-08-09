@@ -5,6 +5,7 @@ const Buffer = _neo_buffer.Buffer;
 const PredicatesFilter = _neo_buffer.PredicatesFilter;
 const SupportedLanguages = _neo_buffer.SupportedLanguages;
 
+const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
@@ -26,13 +27,13 @@ fn getTSQuery(lang: SupportedLanguages) !*ts.Query {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const ContentVendor = struct {
+pub const ContentVendor = struct {
     a: Allocator,
     buffer: *Buffer,
     query: *ts.Query,
     filter: *PredicatesFilter,
 
-    fn init(a: Allocator, buffer: *Buffer) !*@This() {
+    pub fn init(a: Allocator, buffer: *Buffer) !*@This() {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
@@ -43,14 +44,69 @@ const ContentVendor = struct {
         return self;
     }
 
-    fn deinit(self: *@This()) void {
+    pub fn deinit(self: *@This()) void {
         self.query.destroy();
         self.filter.deinit();
         self.a.destroy(self);
     }
 
-    fn requestLines() !void {
-        // TODO:
+    ///////////////////////////// Job
+
+    const Color = struct {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    };
+
+    const HighlightMap = enum(Color) {
+        variable = Color.init(245, 245, 245, 255),
+    };
+
+    const CurrentJobIterator = struct {
+        const BUF_SIZE = 1024;
+
+        a: Allocator,
+        vendor: *ContentVendor,
+        cursor: *ts.Query.Cursor,
+
+        content: std.ArrayList(u8),
+        start_row: usize = 0,
+        end_row: usize = 0,
+        current_row: usize = 0,
+        current_col: usize = 0,
+
+        pub fn init(a: Allocator, vendor: *ContentVendor) !*CurrentJobIterator {
+            const self = try a.create(@This());
+            self.* = .{
+                .a = a,
+                .vendor = vendor,
+                .cursor = try ts.Query.Cursor.create(),
+                .content = std.ArrayList(u8).init(a),
+            };
+            self.cursor.execute(vendor.query, vendor.buffer.tstree.?.getRootNode());
+            return self;
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.content.deinit();
+            self.a.destroy(self);
+        }
+
+        pub fn nextChar(self: *@This()) !struct { [*:0]u8, Color } {
+            if (self.current_col >= self.content.len) {
+                self.content.deinit();
+                self.content = try self.vendor.buffer.roperoot.getLine(self.a, self.current_row);
+                self.current_col = 0;
+            }
+        }
+        test nextChar {
+            // TODO:
+        }
+    };
+
+    pub fn requestLines(a: Allocator, self: *ContentVendor, start_line: usize, end_line: usize) CurrentJobIterator {
+        return try CurrentJobIterator.init(a, self, start_line, end_line);
     }
 };
 
