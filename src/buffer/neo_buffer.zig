@@ -30,6 +30,7 @@ pub const Buffer = struct {
 
     roperoot: *const rope.Node,
 
+    lang: ?SupportedLanguages = null,
     tsparser: ?*ts.Parser = null,
     tstree: ?*ts.Tree = null,
 
@@ -271,6 +272,7 @@ pub const Buffer = struct {
 
     pub fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
         self.tsparser = try getTSParser(lang);
+        self.lang = lang;
         try self.parse();
     }
 

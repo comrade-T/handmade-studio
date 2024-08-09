@@ -26,19 +26,32 @@ fn getTSQuery(lang: SupportedLanguages) !*ts.Query {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-// TODO: write a function that will write the highlight group name of the upcoming character to the given buffer
+const ContentVendor = struct {
+    a: Allocator,
+    buffer: *Buffer,
+    query: *ts.Query,
+    filter: *PredicatesFilter,
 
-fn giveMeCharWithHlGroupName(buf: []u8) []u8 {
-    const bytes_written = 0;
+    fn init(a: Allocator, buffer: *Buffer) !*@This() {
+        const self = try a.create(@This());
+        self.* = .{
+            .a = a,
+            .buffer = buffer,
+            .query = try getTSQuery(buffer.lang.?),
+            .filter = try PredicatesFilter.initWithContentCallback(a, self.query, Buffer.contentCallback, self.buffer),
+        };
+        return self;
+    }
 
-    return buf[0..bytes_written];
-}
+    fn deinit(self: *@This()) void {
+        self.query.destroy();
+        self.filter.deinit();
+        self.a.destroy(self);
+    }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const Cargo = struct {
-    start_row: usize,
-    end_row: usize,
+    fn requestLines() !void {
+        // TODO:
+    }
 };
 
 test "experiment" {
@@ -46,17 +59,16 @@ test "experiment" {
     try buf.initiateTreeSitter(.zig);
     defer buf.destroy();
 
-    const query = try getTSQuery(.zig);
-    const filter = try PredicatesFilter.initWithContentCallback(testing_allocator, query, Buffer.contentCallback, buf);
-    defer filter.deinit();
+    const vendor = try ContentVendor.init(testing_allocator, buf);
+    defer vendor.deinit();
 
     const cursor = try ts.Query.Cursor.create();
-    cursor.execute(query, buf.tstree.?.getRootNode());
+    cursor.execute(vendor.query, buf.tstree.?.getRootNode());
 
     {
-        while (filter.nextMatchOnDemand(cursor)) |match| {
+        while (vendor.filter.nextMatchOnDemand(cursor)) |match| {
             const cap = match.captures()[0];
-            const capture_name = query.getCaptureNameForId(cap.id);
+            const capture_name = vendor.query.getCaptureNameForId(cap.id);
             std.debug.print("capture_name: {s}\n", .{capture_name});
             std.debug.print("start_byte: {d} | end_byte: {d}\n", .{ cap.node.getStartByte(), cap.node.getEndByte() });
             var mybuf: [1024]u8 = undefined;
@@ -68,5 +80,5 @@ test "experiment" {
 }
 
 test {
-    std.testing.refAllDecls(Cargo);
+    std.testing.refAllDecls(ContentVendor);
 }
