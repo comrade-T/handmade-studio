@@ -88,6 +88,12 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     ugly_window.compile.linkLibrary(tree_sitter);
 
+    const content_vendor = addTestableModule(&bops, "src/window/content_vendor.zig", &.{
+        .{ .name = "neo_buffer", .module = neo_buffer.module },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    content_vendor.compile.linkLibrary(tree_sitter);
+
     _ = addTestableModule(&bops, "src/window/cell.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
