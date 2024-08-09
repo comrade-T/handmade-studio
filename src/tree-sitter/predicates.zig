@@ -20,7 +20,7 @@ pub const PredicatesFilter = struct {
     getContentCallback: F = undefined,
     callbackCtx: *anyopaque = undefined,
 
-    const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize) []u8;
+    const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
 
     pub fn init(external_allocator: Allocator, query: *const Query) !*@This() {
         var self = try external_allocator.create(@This());
@@ -77,7 +77,11 @@ pub const PredicatesFilter = struct {
     fn allPredicateMatchesOnDemand(self: *@This(), match: Query.Match) bool {
         for (match.captures()) |cap| {
             const node = cap.node;
-            const node_contents = self.getContentCallback(self.callbackCtx, node.getStartByte(), node.getEndByte());
+
+            const buf_size = 1024;
+            var buf: [buf_size]u8 = undefined;
+            const node_contents = self.getContentCallback(self.callbackCtx, node.getStartByte(), node.getEndByte(), &buf, buf_size);
+
             const predicates = self.patterns[match.pattern_index];
             for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
         }

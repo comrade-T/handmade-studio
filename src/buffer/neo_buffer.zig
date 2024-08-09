@@ -1,6 +1,7 @@
 const std = @import("std");
 const rope = @import("rope");
-const ts = @import("ts").b;
+pub const ts = @import("ts").b;
+pub const PredicatesFilter = @import("ts").PredicatesFilter;
 
 const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
@@ -12,14 +13,7 @@ const eqStr = std.testing.expectEqualStrings;
 // remember: multiple windows need to be able to require different views from the same Buffer.
 // remember: Cursor is managed by Window, not Buffer.
 
-// Tree Sitter tree should stay alongside a Rope (the content).
-// The tree will update right after the Rope is updated.
-// Tree tree is just the tree, no additional logic here.
-// ==> If you want additional Tree Sitter schenanigans,
-// you already have access to the lastest tree,
-// use that tree yourself, don't pester the Buffer struct.
-
-const SupportedLanguages = enum { zig };
+pub const SupportedLanguages = enum { zig };
 
 fn getTSParser(lang: SupportedLanguages) !*ts.Parser {
     const tslang = switch (lang) {
@@ -275,9 +269,17 @@ pub const Buffer = struct {
         , try buf.tstree.?.getRootNode().debugPrint());
     }
 
-    fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
+    pub fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
         self.tsparser = try getTSParser(lang);
         try self.parse();
+    }
+
+    ///////////////////////////// Content Callback for PredicatesFilter
+
+    pub fn contentCallback(ctx_: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8 {
+        const ctx: *@This() = @ptrCast(@alignCast(ctx_));
+        const content = ctx.roperoot.getRange(start_byte, end_byte, buf, buf_size) catch "";
+        return content;
     }
 };
 
