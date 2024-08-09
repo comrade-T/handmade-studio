@@ -55,6 +55,13 @@ pub const PredicatesFilter = struct {
         return self;
     }
 
+    pub fn deinit(self: *@This()) void {
+        self.arena.deinit();
+        self.external_allocator.destroy(self);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// With Callback
+
     pub fn initWithContentCallback(external_allocator: Allocator, query: *const Query, callback: F, ctx: *anyopaque) !*@This() {
         var self = try PredicatesFilter.init(external_allocator, query);
         self.getContentCallback = callback;
@@ -62,10 +69,7 @@ pub const PredicatesFilter = struct {
         return self;
     }
 
-    pub fn deinit(self: *@This()) void {
-        self.arena.deinit();
-        self.external_allocator.destroy(self);
-    }
+    ///////////////////////////// Everything
 
     pub fn nextMatchOnDemand(self: *@This(), cursor: *Query.Cursor) ?Query.Match {
         while (true) {
@@ -87,6 +91,36 @@ pub const PredicatesFilter = struct {
         }
         return true;
     }
+
+    ///////////////////////////// Limited Range
+
+    pub fn nextMatchInRange(self: *@This(), cursor: *Query.Cursor, start_byte: usize, end_byte: usize) ?Query.Match {
+        while (true) {
+            const match = cursor.nextMatch() orelse return null;
+            if (self.allPredicatesMatchesInRange(match, start_byte, end_byte)) return match;
+        }
+    }
+
+    fn allPredicatesMatchesInRange(self: *@This(), match: Query.Match, start_byte: usize, end_byte: usize) bool {
+        for (match.captures()) |cap| {
+            const node = cap.node;
+            const node_start = node.getStartByte();
+            const node_end = node.getEndByte();
+
+            if (node_end < start_byte) return false;
+            if (node_start > end_byte) return false;
+
+            const buf_size = 1024;
+            var buf: [buf_size]u8 = undefined;
+            const node_contents = self.getContentCallback(self.callbackCtx, node_start, node_end, &buf, buf_size);
+
+            const predicates = self.patterns[match.pattern_index];
+            for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
+        }
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
 
     pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
         while (true) {
