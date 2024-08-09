@@ -325,17 +325,17 @@ pub const Node = union(enum) {
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
-                var num_of_bytes_to_write = leaf.buf.len;
-                const bytes_left_to_write = cx.end_byte - cx.start_byte - cx.bytes_written;
-                if (bytes_left_to_write < leaf.buf.len) {
-                    const diff = leaf.buf.len - bytes_left_to_write;
-                    num_of_bytes_to_write -= diff;
-                }
+                { // write Leaf's bytes
+                    var num_of_bytes_to_write = leaf.buf.len;
+                    const bytes_left_to_write = cx.end_byte - cx.start_byte - cx.bytes_written;
+                    if (bytes_left_to_write < leaf.buf.len) {
+                        const diff = leaf.buf.len - bytes_left_to_write;
+                        num_of_bytes_to_write -= diff;
+                    }
 
-                // append Leaf's bytes
-                const start_index = cx.start_byte -| cx.current_index;
-                const end_index = start_index + num_of_bytes_to_write;
-                if (end_index <= leaf.buf.len) {
+                    const start_index = cx.start_byte -| cx.current_index;
+                    var end_index = start_index + num_of_bytes_to_write;
+                    if (end_index > leaf.buf.len) end_index = leaf.buf.len;
                     var rest = leaf.buf[start_index..end_index];
 
                     if (cx.bytes_written + rest.len > cx.buf_size) {
@@ -352,15 +352,16 @@ pub const Node = union(enum) {
                     cx.bytes_written += rest.len;
                 }
 
-                // append '\n' character
-                cx.current_index += leaf.buf.len;
-                if (cx.current_index < cx.end_byte and leaf.eol) {
-                    cx.buf[cx.bytes_written] = '\n';
-                    cx.bytes_written += 1;
+                { // write '\n' character
+                    cx.current_index += leaf.buf.len;
+                    if ((cx.current_index < cx.end_byte) and (cx.bytes_written < cx.buf_size) and leaf.eol) {
+                        cx.buf[cx.bytes_written] = '\n';
+                        cx.bytes_written += 1;
+                    }
+                    if (leaf.eol) cx.current_index += 1;
                 }
-                if (leaf.eol) cx.current_index += 1;
 
-                if (cx.current_index >= cx.end_byte) {
+                if ((cx.current_index >= cx.end_byte) or (cx.bytes_written >= cx.buf_size)) {
                     cx.should_stop = true;
                     return WalkResult.stop;
                 }
@@ -376,10 +377,11 @@ pub const Node = union(enum) {
     }
     test getRange {
         const a = idc_if_it_leaks;
+        const source = "one\ntwo\nthree\nfour";
+        const root = try Node.fromString(a, source, true);
         { // basic
-            const source = "one\ntwo\nthree\nfour";
             const buf_size = 1024;
-            const root = try Node.fromString(a, source, true);
+            try testGetRange(root, buf_size, 0, 0, "");
             try testGetRange(root, buf_size, 0, 1, "o");
             try testGetRange(root, buf_size, 0, 2, "on");
             try testGetRange(root, buf_size, 0, 3, "one");
@@ -398,6 +400,20 @@ pub const Node = union(enum) {
             try testGetRange(root, buf_size, 8, 13, "three");
             try testGetRange(root, buf_size, 10, 13, "ree");
             try testGetRange(root, buf_size, 0, source.len, source);
+        }
+        { // buf_size overflow
+            const buf_size = 3;
+            try testGetRange(root, buf_size, 0, 1, "o");
+            try testGetRange(root, buf_size, 0, 3, "one");
+            try testGetRange(root, buf_size, 0, 4, "one");
+            try testGetRange(root, buf_size, 3, 4, "\n");
+            try testGetRange(root, buf_size, 1, 2, "n");
+            try testGetRange(root, buf_size, 1, 3, "ne");
+            try testGetRange(root, buf_size, 1, 4, "ne\n");
+            try testGetRange(root, buf_size, 1, 10, "ne\n");
+            try testGetRange(root, buf_size, 8, 9, "t");
+            try testGetRange(root, buf_size, 8, 10, "th");
+            try testGetRange(root, buf_size, 8, 13, "thr");
         }
     }
     fn testGetRange(root: *const Node, comptime buf_size: usize, start_byte: usize, end_byte: usize, str: []const u8) !void {
