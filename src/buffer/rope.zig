@@ -298,6 +298,105 @@ pub const Node = union(enum) {
         }
     }
 
+    pub fn getRange(self: *const Node, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) ![]u8 {
+        const GetRangeCtx = struct {
+            start_byte: usize,
+            end_byte: usize,
+            buf: []u8,
+            buf_size: usize,
+
+            should_stop: bool = false,
+            current_index: usize = 0,
+            bytes_written: usize = 0,
+
+            fn walk(cx: *@This(), node: *const Node) WalkResult {
+                if (cx.should_stop == true) return WalkResult.stop;
+                switch (node.*) {
+                    .branch => |*branch| {
+                        const left_end = cx.current_index + branch.left.weights().len;
+                        var left_result = WalkResult.keep_walking;
+                        if (cx.start_byte < left_end) left_result = cx.walk(branch.left);
+                        cx.current_index = left_end;
+                        const right_result = cx.walk(branch.right);
+                        return WalkResult.merge(left_result, right_result);
+                    },
+                    .leaf => |leaf| return cx.walker(&leaf),
+                }
+            }
+
+            fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                const num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
+                if (num_of_bytes_to_not_include > leaf.buf.len) @panic("num_of_bytes_to_not_include > leaf.buf.len!");
+
+                var end_index = leaf.buf.len;
+                const bytes_left_to_write = cx.end_byte - cx.bytes_written;
+                if (bytes_left_to_write < leaf.buf.len) {
+                    const diff = leaf.buf.len - bytes_left_to_write;
+                    end_index -= diff;
+                }
+
+                var rest = leaf.buf[num_of_bytes_to_not_include..end_index];
+
+                if (cx.bytes_written + rest.len > cx.buf_size) {
+                    const room_left = cx.buf_size -| cx.bytes_written;
+                    var end = num_of_bytes_to_not_include + room_left;
+                    while (end > 0) {
+                        if (leaf.buf[end - 1] < 128) break;
+                        end -= 1;
+                    }
+                    rest = leaf.buf[num_of_bytes_to_not_include..end];
+                }
+
+                @memcpy(cx.buf[cx.bytes_written .. cx.bytes_written + rest.len], rest);
+
+                cx.bytes_written += rest.len;
+                cx.current_index += leaf.buf.len;
+                if (cx.current_index < cx.end_byte and leaf.eol) {
+                    cx.buf[cx.bytes_written] = '\n';
+                    cx.bytes_written += 1;
+                }
+                if (leaf.eol) cx.current_index += 1;
+
+                if (cx.current_index >= cx.end_byte) {
+                    cx.should_stop = true;
+                    return WalkResult.stop;
+                }
+                return WalkResult.keep_walking;
+            }
+        };
+
+        if (start_byte > self.weights().len or end_byte > self.weights().len) return error.IndexOutOfBounds;
+        var ctx = GetRangeCtx{ .start_byte = start_byte, .end_byte = end_byte, .buf = buf, .buf_size = buf_size };
+        const walk_result = ctx.walk(self);
+        if (walk_result.err) |err| return err;
+        return ctx.buf[0..ctx.bytes_written];
+    }
+    test getRange {
+        const a = idc_if_it_leaks;
+        { // basic
+            const source = "one\ntwo\nthree\nfour";
+            const buf_size = 1024;
+            const root = try Node.fromString(a, source, true);
+            try testGetRange(root, buf_size, 0, 1, "o");
+            try testGetRange(root, buf_size, 0, 2, "on");
+            try testGetRange(root, buf_size, 0, 3, "one");
+            try testGetRange(root, buf_size, 0, 4, "one\n");
+            try testGetRange(root, buf_size, 0, 5, "one\nt");
+            try testGetRange(root, buf_size, 0, 7, "one\ntwo");
+            try testGetRange(root, buf_size, 4, 7, "two");
+            try testGetRange(root, buf_size, 5, 7, "wo");
+            try testGetRange(root, buf_size, 6, 7, "o");
+            try testGetRange(root, buf_size, 7, 8, "\n");
+            try testGetRange(root, buf_size, 8, 9, "t");
+            try testGetRange(root, buf_size, 0, source.len, source);
+        }
+    }
+    fn testGetRange(root: *const Node, comptime buf_size: usize, start_byte: usize, end_byte: usize, str: []const u8) !void {
+        var buf: [buf_size]u8 = undefined;
+        const result = try root.getRange(start_byte, end_byte, &buf, buf_size);
+        try eqStr(str, result);
+    }
+
     pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) []u8 {
         const GetRestOfLineCtx = struct {
             start_byte: usize,
