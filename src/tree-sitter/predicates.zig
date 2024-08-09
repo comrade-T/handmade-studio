@@ -94,25 +94,23 @@ pub const PredicatesFilter = struct {
 
     ///////////////////////////// Limited Range
 
-    pub fn nextMatchInRange(self: *@This(), cursor: *Query.Cursor, start_byte: usize, end_byte: usize) ?Query.Match {
+    pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, start_line: usize, end_linr: usize) ?Query.Match {
         while (true) {
             const match = cursor.nextMatch() orelse return null;
-            if (self.allPredicatesMatchesInRange(match, start_byte, end_byte)) return match;
+            if (self.allPredicatesMatchesInLines(match, start_line, end_linr)) return match;
         }
     }
 
-    fn allPredicatesMatchesInRange(self: *@This(), match: Query.Match, start_byte: usize, end_byte: usize) bool {
+    fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match, start_line: usize, end_line: usize) bool {
         for (match.captures()) |cap| {
             const node = cap.node;
-            const node_start = node.getStartByte();
-            const node_end = node.getEndByte();
 
-            if (node_end < start_byte) return false;
-            if (node_start > end_byte) return false;
+            if (node.getEndPoint().row < start_line) return false;
+            if (node.getStartPoint().row > end_line) return false;
 
             const buf_size = 1024;
             var buf: [buf_size]u8 = undefined;
-            const node_contents = self.getContentCallback(self.callbackCtx, node_start, node_end, &buf, buf_size);
+            const node_contents = self.getContentCallback(self.callbackCtx, node.getStartByte(), node.getEndByte(), &buf, buf_size);
 
             const predicates = self.patterns[match.pattern_index];
             for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
