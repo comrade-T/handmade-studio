@@ -17,6 +17,11 @@ pub const PredicatesFilter = struct {
     a: std.mem.Allocator,
     patterns: [][]Predicate,
 
+    getContentCallback: ?F = null,
+    callbackCtx: *anyopaque = undefined,
+
+    const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize) []u8;
+
     pub fn init(external_allocator: Allocator, query: *const Query) !*@This() {
         var self = try external_allocator.create(@This());
 
@@ -50,22 +55,32 @@ pub const PredicatesFilter = struct {
         return self;
     }
 
+    pub fn initWithContentCallback(external_allocator: Allocator, query: *const Query, callback: F, ctx: *anyopaque) !*@This() {
+        var self = try PredicatesFilter.init(external_allocator, query);
+        self.getContentCallback = callback;
+        self.callbackCtx = ctx;
+        return self;
+    }
+
     pub fn deinit(self: *@This()) void {
         self.arena.deinit();
         self.external_allocator.destroy(self);
     }
 
-    pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
+    pub fn nextMatch(self: *@This(), may_source: ?[]const u8, cursor: *Query.Cursor) ?Query.Match {
         while (true) {
             const match = cursor.nextMatch() orelse return null;
-            if (self.allPredicateMatches(source, match)) return match;
+            if (self.allPredicateMatches(may_source, match)) return match;
         }
     }
 
-    fn allPredicateMatches(self: *@This(), source: []const u8, match: Query.Match) bool {
+    fn allPredicateMatches(self: *@This(), may_source: ?[]const u8, match: Query.Match) bool {
         for (match.captures()) |cap| {
             const node = cap.node;
-            const node_contents = source[node.getStartByte()..node.getEndByte()];
+            const node_contents = if (may_source) |source|
+                source[node.getStartByte()..node.getEndByte()]
+            else
+                self.getContentCallback.?(self.callbackCtx, node.getStartByte(), node.getEndByte());
             const predicates = self.patterns[match.pattern_index];
             for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
         }
