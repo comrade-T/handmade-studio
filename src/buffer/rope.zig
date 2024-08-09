@@ -370,6 +370,7 @@ pub const Node = union(enum) {
         };
 
         if (start_byte > self.weights().len or end_byte > self.weights().len) return error.IndexOutOfBounds;
+        if (start_byte > end_byte) return error.StarByteLargerThanEndByte;
         var ctx = GetRangeCtx{ .start_byte = start_byte, .end_byte = end_byte, .buf = buf, .buf_size = buf_size };
         const walk_result = ctx.walk(self);
         if (walk_result.err) |err| return err;
