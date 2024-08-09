@@ -17,7 +17,7 @@ pub const PredicatesFilter = struct {
     a: std.mem.Allocator,
     patterns: [][]Predicate,
 
-    getContentCallback: ?F = null,
+    getContentCallback: F = undefined,
     callbackCtx: *anyopaque = undefined,
 
     const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize) []u8;
@@ -67,20 +67,34 @@ pub const PredicatesFilter = struct {
         self.external_allocator.destroy(self);
     }
 
-    pub fn nextMatch(self: *@This(), may_source: ?[]const u8, cursor: *Query.Cursor) ?Query.Match {
+    pub fn nextMatchOnDemand(self: *@This(), cursor: *Query.Cursor) ?Query.Match {
         while (true) {
             const match = cursor.nextMatch() orelse return null;
-            if (self.allPredicateMatches(may_source, match)) return match;
+            if (self.allPredicateMatchesOnDemand(match)) return match;
         }
     }
 
-    fn allPredicateMatches(self: *@This(), may_source: ?[]const u8, match: Query.Match) bool {
+    fn allPredicateMatchesOnDemand(self: *@This(), match: Query.Match) bool {
         for (match.captures()) |cap| {
             const node = cap.node;
-            const node_contents = if (may_source) |source|
-                source[node.getStartByte()..node.getEndByte()]
-            else
-                self.getContentCallback.?(self.callbackCtx, node.getStartByte(), node.getEndByte());
+            const node_contents = self.getContentCallback(self.callbackCtx, node.getStartByte(), node.getEndByte());
+            const predicates = self.patterns[match.pattern_index];
+            for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
+        }
+        return true;
+    }
+
+    pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
+        while (true) {
+            const match = cursor.nextMatch() orelse return null;
+            if (self.allPredicateMatches(source, match)) return match;
+        }
+    }
+
+    fn allPredicateMatches(self: *@This(), source: []const u8, match: Query.Match) bool {
+        for (match.captures()) |cap| {
+            const node = cap.node;
+            const node_contents = source[node.getStartByte()..node.getEndByte()];
             const predicates = self.patterns[match.pattern_index];
             for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
         }

@@ -87,12 +87,8 @@ test PredicatesFilter {
         var filter = try PredicatesFilter.initWithContentCallback(a, query, MyStruct.callback, my_instance);
         defer filter.deinit();
 
-        {
-            {
-                const result = filter.nextMatch(null, cursor);
-                _ = result;
-            }
-        }
+        const result = filter.nextMatchOnDemand(cursor);
+        _ = result;
     }
 
     // Old Tests
