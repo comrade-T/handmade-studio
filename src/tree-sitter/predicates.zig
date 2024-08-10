@@ -94,19 +94,19 @@ pub const PredicatesFilter = struct {
 
     ///////////////////////////// Limited Range
 
-    pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, start_line: usize, end_line: usize) ?Query.Match {
+    pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, line: usize) ?Query.Match {
         while (true) {
             const match = cursor.nextMatch() orelse return null;
-            if (self.allPredicatesMatchesInLines(match, start_line, end_line)) return match;
+            if (self.allPredicatesMatchesInLines(match, line)) return match;
         }
     }
 
-    fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match, start_line: usize, end_line: usize) bool {
+    fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match, line: usize) bool {
         for (match.captures()) |cap| {
             const node = cap.node;
 
-            if (node.getEndPoint().row < start_line) return false;
-            if (node.getStartPoint().row > end_line) return false;
+            if (node.getEndPoint().row < line) return false;
+            if (node.getStartPoint().row > line) return false;
 
             const buf_size = 1024;
             var buf: [buf_size]u8 = undefined;

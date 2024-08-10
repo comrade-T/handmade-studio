@@ -36,14 +36,17 @@ const RAY_WHITE = rgba(245, 245, 245, 245);
 
 fn createHighlightMap(a: Allocator) !std.StringHashMap(u32) {
     var map = std.StringHashMap(u32).init(a);
+    try map.put("__blank", rgba(0, 0, 0, 0)); // \n
     try map.put("variable", rgba(245, 245, 245, 245)); // identifier ray_white
     try map.put("type.qualifier", rgba(200, 122, 255, 255)); // const purple
     try map.put("type", rgba(0, 117, 44, 255)); // Allocator dark_green
     try map.put("function.builtin", rgba(0, 121, 241, 255)); // @import blue
     try map.put("include", rgba(230, 41, 55, 255)); // @import red
+    try map.put("boolean", rgba(230, 41, 55, 255)); // true red
     try map.put("string", rgba(253, 249, 0, 255)); // "hello" yellow
     try map.put("punctuation.bracket", rgba(255, 161, 0, 255)); // () orange
     try map.put("punctuation.delimiter", rgba(255, 161, 0, 255)); // ; orange
+    try map.put("number", rgba(255, 161, 0, 255)); // 12 orange
     try map.put("field", rgba(0, 121, 241, 255)); // std.'mem' blue
     return map;
 }
@@ -81,8 +84,6 @@ pub const ContentVendor = struct {
     const DEFAULT_COLOR = rgba(245, 245, 245, 245);
 
     const CurrentJobIterator = struct {
-        const BUF_SIZE = 1024;
-
         a: Allocator,
         vendor: *ContentVendor,
 
@@ -127,9 +128,9 @@ pub const ContentVendor = struct {
 
         fn updateLineContent(self: *@This()) !void {
             self.line.deinit();
-            self.line, const line_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
-            const line_end_byte = self.line_start_byte + self.line.items.len;
-            self.line_start_byte = @intCast(line_start_byte);
+            self.line, const new_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
+            const line_end_byte = new_start_byte + self.line.items.len;
+            self.line_start_byte = @intCast(new_start_byte);
             self.line_end_byte = @intCast(line_end_byte);
             self.line_byte_offset = 0;
         }
@@ -143,7 +144,7 @@ pub const ContentVendor = struct {
             defer cursor.destroy();
             cursor.execute(self.vendor.query, self.vendor.buffer.tstree.?.getRootNode());
 
-            while (self.vendor.filter.nextMatchInLines(cursor, self.start_line, self.end_line)) |match| {
+            while (self.vendor.filter.nextMatchInLines(cursor, self.current_line)) |match| {
                 const cap = match.captures()[0];
                 const capture_name = self.vendor.query.getCaptureNameForId(cap.id);
                 const color = if (self.vendor.hl_map.get(capture_name)) |color| color else RAY_WHITE;
@@ -160,6 +161,8 @@ pub const ContentVendor = struct {
                 if (self.current_line > self.end_line) return null;
                 self.updateLineContent() catch return null;
                 self.updateLineHighlights() catch return null;
+                self.line_byte_offset = 0;
+                return .{ std.fmt.bufPrintZ(buf, "\n", .{}) catch @panic("error calling bufPrintZ"), rgba(0, 0, 0, 0) };
             }
 
             var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.items };
@@ -174,29 +177,50 @@ pub const ContentVendor = struct {
             return null;
         }
         test nextChar {
-            var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
-            try buf.initiateTreeSitter(.zig);
-            defer buf.destroy();
-            const vendor = try ContentVendor.init(testing_allocator, buf);
-            defer vendor.deinit();
-
-            var iter = try vendor.requestLines(0, 0);
-            defer iter.deinit();
-            try testIter(iter, "const", "type.qualifier");
-            try testIter(iter, " ", "variable");
-            try testIter(iter, "Allocator", "type");
-            try testIter(iter, " = ", "variable");
-            try testIter(iter, "@import", "include");
-            try testIter(iter, "(", "punctuation.bracket");
-            try testIter(iter, "\"std\"", "string");
-            try testIter(iter, ")", "punctuation.bracket");
-            try testIter(iter, ".", "punctuation.delimiter");
-            try testIter(iter, "mem", "field");
-            try testIter(iter, ".", "punctuation.delimiter");
-            try testIter(iter, "Allocator", "type");
-            try testIter(iter, ";", "punctuation.delimiter");
-            var buf_: [10]u8 = undefined;
-            try eq(null, iter.nextChar(&buf_));
+            {
+                var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
+                try buf.initiateTreeSitter(.zig);
+                defer buf.destroy();
+                const vendor = try ContentVendor.init(testing_allocator, buf);
+                defer vendor.deinit();
+                var iter = try vendor.requestLines(0, 0);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, " ", "variable");
+                try testIter(iter, "Allocator", "type");
+                try testIter(iter, " = ", "variable");
+                try testIter(iter, "@import", "include");
+                try testIter(iter, "(", "punctuation.bracket");
+                try testIter(iter, "\"std\"", "string");
+                try testIter(iter, ")", "punctuation.bracket");
+                try testIter(iter, ".", "punctuation.delimiter");
+                try testIter(iter, "mem", "field");
+                try testIter(iter, ".", "punctuation.delimiter");
+                try testIter(iter, "Allocator", "type");
+                try testIter(iter, ";", "punctuation.delimiter");
+                var buf_: [10]u8 = undefined;
+                try eq(null, iter.nextChar(&buf_));
+            }
+            {
+                var buf = try Buffer.create(testing_allocator, .string, "const a = 10;\nvar not_false = true;");
+                try buf.initiateTreeSitter(.zig);
+                defer buf.destroy();
+                const vendor = try ContentVendor.init(testing_allocator, buf);
+                defer vendor.deinit();
+                var iter = try vendor.requestLines(0, 1);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, " a = ", "variable");
+                try testIter(iter, "10", "number");
+                try testIter(iter, ";", "punctuation.delimiter");
+                try testIter(iter, "\n", "__blank");
+                try testIter(iter, "var", "type.qualifier");
+                try testIter(iter, " not_false = ", "variable");
+                try testIter(iter, "true", "boolean");
+                try testIter(iter, ";", "punctuation.delimiter");
+                var buf_: [10]u8 = undefined;
+                try eq(null, iter.nextChar(&buf_));
+            }
         }
         fn testIter(iter: *CurrentJobIterator, expected_sequence: []const u8, expected_group: []const u8) !void {
             var code_point_iter = code_point.Iterator{ .bytes = expected_sequence };
