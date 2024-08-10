@@ -114,6 +114,8 @@ pub const ContentVendor = struct {
 
                 .highlights = null,
             };
+            try self.updateLineContent();
+            try self.updateLineHighlights();
             return self;
         }
 
@@ -149,13 +151,13 @@ pub const ContentVendor = struct {
                 const start = @max(cap.node.getStartByte(), self.line_start_byte) - self.line_start_byte;
                 const end = @min((cap.node.getEndByte()), self.line_end_byte) - self.line_start_byte;
                 @memset(self.highlights.?[start..end], color);
-
-                // std.debug.print("capture_name: {s} | start: {d} | end: {d} | hl_group {any}\n", .{ capture_name, start, end, hl_group });
             }
         }
 
         pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
             if (self.line_byte_offset >= self.line.items.len) {
+                self.current_line += 1;
+                if (self.current_line > self.end_line) return null;
                 self.updateLineContent() catch return null;
                 self.updateLineHighlights() catch return null;
             }
@@ -180,18 +182,31 @@ pub const ContentVendor = struct {
 
             var iter = try vendor.requestLines(0, 0);
             defer iter.deinit();
-            try testNextChar(iter, "c", "type.qualifier");
-            try testNextChar(iter, "o", "type.qualifier");
-            try testNextChar(iter, "n", "type.qualifier");
-            try testNextChar(iter, "s", "type.qualifier");
-            try testNextChar(iter, "t", "type.qualifier");
-            try testNextChar(iter, " ", "variable");
-        }
-        fn testNextChar(iter: *CurrentJobIterator, expected_char: []const u8, expected_group: []const u8) !void {
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, " ", "variable");
+            try testIter(iter, "Allocator", "type");
+            try testIter(iter, " = ", "variable");
+            try testIter(iter, "@import", "include");
+            try testIter(iter, "(", "punctuation.bracket");
+            try testIter(iter, "\"std\"", "string");
+            try testIter(iter, ")", "punctuation.bracket");
+            try testIter(iter, ".", "punctuation.delimiter");
+            try testIter(iter, "mem", "field");
+            try testIter(iter, ".", "punctuation.delimiter");
+            try testIter(iter, "Allocator", "type");
+            try testIter(iter, ";", "punctuation.delimiter");
             var buf_: [10]u8 = undefined;
-            const char, const color = iter.nextChar(&buf_).?;
-            try eqStr(expected_char, std.mem.span(char));
-            try eq(iter.vendor.hl_map.get(expected_group).?, color);
+            try eq(null, iter.nextChar(&buf_));
+        }
+        fn testIter(iter: *CurrentJobIterator, expected_sequence: []const u8, expected_group: []const u8) !void {
+            var code_point_iter = code_point.Iterator{ .bytes = expected_sequence };
+            while (code_point_iter.next()) |cp| {
+                var buf_: [10]u8 = undefined;
+                const char, const color = iter.nextChar(&buf_).?;
+                const expected_char = expected_sequence[cp.offset .. cp.offset + cp.len];
+                try eqStr(expected_char, std.mem.span(char));
+                try eq(iter.vendor.hl_map.get(expected_group).?, color);
+            }
         }
     };
 
