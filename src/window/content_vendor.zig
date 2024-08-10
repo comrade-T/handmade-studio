@@ -75,6 +75,8 @@ pub const ContentVendor = struct {
 
         line: std.ArrayList(u8),
         line_byte_offset: usize,
+        line_start_byte: usize, // (relative to document)
+        line_end_byte: usize, // (relative to document)
 
         pub fn init(a: Allocator, vendor: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
             const self = try a.create(@This());
@@ -89,6 +91,8 @@ pub const ContentVendor = struct {
 
                 .line = std.ArrayList(u8).init(a),
                 .line_byte_offset = 0,
+                .line_start_byte = 0,
+                .line_end_byte = 0,
             };
             self.cursor.execute(vendor.query, vendor.buffer.tstree.?.getRootNode());
             return self;
@@ -99,19 +103,25 @@ pub const ContentVendor = struct {
             self.a.destroy(self);
         }
 
+        fn jumpToNextLine(self: *@This()) !void {
+            self.line.deinit();
+            self.line, self.line_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
+            self.line_end_byte = self.line_start_byte + self.line.items.len;
+            self.line_byte_offset = 0;
+        }
+
         pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
             if (self.line_byte_offset >= self.line.items.len) {
-                self.line.deinit();
-                self.line, _ = self.vendor.buffer.roperoot.getLine(self.a, self.current_line) catch return null;
-                self.line_byte_offset = 0;
+                self.jumpToNextLine() catch return null;
             }
 
             var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.items };
             if (cp_iter.next()) |cp| {
-                const char = self.line.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
-                const result = std.fmt.bufPrintZ(buf, "{s}", .{char}) catch @panic("error calling bufPrintZ");
-                self.line_byte_offset += cp.len;
-                return .{ result, @intFromEnum(HighlightMap.variable) };
+                defer self.line_byte_offset += cp.len;
+                const char_bytes = self.line.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
+                const sentichar = std.fmt.bufPrintZ(buf, "{s}", .{char_bytes}) catch @panic("error calling bufPrintZ");
+                const color = @intFromEnum(HighlightMap.variable);
+                return .{ sentichar, color };
             }
 
             return null;
