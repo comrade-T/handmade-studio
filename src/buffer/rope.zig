@@ -530,13 +530,16 @@ pub const Node = union(enum) {
         try eqStr(str, result);
     }
 
-    pub fn getLine(self: *const Node, a: Allocator, linenr: usize) !struct { ArrayList(u8), usize } {
+    pub fn getLine(self: *const Node, a: Allocator, linenr: usize) !struct { ArrayList(u8), usize, usize } {
         const GetLineCtx = struct {
             target_linenr: usize,
             current_linenr: usize = 0,
             result_list: *ArrayList(u8),
             should_stop: bool = false,
             num_of_chars: usize = 0,
+
+            encountered_leaf: bool = false,
+            byte_offset: usize = 0,
 
             fn walk(cx: *@This(), node: *const Node) WalkResult {
                 if (cx.should_stop) return WalkResult.stop;
@@ -546,6 +549,9 @@ pub const Node = union(enum) {
                         var left_result = WalkResult.keep_walking;
                         if (cx.target_linenr == cx.current_linenr or cx.target_linenr < left_end) left_result = cx.walk(branch.left);
                         cx.current_linenr = left_end;
+
+                        if (!cx.encountered_leaf and cx.current_linenr <= cx.target_linenr) cx.byte_offset += branch.left.weights().len;
+
                         const right_result = cx.walk(branch.right);
                         return WalkResult.merge(left_result, right_result);
                     },
@@ -554,6 +560,7 @@ pub const Node = union(enum) {
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                cx.encountered_leaf = true;
                 cx.result_list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
                 cx.num_of_chars += leaf.noc;
                 if (leaf.eol) {
@@ -573,55 +580,31 @@ pub const Node = union(enum) {
             result_list.deinit();
             return err;
         }
-        return .{ result_list, ctx.num_of_chars };
+        return .{ result_list, ctx.byte_offset, ctx.num_of_chars };
     }
 
+    fn testGetLine(a: Allocator, root: *const Node, linenr: usize, str: []const u8, offset: usize, noc: usize) !void {
+        const line, const o, const n = try root.getLine(a, linenr);
+        try eqStr(str, line.items);
+        try eq(offset, o);
+        try eq(noc, n);
+    }
     test getLine {
         const a = idc_if_it_leaks;
-
         { // can get line that contained in 1 single Leaf
             const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-            {
-                const line, const noc = try root.getLine(a, 0);
-                try eqStr("one", line.items);
-                try eq(3, noc);
-            }
-            {
-                const line, const noc = try root.getLine(a, 1);
-                try eqStr("two", line.items);
-                try eq(3, noc);
-            }
-            {
-                const line, const noc = try root.getLine(a, 2);
-                try eqStr("three", line.items);
-                try eq(5, noc);
-            }
-            {
-                const line, const noc = try root.getLine(a, 3);
-                try eqStr("four", line.items);
-                try eq(4, noc);
-            }
+            try testGetLine(a, root, 0, "one", 0, 3);
+            try testGetLine(a, root, 1, "two", 4, 3);
+            try testGetLine(a, root, 2, "three", 8, 5);
+            try testGetLine(a, root, 3, "four", 14, 4);
         }
-
         // can get line that spans across multiple Leaves
         {
             const old = try Node.fromString(a, "one\ntwo\nthree", true);
             const root, _, _ = try old.insertChars(a, 3, "_1");
-            {
-                const line, const noc = try root.getLine(a, 0);
-                try eqStr("one_1", line.items);
-                try eq(5, noc);
-            }
-            {
-                const line, const noc = try root.getLine(a, 1);
-                try eqStr("two", line.items);
-                try eq(3, noc);
-            }
-            {
-                const line, const noc = try root.getLine(a, 2);
-                try eqStr("three", line.items);
-                try eq(5, noc);
-            }
+            try testGetLine(a, root, 0, "one_1", 0, 5);
+            try testGetLine(a, root, 1, "two", 6, 3);
+            try testGetLine(a, root, 2, "three", 10, 5);
             try shouldErr(error.NotFound, root.getLine(a, 3));
         }
         {
@@ -633,29 +616,13 @@ pub const Node = union(enum) {
             const one_two_three = try Node.new(a, one, two_three);
             {
                 const root = try Node.new(a, one_two_three, four);
-                {
-                    const line, const noc = try root.getLine(a, 0);
-                    try eqStr("one_two_three", line.items);
-                    try eq(13, noc);
-                }
-                {
-                    const line, const noc = try root.getLine(a, 1);
-                    try eqStr("four", line.items);
-                    try eq(4, noc);
-                }
+                try testGetLine(a, root, 0, "one_two_three", 0, 13);
+                try testGetLine(a, root, 1, "four", 14, 4);
             }
             {
                 const root = try Node.new(a, four, one_two_three);
-                {
-                    const line, const noc = try root.getLine(a, 0);
-                    try eqStr("four", line.items);
-                    try eq(4, noc);
-                }
-                {
-                    const line, const noc = try root.getLine(a, 1);
-                    try eqStr("one_two_three", line.items);
-                    try eq(13, noc);
-                }
+                try testGetLine(a, root, 0, "four", 0, 4);
+                try testGetLine(a, root, 1, "one_two_three", 5, 13);
             }
         }
     }
