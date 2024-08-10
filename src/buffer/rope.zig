@@ -423,7 +423,7 @@ pub const Node = union(enum) {
         try eqStr(str, result);
     }
 
-    pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) []u8 {
+    pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) struct { []u8, bool } {
         const GetRestOfLineCtx = struct {
             start_byte: usize,
             buf: []u8,
@@ -476,11 +476,11 @@ pub const Node = union(enum) {
             }
         };
 
-        if (start_byte > self.weights().len) return "";
+        if (start_byte > self.weights().len) return .{ "", false };
         var ctx = GetRestOfLineCtx{ .start_byte = start_byte, .buf = buf, .buf_size = buf_size };
         const walk_result = ctx.walk(self);
         if (walk_result.err) |_| @panic("Node.getRestOfLine() shouldn't return any errors!");
-        return ctx.buf[0..ctx.bytes_written];
+        return .{ ctx.buf[0..ctx.bytes_written], ctx.should_stop };
     }
     test getRestOfLine {
         const a = idc_if_it_leaks;
@@ -526,7 +526,7 @@ pub const Node = union(enum) {
     }
     fn testGetRestOfLine(root: *const Node, comptime buf_size: usize, index: usize, str: []const u8) !void {
         var buf: [buf_size]u8 = undefined;
-        const result = root.getRestOfLine(index, &buf, buf_size);
+        const result, _ = root.getRestOfLine(index, &buf, buf_size);
         try eqStr(str, result);
     }
 

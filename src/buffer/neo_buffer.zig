@@ -249,9 +249,13 @@ pub const Buffer = struct {
             .payload = self,
             .read = struct {
                 fn read(payload: ?*anyopaque, start_byte: u32, _: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
-                    var buf: [PARSE_BUFFER_SIZE]u8 = undefined;
+                    var buf: [PARSE_BUFFER_SIZE + 1]u8 = undefined;
                     const ctx: *Buffer = @ptrCast(@alignCast(payload orelse return ""));
-                    const result = ctx.roperoot.getRestOfLine(start_byte, &buf, PARSE_BUFFER_SIZE);
+                    var result, const eol = ctx.roperoot.getRestOfLine(start_byte, &buf, PARSE_BUFFER_SIZE);
+                    if (eol) {
+                        buf[result.len] = '\n';
+                        result = buf[0 .. result.len + 1];
+                    }
                     bytes_read.* = @intCast(result.len);
                     return @ptrCast(result.ptr);
                 }
@@ -261,14 +265,33 @@ pub const Buffer = struct {
         self.tstree = try self.tsparser.?.parse(self.tstree, input);
     }
     test parse {
-        var buf = try Buffer.create(testing_allocator, .string, "const");
-        defer buf.destroy();
-        try buf.initiateTreeSitter(.zig);
-        try eqStr(
-            \\source_file
-            \\  ERROR
-            \\    "const"
-        , try buf.tstree.?.getRootNode().debugPrint());
+        {
+            const source = "const a = 10;\nconst b = true;";
+            var buf = try Buffer.create(testing_allocator, .string, source);
+            defer buf.destroy();
+            try buf.initiateTreeSitter(.zig);
+            try eqStr(
+                \\source_file
+                \\  Decl
+                \\    VarDecl
+                \\      "const"
+                \\      IDENTIFIER
+                \\      "="
+                \\      ErrorUnionExpr
+                \\        SuffixExpr
+                \\          INTEGER
+                \\      ";"
+                \\  Decl
+                \\    VarDecl
+                \\      "const"
+                \\      IDENTIFIER
+                \\      "="
+                \\      ErrorUnionExpr
+                \\        SuffixExpr
+                \\          "true"
+                \\      ";"
+            , try buf.tstree.?.getRootNode().debugPrint());
+        }
     }
 
     pub fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
