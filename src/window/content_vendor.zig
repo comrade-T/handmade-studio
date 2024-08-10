@@ -57,6 +57,8 @@ pub const ContentVendor = struct {
         return r << 24 | g << 16 | b << 8 | a;
     }
 
+    const DEFAULT_COLOR = rgba(245, 245, 245, 245);
+
     const HighlightMap = enum(u32) {
         variable = rgba(245, 245, 245, 245),
         @"type.qualifier" = rgba(230, 41, 55, 255),
@@ -67,7 +69,6 @@ pub const ContentVendor = struct {
 
         a: Allocator,
         vendor: *ContentVendor,
-        cursor: *ts.Query.Cursor,
 
         start_line: usize,
         end_line: usize,
@@ -75,15 +76,16 @@ pub const ContentVendor = struct {
 
         line: std.ArrayList(u8),
         line_byte_offset: usize,
-        line_start_byte: usize, // (relative to document)
-        line_end_byte: usize, // (relative to document)
+        line_start_byte: u32, // (relative to document)
+        line_end_byte: u32, // (relative to document)
+
+        highlights: ?[]u32,
 
         pub fn init(a: Allocator, vendor: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
             const self = try a.create(@This());
             self.* = .{
                 .a = a,
                 .vendor = vendor,
-                .cursor = try ts.Query.Cursor.create(),
 
                 .start_line = start_line,
                 .end_line = end_line,
@@ -93,26 +95,52 @@ pub const ContentVendor = struct {
                 .line_byte_offset = 0,
                 .line_start_byte = 0,
                 .line_end_byte = 0,
+
+                .highlights = null,
             };
-            self.cursor.execute(vendor.query, vendor.buffer.tstree.?.getRootNode());
             return self;
         }
 
         pub fn deinit(self: *@This()) void {
             self.line.deinit();
+            if (self.highlights) |highlights| self.a.free(highlights);
             self.a.destroy(self);
         }
 
-        fn jumpToNextLine(self: *@This()) !void {
+        fn updateLineContent(self: *@This()) !void {
             self.line.deinit();
-            self.line, self.line_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
-            self.line_end_byte = self.line_start_byte + self.line.items.len;
+            self.line, const line_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
+            const line_end_byte = self.line_start_byte + self.line.items.len;
+            self.line_start_byte = @intCast(line_start_byte);
+            self.line_end_byte = @intCast(line_end_byte);
             self.line_byte_offset = 0;
+        }
+
+        fn updateLineHighlights(self: *@This()) !void {
+            if (self.highlights) |highlights| self.a.free(highlights);
+            self.highlights = try self.a.alloc(u32, self.line.items.len);
+            for (0..self.highlights.?.len) |i| self.highlights.?[i] = DEFAULT_COLOR;
+
+            const cursor = try ts.Query.Cursor.create();
+            defer cursor.destroy();
+            cursor.execute(self.vendor.query, self.vendor.buffer.tstree.?.getRootNode());
+
+            while (self.vendor.filter.nextMatchInLines(cursor, self.start_line, self.end_line)) |match| {
+                const cap = match.captures()[0];
+                const capture_name = self.vendor.query.getCaptureNameForId(cap.id);
+                const hl_group = if (std.meta.stringToEnum(HighlightMap, capture_name)) |group| group else HighlightMap.variable;
+                const color = @intFromEnum(hl_group);
+
+                const start = @max(cap.node.getStartByte(), self.line_start_byte) - self.line_start_byte;
+                const end = @max((cap.node.getEndByte()), self.line_end_byte) - self.line_start_byte;
+                for (start..end) |i| self.highlights.?[i] = color;
+            }
         }
 
         pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
             if (self.line_byte_offset >= self.line.items.len) {
-                self.jumpToNextLine() catch return null;
+                self.updateLineContent() catch return null;
+                self.updateLineHighlights() catch return null;
             }
 
             var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.items };
@@ -120,7 +148,7 @@ pub const ContentVendor = struct {
                 defer self.line_byte_offset += cp.len;
                 const char_bytes = self.line.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
                 const sentichar = std.fmt.bufPrintZ(buf, "{s}", .{char_bytes}) catch @panic("error calling bufPrintZ");
-                const color = @intFromEnum(HighlightMap.variable);
+                const color = self.highlights.?[self.line_byte_offset];
                 return .{ sentichar, color };
             }
 
@@ -138,8 +166,7 @@ pub const ContentVendor = struct {
                 var buf_: [10]u8 = undefined;
                 const char, const color = iter.nextChar(&buf_).?;
                 try eqStr("c", std.mem.span(char));
-                _ = color;
-                // try eq(@intFromEnum(HighlightMap.@"type.qualifier"), color);
+                try eq(@intFromEnum(HighlightMap.@"type.qualifier"), color);
             }
         }
     };

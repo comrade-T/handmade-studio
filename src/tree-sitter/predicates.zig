@@ -94,10 +94,10 @@ pub const PredicatesFilter = struct {
 
     ///////////////////////////// Limited Range
 
-    pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, start_line: usize, end_linr: usize) ?Query.Match {
+    pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, start_line: usize, end_line: usize) ?Query.Match {
         while (true) {
             const match = cursor.nextMatch() orelse return null;
-            if (self.allPredicatesMatchesInLines(match, start_line, end_linr)) return match;
+            if (self.allPredicatesMatchesInLines(match, start_line, end_line)) return match;
         }
     }
 
