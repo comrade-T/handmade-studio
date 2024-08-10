@@ -28,11 +28,34 @@ fn getTSQuery(lang: SupportedLanguages) !*ts.Query {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+fn rgba(r: u32, g: u32, b: u32, a: u32) u32 {
+    return r << 24 | g << 16 | b << 8 | a;
+}
+
+const RAY_WHITE = rgba(245, 245, 245, 245);
+
+fn createHighlightMap(a: Allocator) !std.StringHashMap(u32) {
+    var map = std.StringHashMap(u32).init(a);
+    try map.put("variable", rgba(245, 245, 245, 245)); // identifier ray_white
+    try map.put("type.qualifier", rgba(200, 122, 255, 255)); // const purple
+    try map.put("type", rgba(0, 117, 44, 255)); // Allocator dark_green
+    try map.put("function.builtin", rgba(0, 121, 241, 255)); // @import blue
+    try map.put("include", rgba(230, 41, 55, 255)); // @import red
+    try map.put("string", rgba(253, 249, 0, 255)); // "hello" yellow
+    try map.put("punctuation.bracket", rgba(255, 161, 0, 255)); // () orange
+    try map.put("punctuation.delimiter", rgba(255, 161, 0, 255)); // ; orange
+    try map.put("field", rgba(0, 121, 241, 255)); // std.'mem' blue
+    return map;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 pub const ContentVendor = struct {
     a: Allocator,
     buffer: *Buffer,
     query: *ts.Query,
     filter: *PredicatesFilter,
+    hl_map: std.StringHashMap(u32),
 
     pub fn init(a: Allocator, buffer: *Buffer) !*@This() {
         const self = try a.create(@This());
@@ -41,6 +64,7 @@ pub const ContentVendor = struct {
             .buffer = buffer,
             .query = try getTSQuery(buffer.lang.?),
             .filter = try PredicatesFilter.initWithContentCallback(a, self.query, Buffer.contentCallback, self.buffer),
+            .hl_map = try createHighlightMap(a),
         };
         return self;
     }
@@ -48,21 +72,13 @@ pub const ContentVendor = struct {
     pub fn deinit(self: *@This()) void {
         self.query.destroy();
         self.filter.deinit();
+        self.hl_map.deinit();
         self.a.destroy(self);
     }
 
     ///////////////////////////// Job
 
-    fn rgba(r: u32, g: u32, b: u32, a: u32) u32 {
-        return r << 24 | g << 16 | b << 8 | a;
-    }
-
     const DEFAULT_COLOR = rgba(245, 245, 245, 245);
-
-    const HighlightMap = enum(u32) {
-        variable = rgba(245, 245, 245, 245),
-        @"type.qualifier" = rgba(230, 41, 55, 255),
-    };
 
     const CurrentJobIterator = struct {
         const BUF_SIZE = 1024;
@@ -119,7 +135,7 @@ pub const ContentVendor = struct {
         fn updateLineHighlights(self: *@This()) !void {
             if (self.highlights) |highlights| self.a.free(highlights);
             self.highlights = try self.a.alloc(u32, self.line.items.len);
-            for (0..self.highlights.?.len) |i| self.highlights.?[i] = DEFAULT_COLOR;
+            @memset(self.highlights.?, DEFAULT_COLOR);
 
             const cursor = try ts.Query.Cursor.create();
             defer cursor.destroy();
@@ -128,12 +144,13 @@ pub const ContentVendor = struct {
             while (self.vendor.filter.nextMatchInLines(cursor, self.start_line, self.end_line)) |match| {
                 const cap = match.captures()[0];
                 const capture_name = self.vendor.query.getCaptureNameForId(cap.id);
-                const hl_group = if (std.meta.stringToEnum(HighlightMap, capture_name)) |group| group else HighlightMap.variable;
-                const color = @intFromEnum(hl_group);
+                const color = if (self.vendor.hl_map.get(capture_name)) |color| color else RAY_WHITE;
 
                 const start = @max(cap.node.getStartByte(), self.line_start_byte) - self.line_start_byte;
-                const end = @max((cap.node.getEndByte()), self.line_end_byte) - self.line_start_byte;
-                for (start..end) |i| self.highlights.?[i] = color;
+                const end = @min((cap.node.getEndByte()), self.line_end_byte) - self.line_start_byte;
+                @memset(self.highlights.?[start..end], color);
+
+                // std.debug.print("capture_name: {s} | start: {d} | end: {d} | hl_group {any}\n", .{ capture_name, start, end, hl_group });
             }
         }
 
@@ -160,14 +177,21 @@ pub const ContentVendor = struct {
             defer buf.destroy();
             const vendor = try ContentVendor.init(testing_allocator, buf);
             defer vendor.deinit();
+
             var iter = try vendor.requestLines(0, 0);
             defer iter.deinit();
-            {
-                var buf_: [10]u8 = undefined;
-                const char, const color = iter.nextChar(&buf_).?;
-                try eqStr("c", std.mem.span(char));
-                try eq(@intFromEnum(HighlightMap.@"type.qualifier"), color);
-            }
+            try testNextChar(iter, "c", "type.qualifier");
+            try testNextChar(iter, "o", "type.qualifier");
+            try testNextChar(iter, "n", "type.qualifier");
+            try testNextChar(iter, "s", "type.qualifier");
+            try testNextChar(iter, "t", "type.qualifier");
+            try testNextChar(iter, " ", "variable");
+        }
+        fn testNextChar(iter: *CurrentJobIterator, expected_char: []const u8, expected_group: []const u8) !void {
+            var buf_: [10]u8 = undefined;
+            const char, const color = iter.nextChar(&buf_).?;
+            try eqStr(expected_char, std.mem.span(char));
+            try eq(iter.vendor.hl_map.get(expected_group).?, color);
         }
     };
 
@@ -175,31 +199,6 @@ pub const ContentVendor = struct {
         return try CurrentJobIterator.init(self.a, self, start_line, end_line);
     }
 };
-
-// test "experiment" {
-//     var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
-//     try buf.initiateTreeSitter(.zig);
-//     defer buf.destroy();
-//
-//     const vendor = try ContentVendor.init(testing_allocator, buf);
-//     defer vendor.deinit();
-//
-//     const cursor = try ts.Query.Cursor.create();
-//     cursor.execute(vendor.query, buf.tstree.?.getRootNode());
-//
-//     {
-//         while (vendor.filter.nextMatchOnDemand(cursor)) |match| {
-//             const cap = match.captures()[0];
-//             const capture_name = vendor.query.getCaptureNameForId(cap.id);
-//             std.debug.print("capture_name: {s}\n", .{capture_name});
-//             std.debug.print("start_byte: {d} | end_byte: {d}\n", .{ cap.node.getStartByte(), cap.node.getEndByte() });
-//             var mybuf: [1024]u8 = undefined;
-//             const content = try buf.roperoot.getRange(cap.node.getStartByte(), cap.node.getEndByte(), &mybuf, 1024);
-//             std.debug.print("content {s}\n", .{content});
-//             std.debug.print("---------------------------------------------------------------\n", .{});
-//         }
-//     }
-// }
 
 test {
     std.testing.refAllDecls(ContentVendor);
