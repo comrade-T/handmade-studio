@@ -1,5 +1,5 @@
 const std = @import("std");
-const code_point = @import("code_point");
+pub const code_point = @import("code_point");
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -530,13 +530,13 @@ pub const Node = union(enum) {
         try eqStr(str, result);
     }
 
-    pub fn getLine(self: *const Node, a: Allocator, linenr: u32) !struct { ArrayList(u8), u32 } {
+    pub fn getLine(self: *const Node, a: Allocator, linenr: usize) !struct { ArrayList(u8), usize } {
         const GetLineCtx = struct {
-            target_linenr: u32,
-            current_linenr: u32 = 0,
+            target_linenr: usize,
+            current_linenr: usize = 0,
             result_list: *ArrayList(u8),
             should_stop: bool = false,
-            num_of_chars: u32 = 0,
+            num_of_chars: usize = 0,
 
             fn walk(cx: *@This(), node: *const Node) WalkResult {
                 if (cx.should_stop) return WalkResult.stop;

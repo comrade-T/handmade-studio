@@ -1,5 +1,6 @@
 const std = @import("std");
 const rope = @import("rope");
+pub const code_point = rope.code_point;
 pub const ts = @import("ts").b;
 pub const PredicatesFilter = @import("ts").PredicatesFilter;
 

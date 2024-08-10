@@ -1,5 +1,6 @@
 const std = @import("std");
 const _neo_buffer = @import("neo_buffer");
+const code_point = _neo_buffer.code_point;
 const ts = _neo_buffer.ts;
 const Buffer = _neo_buffer.Buffer;
 const PredicatesFilter = _neo_buffer.PredicatesFilter;
@@ -52,15 +53,13 @@ pub const ContentVendor = struct {
 
     ///////////////////////////// Job
 
-    const Color = struct {
-        r: u8,
-        g: u8,
-        b: u8,
-        a: u8,
-    };
+    fn rgba(r: u32, g: u32, b: u32, a: u32) u32 {
+        return r << 24 | g << 16 | b << 8 | a;
+    }
 
-    const HighlightMap = enum(Color) {
-        variable = Color.init(245, 245, 245, 255),
+    const HighlightMap = enum(u32) {
+        variable = rgba(245, 245, 245, 245),
+        @"type.qualifier" = rgba(230, 41, 55, 255),
     };
 
     const CurrentJobIterator = struct {
@@ -70,70 +69,100 @@ pub const ContentVendor = struct {
         vendor: *ContentVendor,
         cursor: *ts.Query.Cursor,
 
-        content: std.ArrayList(u8),
-        start_row: usize = 0,
-        end_row: usize = 0,
-        current_row: usize = 0,
-        current_col: usize = 0,
+        start_line: usize,
+        end_line: usize,
+        current_line: usize,
 
-        pub fn init(a: Allocator, vendor: *ContentVendor) !*CurrentJobIterator {
+        line: std.ArrayList(u8),
+        line_byte_offset: usize,
+
+        pub fn init(a: Allocator, vendor: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
             const self = try a.create(@This());
             self.* = .{
                 .a = a,
                 .vendor = vendor,
                 .cursor = try ts.Query.Cursor.create(),
-                .content = std.ArrayList(u8).init(a),
+
+                .start_line = start_line,
+                .end_line = end_line,
+                .current_line = start_line,
+
+                .line = std.ArrayList(u8).init(a),
+                .line_byte_offset = 0,
             };
             self.cursor.execute(vendor.query, vendor.buffer.tstree.?.getRootNode());
             return self;
         }
 
         pub fn deinit(self: *@This()) void {
-            self.content.deinit();
+            self.line.deinit();
             self.a.destroy(self);
         }
 
-        pub fn nextChar(self: *@This()) !struct { [*:0]u8, Color } {
-            if (self.current_col >= self.content.len) {
-                self.content.deinit();
-                self.content = try self.vendor.buffer.roperoot.getLine(self.a, self.current_row);
-                self.current_col = 0;
+        pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
+            if (self.line_byte_offset >= self.line.items.len) {
+                self.line.deinit();
+                self.line, _ = self.vendor.buffer.roperoot.getLine(self.a, self.current_line) catch return null;
+                self.line_byte_offset = 0;
             }
+
+            var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.items };
+            if (cp_iter.next()) |cp| {
+                const char = self.line.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
+                const result = std.fmt.bufPrintZ(buf, "{s}", .{char}) catch @panic("error calling bufPrintZ");
+                self.line_byte_offset += cp.len;
+                return .{ result, @intFromEnum(HighlightMap.variable) };
+            }
+
+            return null;
         }
         test nextChar {
-            // TODO:
+            var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
+            try buf.initiateTreeSitter(.zig);
+            defer buf.destroy();
+            const vendor = try ContentVendor.init(testing_allocator, buf);
+            defer vendor.deinit();
+            var iter = try vendor.requestLines(0, 0);
+            defer iter.deinit();
+            {
+                var buf_: [10]u8 = undefined;
+                const char, const color = iter.nextChar(&buf_).?;
+                try eqStr("c", std.mem.span(char));
+                _ = color;
+                // try eq(@intFromEnum(HighlightMap.@"type.qualifier"), color);
+            }
         }
     };
 
-    pub fn requestLines(a: Allocator, self: *ContentVendor, start_line: usize, end_line: usize) CurrentJobIterator {
-        return try CurrentJobIterator.init(a, self, start_line, end_line);
+    pub fn requestLines(self: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
+        return try CurrentJobIterator.init(self.a, self, start_line, end_line);
     }
 };
 
-test "experiment" {
-    var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
-    try buf.initiateTreeSitter(.zig);
-    defer buf.destroy();
-
-    const vendor = try ContentVendor.init(testing_allocator, buf);
-    defer vendor.deinit();
-
-    const cursor = try ts.Query.Cursor.create();
-    cursor.execute(vendor.query, buf.tstree.?.getRootNode());
-
-    {
-        while (vendor.filter.nextMatchOnDemand(cursor)) |match| {
-            const cap = match.captures()[0];
-            const capture_name = vendor.query.getCaptureNameForId(cap.id);
-            std.debug.print("capture_name: {s}\n", .{capture_name});
-            std.debug.print("start_byte: {d} | end_byte: {d}\n", .{ cap.node.getStartByte(), cap.node.getEndByte() });
-            var mybuf: [1024]u8 = undefined;
-            const content = try buf.roperoot.getRange(cap.node.getStartByte(), cap.node.getEndByte(), &mybuf, 1024);
-            std.debug.print("content {s}\n", .{content});
-            std.debug.print("---------------------------------------------------------------\n", .{});
-        }
-    }
-}
+// test "experiment" {
+//     var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
+//     try buf.initiateTreeSitter(.zig);
+//     defer buf.destroy();
+//
+//     const vendor = try ContentVendor.init(testing_allocator, buf);
+//     defer vendor.deinit();
+//
+//     const cursor = try ts.Query.Cursor.create();
+//     cursor.execute(vendor.query, buf.tstree.?.getRootNode());
+//
+//     {
+//         while (vendor.filter.nextMatchOnDemand(cursor)) |match| {
+//             const cap = match.captures()[0];
+//             const capture_name = vendor.query.getCaptureNameForId(cap.id);
+//             std.debug.print("capture_name: {s}\n", .{capture_name});
+//             std.debug.print("start_byte: {d} | end_byte: {d}\n", .{ cap.node.getStartByte(), cap.node.getEndByte() });
+//             var mybuf: [1024]u8 = undefined;
+//             const content = try buf.roperoot.getRange(cap.node.getStartByte(), cap.node.getEndByte(), &mybuf, 1024);
+//             std.debug.print("content {s}\n", .{content});
+//             std.debug.print("---------------------------------------------------------------\n", .{});
+//         }
+//     }
+// }
 
 test {
     std.testing.refAllDecls(ContentVendor);
