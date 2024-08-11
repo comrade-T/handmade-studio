@@ -91,7 +91,7 @@ pub const ContentVendor = struct {
         end_line: usize,
         current_line: usize,
 
-        line: std.ArrayList(u8),
+        line: ?std.ArrayList(u8),
         line_byte_offset: usize,
         line_start_byte: u32, // (relative to document)
         line_end_byte: u32, // (relative to document)
@@ -108,7 +108,7 @@ pub const ContentVendor = struct {
                 .end_line = end_line,
                 .current_line = start_line,
 
-                .line = std.ArrayList(u8).init(a),
+                .line = null,
                 .line_byte_offset = 0,
                 .line_start_byte = 0,
                 .line_end_byte = 0,
@@ -121,15 +121,16 @@ pub const ContentVendor = struct {
         }
 
         pub fn deinit(self: *@This()) void {
-            self.line.deinit();
+            if (self.line) |line| line.deinit();
             if (self.highlights) |highlights| self.a.free(highlights);
             self.a.destroy(self);
         }
 
         fn updateLineContent(self: *@This()) !void {
-            self.line.deinit();
+            if (self.line) |line| line.deinit();
+            errdefer self.line = null;
             self.line, const new_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
-            const line_end_byte = new_start_byte + self.line.items.len;
+            const line_end_byte = new_start_byte + self.line.?.items.len;
             self.line_start_byte = @intCast(new_start_byte);
             self.line_end_byte = @intCast(line_end_byte);
             self.line_byte_offset = 0;
@@ -137,7 +138,7 @@ pub const ContentVendor = struct {
 
         fn updateLineHighlights(self: *@This()) !void {
             if (self.highlights) |highlights| self.a.free(highlights);
-            self.highlights = try self.a.alloc(u32, self.line.items.len);
+            self.highlights = try self.a.alloc(u32, self.line.?.items.len);
             @memset(self.highlights.?, DEFAULT_COLOR);
 
             const cursor = try ts.Query.Cursor.create();
@@ -156,7 +157,7 @@ pub const ContentVendor = struct {
         }
 
         pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
-            if (self.line_byte_offset >= self.line.items.len) {
+            if (self.line_byte_offset >= self.line.?.items.len) {
                 self.current_line += 1;
                 if (self.current_line > self.end_line) return null;
                 self.updateLineContent() catch return null;
@@ -165,10 +166,10 @@ pub const ContentVendor = struct {
                 return .{ std.fmt.bufPrintZ(buf, "\n", .{}) catch @panic("error calling bufPrintZ"), rgba(0, 0, 0, 0) };
             }
 
-            var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.items };
+            var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.?.items };
             if (cp_iter.next()) |cp| {
                 defer self.line_byte_offset += cp.len;
-                const char_bytes = self.line.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
+                const char_bytes = self.line.?.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
                 const sentichar = std.fmt.bufPrintZ(buf, "{s}", .{char_bytes}) catch @panic("error calling bufPrintZ");
                 const color = self.highlights.?[self.line_byte_offset];
                 return .{ sentichar, color };
@@ -178,6 +179,12 @@ pub const ContentVendor = struct {
         }
 
         test CurrentJobIterator {
+            { // out of bounds
+                const iter = try setupTestIter("const", 0, 100);
+                defer teardownTestIer(iter);
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, null, null);
+            }
             {
                 const iter = try setupTestIter("const Allocator = @import(\"std\").mem.Allocator;", 0, 0);
                 defer teardownTestIer(iter);
