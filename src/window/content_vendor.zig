@@ -176,15 +176,11 @@ pub const ContentVendor = struct {
 
             return null;
         }
-        test nextChar {
+
+        test CurrentJobIterator {
             {
-                var buf = try Buffer.create(testing_allocator, .string, "const Allocator = @import(\"std\").mem.Allocator;");
-                try buf.initiateTreeSitter(.zig);
-                defer buf.destroy();
-                const vendor = try ContentVendor.init(testing_allocator, buf);
-                defer vendor.deinit();
-                var iter = try vendor.requestLines(0, 0);
-                defer iter.deinit();
+                const iter = try setupTestIter("const Allocator = @import(\"std\").mem.Allocator;", 0, 0);
+                defer teardownTestIer(iter);
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, " ", "variable");
                 try testIter(iter, "Allocator", "type");
@@ -198,17 +194,11 @@ pub const ContentVendor = struct {
                 try testIter(iter, ".", "punctuation.delimiter");
                 try testIter(iter, "Allocator", "type");
                 try testIter(iter, ";", "punctuation.delimiter");
-                var buf_: [10]u8 = undefined;
-                try eq(null, iter.nextChar(&buf_));
+                try testIter(iter, null, null);
             }
             {
-                var buf = try Buffer.create(testing_allocator, .string, "const a = 10;\nvar not_false = true;");
-                try buf.initiateTreeSitter(.zig);
-                defer buf.destroy();
-                const vendor = try ContentVendor.init(testing_allocator, buf);
-                defer vendor.deinit();
-                var iter = try vendor.requestLines(0, 1);
-                defer iter.deinit();
+                const iter = try setupTestIter("const a = 10;\nvar not_false = true;", 0, 1);
+                defer teardownTestIer(iter);
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, " a = ", "variable");
                 try testIter(iter, "10", "number");
@@ -218,19 +208,44 @@ pub const ContentVendor = struct {
                 try testIter(iter, " not_false = ", "variable");
                 try testIter(iter, "true", "boolean");
                 try testIter(iter, ";", "punctuation.delimiter");
-                var buf_: [10]u8 = undefined;
-                try eq(null, iter.nextChar(&buf_));
+                try testIter(iter, null, null);
+            }
+            {
+                const iter = try setupTestIter("const a = 10;\nvar not_false = true;", 1, 1);
+                defer teardownTestIer(iter);
+                try testIter(iter, "var", "type.qualifier");
+                try testIter(iter, " not_false = ", "variable");
+                try testIter(iter, "true", "boolean");
+                try testIter(iter, ";", "punctuation.delimiter");
+                try testIter(iter, null, null);
             }
         }
-        fn testIter(iter: *CurrentJobIterator, expected_sequence: []const u8, expected_group: []const u8) !void {
-            var code_point_iter = code_point.Iterator{ .bytes = expected_sequence };
+        fn testIter(iter: *CurrentJobIterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
+            if (expected_sequence == null) {
+                var buf_: [10]u8 = undefined;
+                try eq(null, iter.nextChar(&buf_));
+                return;
+            }
+            var code_point_iter = code_point.Iterator{ .bytes = expected_sequence.? };
             while (code_point_iter.next()) |cp| {
                 var buf_: [10]u8 = undefined;
                 const char, const color = iter.nextChar(&buf_).?;
-                const expected_char = expected_sequence[cp.offset .. cp.offset + cp.len];
+                const expected_char = expected_sequence.?[cp.offset .. cp.offset + cp.len];
                 try eqStr(expected_char, std.mem.span(char));
-                try eq(iter.vendor.hl_map.get(expected_group).?, color);
+                try eq(iter.vendor.hl_map.get(expected_group.?).?, color);
             }
+        }
+        fn teardownTestIer(iter: *CurrentJobIterator) void {
+            iter.vendor.buffer.destroy();
+            iter.vendor.deinit();
+            iter.deinit();
+        }
+        fn setupTestIter(source: []const u8, start_line: usize, end_line: usize) !*CurrentJobIterator {
+            var buf = try Buffer.create(testing_allocator, .string, source);
+            try buf.initiateTreeSitter(.zig);
+            const vendor = try ContentVendor.init(testing_allocator, buf);
+            const iter = try vendor.requestLines(start_line, end_line);
+            return iter;
         }
     };
 
@@ -240,5 +255,5 @@ pub const ContentVendor = struct {
 };
 
 test {
-    std.testing.refAllDecls(ContentVendor);
+    std.testing.refAllDeclsRecursive(ContentVendor);
 }
