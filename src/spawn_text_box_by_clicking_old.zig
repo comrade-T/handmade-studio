@@ -1,14 +1,12 @@
 const std = @import("std");
 const rl = @import("raylib");
 
+const rope = @import("rope");
+const fs = @import("fs.zig");
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
+const UglyTextBox = @import("ugly_textbox").UglyTextBox;
 const FileNavigator = @import("components/FileNavigator.zig");
-
-const _neo_buffer = @import("neo_buffer");
-const _content_vendor = @import("content_vendor");
-const Buffer = _neo_buffer.Buffer;
-const ContentVendor = _content_vendor.ContentVendor;
 
 const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
@@ -39,7 +37,7 @@ pub fn main() anyerror!void {
     var kem = try kbs.KeyboardEventsManager.init(gpa);
     defer kem.deinit();
 
-    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
+    // const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
 
     var trigger_map = try exp.createTriggerMap(gpa);
     defer trigger_map.deinit();
@@ -57,19 +55,21 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Models
 
-    // FileNavigator
+    // UglyTextBox
+    var buf_list = std.ArrayList(*UglyTextBox).init(gpa);
+    defer {
+        for (buf_list.items) |buf| buf.destroy();
+        buf_list.deinit();
+    }
+    var active_buf: ?*UglyTextBox = null;
 
+    const static_x, const static_y = .{ 400, 100 };
+    var static_utb = try UglyTextBox.fromString(gpa, "", static_x, static_y);
+    defer static_utb.destroy();
+
+    // FileNavigator
     var navigator = try FileNavigator.new(gpa);
     defer navigator.deinit();
-
-    // Buffer & ContentVendor
-
-    var buf = try Buffer.create(gpa, .string, "const Allocator = std.mem.Allocator;");
-    try buf.initiateTreeSitter(.zig);
-    defer buf.destroy();
-
-    const vendor = try ContentVendor.init(gpa, buf);
-    defer vendor.deinit();
 
     ///////////////////////////// Main Loop
 
@@ -101,24 +101,45 @@ pub fn main() anyerror!void {
                         if (eql(u8, trigger, "lctrl l")) {
                             if (try navigator.forward()) |path| {
                                 defer path.deinit();
-                                // TODO:
+                                static_utb.destroy();
+                                static_utb = try UglyTextBox.fromFile(gpa, path.items, static_x, static_y);
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
                     }
 
-                    // TODO:
-                    // try triggerCallback(&trigger_map, trigger, active_buf);
+                    try triggerCallback(&trigger_map, trigger, active_buf);
+                    // try triggerCallback(&trigger_map, trigger, static_utb);
                 }
             }
         }
         try kem.finishHandlingInputs();
+
+        { // Spawn
+            if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
+                const buf = try UglyTextBox.fromString(gpa, "", rl.getMouseX(), rl.getMouseY());
+                active_buf = buf;
+                try buf_list.append(buf);
+            }
+        }
 
         // View
         rl.beginDrawing();
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
+            {
+                {
+                    const content = try std.fmt.allocPrintZ(gpa, "{s}", .{static_utb.document.items});
+                    defer gpa.free(content);
+                    rl.drawText(content, static_utb.x, static_utb.y, 30, rl.Color.ray_white);
+                }
+                for (buf_list.items) |utb| {
+                    const content = try std.fmt.allocPrintZ(gpa, "{s}", .{utb.document.items});
+                    defer gpa.free(content);
+                    rl.drawText(content, utb.x, utb.y, 30, rl.Color.ray_white);
+                }
+            }
             {
                 for (navigator.short_paths, 0..) |path, i| {
                     const text = try std.fmt.allocPrintZ(gpa, "{s}", .{path});
@@ -128,29 +149,18 @@ pub fn main() anyerror!void {
                     rl.drawText(text, 100, 100 + idx * 40, 30, color);
                 }
             }
-            {
-                const iter = try vendor.requestLines(0, vendor.buffer.roperoot.weights().bols - 1);
-                defer iter.deinit();
-
-                const spacing = 0;
-                const font_size = 40;
-                const start_x = 400;
-                const start_y = 100;
-                var x: f32 = start_x;
-                var y: f32 = start_y;
-
-                var char_buf: [10]u8 = undefined;
-                while (iter.nextChar(&char_buf)) |char| {
-                    const txt, const hex = char;
-                    if (txt[0] == '\n') {
-                        y += font_size;
-                        continue;
-                    }
-                    rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
-                    const measure = rl.measureTextEx(font, txt, font_size, spacing);
-                    x += measure.x;
-                }
-            }
         }
+    }
+}
+
+fn triggerCallback(trigger_map: *exp.TriggerMap, trigger: []const u8, may_utb: ?*UglyTextBox) !void {
+    if (may_utb) |buf| {
+        var action: exp.TriggerAction = undefined;
+        if (trigger_map.get(trigger)) |a| action = a else return;
+
+        try switch (action) {
+            .insert => |chars| buf.insertCharsAndMoveCursor(chars),
+            .custom => {},
+        };
     }
 }

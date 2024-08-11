@@ -1656,7 +1656,7 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Node Info
 
-    fn weights(self: *const Node) Weights {
+    pub fn weights(self: *const Node) Weights {
         return switch (self.*) {
             .branch => |*b| b.weights,
             .leaf => |*l| l.weights(),

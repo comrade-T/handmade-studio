@@ -19,6 +19,7 @@ pub fn new(external_allocator: Allocator) !*@This() {
     self.index = 0;
     return self;
 }
+
 pub fn deinit(self: *@This()) void {
     self.arena.deinit();
     for (self.history.items) |path| path.deinit();

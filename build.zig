@@ -62,7 +62,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
-    const ugly_textbox = addTestableModule(&bops, "src/window/ugly_textbox.zig", &.{
+    _ = addTestableModule(&bops, "src/window/ugly_textbox.zig", &.{
         .{ .name = "rope", .module = rope.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
@@ -82,17 +82,17 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     neo_buffer.compile.linkLibrary(tree_sitter);
 
-    const ugly_window = addTestableModule(&bops, "src/window/ugly_window.zig", &.{
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-    ugly_window.compile.linkLibrary(tree_sitter);
-
     const content_vendor = addTestableModule(&bops, "src/window/content_vendor.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     content_vendor.compile.linkLibrary(tree_sitter);
+
+    const ugly_window = addTestableModule(&bops, "src/window/ugly_window.zig", &.{
+        .{ .name = "neo_buffer", .module = neo_buffer.module },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    ugly_window.compile.linkLibrary(tree_sitter);
 
     _ = addTestableModule(&bops, "src/window/cell.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
@@ -121,15 +121,16 @@ pub fn build(b: *std.Build) void {
 
     {
         const path = "src/spawn_text_box_by_clicking.zig";
-        const spawn_rec_by_clicking_exe = b.addExecutable(.{
+        const spawn_text = b.addExecutable(.{
             .name = "spawn_text_box_by_clicking",
             .root_source_file = b.path(path),
             .target = target,
             .optimize = optimize,
         });
-        spawn_rec_by_clicking_exe.root_module.addImport("rope", rope.module);
-        spawn_rec_by_clicking_exe.root_module.addImport("ugly_textbox", ugly_textbox.module);
-        addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
+        spawn_text.root_module.addImport("neo_buffer", neo_buffer.module);
+        spawn_text.root_module.addImport("content_vendor", content_vendor.module);
+        spawn_text.linkLibrary(tree_sitter);
+        addRunnableRaylibFile(b, spawn_text, raylib, path);
     }
 
     {
