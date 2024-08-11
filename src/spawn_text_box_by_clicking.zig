@@ -7,8 +7,10 @@ const FileNavigator = @import("components/FileNavigator.zig");
 
 const _neo_buffer = @import("neo_buffer");
 const _content_vendor = @import("content_vendor");
+const _neo_window = @import("neo_window");
 const Buffer = _neo_buffer.Buffer;
 const ContentVendor = _content_vendor.ContentVendor;
+const Window = _neo_window.Window;
 
 const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
@@ -107,8 +109,22 @@ pub fn main() anyerror!void {
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
                     }
 
-                    // TODO:
-                    // try triggerCallback(&trigger_map, trigger, active_buf);
+                    { // Buffer actions
+                        if (trigger_map.get(trigger)) |a| {
+                            switch (a) {
+                                .insert => |chars| {
+                                    Window.insertChars(chars);
+
+                                    _, _ = try buf.insertChars(chars, 0, 0);
+
+                                    // TODO: create a Window struct
+                                },
+                                .custom => {
+                                    Window.doCustomStuffs(trigger);
+                                },
+                            }
+                        }
+                    }
                 }
             }
         }

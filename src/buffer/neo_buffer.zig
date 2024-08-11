@@ -63,7 +63,7 @@ pub const Buffer = struct {
 
     ///////////////////////////// Insert
 
-    fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { usize, usize } {
+    pub fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { usize, usize } {
         const start_point = ts.Point{ .row = @intCast(line), .column = @intCast(col) };
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
 

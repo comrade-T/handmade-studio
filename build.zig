@@ -88,6 +88,10 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     content_vendor.compile.linkLibrary(tree_sitter);
 
+    const neo_window = addTestableModule(&bops, "src/window/neo_window.zig", &.{
+        // TODO:
+    }, zig_build_test_step);
+
     const ugly_window = addTestableModule(&bops, "src/window/ugly_window.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
@@ -129,6 +133,7 @@ pub fn build(b: *std.Build) void {
         });
         spawn_text.root_module.addImport("neo_buffer", neo_buffer.module);
         spawn_text.root_module.addImport("content_vendor", content_vendor.module);
+        spawn_text.root_module.addImport("neo_window", neo_window.module);
         spawn_text.linkLibrary(tree_sitter);
         addRunnableRaylibFile(b, spawn_text, raylib, path);
     }
