@@ -82,6 +82,7 @@ pub const ContentVendor = struct {
     ///////////////////////////// Job
 
     const DEFAULT_COLOR = rgba(245, 245, 245, 245);
+    const JOB_BUF_SIZE = 1024;
 
     pub const CurrentJobIterator = struct {
         a: Allocator,
@@ -91,7 +92,9 @@ pub const ContentVendor = struct {
         end_line: usize,
         current_line: usize,
 
-        line: ?std.ArrayList(u8),
+        buf: [JOB_BUF_SIZE]u8 = undefined,
+
+        line: ?[]const u8,
         line_byte_offset: usize,
         line_start_byte: u32, // (relative to document)
         line_end_byte: u32, // (relative to document)
@@ -121,24 +124,34 @@ pub const ContentVendor = struct {
         }
 
         pub fn deinit(self: *@This()) void {
-            if (self.line) |line| line.deinit();
             if (self.highlights) |highlights| self.a.free(highlights);
             self.a.destroy(self);
         }
 
         fn updateLineContent(self: *@This()) !void {
-            if (self.line) |line| line.deinit();
-            errdefer self.line = null;
-            self.line, const new_start_byte, _ = try self.vendor.buffer.roperoot.getLine(self.a, self.current_line);
-            const line_end_byte = new_start_byte + self.line.?.items.len;
-            self.line_start_byte = @intCast(new_start_byte);
-            self.line_end_byte = @intCast(line_end_byte);
+            const start_byte = if (self.line == null)
+                try self.vendor.buffer.roperoot.getByteOffsetOfPosition(self.current_line, 0)
+            else
+                self.line_end_byte;
+
+            self.line, const eol = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &self.buf, JOB_BUF_SIZE);
+
+            if (!eol and self.line.?.len == 0) return error.EndOfDocument;
+
+            const line_end_byte = start_byte + self.line.?.len;
+            self.line_start_byte = @intCast(start_byte);
+
+            const eol_len: usize = if (eol) 1 else 0;
+            self.line_end_byte = @intCast(line_end_byte + eol_len);
+
             self.line_byte_offset = 0;
         }
 
         fn updateLineHighlights(self: *@This()) !void {
+            if (self.line) |line| if (line.len == 0) return;
+
             if (self.highlights) |highlights| self.a.free(highlights);
-            self.highlights = try self.a.alloc(u32, self.line.?.items.len);
+            self.highlights = try self.a.alloc(u32, self.line.?.len);
             @memset(self.highlights.?, DEFAULT_COLOR);
 
             const cursor = try ts.Query.Cursor.create();
@@ -157,7 +170,7 @@ pub const ContentVendor = struct {
         }
 
         pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
-            if (self.line_byte_offset >= self.line.?.items.len) {
+            if (self.line_byte_offset >= self.line.?.len) {
                 self.current_line += 1;
                 if (self.current_line > self.end_line) return null;
                 self.updateLineContent() catch return null;
@@ -166,10 +179,10 @@ pub const ContentVendor = struct {
                 return .{ std.fmt.bufPrintZ(buf, "\n", .{}) catch @panic("error calling bufPrintZ"), rgba(0, 0, 0, 0) };
             }
 
-            var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.?.items };
+            var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.? };
             if (cp_iter.next()) |cp| {
                 defer self.line_byte_offset += cp.len;
-                const char_bytes = self.line.?.items[self.line_byte_offset .. self.line_byte_offset + cp.len];
+                const char_bytes = self.line.?[self.line_byte_offset .. self.line_byte_offset + cp.len];
                 const sentichar = std.fmt.bufPrintZ(buf, "{s}", .{char_bytes}) catch @panic("error calling bufPrintZ");
                 const color = self.highlights.?[self.line_byte_offset];
                 return .{ sentichar, color };
