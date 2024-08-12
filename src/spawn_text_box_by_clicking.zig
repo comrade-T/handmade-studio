@@ -66,12 +66,15 @@ pub fn main() anyerror!void {
 
     // Buffer & ContentVendor
 
-    var buf = try Buffer.create(gpa, .string, "const Allocator = std.mem.Allocator;");
+    var buf = try Buffer.create(gpa, .string, "");
     try buf.initiateTreeSitter(.zig);
     defer buf.destroy();
 
     const vendor = try ContentVendor.init(gpa, buf);
     defer vendor.deinit();
+
+    const window = try Window.spawn(gpa, vendor, 400, 100);
+    defer window.destroy();
 
     ///////////////////////////// Main Loop
 
@@ -112,16 +115,8 @@ pub fn main() anyerror!void {
                     { // Buffer actions
                         if (trigger_map.get(trigger)) |a| {
                             switch (a) {
-                                .insert => |chars| {
-                                    Window.insertChars(chars);
-
-                                    _, _ = try buf.insertChars(chars, 0, 0);
-
-                                    // TODO: create a Window struct
-                                },
-                                .custom => {
-                                    Window.doCustomStuffs(trigger);
-                                },
+                                .insert => |chars| window.insertChars(chars),
+                                .custom => try window.doCustomStuffs(trigger),
                             }
                         }
                     }
@@ -150,10 +145,8 @@ pub fn main() anyerror!void {
 
                 const spacing = 0;
                 const font_size = 40;
-                const start_x = 400;
-                const start_y = 100;
-                var x: f32 = start_x;
-                var y: f32 = start_y;
+                var x: f32 = window.x;
+                var y: f32 = window.y;
 
                 var char_buf: [10]u8 = undefined;
                 while (iter.nextChar(&char_buf)) |char| {

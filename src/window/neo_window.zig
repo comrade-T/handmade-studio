@@ -24,10 +24,10 @@ pub const Window = struct {
 
     cursor: Cursor,
 
-    x: i32,
-    y: i32,
+    x: f32,
+    y: f32,
 
-    pub fn spawn(a: Allocator, vendor: *ContentVendor, x: i32, y: i32) !*@This() {
+    pub fn spawn(a: Allocator, vendor: *ContentVendor, x: f32, y: f32) !*@This() {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
