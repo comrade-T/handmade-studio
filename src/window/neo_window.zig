@@ -122,37 +122,70 @@ pub const Window = struct {
         self.cursor.set(new_line, new_col);
     }
     test insertCharsInternal {
-        const win = try setupZigWindow("");
-        defer teardownWindow(win);
         {
-            win.insertChars("c");
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "c", "variable");
+            const win = try setupZigWindow("");
+            defer teardownWindow(win);
+            {
+                win.insertChars("c");
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "c", "variable");
+            }
+            {
+                win.insertChars("o");
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "co", "variable");
+            }
+            {
+                win.insertChars("n");
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "con", "variable");
+            }
+            {
+                win.insertChars("s");
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "cons", "variable");
+            }
+            {
+                win.insertChars("t");
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+            }
         }
         {
-            win.insertChars("o");
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "co", "variable");
-        }
-        {
-            win.insertChars("n");
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "con", "variable");
-        }
-        {
-            win.insertChars("s");
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "cons", "variable");
-        }
-        {
-            win.insertChars("t");
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "const", "type.qualifier");
+            const win = try setupZigWindow("");
+            defer teardownWindow(win);
+            {
+                win.insertChars("c");
+                win.insertChars("o");
+                win.insertChars("n");
+                win.insertChars("s");
+                win.insertChars("t");
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+            }
+            {
+                win.insertChars("\n");
+                try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, "\n", "variable");
+            }
+            {
+                win.insertChars("\n");
+                try eq(Cursor{ .line = 2, .col = 0 }, win.cursor);
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, "\n", "variable");
+            }
         }
     }
 

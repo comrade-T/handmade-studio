@@ -92,7 +92,7 @@ pub const ContentVendor = struct {
         end_line: usize,
         current_line: usize,
 
-        buf: [JOB_BUF_SIZE]u8 = undefined,
+        buf: [JOB_BUF_SIZE + 1]u8 = undefined,
 
         line: ?[]const u8,
         line_byte_offset: usize,
@@ -134,16 +134,19 @@ pub const ContentVendor = struct {
             else
                 self.line_end_byte;
 
-            self.line, const eol = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &self.buf, JOB_BUF_SIZE);
+            const line_content, const eol = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &self.buf, JOB_BUF_SIZE);
+            if (eol) {
+                self.buf[line_content.len] = '\n';
+                self.line = self.buf[0 .. line_content.len + 1];
+            } else {
+                self.line = line_content;
+            }
 
-            if (!eol and self.line.?.len == 0) return error.EndOfDocument;
+            if (self.line_end_byte >= self.vendor.buffer.roperoot.weights().len) return error.EndOfDocument;
 
             const line_end_byte = start_byte + self.line.?.len;
             self.line_start_byte = @intCast(start_byte);
-
-            const eol_len: usize = if (eol) 1 else 0;
-            self.line_end_byte = @intCast(line_end_byte + eol_len);
-
+            self.line_end_byte = @intCast(line_end_byte);
             self.line_byte_offset = 0;
         }
 
@@ -176,7 +179,6 @@ pub const ContentVendor = struct {
                 self.updateLineContent() catch return null;
                 self.updateLineHighlights() catch return null;
                 self.line_byte_offset = 0;
-                return .{ std.fmt.bufPrintZ(buf, "\n", .{}) catch @panic("error calling bufPrintZ"), rgba(0, 0, 0, 0) };
             }
 
             var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.? };
@@ -223,7 +225,7 @@ pub const ContentVendor = struct {
                 try testIter(iter, " a = ", "variable");
                 try testIter(iter, "10", "number");
                 try testIter(iter, ";", "punctuation.delimiter");
-                try testIter(iter, "\n", "__blank");
+                try testIter(iter, "\n", "variable");
                 try testIter(iter, "var", "type.qualifier");
                 try testIter(iter, " not_false = ", "variable");
                 try testIter(iter, "true", "boolean");
@@ -237,6 +239,30 @@ pub const ContentVendor = struct {
                 try testIter(iter, " not_false = ", "variable");
                 try testIter(iter, "true", "boolean");
                 try testIter(iter, ";", "punctuation.delimiter");
+                try testIter(iter, null, null);
+            }
+            {
+                const iter = try setupTestIter("const\n", 0, 1);
+                defer teardownTestIer(iter);
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, null, null);
+            }
+            {
+                const iter = try setupTestIter("const\n\n", 0, 1);
+                defer teardownTestIer(iter);
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, null, null);
+            }
+            {
+                const iter = try setupTestIter("const\n\nsomething", 0, 2);
+                defer teardownTestIer(iter);
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, "something", "variable");
                 try testIter(iter, null, null);
             }
         }

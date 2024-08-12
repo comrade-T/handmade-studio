@@ -138,9 +138,34 @@ pub const Buffer = struct {
                     , content.items);
                 }
             }
+        }
+
+        // Insert + Tree Sitter update
+        {
             {
                 const buf = try Buffer.create(testing_allocator, .string, "const");
                 defer buf.destroy();
+                try buf.initiateTreeSitter(.zig);
+                {
+                    const new_line, const new_col = try buf.insertChars(" std", 0, 5);
+                    try eq(0, new_line);
+                    try eq(9, new_col);
+                    const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                    try eqStr("const std", content.items);
+                    try eqStr(
+                        \\source_file
+                        \\  Decl
+                        \\    VarDecl
+                        \\      "const"
+                        \\      IDENTIFIER
+                        \\      ";"
+                    , try buf.tstree.?.getRootNode().debugPrint());
+                }
+            }
+            {
+                const buf = try Buffer.create(testing_allocator, .string, "const");
+                defer buf.destroy();
+                try buf.initiateTreeSitter(.zig);
                 {
                     const new_line, const new_col = try buf.insertChars("\n", 0, 5);
                     try eq(1, new_line);
@@ -151,28 +176,17 @@ pub const Buffer = struct {
                         \\
                     , content.items);
                 }
-            }
-        }
-
-        // Insert + Tree Sitter update
-        {
-            const buf = try Buffer.create(testing_allocator, .string, "const");
-            defer buf.destroy();
-            try buf.initiateTreeSitter(.zig);
-            {
-                const new_line, const new_col = try buf.insertChars(" std", 0, 5);
-                try eq(0, new_line);
-                try eq(9, new_col);
-                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-                try eqStr("const std", content.items);
-                try eqStr(
-                    \\source_file
-                    \\  Decl
-                    \\    VarDecl
-                    \\      "const"
-                    \\      IDENTIFIER
-                    \\      ";"
-                , try buf.tstree.?.getRootNode().debugPrint());
+                {
+                    const new_line, const new_col = try buf.insertChars("\n", 1, 0);
+                    try eq(2, new_line);
+                    try eq(0, new_col);
+                    const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                    try eqStr(
+                        \\const
+                        \\
+                        \\
+                    , content.items);
+                }
             }
         }
     }
