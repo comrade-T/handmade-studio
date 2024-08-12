@@ -83,7 +83,7 @@ pub const ContentVendor = struct {
 
     const DEFAULT_COLOR = rgba(245, 245, 245, 245);
 
-    const CurrentJobIterator = struct {
+    pub const CurrentJobIterator = struct {
         a: Allocator,
         vendor: *ContentVendor,
 
@@ -227,19 +227,27 @@ pub const ContentVendor = struct {
                 try testIter(iter, null, null);
             }
         }
-        fn testIter(iter: *CurrentJobIterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
+        pub fn testIter(iter: *CurrentJobIterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
             if (expected_sequence == null) {
                 var buf_: [10]u8 = undefined;
                 try eq(null, iter.nextChar(&buf_));
                 return;
             }
+
             var code_point_iter = code_point.Iterator{ .bytes = expected_sequence.? };
+            var i: usize = 0;
             while (code_point_iter.next()) |cp| {
                 var buf_: [10]u8 = undefined;
                 const char, const color = iter.nextChar(&buf_).?;
                 const expected_char = expected_sequence.?[cp.offset .. cp.offset + cp.len];
-                try eqStr(expected_char, std.mem.span(char));
+                eqStr(expected_char, std.mem.span(char)) catch {
+                    std.debug.print("\n================\n", .{});
+                    std.debug.print("Comparison failed on index [{d}] of expected_sequence '{s}'.\n", .{ i, expected_sequence.? });
+                    std.debug.print("=================\n", .{});
+                    return error.TestExpectedEqual;
+                };
                 try eq(iter.vendor.hl_map.get(expected_group.?).?, color);
+                defer i += 1;
             }
         }
         fn teardownTestIer(iter: *CurrentJobIterator) void {

@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
+    const cursor = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);
 
@@ -89,8 +89,12 @@ pub fn build(b: *std.Build) void {
     content_vendor.compile.linkLibrary(tree_sitter);
 
     const neo_window = addTestableModule(&bops, "src/window/neo_window.zig", &.{
-        // TODO:
+        .{ .name = "cursor", .module = cursor.module },
+        .{ .name = "content_vendor", .module = content_vendor.module },
+        .{ .name = "neo_buffer", .module = neo_buffer.module },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
+    neo_window.compile.linkLibrary(tree_sitter);
 
     const ugly_window = addTestableModule(&bops, "src/window/ugly_window.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
