@@ -484,18 +484,34 @@ pub const Node = union(enum) {
     }
     test getRestOfLine {
         const a = idc_if_it_leaks;
+
         { // basic
             const buf_size = 1024;
-            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-            try testGetRestOfLine(root, buf_size, 0, "one");
-            try testGetRestOfLine(root, buf_size, 1, "ne");
-            try testGetRestOfLine(root, buf_size, 2, "e");
-            try testGetRestOfLine(root, buf_size, 3, ""); // \n
-            try testGetRestOfLine(root, buf_size, 4, "two");
-            try testGetRestOfLine(root, buf_size, 8, "three");
-            try testGetRestOfLine(root, buf_size, 9, "hree");
-            try testGetRestOfLine(root, buf_size, 10, "ree");
-            try testGetRestOfLine(root, buf_size, 14, "four");
+            {
+                const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
+                try testGetRestOfLine(root, buf_size, 0, "one");
+                try testGetRestOfLine(root, buf_size, 1, "ne");
+                try testGetRestOfLine(root, buf_size, 2, "e");
+                try testGetRestOfLine(root, buf_size, 3, ""); // \n
+                try testGetRestOfLine(root, buf_size, 4, "two");
+                try testGetRestOfLine(root, buf_size, 8, "three");
+                try testGetRestOfLine(root, buf_size, 9, "hree");
+                try testGetRestOfLine(root, buf_size, 10, "ree");
+                try testGetRestOfLine(root, buf_size, 14, "four");
+            }
+            {
+                const root = try Node.fromString(a, "one\n\ntwo\nthree", true);
+                try testGetRestOfLineWithEol(root, buf_size, 0, "one", true);
+                try testGetRestOfLineWithEol(root, buf_size, 2, "e", true);
+                try testGetRestOfLineWithEol(root, buf_size, 3, "", true); // \n
+                try testGetRestOfLineWithEol(root, buf_size, 4, "", true); // \n
+                try testGetRestOfLineWithEol(root, buf_size, 5, "two", true);
+                try testGetRestOfLineWithEol(root, buf_size, 6, "wo", true);
+                try testGetRestOfLineWithEol(root, buf_size, 7, "o", true);
+                try testGetRestOfLineWithEol(root, buf_size, 8, "", true); // \n
+                try testGetRestOfLineWithEol(root, buf_size, 9, "three", false);
+                try testGetRestOfLineWithEol(root, buf_size, 10, "hree", false);
+            }
         }
         { // buf_size overflow
             const buf_size = 3;
@@ -523,6 +539,12 @@ pub const Node = union(enum) {
             try testGetRestOfLine(root, buf_size, 100, ""); // out of bounds
         }
         // TODO: unicode test cases
+    }
+    fn testGetRestOfLineWithEol(root: *const Node, comptime buf_size: usize, index: usize, str: []const u8, expected_eol: bool) !void {
+        var buf: [buf_size]u8 = undefined;
+        const result, const eol = root.getRestOfLine(index, &buf, buf_size);
+        try eqStr(str, result);
+        try eq(expected_eol, eol);
     }
     fn testGetRestOfLine(root: *const Node, comptime buf_size: usize, index: usize, str: []const u8) !void {
         var buf: [buf_size]u8 = undefined;
