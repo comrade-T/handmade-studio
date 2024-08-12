@@ -153,6 +153,7 @@ pub fn main() anyerror!void {
                     const txt, const hex = char;
                     if (txt[0] == '\n') {
                         y += font_size;
+                        x = window.x;
                         continue;
                     }
                     rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));

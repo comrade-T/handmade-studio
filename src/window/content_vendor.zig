@@ -245,14 +245,14 @@ pub const ContentVendor = struct {
                 try testIter(iter, null, null);
             }
             {
-                const iter = try setupTestIter("const\n", 0, 1);
+                const iter = try setupTestIter("const\n", 0, 999);
                 defer teardownTestIer(iter);
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
                 try testIter(iter, null, null);
             }
             {
-                const iter = try setupTestIter("const\n\n", 0, 1);
+                const iter = try setupTestIter("const\n\n", 0, 999);
                 defer teardownTestIer(iter);
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
@@ -260,7 +260,7 @@ pub const ContentVendor = struct {
                 try testIter(iter, null, null);
             }
             {
-                const iter = try setupTestIter("const\n\nsomething", 0, 2);
+                const iter = try setupTestIter("const\n\nsomething", 0, 999);
                 defer teardownTestIer(iter);
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");

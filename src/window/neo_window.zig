@@ -168,6 +168,7 @@ pub const Window = struct {
                 const iter = try win.vendor.requestLines(0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, null, null);
             }
             {
                 win.insertChars("\n");
@@ -176,6 +177,7 @@ pub const Window = struct {
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
+                try testIter(iter, null, null);
             }
             {
                 win.insertChars("\n");
@@ -185,6 +187,18 @@ pub const Window = struct {
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
                 try testIter(iter, "\n", "variable");
+                try testIter(iter, null, null);
+            }
+            {
+                win.insertChars("v");
+                try eq(Cursor{ .line = 2, .col = 1 }, win.cursor);
+                const iter = try win.vendor.requestLines(0, 9999);
+                defer iter.deinit();
+                try testIter(iter, "const", "type.qualifier");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, "\n", "variable");
+                try testIter(iter, "v", "variable");
+                try testIter(iter, null, null);
             }
         }
     }
