@@ -1185,6 +1185,12 @@ pub const Node = union(enum) {
                 if (insert_single_new_line_char) cx.num_of_new_lines = 1;
 
                 if (leaf.buf.len == 0) {
+                    if (insert_single_new_line_char) {
+                        const left = try Leaf.new(cx.a, "", true, true);
+                        const right = try Leaf.new(cx.a, "", true, leaf.eol);
+                        const replacement = try Node.new(cx.a, left, right);
+                        return WalkMutResult{ .replace = replacement };
+                    }
                     new_leaves[0].leaf.bol = leaf.bol;
                     const replacement = try mergeLeaves(cx.a, new_leaves);
                     return WalkMutResult{ .replace = replacement };
@@ -1471,6 +1477,78 @@ pub const Node = union(enum) {
                 \\    1 B| `;`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+
+        // \n insertions
+        {
+            var root = try Leaf.new(a, "const", true, false);
+            root, _, _ = try root.insertChars(a, 5, "\n");
+            const root_dbg_str =
+                \\2 2/6/5
+                \\  1 B| `const` |E
+                \\  1 B| ``
+            ;
+            try eqStr(root_dbg_str, try root.debugPrint());
+
+            root, _, _ = try root.insertChars(a, 6, "\n");
+            const root2_str =
+                \\3 3/7/5
+                \\  1 B| `const` |E
+                \\  2 2/1/0
+                \\    1 B| `` |E
+                \\    1 B| ``
+            ;
+            try eqStr(root2_str, try root.debugPrint());
+
+            root, _, _ = try root.insertChars(a, 6, "\n");
+            const root3_str =
+                \\4 4/8/5
+                \\  1 B| `const` |E
+                \\  3 3/2/0
+                \\    2 2/2/0
+                \\      1 B| `` |E
+                \\      1 B| `` |E
+                \\    1 B| ``
+            ;
+            try eqStr(root3_str, try root.debugPrint());
+        }
+        {
+            var root = try Node.fromString(a, "one\n\n22", true);
+            root, _, _ = try root.insertChars(a, 3, "\n");
+            const root_dbg_str =
+                \\3 4/8/5
+                \\  2 2/5/3
+                \\    1 B| `one` |E
+                \\    1 B| `` |E
+                \\  2 2/3/2
+                \\    1 B| `` |E
+                \\    1 B| `22`
+            ;
+            try eqStr(root_dbg_str, try root.debugPrint());
+        }
+        {
+            var root = try Node.fromString(a, "one\n22", true);
+            root, _, _ = try root.insertChars(a, 3, "\n");
+            const root_dbg_str =
+                \\3 3/7/5
+                \\  2 2/5/3
+                \\    1 B| `one` |E
+                \\    1 B| `` |E
+                \\  1 B| `22`
+            ;
+            try eqStr(root_dbg_str, try root.debugPrint());
+        }
+        {
+            var root = try Node.fromString(a, "one\n22", true);
+            root, _, _ = try root.insertChars(a, 4, "\n");
+            const root_dbg_str =
+                \\3 3/7/5
+                \\  1 B| `one` |E
+                \\  2 2/3/2
+                \\    1 B| `` |E
+                \\    1 B| `22`
+            ;
+            try eqStr(root_dbg_str, try root.debugPrint());
         }
     }
 
