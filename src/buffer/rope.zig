@@ -3,6 +3,7 @@ pub const code_point = @import("code_point");
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
+const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqDeep = std.testing.expectEqualDeep;
 const eqStr = std.testing.expectEqualStrings;
@@ -1266,6 +1267,7 @@ pub const Node = union(enum) {
                 var new_leaves = try createLeavesByNewLine(cx.a, cx.buf);
                 if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
                 if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
+                const insert_single_new_line_char = eql(u8, cx.buf, "\n");
 
                 if (leaf.buf.len == 0) {
                     new_leaves[0].leaf.bol = leaf.bol;
@@ -1277,16 +1279,23 @@ pub const Node = union(enum) {
                 if (insert_at_start) {
                     new_leaves[0].leaf.bol = leaf.bol;
                     const left = try mergeLeaves(cx.a, new_leaves);
-                    const right = try Leaf.new(cx.a, leaf.buf, false, leaf.eol);
+
+                    const right_bol = if (insert_single_new_line_char) true else false;
+                    const right = try Leaf.new(cx.a, leaf.buf, right_bol, leaf.eol);
+
                     const replacement = try Node.new(cx.a, left, right);
                     return WalkMutResult{ .replace = replacement };
                 }
 
                 const insert_at_end = cx.current_index + leaf.buf.len == cx.target_index;
                 if (insert_at_end) {
+                    const left_eol = if (insert_single_new_line_char) true else false;
+                    const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, left_eol);
+
+                    if (insert_single_new_line_char) new_leaves[0].leaf.bol = true;
                     new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
-                    const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, false);
                     const right = try mergeLeaves(cx.a, new_leaves);
+
                     const replacement = try Node.new(cx.a, left, right);
                     return WalkMutResult{ .replace = replacement };
                 }
@@ -1427,6 +1436,38 @@ pub const Node = union(enum) {
                 \\  2 2/10/9
                 \\    1 B| `three` |E
                 \\    1 B| `four`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+
+        // \n at end of Leaf
+        {
+            const root = try Leaf.new(a, "const", true, false);
+            const new_root, _, _ = try root.insertChars(a, 5, "\n");
+            const new_root_debug_str =
+                \\2 2/6/5
+                \\  1 B| `const` |E
+                \\  1 B| ``
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+        {
+            const root = try Leaf.new(a, "const", true, false);
+            const new_root, _, _ = try root.insertChars(a, 0, "\n");
+            const new_root_debug_str =
+                \\2 2/6/5
+                \\  1 B| `` |E
+                \\  1 B| `const`
+            ;
+            try eqStr(new_root_debug_str, try new_root.debugPrint());
+        }
+        {
+            const root = try Leaf.new(a, "const", true, true);
+            const new_root, _, _ = try root.insertChars(a, 0, "\n");
+            const new_root_debug_str =
+                \\2 2/7/5
+                \\  1 B| `` |E
+                \\  1 B| `const` |E
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
