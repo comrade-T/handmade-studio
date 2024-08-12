@@ -62,8 +62,20 @@ pub const Window = struct {
         self.insertCharsInternal(chars) catch @panic("error calling Window.insertCharsInternal()");
     }
 
-    pub fn doCustomStuffs(trigger: []const u8) void {
-        std.debug.print("Window doing custom stuffs due to trigger!! {s}\n", .{trigger});
+    pub fn doCustomStuffs(self: *@This(), trigger: []const u8) !void {
+        if (eql(u8, trigger, "up")) self.cursor.up(1);
+        if (eql(u8, trigger, "down")) self.cursor.down(1, self.vendor.buffer.roperoot.weights().bols);
+        if (eql(u8, trigger, "left")) self.cursor.left(1);
+        if (eql(u8, trigger, "right")) {
+            const buf_size = 1;
+            var buf: [buf_size]u8 = undefined;
+            const start_byte = try self.vendor.buffer.roperoot.getByteOffsetOfPosition(self.cursor.line, self.cursor.col);
+            const content, const eol = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &buf, buf_size);
+            if (eol)
+                self.cursor.set(self.cursor.line + 1, 0)
+            else if (content.len > 0)
+                self.cursor.set(self.cursor.line, self.cursor.col + 1);
+        }
     }
 
     fn insertCharsInternal(self: *@This(), chars: []const u8) !void {
