@@ -27,19 +27,6 @@ pub const Window = struct {
     x: i32,
     y: i32,
 
-    // Taking in a `ContentVendor` feels weird here.
-    // So there's another `orchestrator` in place...
-
-    // What am I trying to accomplish with @This?
-
-    // An API to spawn windows
-    // - Window.spawn(.{ .x = 10, .y = 20 }) perhaps?
-
-    // An API to move around the cursor(s)
-    // An API to interact with the Buffer (insert, delete)
-    // ==> These are managed internally, not externally.
-    //     @This receives input triggers, and act accordingly.
-
     pub fn spawn(a: Allocator, vendor: *ContentVendor, x: i32, y: i32) !*@This() {
         const self = try a.create(@This());
         self.* = .{
