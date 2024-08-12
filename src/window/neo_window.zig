@@ -63,41 +63,69 @@ pub const Window = struct {
     }
 
     pub fn doCustomStuffs(self: *@This(), trigger: []const u8) !void {
-        if (eql(u8, trigger, "up")) self.moveLeft();
-        if (eql(u8, trigger, "down")) self.moveDown();
-        if (eql(u8, trigger, "left")) self.moveLeft();
-        if (eql(u8, trigger, "right")) try self.moveRight();
+        if (eql(u8, trigger, "up")) self.moveCursorLeft();
+        if (eql(u8, trigger, "down")) self.moveCursorDown();
+        if (eql(u8, trigger, "left")) self.moveCursorLeft();
+        if (eql(u8, trigger, "right")) try self.moveCursorRight();
     }
 
     ///////////////////////////// Cursor Movement
 
-    fn moveUp(self: *@This()) void {
+    fn moveCursorUp(self: *@This()) void {
         self.cursor.up(1);
     }
 
-    fn moveDown(self: *@This()) void {
+    fn moveCursorDown(self: *@This()) void {
         self.cursor.down(1, self.vendor.buffer.roperoot.weights().bols);
     }
 
-    fn moveLeft(self: *@This()) void {
+    fn moveCursorLeft(self: *@This()) void {
         self.cursor.left(1);
     }
 
-    fn moveRight(self: *@This()) !void {
+    fn moveCursorRight(self: *@This()) !void {
         const buf_size = 1;
         var buf: [buf_size]u8 = undefined;
         const start_byte = try self.vendor.buffer.roperoot.getByteOffsetOfPosition(self.cursor.line, self.cursor.col);
-        const content, const eol = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &buf, buf_size);
-        if (eol)
-            self.cursor.set(self.cursor.line + 1, 0)
-        else if (content.len > 0)
-            self.cursor.set(self.cursor.line, self.cursor.col + 1);
+        const content, _ = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &buf, buf_size);
+        if (content.len > 0) self.cursor.set(self.cursor.line, self.cursor.col + 1);
     }
-    test moveRight {
-        const win = try setupZigWindow("");
-        defer teardownWindow(win);
+    test moveCursorRight {
+        { // single line
+            const win = try setupZigWindow("const");
+            defer teardownWindow(win);
+            try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 1 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 2 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 3 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 4 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 5 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 5 }); // stays at 5
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 5 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 5 });
+        }
+        { // multi line
+            const win = try setupZigWindow("one\n22");
+            defer teardownWindow(win);
+            try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 1 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 2 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 3 });
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 3 }); // stays at 3
+            try testMoveCursorRight(win, Cursor{ .line = 0, .col = 3 });
 
-        // TODO:
+            win.cursor.set(1, 0);
+            try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
+            try testMoveCursorRight(win, Cursor{ .line = 1, .col = 1 });
+            try testMoveCursorRight(win, Cursor{ .line = 1, .col = 2 });
+            try testMoveCursorRight(win, Cursor{ .line = 1, .col = 2 }); // stays at 2
+            try testMoveCursorRight(win, Cursor{ .line = 1, .col = 2 });
+            try testMoveCursorRight(win, Cursor{ .line = 1, .col = 2 });
+        }
+    }
+    fn testMoveCursorRight(win: *Window, expected_cursor: Cursor) !void {
+        try win.moveCursorRight();
+        try eq(expected_cursor, win.cursor);
     }
 
     ///////////////////////////// Insert
