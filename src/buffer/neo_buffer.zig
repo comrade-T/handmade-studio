@@ -98,43 +98,59 @@ pub const Buffer = struct {
     test insertChars {
         // Insert only
         {
-            const buf = try Buffer.create(testing_allocator, .string, "const str =;");
-            defer buf.destroy();
             {
-                const new_line, const new_col = try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
-                try eq(3, new_line);
-                try eq(0, new_col);
-                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-                try eqStr(
-                    \\const str =
-                    \\    \\hello
-                    \\    \\world
-                    \\;
-                , content.items);
+                const buf = try Buffer.create(testing_allocator, .string, "const str =;");
+                defer buf.destroy();
+                {
+                    const new_line, const new_col = try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
+                    try eq(3, new_line);
+                    try eq(0, new_col);
+                    const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                    try eqStr(
+                        \\const str =
+                        \\    \\hello
+                        \\    \\world
+                        \\;
+                    , content.items);
+                }
+                {
+                    const new_line, const new_col = try buf.insertChars(" my", 1, 11);
+                    try eq(1, new_line);
+                    try eq(14, new_col);
+                    const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                    try eqStr(
+                        \\const str =
+                        \\    \\hello my
+                        \\    \\world
+                        \\;
+                    , content.items);
+                }
+                {
+                    const new_line, const new_col = try buf.insertChars("!", 2, 11);
+                    const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                    try eq(2, new_line);
+                    try eq(12, new_col);
+                    try eqStr(
+                        \\const str =
+                        \\    \\hello my
+                        \\    \\world!
+                        \\;
+                    , content.items);
+                }
             }
             {
-                const new_line, const new_col = try buf.insertChars(" my", 1, 11);
-                try eq(1, new_line);
-                try eq(14, new_col);
-                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-                try eqStr(
-                    \\const str =
-                    \\    \\hello my
-                    \\    \\world
-                    \\;
-                , content.items);
-            }
-            {
-                const new_line, const new_col = try buf.insertChars("!", 2, 11);
-                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-                try eq(2, new_line);
-                try eq(12, new_col);
-                try eqStr(
-                    \\const str =
-                    \\    \\hello my
-                    \\    \\world!
-                    \\;
-                , content.items);
+                const buf = try Buffer.create(testing_allocator, .string, "const");
+                defer buf.destroy();
+                {
+                    const new_line, const new_col = try buf.insertChars("\n", 0, 5);
+                    try eq(1, new_line);
+                    try eq(0, new_col);
+                    const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                    try eqStr(
+                        \\const
+                        \\
+                    , content.items);
+                }
             }
         }
 

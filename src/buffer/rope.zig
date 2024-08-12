@@ -1267,7 +1267,9 @@ pub const Node = union(enum) {
                 var new_leaves = try createLeavesByNewLine(cx.a, cx.buf);
                 if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
                 if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
+
                 const insert_single_new_line_char = eql(u8, cx.buf, "\n");
+                if (insert_single_new_line_char) cx.num_of_new_lines = 1;
 
                 if (leaf.buf.len == 0) {
                     new_leaves[0].leaf.bol = leaf.bol;
