@@ -67,7 +67,8 @@ pub const Window = struct {
     }
 
     fn insertCharsInternal(self: *@This(), chars: []const u8) !void {
-        _, _ = try self.vendor.buffer.insertChars(chars, self.cursor.line, self.cursor.col);
+        const new_line, const new_col = try self.vendor.buffer.insertChars(chars, self.cursor.line, self.cursor.col);
+        self.cursor.set(new_line, new_col);
     }
     test insertCharsInternal {
         var buf = try Buffer.create(testing_allocator, .string, "");
@@ -91,6 +92,24 @@ pub const Window = struct {
             const iter = try vendor.requestLines(0, 9999);
             defer iter.deinit();
             try testIter(iter, "co", "variable");
+        }
+        {
+            win.insertChars("n");
+            const iter = try vendor.requestLines(0, 9999);
+            defer iter.deinit();
+            try testIter(iter, "con", "variable");
+        }
+        {
+            win.insertChars("s");
+            const iter = try vendor.requestLines(0, 9999);
+            defer iter.deinit();
+            try testIter(iter, "cons", "variable");
+        }
+        {
+            win.insertChars("t");
+            const iter = try vendor.requestLines(0, 9999);
+            defer iter.deinit();
+            try testIter(iter, "const", "type.qualifier");
         }
     }
 };
