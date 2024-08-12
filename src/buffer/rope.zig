@@ -452,6 +452,16 @@ pub const Node = union(enum) {
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
                 const num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
+
+                if (leaf.buf.len == 0) {
+                    if (leaf.eol) {
+                        if (cx.bytes_written >= cx.buf_size) cx.buffer_overflowed = true;
+                        cx.found_eol = true;
+                        return WalkResult.stop;
+                    }
+                    return WalkResult.keep_walking;
+                }
+
                 if (num_of_bytes_to_not_include > leaf.buf.len) @panic("num_of_bytes_to_not_include > leaf.buf.len!");
                 var rest = leaf.buf[num_of_bytes_to_not_include..];
 
@@ -569,103 +579,6 @@ pub const Node = union(enum) {
         const result, const eol = root.getRestOfLine(index, &buf, buf_size);
         try eqStr(str, result);
         try eq(expected_eol, eol);
-    }
-
-    pub fn getLine(self: *const Node, a: Allocator, linenr: usize) !struct { ArrayList(u8), usize, usize } {
-        const GetLineCtx = struct {
-            target_linenr: usize,
-            current_linenr: usize = 0,
-            result_list: *ArrayList(u8),
-            should_stop: bool = false,
-            num_of_chars: usize = 0,
-
-            encountered_leaf: bool = false,
-            byte_offset: usize = 0,
-
-            fn walk(cx: *@This(), node: *const Node) WalkResult {
-                if (cx.should_stop) return WalkResult.stop;
-                switch (node.*) {
-                    .branch => |branch| {
-                        const left_end = cx.current_linenr + branch.left.weights().bols;
-                        var left_result = WalkResult.keep_walking;
-                        if (cx.target_linenr == cx.current_linenr or cx.target_linenr < left_end) left_result = cx.walk(branch.left);
-                        cx.current_linenr = left_end;
-
-                        if (!cx.encountered_leaf and cx.current_linenr <= cx.target_linenr) cx.byte_offset += branch.left.weights().len;
-
-                        const right_result = cx.walk(branch.right);
-                        return WalkResult.merge(left_result, right_result);
-                    },
-                    .leaf => |leaf| return cx.walker(&leaf),
-                }
-            }
-
-            fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
-                cx.encountered_leaf = true;
-                cx.result_list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
-                cx.num_of_chars += leaf.noc;
-                if (leaf.eol) {
-                    cx.should_stop = true;
-                    return WalkResult.stop;
-                }
-                return WalkResult.keep_walking;
-            }
-        };
-
-        if (linenr + 1 > self.weights().bols) return error.NotFound;
-        var result_list = ArrayList(u8).init(a);
-        var ctx = GetLineCtx{ .target_linenr = linenr, .result_list = &result_list };
-
-        const walk_result = ctx.walk(self);
-        if (walk_result.err) |err| {
-            result_list.deinit();
-            return err;
-        }
-        return .{ result_list, ctx.byte_offset, ctx.num_of_chars };
-    }
-
-    fn testGetLine(a: Allocator, root: *const Node, linenr: usize, str: []const u8, offset: usize, noc: usize) !void {
-        const line, const o, const n = try root.getLine(a, linenr);
-        try eqStr(str, line.items);
-        try eq(offset, o);
-        try eq(noc, n);
-    }
-    test getLine {
-        const a = idc_if_it_leaks;
-        { // can get line that contained in 1 single Leaf
-            const root = try Node.fromString(a, "one\ntwo\nthree\nfour", true);
-            try testGetLine(a, root, 0, "one", 0, 3);
-            try testGetLine(a, root, 1, "two", 4, 3);
-            try testGetLine(a, root, 2, "three", 8, 5);
-            try testGetLine(a, root, 3, "four", 14, 4);
-        }
-        // can get line that spans across multiple Leaves
-        {
-            const old = try Node.fromString(a, "one\ntwo\nthree", true);
-            const root, _, _ = try old.insertChars(a, 3, "_1");
-            try testGetLine(a, root, 0, "one_1", 0, 5);
-            try testGetLine(a, root, 1, "two", 6, 3);
-            try testGetLine(a, root, 2, "three", 10, 5);
-            try shouldErr(error.NotFound, root.getLine(a, 3));
-        }
-        {
-            const one = try Leaf.new(a, "one", true, false);
-            const two = try Leaf.new(a, "_two", false, false);
-            const three = try Leaf.new(a, "_three", false, true);
-            const four = try Leaf.new(a, "four", true, true);
-            const two_three = try Node.new(a, two, three);
-            const one_two_three = try Node.new(a, one, two_three);
-            {
-                const root = try Node.new(a, one_two_three, four);
-                try testGetLine(a, root, 0, "one_two_three", 0, 13);
-                try testGetLine(a, root, 1, "four", 14, 4);
-            }
-            {
-                const root = try Node.new(a, four, one_two_three);
-                try testGetLine(a, root, 0, "four", 0, 4);
-                try testGetLine(a, root, 1, "one_two_three", 5, 13);
-            }
-        }
     }
 
     ///////////////////////////// Balancing
