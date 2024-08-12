@@ -118,7 +118,10 @@ pub const ContentVendor = struct {
 
                 .highlights = null,
             };
-            try self.updateLineContent();
+            self.updateLineContent() catch |err| switch (err) {
+                error.EndOfDocument => {},
+                else => @panic("error calling self.updateLineContent() on CurrentJobIterator.init()"),
+            };
             try self.updateLineHighlights();
             return self;
         }
