@@ -50,8 +50,8 @@ pub const Window = struct {
     }
 
     pub fn doCustomStuffs(self: *@This(), trigger: []const u8) !void {
-        if (eql(u8, trigger, "up")) self.moveCursorLeft();
-        if (eql(u8, trigger, "down")) self.moveCursorDown();
+        if (eql(u8, trigger, "up")) try self.moveCursorUp();
+        if (eql(u8, trigger, "down")) try self.moveCursorDown();
         if (eql(u8, trigger, "left")) self.moveCursorLeft();
         if (eql(u8, trigger, "right")) try self.moveCursorRight();
         if (eql(u8, trigger, "backspace")) try self.backspace();
@@ -59,12 +59,19 @@ pub const Window = struct {
 
     ///////////////////////////// Cursor Movement
 
-    fn moveCursorUp(self: *@This()) void {
-        self.cursor.up(1);
+    fn moveCursorUp(self: *@This()) !void {
+        if (self.cursor.line == 0) return;
+        const new_line_noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line - 1);
+        const new_col = if (self.cursor.col > new_line_noc) new_line_noc else self.cursor.col;
+        self.cursor.set(self.cursor.line - 1, new_col);
     }
 
-    fn moveCursorDown(self: *@This()) void {
-        self.cursor.down(1, self.vendor.buffer.roperoot.weights().bols);
+    fn moveCursorDown(self: *@This()) !void {
+        const new_line = self.cursor.line + 1;
+        if (new_line >= self.vendor.buffer.roperoot.weights().bols) return;
+        const new_line_noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(new_line);
+        const new_col = if (self.cursor.col > new_line_noc) new_line_noc else self.cursor.col;
+        self.cursor.set(new_line, new_col);
     }
 
     fn moveCursorLeft(self: *@This()) void {
@@ -72,11 +79,8 @@ pub const Window = struct {
     }
 
     fn moveCursorRight(self: *@This()) !void {
-        const buf_size = 1;
-        var buf: [buf_size]u8 = undefined;
-        const start_byte = try self.vendor.buffer.roperoot.getByteOffsetOfPosition(self.cursor.line, self.cursor.col);
-        const content, _ = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &buf, buf_size);
-        if (content.len > 0) self.cursor.set(self.cursor.line, self.cursor.col + 1);
+        const noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line);
+        self.cursor.right(1, noc);
     }
     test moveCursorRight {
         { // single line
