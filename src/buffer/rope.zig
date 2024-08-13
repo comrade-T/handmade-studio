@@ -17,8 +17,8 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Represents the result of a walk operation on a Node.
-/// This walk operation never mutates the current Node and may create new Nodes.
+/// Represents the result of a walk operation on a Leaf where new Nodes might be created.
+/// Used to create a new version of the document (insert, delete).
 const WalkMutResult = struct {
     keep_walking: bool = false,
     found: bool = false,
@@ -79,8 +79,8 @@ const WalkMutResult = struct {
     }
 };
 
-/// Represents the result of a walk operation on a Node.
-/// This walk operation should never mutate the current Node or create a new Node.
+/// Represents the result of a walk operation on a Leaf where there will be 0 new Nodes created in the process.
+/// Used to get information about the document.
 const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
@@ -90,7 +90,6 @@ const WalkResult = struct {
     const stop = WalkResult{ .keep_walking = false };
     const found = WalkResult{ .found = true };
 
-    /// Produce a merged walk result from `self` and another WalkResult.
     fn merge(self: WalkResult, right: WalkResult) WalkResult {
         return WalkResult{
             .err = if (self.err) |_| self.err else right.err,
@@ -106,7 +105,8 @@ const WalkResult = struct {
 };
 
 /// Primary data structure to manage an editable text buffer.
-/// Can either be a Branch or a Leaf.
+/// Nodes are always immutable.
+/// For edit operations, new nodes and trees are created.
 pub const Node = union(enum) {
     branch: Branch,
     leaf: Leaf,
@@ -250,7 +250,7 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Get Content
 
-    // Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
+    /// Walk through entire tree, append each Leaf content to ArrayList(u8), then return that ArrayList(u8).
     pub fn getContent(self: *const Node, a: Allocator) !ArrayList(u8) {
         const GetDocumentCtx = struct {
             result_list: *ArrayList(u8),
@@ -299,6 +299,8 @@ pub const Node = union(enum) {
         }
     }
 
+    /// Walk to Leaf at `start_byte`, write Leaf contents from `start_byte` to `end_byte`
+    /// to given []u8 buffer or until it's full.
     pub fn getRange(self: *const Node, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) ![]u8 {
         const GetRangeCtx = struct {
             start_byte: usize,
@@ -424,6 +426,7 @@ pub const Node = union(enum) {
         try eqStr(str, result);
     }
 
+    /// Walk to Leaf at `start_byte`, write Leaf contents until reaches `eol` to given []u8 buffer or until it's full.
     pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) struct { []u8, bool } {
         const GetRestOfLineCtx = struct {
             start_byte: usize,
@@ -1134,23 +1137,23 @@ pub const Node = union(enum) {
     pub fn insertChars(
         self: *const Node,
         a: Allocator,
-        target_index: usize,
+        start_byte: usize,
         chars: []const u8,
     ) !struct { *const Node, usize, usize } {
         const InsertCharsCtx = struct {
             a: Allocator,
             buf: []const u8,
-            target_index: usize,
+            start_byte: usize,
             current_index: usize = 0,
             num_of_new_lines: usize = 0,
             last_new_leaf_noc: usize = 0,
 
             fn walkToInsert(ctx: *@This(), node: *const Node) WalkMutResult {
-                if (ctx.current_index > ctx.target_index) return WalkMutResult.stop;
+                if (ctx.current_index > ctx.start_byte) return WalkMutResult.stop;
                 switch (node.*) {
                     .branch => |*branch| {
                         const left_end = ctx.current_index + branch.left.weights().len;
-                        if (ctx.target_index < left_end) {
+                        if (ctx.start_byte < left_end) {
                             const left_result = ctx.walkToInsert(branch.left);
                             return WalkMutResult{
                                 .err = left_result.err,
@@ -1196,7 +1199,7 @@ pub const Node = union(enum) {
                     return WalkMutResult{ .replace = replacement };
                 }
 
-                const insert_at_start = cx.current_index == cx.target_index;
+                const insert_at_start = cx.current_index == cx.start_byte;
                 if (insert_at_start) {
                     new_leaves[0].leaf.bol = leaf.bol;
                     const left = try mergeLeaves(cx.a, new_leaves);
@@ -1208,7 +1211,7 @@ pub const Node = union(enum) {
                     return WalkMutResult{ .replace = replacement };
                 }
 
-                const insert_at_end = cx.current_index + leaf.buf.len == cx.target_index;
+                const insert_at_end = cx.current_index + leaf.buf.len == cx.start_byte;
                 if (insert_at_end) {
                     const left_eol = if (insert_single_new_line_char) true else false;
                     const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, left_eol);
@@ -1222,7 +1225,7 @@ pub const Node = union(enum) {
                 }
 
                 // insert in middle
-                const split_index = cx.target_index - cx.current_index;
+                const split_index = cx.start_byte - cx.current_index;
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
 
@@ -1252,10 +1255,11 @@ pub const Node = union(enum) {
                 return WalkMutResult{ .replace = merged };
             }
         };
+
         if (chars.len == 0) return error.EmptyStringNotAllowed;
-        if (target_index > self.weights().len) return error.IndexOutOfBounds;
+        if (start_byte > self.weights().len) return error.IndexOutOfBounds;
         const buf = try a.dupe(u8, chars);
-        var ctx = InsertCharsCtx{ .a = a, .buf = buf, .target_index = target_index };
+        var ctx = InsertCharsCtx{ .a = a, .buf = buf, .start_byte = start_byte };
         const walk_result = ctx.walkToInsert(self);
         if (walk_result.err) |e| return e;
         return .{ walk_result.replace.?, ctx.num_of_new_lines, ctx.last_new_leaf_noc };

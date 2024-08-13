@@ -123,25 +123,24 @@ pub const Window = struct {
         try self.vendor.buffer.deleteRange(.{ self.cursor.line, self.cursor.col }, .{ self.cursor.line, self.cursor.col + 1 });
     }
     test backspace {
-        const win = try setupZigWindow("");
-        defer teardownWindow(win);
         {
+            const win = try setupZigWindow("");
+            defer teardownWindow(win);
+
             win._insertOneCharAfterAnother("var");
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "var", "type.qualifier");
-        }
-        {
+            try testIterShort(win, "var", "type.qualifier");
+
             try win.backspace();
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "va", "variable");
-        }
-        {
+            try testIterShort(win, "va", "variable");
+
             try win.backspace();
-            const iter = try win.vendor.requestLines(0, 9999);
-            defer iter.deinit();
-            try testIter(iter, "v", "variable");
+            try testIterShort(win, "v", "variable");
+
+            try win.backspace();
+            try testIterShort(win, null, "variable");
+
+            try win.backspace();
+            try testIterShort(win, null, "variable");
         }
     }
 
@@ -233,6 +232,12 @@ pub const Window = struct {
 
     fn _insertOneCharAfterAnother(win: *Window, chars: []const u8) void {
         for (0..chars.len) |i| win.insertChars(chars[i .. i + 1]);
+    }
+
+    fn testIterShort(win: *Window, expected_str: ?[]const u8, expected_hlgroup: []const u8) !void {
+        const iter = try win.vendor.requestLines(0, 9999);
+        defer iter.deinit();
+        try testIter(iter, expected_str, expected_hlgroup);
     }
 
     fn setupZigWindow(source: []const u8) !*@This() {
