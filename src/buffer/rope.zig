@@ -456,7 +456,7 @@ pub const Node = union(enum) {
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
-                const num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
+                var num_of_bytes_to_not_include = cx.start_byte -| cx.current_index;
 
                 if (leaf.buf.len == 0) {
                     if (leaf.eol) {
@@ -467,6 +467,7 @@ pub const Node = union(enum) {
                     return WalkResult.keep_walking;
                 }
 
+                if (num_of_bytes_to_not_include > leaf.buf.len and leaf.eol) num_of_bytes_to_not_include -= 1;
                 if (num_of_bytes_to_not_include > leaf.buf.len) @panic("num_of_bytes_to_not_include > leaf.buf.len!");
                 var rest = leaf.buf[num_of_bytes_to_not_include..];
 

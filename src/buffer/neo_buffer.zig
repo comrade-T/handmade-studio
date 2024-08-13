@@ -234,34 +234,53 @@ pub const Buffer = struct {
     }
     test deleteRange {
         { // content only
-            var buf = try Buffer.create(testing_allocator, .string, "const");
-            defer buf.destroy();
-            try buf.deleteRange(.{ 0, 0 }, .{ 0, 1 });
-            const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-            try eqStr("onst", content.items);
+            {
+                var buf = try Buffer.create(testing_allocator, .string, "const");
+                defer buf.destroy();
+                try buf.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr("onst", content.items);
+            }
+            {
+                var buf = try Buffer.create(testing_allocator, .string, "var\nc");
+                defer buf.destroy();
+                try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr("var\n", content.items);
+            }
         }
         { // with Tree Sitter
-            var buf = try Buffer.create(testing_allocator, .string, "const std");
-            defer buf.destroy();
-            try buf.initiateTreeSitter(.zig);
-            try eqStr(
-                \\source_file
-                \\  Decl
-                \\    VarDecl
-                \\      "const"
-                \\      IDENTIFIER
-                \\      ";"
-            , try buf.tstree.?.getRootNode().debugPrint());
+            {
+                var buf = try Buffer.create(testing_allocator, .string, "const std");
+                defer buf.destroy();
+                try buf.initiateTreeSitter(.zig);
+                try eqStr(
+                    \\source_file
+                    \\  Decl
+                    \\    VarDecl
+                    \\      "const"
+                    \\      IDENTIFIER
+                    \\      ";"
+                , try buf.tstree.?.getRootNode().debugPrint());
 
-            try buf.deleteRange(.{ 0, 5 }, .{ 0, 9 });
+                try buf.deleteRange(.{ 0, 5 }, .{ 0, 9 });
 
-            const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-            try eqStr("const", content.items);
-            try eqStr(
-                \\source_file
-                \\  ERROR
-                \\    "const"
-            , try buf.tstree.?.getRootNode().debugPrint());
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr("const", content.items);
+                try eqStr(
+                    \\source_file
+                    \\  ERROR
+                    \\    "const"
+                , try buf.tstree.?.getRootNode().debugPrint());
+            }
+            {
+                var buf = try Buffer.create(testing_allocator, .string, "var\nc");
+                defer buf.destroy();
+                try buf.initiateTreeSitter(.zig);
+                try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
+                const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
+                try eqStr("var\n", content.items);
+            }
         }
     }
 
