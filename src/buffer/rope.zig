@@ -810,32 +810,15 @@ pub const Node = union(enum) {
             ;
             try eqStr(balanced_root_debug_str, try balanced_root.debugPrint());
         }
-        // {
-        //     const source = "abcdefghijklmnopqrstuvwxyz1234567890";
-        //     const root = try __inputCharsAndRebalanceOneAfterAnother(a, source, 100);
-        //     const balanced_root = try root.balance(a);
-        //     try eqStr("doesn't matter, just checking the output since it's too large", try balanced_root.debugPrint());
-        // }
     }
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
         var root = try Node.fromString(a, "", true);
-        for (0..chars.len) |i| {
-            root, _, _ = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
-            // if (i == chars.len - 1) std.debug.print("finished __inputCharsOneAfterAnother i == {d}\n", .{i});
-        }
+        for (0..chars.len) |i| root, _, _ = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
         return root;
     }
-    fn __inputCharsAndRebalanceOneAfterAnother(a: Allocator, chars: []const u8, multiplier: usize) !*const Node {
-        var root = try Node.fromString(a, "", false);
-        var count: usize = 0;
-        for (0..multiplier) |_| {
-            for (0..chars.len) |i| {
-                root = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
-                root = try root.balance(a);
-                count += 1;
-            }
-        }
-        // std.debug.print("finished __inputCharsAndRebalanceOneAfterAnother count == {d}\n", .{count});
+    fn __inputCharsOneAfterAnotherAt0Position(a: Allocator, chars: []const u8) !*const Node {
+        var root = try Node.fromString(a, "", true);
+        for (0..chars.len) |i| root, _, _ = try root.insertChars(a, 0, chars[i .. i + 1]);
         return root;
     }
 
@@ -1331,6 +1314,10 @@ pub const Node = union(enum) {
                         const replacement = try Node.new(cx.a, left, right);
                         return WalkMutResult{ .replace = replacement };
                     }
+                    if (new_leaves.len == 1) {
+                        const replacement = try Leaf.new(cx.a, new_leaves[0].leaf.buf, leaf.bol, leaf.eol);
+                        return WalkMutResult{ .replace = replacement };
+                    }
                     new_leaves[0].leaf.bol = leaf.bol;
                     const replacement = try mergeLeaves(cx.a, new_leaves);
                     return WalkMutResult{ .replace = replacement };
@@ -1691,6 +1678,80 @@ pub const Node = union(enum) {
             ;
             try eqStr(root_dbg_str, try root.debugPrint());
         }
+
+        // insert \n at start of document
+        {
+            var root = try Node.fromString(a, "", true);
+            root, _, _ = try root.insertChars(a, 0, "\n");
+            const root_dbg_str =
+                \\2 2/1/0
+                \\  1 B| `` |E
+                \\  1 B| ``
+            ;
+            try eqStr(root_dbg_str, try root.debugPrint());
+
+            root, _, _ = try root.insertChars(a, 0, "\n");
+            const root_dbg_str2 =
+                \\3 3/2/0
+                \\  2 2/2/0
+                \\    1 B| `` |E
+                \\    1 B| `` |E
+                \\  1 B| ``
+            ;
+            try eqStr(root_dbg_str2, try root.debugPrint());
+        }
+        {
+            var root = try Node.fromString(a, "", true);
+            root, _, _ = try root.insertChars(a, 0, "4");
+            root, _, _ = try root.insertChars(a, 0, "4");
+            root, _, _ = try root.insertChars(a, 0, "4");
+            root, _, _ = try root.insertChars(a, 0, "4");
+            root, _, _ = try root.insertChars(a, 0, "\n");
+            const root_dbg_str =
+                \\5 2/5/4
+                \\  4 2/4/3
+                \\    3 2/3/2
+                \\      2 2/2/1
+                \\        1 B| `` |E
+                \\        1 B| `4`
+                \\      1 `4`
+                \\    1 `4`
+                \\  1 `4`
+            ;
+            try eqStr(root_dbg_str, try root.debugPrint());
+            {
+                root, _, _ = try root.insertChars(a, 0, "3");
+                const str =
+                    \\5 2/6/5
+                    \\  4 2/5/4
+                    \\    3 2/4/3
+                    \\      2 2/3/2
+                    \\        1 B| `3` |E
+                    \\        1 B| `4`
+                    \\      1 `4`
+                    \\    1 `4`
+                    \\  1 `4`
+                ;
+                try eqStr(str, try root.debugPrint());
+            }
+            {
+                root, _, _ = try root.insertChars(a, 0, "3");
+                const str =
+                    \\6 2/7/6
+                    \\  5 2/6/5
+                    \\    4 2/5/4
+                    \\      3 2/4/3
+                    \\        2 1/3/2
+                    \\          1 B| `3`
+                    \\          1 `3` |E
+                    \\        1 B| `4`
+                    \\      1 `4`
+                    \\    1 `4`
+                    \\  1 `4`
+                ;
+                try eqStr(str, try root.debugPrint());
+            }
+        }
     }
 
     ///////////////////////////// Get Byte Offset from Position
@@ -1920,6 +1981,44 @@ pub const Node = union(enum) {
             try eq(8, root.getByteOffsetOfPosition(2, 3));
             try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
         }
+        // {
+        //     const reverse_input_sequence = "4444\n333\n22\n1";
+        //     const root = try __inputCharsOneAfterAnotherAt0Position(a, reverse_input_sequence);
+        //     const root_debug_str =
+        //         \\10 4/13/10
+        //         \\  1 B| `1` |E
+        //         \\  9 3/11/9
+        //         \\    1 B| `2`
+        //         \\    8 2/10/8
+        //         \\      1 `2` |E
+        //         \\      7 2/8/7
+        //         \\        1 B| `3`
+        //         \\        6 1/7/6
+        //         \\          1 `3`
+        //         \\          5 1/6/5
+        //         \\            1 `3` |E
+        //         \\            4 1/4/4
+        //         \\              1 B| `4`
+        //         \\              3 0/3/3
+        //         \\                1 `4`
+        //         \\                2 0/2/2
+        //         \\                  1 `4`
+        //         \\                  1 `4`
+        //     ;
+        //     try eqStr(root_debug_str, try root.debugPrint());
+        //     try eq(0, root.getByteOffsetOfPosition(0, 0));
+        //     try eq(1, root.getByteOffsetOfPosition(0, 1));
+        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 2));
+        //     try eq(2, root.getByteOffsetOfPosition(1, 0));
+        //     try eq(3, root.getByteOffsetOfPosition(1, 1));
+        //     try eq(4, root.getByteOffsetOfPosition(1, 2));
+        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 3));
+        //     try eq(5, root.getByteOffsetOfPosition(2, 0));
+        //     try eq(6, root.getByteOffsetOfPosition(2, 1));
+        //     try eq(7, root.getByteOffsetOfPosition(2, 2));
+        //     try eq(8, root.getByteOffsetOfPosition(2, 3));
+        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
+        // }
     }
 
     ///////////////////////////// Node Info
