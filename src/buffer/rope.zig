@@ -1304,51 +1304,60 @@ pub const Node = union(enum) {
                 if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
                 if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
 
-                const insert_single_new_line_char = eql(u8, cx.buf, "\n");
-                if (insert_single_new_line_char) cx.num_of_new_lines = 1;
+                const yep_newline = eql(u8, cx.buf, "\n");
+                if (yep_newline) cx.num_of_new_lines = 1;
 
-                if (leaf.buf.len == 0) {
-                    if (insert_single_new_line_char) {
-                        const left = try Leaf.new(cx.a, "", true, true);
-                        const right = try Leaf.new(cx.a, "", true, leaf.eol);
-                        const replacement = try Node.new(cx.a, left, right);
-                        return WalkMutResult{ .replace = replacement };
-                    }
-                    if (new_leaves.len == 1) {
-                        const replacement = try Leaf.new(cx.a, new_leaves[0].leaf.buf, leaf.bol, leaf.eol);
-                        return WalkMutResult{ .replace = replacement };
-                    }
-                    new_leaves[0].leaf.bol = leaf.bol;
-                    const replacement = try mergeLeaves(cx.a, new_leaves);
-                    return WalkMutResult{ .replace = replacement };
-                }
+                if (leaf.buf.len == 0) return try _leafBufHasNoText(cx, leaf, new_leaves, yep_newline);
 
                 const insert_at_start = cx.current_index == cx.start_byte;
-                if (insert_at_start) {
-                    new_leaves[0].leaf.bol = leaf.bol;
-                    const left = try mergeLeaves(cx.a, new_leaves);
-
-                    const right_bol = if (insert_single_new_line_char) true else false;
-                    const right = try Leaf.new(cx.a, leaf.buf, right_bol, leaf.eol);
-
-                    const replacement = try Node.new(cx.a, left, right);
-                    return WalkMutResult{ .replace = replacement };
-                }
+                if (insert_at_start) return try _insertAtStart(cx, leaf, new_leaves, yep_newline);
 
                 const insert_at_end = cx.current_index + leaf.buf.len == cx.start_byte;
-                if (insert_at_end) {
-                    const left_eol = if (insert_single_new_line_char) true else false;
-                    const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, left_eol);
+                if (insert_at_end) return try _insertAtEnd(cx, leaf, new_leaves, yep_newline);
 
-                    if (insert_single_new_line_char) new_leaves[0].leaf.bol = true;
-                    new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
-                    const right = try mergeLeaves(cx.a, new_leaves);
+                return try _insertInMiddle(cx, leaf, new_leaves);
+            }
 
+            fn _leafBufHasNoText(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
+                if (yep_newline) {
+                    const left = try Leaf.new(cx.a, "", true, true);
+                    const right = try Leaf.new(cx.a, "", true, leaf.eol);
                     const replacement = try Node.new(cx.a, left, right);
                     return WalkMutResult{ .replace = replacement };
                 }
+                if (new_leaves.len == 1) {
+                    const replacement = try Leaf.new(cx.a, new_leaves[0].leaf.buf, leaf.bol, leaf.eol);
+                    return WalkMutResult{ .replace = replacement };
+                }
+                new_leaves[0].leaf.bol = leaf.bol;
+                const replacement = try mergeLeaves(cx.a, new_leaves);
+                return WalkMutResult{ .replace = replacement };
+            }
 
-                // insert in middle
+            fn _insertAtStart(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
+                new_leaves[0].leaf.bol = leaf.bol;
+                const left = try mergeLeaves(cx.a, new_leaves);
+
+                const right_bol = if (yep_newline) true else false;
+                const right = try Leaf.new(cx.a, leaf.buf, right_bol, leaf.eol);
+
+                const replacement = try Node.new(cx.a, left, right);
+                return WalkMutResult{ .replace = replacement };
+            }
+
+            fn _insertAtEnd(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
+                const left_eol = if (yep_newline) true else false;
+                const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, left_eol);
+
+                if (yep_newline) new_leaves[0].leaf.bol = true;
+                new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
+                const right = try mergeLeaves(cx.a, new_leaves);
+
+                const replacement = try Node.new(cx.a, left, right);
+                return WalkMutResult{ .replace = replacement };
+            }
+
+            fn _insertInMiddle(cx: *@This(), leaf: *const Leaf, new_leaves: []Node) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index;
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
