@@ -119,16 +119,14 @@ pub const Window = struct {
     ///////////////////////////// Delete
 
     fn backspace(self: *@This()) !void {
-        try self.vendor.buffer.deleteRange(.{ self.cursor.line, self.cursor.col -| 1 }, .{ self.cursor.line, self.cursor.col });
         self.cursor.left(1);
+        try self.vendor.buffer.deleteRange(.{ self.cursor.line, self.cursor.col }, .{ self.cursor.line, self.cursor.col + 1 });
     }
     test backspace {
         const win = try setupZigWindow("");
         defer teardownWindow(win);
         {
-            win.insertChars("v");
-            win.insertChars("a");
-            win.insertChars("r");
+            win._insertOneCharAfterAnother("var");
             const iter = try win.vendor.requestLines(0, 9999);
             defer iter.deinit();
             try testIter(iter, "var", "type.qualifier");
@@ -192,11 +190,7 @@ pub const Window = struct {
             const win = try setupZigWindow("");
             defer teardownWindow(win);
             {
-                win.insertChars("c");
-                win.insertChars("o");
-                win.insertChars("n");
-                win.insertChars("s");
-                win.insertChars("t");
+                win._insertOneCharAfterAnother("const");
                 const iter = try win.vendor.requestLines(0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
@@ -237,6 +231,10 @@ pub const Window = struct {
 
     ///////////////////////////// Test Helpers
 
+    fn _insertOneCharAfterAnother(win: *Window, chars: []const u8) void {
+        for (0..chars.len) |i| win.insertChars(chars[i .. i + 1]);
+    }
+
     fn setupZigWindow(source: []const u8) !*@This() {
         var buf = try Buffer.create(testing_allocator, .string, source);
         try buf.initiateTreeSitter(.zig);
@@ -244,6 +242,7 @@ pub const Window = struct {
         const win = try Window.spawn(testing_allocator, vendor, 100, 100);
         return win;
     }
+
     fn teardownWindow(win: *Window) void {
         win.vendor.buffer.destroy();
         win.vendor.deinit();
