@@ -86,6 +86,8 @@ const WalkResult = struct {
     found: bool = false,
     err: ?anyerror = null,
 
+    const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkResult;
+
     const keep_walking = WalkResult{ .keep_walking = true };
     const stop = WalkResult{ .keep_walking = false };
     const found = WalkResult{ .found = true };
@@ -528,6 +530,47 @@ pub const Node = union(enum) {
                 try testGetRestOfLine(root, buf_size, 9, "three", false);
                 try testGetRestOfLine(root, buf_size, 10, "hree", false);
             }
+            {
+                const root = try __inputCharsOneAfterAnother(a, "1\n22\n333\n4444");
+                const root_debug_str =
+                    \\10 4/13/10
+                    \\  1 B| `1` |E
+                    \\  9 3/11/9
+                    \\    1 B| `2`
+                    \\    8 2/10/8
+                    \\      1 `2` |E
+                    \\      7 2/8/7
+                    \\        1 B| `3`
+                    \\        6 1/7/6
+                    \\          1 `3`
+                    \\          5 1/6/5
+                    \\            1 `3` |E
+                    \\            4 1/4/4
+                    \\              1 B| `4`
+                    \\              3 0/3/3
+                    \\                1 `4`
+                    \\                2 0/2/2
+                    \\                  1 `4`
+                    \\                  1 `4`
+                ;
+                try eqStr(root_debug_str, try root.debugPrint());
+                try testGetRestOfLine(root, buf_size, 0, "1", true);
+                try testGetRestOfLine(root, buf_size, 1, "", true);
+                try testGetRestOfLine(root, buf_size, 2, "22", true);
+                try testGetRestOfLine(root, buf_size, 3, "2", true);
+                try testGetRestOfLine(root, buf_size, 4, "", true);
+                try testGetRestOfLine(root, buf_size, 5, "333", true);
+                try testGetRestOfLine(root, buf_size, 6, "33", true);
+                try testGetRestOfLine(root, buf_size, 7, "3", true);
+                try testGetRestOfLine(root, buf_size, 8, "", true);
+                try testGetRestOfLine(root, buf_size, 9, "4444", false);
+                try testGetRestOfLine(root, buf_size, 10, "444", false);
+                try testGetRestOfLine(root, buf_size, 11, "44", false);
+                try testGetRestOfLine(root, buf_size, 12, "4", false);
+                try testGetRestOfLine(root, buf_size, 13, "", false);
+                try testGetRestOfLine(root, buf_size, 14, "", false);
+                try testGetRestOfLine(root, buf_size, 999, "", false);
+            }
         }
         { // buf_size overflow
             {
@@ -582,6 +625,100 @@ pub const Node = union(enum) {
         const result, const eol = root.getRestOfLine(index, &buf, buf_size);
         try eqStr(str, result);
         try eq(expected_eol, eol);
+    }
+
+    ///////////////////////////// getNumOfCharsOfLine
+
+    pub fn getNumOfCharsOfLine(self: *const Node, line: usize) !u32 {
+        const GetNumOfCharsOfLineCtx = struct {
+            total_noc: u32 = 0,
+            fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkResult {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                ctx.total_noc += leaf.noc;
+                if (leaf.eol) return WalkResult.stop;
+                return WalkResult.keep_walking;
+            }
+        };
+
+        if (line > self.weights().bols) return error.LineOutOfBounds;
+        var ctx = GetNumOfCharsOfLineCtx{};
+        const walk_result = self.walkLine(line, GetNumOfCharsOfLineCtx.walker, &ctx);
+        if (walk_result.err) |err| return err;
+        return ctx.total_noc;
+    }
+    test getNumOfCharsOfLine {
+        const a = idc_if_it_leaks;
+        {
+            const root = try Node.fromString(a, "1\n22\n333\n4444", true);
+            try eq(1, try root.getNumOfCharsOfLine(0));
+            try eq(2, try root.getNumOfCharsOfLine(1));
+            try eq(3, try root.getNumOfCharsOfLine(2));
+            try eq(4, try root.getNumOfCharsOfLine(3));
+        }
+        {
+            const root = try __inputCharsOneAfterAnother(a, "1\n22\n333\n4444");
+            const root_debug_str =
+                \\10 4/13/10
+                \\  1 B| `1` |E
+                \\  9 3/11/9
+                \\    1 B| `2`
+                \\    8 2/10/8
+                \\      1 `2` |E
+                \\      7 2/8/7
+                \\        1 B| `3`
+                \\        6 1/7/6
+                \\          1 `3`
+                \\          5 1/6/5
+                \\            1 `3` |E
+                \\            4 1/4/4
+                \\              1 B| `4`
+                \\              3 0/3/3
+                \\                1 `4`
+                \\                2 0/2/2
+                \\                  1 `4`
+                \\                  1 `4`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+            try eq(1, try root.getNumOfCharsOfLine(0));
+            try eq(2, try root.getNumOfCharsOfLine(1));
+            try eq(3, try root.getNumOfCharsOfLine(2));
+            try eq(4, try root.getNumOfCharsOfLine(3));
+        }
+    }
+
+    ///////////////////////////// Flow walk functions
+
+    fn walkLine(self: *const Node, line: usize, f: WalkResult.F, ctx: *anyopaque) WalkResult {
+        switch (self.*) {
+            .branch => |*branch| {
+                const left_bols = branch.left.weights().bols;
+                if (line >= left_bols) return branch.right.walkLine(line - left_bols, f, ctx);
+                const left = branch.left.walkLine(line, f, ctx);
+                const right = if (left.found and left.keep_walking) branch.right.walk(f, ctx) else WalkResult{};
+                return WalkResult.merge(left, right);
+            },
+            .leaf => |*leaf| {
+                if (line == 0) {
+                    var result = f(ctx, leaf);
+                    if (result.err) |_| return result;
+                    result.found = true;
+                    return result;
+                }
+                return WalkResult.keep_walking;
+            },
+        }
+    }
+
+    fn walk(self: *const Node, f: WalkResult.F, ctx: *anyopaque) WalkResult {
+        switch (self.*) {
+            .branch => |*branch| {
+                const left = branch.left.walk(f, ctx);
+                if (!left.keep_walking) return left;
+                const right = branch.right.walk(f, ctx);
+                return WalkResult.merge(left, right);
+            },
+            .leaf => |*l| return f(ctx, l),
+        }
     }
 
     ///////////////////////////// Balancing
@@ -648,8 +785,8 @@ pub const Node = union(enum) {
         {
             const root = try __inputCharsOneAfterAnother(a, "abcde");
             const root_debug_str =
-                \\5 0/5/5
-                \\  1 `a`
+                \\5 1/5/5
+                \\  1 B| `a`
                 \\  4 0/4/4
                 \\    1 `b`
                 \\    3 0/3/3
@@ -661,9 +798,9 @@ pub const Node = union(enum) {
             try eqStr(root_debug_str, try root.debugPrint());
             const balanced_root = try root.balance(a);
             const balanced_root_debug_str =
-                \\4 0/5/5
-                \\  3 0/3/3
-                \\    1 `a`
+                \\4 1/5/5
+                \\  3 1/3/3
+                \\    1 B| `a`
                 \\    2 0/2/2
                 \\      1 `b`
                 \\      1 `c`
@@ -681,7 +818,7 @@ pub const Node = union(enum) {
         // }
     }
     fn __inputCharsOneAfterAnother(a: Allocator, chars: []const u8) !*const Node {
-        var root = try Node.fromString(a, "", false);
+        var root = try Node.fromString(a, "", true);
         for (0..chars.len) |i| {
             root, _, _ = try root.insertChars(a, root.weights().len, chars[i .. i + 1]);
             // if (i == chars.len - 1) std.debug.print("finished __inputCharsOneAfterAnother i == {d}\n", .{i});
@@ -1560,13 +1697,14 @@ pub const Node = union(enum) {
 
     pub fn getByteOffsetOfPosition(self: *const Node, line: usize, col: usize) !usize {
         const GetByteOffsetCtx = struct {
+            target_linenr: usize,
+            target_colnr: usize,
+
             byte_offset: usize = 0,
             current_linenr: usize = 0,
             current_colnr: usize = 0,
             should_stop: bool = false,
             encountered_bol: bool = false,
-            target_linenr: usize,
-            target_colnr: usize,
 
             fn walk(cx: *@This(), node: *const Node) WalkResult {
                 if (cx.should_stop) return WalkResult.stop;
@@ -1730,6 +1868,44 @@ pub const Node = union(enum) {
             try eq(37, root.getByteOffsetOfPosition(3, 1));
             try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(3, 2));
         }
+        // {
+        //     const root = try __inputCharsOneAfterAnother(a, "1\n22\n333\n4444");
+        //     const root_debug_str =
+        //         \\10 4/13/10
+        //         \\  1 B| `1` |E
+        //         \\  9 3/11/9
+        //         \\    1 B| `2`
+        //         \\    8 2/10/8
+        //         \\      1 `2` |E
+        //         \\      7 2/8/7
+        //         \\        1 B| `3`
+        //         \\        6 1/7/6
+        //         \\          1 `3`
+        //         \\          5 1/6/5
+        //         \\            1 `3` |E
+        //         \\            4 1/4/4
+        //         \\              1 B| `4`
+        //         \\              3 0/3/3
+        //         \\                1 `4`
+        //         \\                2 0/2/2
+        //         \\                  1 `4`
+        //         \\                  1 `4`
+        //     ;
+        //     try eqStr(root_debug_str, try root.debugPrint());
+        //     try eq(0, root.getByteOffsetOfPosition(0, 0));
+        //     try eq(1, root.getByteOffsetOfPosition(0, 1));
+        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 2));
+        //     try eq(2, root.getByteOffsetOfPosition(1, 0));
+        //     try eq(3, root.getByteOffsetOfPosition(1, 1));
+        //     try eq(4, root.getByteOffsetOfPosition(1, 2));
+        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 3));
+        //     try eq(5, root.getByteOffsetOfPosition(2, 0));
+        //     try eq(6, root.getByteOffsetOfPosition(2, 1));
+        //     std.debug.print("**************************************************************************\n", .{});
+        //     try eq(7, root.getByteOffsetOfPosition(2, 2));
+        //     try eq(8, root.getByteOffsetOfPosition(2, 3));
+        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
+        // }
     }
 
     ///////////////////////////// Node Info
@@ -1776,8 +1952,8 @@ pub const Node = union(enum) {
         {
             const root = try __inputCharsOneAfterAnother(a, "abcd");
             const expected =
-                \\4 0/4/4
-                \\  1 `a`
+                \\4 1/4/4
+                \\  1 B| `a`
                 \\  3 0/3/3
                 \\    1 `b`
                 \\    2 0/2/2
