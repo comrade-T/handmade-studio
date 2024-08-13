@@ -119,31 +119,104 @@ pub const Window = struct {
     ///////////////////////////// Delete
 
     fn backspace(self: *@This()) !void {
+        if (self.cursor.line == 0 and self.cursor.col == 0) return;
+
+        if (self.cursor.col == 0) {
+            const new_line = self.cursor.line - 1;
+            const new_col = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(new_line);
+            try self.vendor.buffer.deleteRange(
+                .{ new_line, new_col },
+                .{ self.cursor.line, self.cursor.col },
+            );
+            self.cursor.set(new_line, new_col);
+            return;
+        }
+
         self.cursor.left(1);
-        try self.vendor.buffer.deleteRange(.{ self.cursor.line, self.cursor.col }, .{ self.cursor.line, self.cursor.col + 1 });
+        try self.vendor.buffer.deleteRange(
+            .{ self.cursor.line, self.cursor.col },
+            .{ self.cursor.line, self.cursor.col + 1 },
+        );
     }
     test backspace {
         {
-            const win = try setupZigWindow("");
-            defer teardownWindow(win);
+            { // single line case
+                const win = try setupZigWindow("");
+                defer teardownWindow(win);
 
-            win._insertOneCharAfterAnother("var");
-            try testIterShort(win, "var", "type.qualifier");
+                win._insertOneCharAfterAnother("var");
+                try testFirstIter(win, "var", "type.qualifier");
 
-            try win.backspace();
-            try testIterShort(win, "va", "variable");
+                try win.backspace();
+                try testFirstIter(win, "va", "variable");
 
-            try win.backspace();
-            try testIterShort(win, "v", "variable");
+                try win.backspace();
+                try testFirstIter(win, "v", "variable");
 
-            try win.backspace();
-            try testIterShort(win, null, "variable");
+                try win.backspace();
+                try testFirstIter(win, null, "variable");
 
-            try win.backspace();
-            try testIterShort(win, null, "variable");
+                try win.backspace();
+                try testFirstIter(win, null, "variable");
+            }
+            { // 2 lines cases
+                const win = try setupZigWindow("");
+                defer teardownWindow(win);
+                {
+                    win._insertOneCharAfterAnother("var\nconst");
+                    try eq(Cursor{ .line = 1, .col = 5 }, win.cursor);
+                    const iter = try win.vendor.requestLines(0, 9999);
+                    defer iter.deinit();
+                    try testIter(iter, "var", "type.qualifier");
+                    try testIter(iter, "\nconst", "variable");
+                    try testIter(iter, null, null);
+                }
+                {
+                    try win.backspace();
+                    const iter = try win.vendor.requestLines(0, 9999);
+                    defer iter.deinit();
+                    try testIter(iter, "var", "type.qualifier");
+                    try testIter(iter, "\ncons", "variable");
+                    try testIter(iter, null, null);
+                }
+                {
+                    try win.backspace();
+                    try win.backspace();
+                    try win.backspace();
+                    const iter = try win.vendor.requestLines(0, 9999);
+                    defer iter.deinit();
+                    try testIter(iter, "var", "type.qualifier");
+                    try testIter(iter, "\nc", "variable");
+                    try testIter(iter, null, null);
+                }
+                {
+                    try eq(Cursor{ .line = 1, .col = 1 }, win.cursor);
+                    try win.backspace();
+                    const iter = try win.vendor.requestLines(0, 9999);
+                    defer iter.deinit();
+                    try testIter(iter, "var", "type.qualifier");
+                    try testIter(iter, "\n", "variable");
+                    try testIter(iter, null, null);
+                }
+                {
+                    try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
+                    try win.backspace();
+                    const iter = try win.vendor.requestLines(0, 9999);
+                    defer iter.deinit();
+                    try testIter(iter, "var", "type.qualifier");
+                    try testIter(iter, null, null);
+                }
+                {
+                    try win.backspace();
+                    try testFirstIter(win, "va", "variable");
+                    try win.backspace();
+                    try testFirstIter(win, "v", "variable");
+                    try win.backspace();
+                    try testFirstIter(win, null, "variable");
+                }
+            }
         }
     }
-
     ///////////////////////////// Insert
 
     fn insertCharsInternal(self: *@This(), chars: []const u8) !void {
@@ -234,7 +307,7 @@ pub const Window = struct {
         for (0..chars.len) |i| win.insertChars(chars[i .. i + 1]);
     }
 
-    fn testIterShort(win: *Window, expected_str: ?[]const u8, expected_hlgroup: []const u8) !void {
+    fn testFirstIter(win: *Window, expected_str: ?[]const u8, expected_hlgroup: []const u8) !void {
         const iter = try win.vendor.requestLines(0, 9999);
         defer iter.deinit();
         try testIter(iter, expected_str, expected_hlgroup);
