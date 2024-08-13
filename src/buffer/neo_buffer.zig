@@ -193,7 +193,7 @@ pub const Buffer = struct {
 
     ///////////////////////////// Delete
 
-    fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
+    pub fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
         if (a[0] == b[0] and a[1] == b[1]) return;
 
         const offset_a = try self.roperoot.getByteOffsetOfPosition(a[0], a[1]);

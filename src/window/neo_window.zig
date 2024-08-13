@@ -54,6 +54,7 @@ pub const Window = struct {
         if (eql(u8, trigger, "down")) self.moveCursorDown();
         if (eql(u8, trigger, "left")) self.moveCursorLeft();
         if (eql(u8, trigger, "right")) try self.moveCursorRight();
+        if (eql(u8, trigger, "backspace")) try self.backspace();
     }
 
     ///////////////////////////// Cursor Movement
@@ -113,6 +114,37 @@ pub const Window = struct {
     fn testMoveCursorRight(win: *Window, expected_cursor: Cursor) !void {
         try win.moveCursorRight();
         try eq(expected_cursor, win.cursor);
+    }
+
+    ///////////////////////////// Delete
+
+    fn backspace(self: *@This()) !void {
+        try self.vendor.buffer.deleteRange(.{ self.cursor.line, self.cursor.col -| 1 }, .{ self.cursor.line, self.cursor.col });
+        self.cursor.left(1);
+    }
+    test backspace {
+        const win = try setupZigWindow("");
+        defer teardownWindow(win);
+        {
+            win.insertChars("v");
+            win.insertChars("a");
+            win.insertChars("r");
+            const iter = try win.vendor.requestLines(0, 9999);
+            defer iter.deinit();
+            try testIter(iter, "var", "type.qualifier");
+        }
+        {
+            try win.backspace();
+            const iter = try win.vendor.requestLines(0, 9999);
+            defer iter.deinit();
+            try testIter(iter, "va", "variable");
+        }
+        {
+            try win.backspace();
+            const iter = try win.vendor.requestLines(0, 9999);
+            defer iter.deinit();
+            try testIter(iter, "v", "variable");
+        }
     }
 
     ///////////////////////////// Insert
