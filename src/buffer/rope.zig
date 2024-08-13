@@ -1697,53 +1697,67 @@ pub const Node = union(enum) {
 
     pub fn getByteOffsetOfPosition(self: *const Node, line: usize, col: usize) !usize {
         const GetByteOffsetCtx = struct {
-            target_linenr: usize,
-            target_colnr: usize,
+            target_line: usize,
+            target_col: usize,
 
             byte_offset: usize = 0,
-            current_linenr: usize = 0,
-            current_colnr: usize = 0,
+            current_line: usize = 0,
+            current_col: usize = 0,
             should_stop: bool = false,
             encountered_bol: bool = false,
 
             fn walk(cx: *@This(), node: *const Node) WalkResult {
                 if (cx.should_stop) return WalkResult.stop;
+
                 switch (node.*) {
                     .branch => |branch| {
-                        const left_bols_end = cx.current_linenr + branch.left.weights().bols;
-                        var left_result = WalkResult.keep_walking;
-                        if (cx.target_linenr == cx.current_linenr or cx.target_linenr < left_bols_end) left_result = cx.walk(branch.left);
-                        if (cx.target_linenr > cx.current_linenr) cx.byte_offset += branch.left.weights().len;
-                        cx.current_linenr = left_bols_end;
-                        const right_result = cx.walk(branch.right);
-                        return WalkResult.merge(left_result, right_result);
+                        const left_bols_end = cx.current_line + branch.left.weights().bols;
+
+                        var left = WalkResult.keep_walking;
+                        if (cx.current_line == cx.target_line or cx.target_line < left_bols_end) {
+                            left = cx.walk(branch.left);
+                        }
+
+                        if (cx.current_line < cx.target_line) {
+                            cx.byte_offset += branch.left.weights().len;
+                        }
+
+                        cx.current_line = left_bols_end;
+
+                        const right = cx.walk(branch.right);
+                        return WalkResult.merge(left, right);
                     },
                     .leaf => |leaf| return cx.walker(&leaf),
                 }
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+                if (!cx.encountered_bol and !leaf.bol) {
+                    cx.byte_offset += leaf.weights().len;
+                    return WalkResult.keep_walking;
+                }
+
                 if (leaf.bol) cx.encountered_bol = true;
 
-                if (cx.encountered_bol and cx.target_colnr == 0) {
+                if (cx.encountered_bol and cx.target_col == 0) {
                     cx.should_stop = true;
                     return WalkResult.stop;
                 }
 
-                const sum = cx.current_colnr + leaf.noc;
-                if (sum <= cx.target_colnr) {
-                    cx.current_colnr += leaf.noc;
+                const sum = cx.current_col + leaf.noc;
+                if (sum <= cx.target_col) {
+                    cx.current_col += leaf.noc;
                     cx.byte_offset += leaf.buf.len;
                 }
-                if (sum > cx.target_colnr) {
+                if (sum > cx.target_col) {
                     var iter = code_point.Iterator{ .bytes = leaf.buf };
                     while (iter.next()) |cp| {
-                        cx.current_colnr += 1;
+                        cx.current_col += 1;
                         cx.byte_offset += cp.len;
-                        if (cx.current_colnr >= cx.target_colnr) break;
+                        if (cx.current_col >= cx.target_col) break;
                     }
                 }
-                if (cx.encountered_bol and (leaf.eol or sum >= cx.target_colnr)) {
+                if (cx.encountered_bol and (leaf.eol or sum >= cx.target_col)) {
                     cx.should_stop = true;
                     return WalkResult.stop;
                 }
@@ -1754,9 +1768,9 @@ pub const Node = union(enum) {
         };
 
         if (line > self.weights().bols) return error.LineOutOfBounds;
-        var ctx = GetByteOffsetCtx{ .target_linenr = line, .target_colnr = col };
+        var ctx = GetByteOffsetCtx{ .target_line = line, .target_col = col };
         if (ctx.walk(self).err) |err| return err else {
-            if (ctx.current_colnr < col) return error.ColOutOfBounds;
+            if (ctx.current_col < col) return error.ColOutOfBounds;
             return ctx.byte_offset;
         }
     }
@@ -1868,44 +1882,44 @@ pub const Node = union(enum) {
             try eq(37, root.getByteOffsetOfPosition(3, 1));
             try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(3, 2));
         }
-        // {
-        //     const root = try __inputCharsOneAfterAnother(a, "1\n22\n333\n4444");
-        //     const root_debug_str =
-        //         \\10 4/13/10
-        //         \\  1 B| `1` |E
-        //         \\  9 3/11/9
-        //         \\    1 B| `2`
-        //         \\    8 2/10/8
-        //         \\      1 `2` |E
-        //         \\      7 2/8/7
-        //         \\        1 B| `3`
-        //         \\        6 1/7/6
-        //         \\          1 `3`
-        //         \\          5 1/6/5
-        //         \\            1 `3` |E
-        //         \\            4 1/4/4
-        //         \\              1 B| `4`
-        //         \\              3 0/3/3
-        //         \\                1 `4`
-        //         \\                2 0/2/2
-        //         \\                  1 `4`
-        //         \\                  1 `4`
-        //     ;
-        //     try eqStr(root_debug_str, try root.debugPrint());
-        //     try eq(0, root.getByteOffsetOfPosition(0, 0));
-        //     try eq(1, root.getByteOffsetOfPosition(0, 1));
-        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 2));
-        //     try eq(2, root.getByteOffsetOfPosition(1, 0));
-        //     try eq(3, root.getByteOffsetOfPosition(1, 1));
-        //     try eq(4, root.getByteOffsetOfPosition(1, 2));
-        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 3));
-        //     try eq(5, root.getByteOffsetOfPosition(2, 0));
-        //     try eq(6, root.getByteOffsetOfPosition(2, 1));
-        //     std.debug.print("**************************************************************************\n", .{});
-        //     try eq(7, root.getByteOffsetOfPosition(2, 2));
-        //     try eq(8, root.getByteOffsetOfPosition(2, 3));
-        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
-        // }
+        {
+            const source = "1\n22\n333\n4444";
+            const root = try __inputCharsOneAfterAnother(a, source);
+            const root_debug_str =
+                \\10 4/13/10
+                \\  1 B| `1` |E
+                \\  9 3/11/9
+                \\    1 B| `2`
+                \\    8 2/10/8
+                \\      1 `2` |E
+                \\      7 2/8/7
+                \\        1 B| `3`
+                \\        6 1/7/6
+                \\          1 `3`
+                \\          5 1/6/5
+                \\            1 `3` |E
+                \\            4 1/4/4
+                \\              1 B| `4`
+                \\              3 0/3/3
+                \\                1 `4`
+                \\                2 0/2/2
+                \\                  1 `4`
+                \\                  1 `4`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+            try eq(0, root.getByteOffsetOfPosition(0, 0));
+            try eq(1, root.getByteOffsetOfPosition(0, 1));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 2));
+            try eq(2, root.getByteOffsetOfPosition(1, 0));
+            try eq(3, root.getByteOffsetOfPosition(1, 1));
+            try eq(4, root.getByteOffsetOfPosition(1, 2));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 3));
+            try eq(5, root.getByteOffsetOfPosition(2, 0));
+            try eq(6, root.getByteOffsetOfPosition(2, 1));
+            try eq(7, root.getByteOffsetOfPosition(2, 2));
+            try eq(8, root.getByteOffsetOfPosition(2, 3));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
+        }
     }
 
     ///////////////////////////// Node Info
