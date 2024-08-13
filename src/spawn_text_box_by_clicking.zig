@@ -130,7 +130,7 @@ pub fn main() anyerror!void {
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
-            {
+            { // navigator
                 for (navigator.short_paths, 0..) |path, i| {
                     const text = try std.fmt.allocPrintZ(gpa, "{s}", .{path});
                     defer gpa.free(text);
@@ -139,7 +139,7 @@ pub fn main() anyerror!void {
                     rl.drawText(text, 100, 100 + idx * 40, 30, color);
                 }
             }
-            {
+            { // window content
                 const iter = try vendor.requestLines(0, vendor.buffer.roperoot.weights().bols - 1);
                 defer iter.deinit();
 
@@ -160,6 +160,11 @@ pub fn main() anyerror!void {
                     const measure = rl.measureTextEx(font, txt, font_size, spacing);
                     x += measure.x;
                 }
+            }
+            { // window cursor
+                var txt_buf: [20]u8 = undefined;
+                const txt = try std.fmt.bufPrintZ(&txt_buf, "[{d}, {d}]", .{ window.cursor.line, window.cursor.col });
+                rl.drawTextEx(font, txt, .{ .x = screen_width - 200, .y = screen_height - 100 }, 40, 0, rl.Color.ray_white);
             }
         }
     }
