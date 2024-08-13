@@ -1981,44 +1981,44 @@ pub const Node = union(enum) {
             try eq(8, root.getByteOffsetOfPosition(2, 3));
             try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
         }
-        // {
-        //     const reverse_input_sequence = "4444\n333\n22\n1";
-        //     const root = try __inputCharsOneAfterAnotherAt0Position(a, reverse_input_sequence);
-        //     const root_debug_str =
-        //         \\10 4/13/10
-        //         \\  1 B| `1` |E
-        //         \\  9 3/11/9
-        //         \\    1 B| `2`
-        //         \\    8 2/10/8
-        //         \\      1 `2` |E
-        //         \\      7 2/8/7
-        //         \\        1 B| `3`
-        //         \\        6 1/7/6
-        //         \\          1 `3`
-        //         \\          5 1/6/5
-        //         \\            1 `3` |E
-        //         \\            4 1/4/4
-        //         \\              1 B| `4`
-        //         \\              3 0/3/3
-        //         \\                1 `4`
-        //         \\                2 0/2/2
-        //         \\                  1 `4`
-        //         \\                  1 `4`
-        //     ;
-        //     try eqStr(root_debug_str, try root.debugPrint());
-        //     try eq(0, root.getByteOffsetOfPosition(0, 0));
-        //     try eq(1, root.getByteOffsetOfPosition(0, 1));
-        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 2));
-        //     try eq(2, root.getByteOffsetOfPosition(1, 0));
-        //     try eq(3, root.getByteOffsetOfPosition(1, 1));
-        //     try eq(4, root.getByteOffsetOfPosition(1, 2));
-        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 3));
-        //     try eq(5, root.getByteOffsetOfPosition(2, 0));
-        //     try eq(6, root.getByteOffsetOfPosition(2, 1));
-        //     try eq(7, root.getByteOffsetOfPosition(2, 2));
-        //     try eq(8, root.getByteOffsetOfPosition(2, 3));
-        //     try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
-        // }
+        {
+            const reverse_input_sequence = "4444\n333\n22\n1";
+            const root = try __inputCharsOneAfterAnotherAt0Position(a, reverse_input_sequence);
+            const root_debug_str =
+                \\10 4/13/10
+                \\  9 4/12/9
+                \\    8 4/11/8
+                \\      7 4/10/7
+                \\        6 3/9/6
+                \\          5 3/7/5
+                \\            4 3/6/4
+                \\              3 2/5/3
+                \\                2 2/3/2
+                \\                  1 B| `1` |E
+                \\                  1 B| `2`
+                \\                1 `2` |E
+                \\              1 B| `3`
+                \\            1 `3`
+                \\          1 `3` |E
+                \\        1 B| `4`
+                \\      1 `4`
+                \\    1 `4`
+                \\  1 `4`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+            try eq(0, root.getByteOffsetOfPosition(0, 0));
+            try eq(1, root.getByteOffsetOfPosition(0, 1));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(0, 2));
+            try eq(2, root.getByteOffsetOfPosition(1, 0));
+            try eq(3, root.getByteOffsetOfPosition(1, 1));
+            try eq(4, root.getByteOffsetOfPosition(1, 2));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(1, 3));
+            try eq(5, root.getByteOffsetOfPosition(2, 0));
+            try eq(6, root.getByteOffsetOfPosition(2, 1));
+            try eq(7, root.getByteOffsetOfPosition(2, 2));
+            try eq(8, root.getByteOffsetOfPosition(2, 3));
+            try shouldErr(error.ColOutOfBounds, root.getByteOffsetOfPosition(2, 4));
+        }
     }
 
     ///////////////////////////// Node Info
