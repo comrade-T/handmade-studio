@@ -34,6 +34,7 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         // TODO:
+        // rl.updateCamera(&camera, .camera_orbital);
 
         ///////////////////////////// Draw
 
@@ -49,7 +50,10 @@ pub fn main() !void {
                 {
                     rl.gl.rlPushMatrix();
                     defer rl.gl.rlPopMatrix();
-                    drawChar3D(font, "a", .{ .x = 0, .y = 0, .z = 0 }, 2, false, rl.Color.yellow);
+                    drawChar3D(font, "z", .{ .x = 0, .y = 0, .z = 0 }, 40, false, rl.Color.yellow);
+                    drawChar3D(font, "o", .{ .x = 1, .y = 0, .z = 1 }, 40, false, rl.Color.yellow);
+                    drawChar3D(font, "o", .{ .x = 2, .y = 0, .z = 2 }, 40, false, rl.Color.yellow);
+                    drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.yellow);
                 }
             }
         }
