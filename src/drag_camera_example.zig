@@ -9,7 +9,7 @@ const screen_height = 1080;
 pub fn main() !void {
     ///////////////////////////// Window Initialization
 
-    rl.setConfigFlags(.{ .window_transparent = true });
+    rl.setConfigFlags(.{ .window_transparent = true, .vsync_hint = true });
 
     rl.initWindow(screen_width, screen_height, "DragCameraExample");
     defer rl.closeWindow();
@@ -36,6 +36,20 @@ pub fn main() !void {
             camera.target = delta.add(camera.target);
         }
 
+        {
+            const wheel = rl.getMouseWheelMove();
+            if (wheel != 0) {
+                const mouse_pos = rl.getMousePosition();
+                const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, camera);
+                camera.offset = mouse_pos;
+                camera.target = mouse_world_pos;
+
+                var scale_factor = 1 + (0.25 * @abs(wheel));
+                if (wheel < 0) scale_factor = 1 / scale_factor;
+                camera.zoom = rl.math.clamp(camera.zoom * scale_factor, 0.125, 64);
+            }
+        }
+
         ///////////////////////////// Draw
 
         rl.beginDrawing();
@@ -46,6 +60,7 @@ pub fn main() !void {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
                 rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
+                rl.drawCircle(200, 500, 100, rl.Color.yellow);
             }
         }
     }
