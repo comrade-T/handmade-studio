@@ -19,6 +19,8 @@ pub fn main() !void {
 
     ///////////////////////////// Model
 
+    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
+
     const camera = rl.Camera3D{
         .position = .{ .x = 0, .y = 10, .z = 10 },
         .target = .{ .x = 0, .y = 0, .z = 0 },
@@ -40,44 +42,83 @@ pub fn main() !void {
         {
             rl.clearBackground(rl.Color.blank);
             {
-                // TODO:
                 rl.beginMode3D(camera);
                 defer rl.endMode3D();
                 rl.drawGrid(10, 1);
+                // rl.drawCube(.{ .x = 0, .y = 0, .z = 0 }, 2, 2, 2, rl.Color.sky_blue);
+                {
+                    rl.gl.rlPushMatrix();
+                    defer rl.gl.rlPopMatrix();
+                    drawChar3D(font, "a", .{ .x = 0, .y = 0, .z = 0 }, 2, false, rl.Color.yellow);
+                }
             }
         }
     }
 }
 
-fn drawCodePoint3D(font: rl.Font, code_point: i32, pos: rl.Vector3, font_size: i32, backface: bool, tint: rl.Color) void {
-    const index = rl.getGlyphIndex(font, code_point);
+fn drawChar3D(
+    font: rl.Font,
+    char: [*:0]const u8,
+    pos: rl.Vector3,
+    font_size: i32,
+    backface: bool,
+    tint: rl.Color,
+) void {
+    var code_point_byte_count: i32 = 0;
+    const code_point = rl.getCodepoint(char, &code_point_byte_count);
+    drawCodePoint3D(font, code_point, pos, font_size, backface, tint);
+}
+
+fn drawCodePoint3D(
+    font: rl.Font,
+    code_point: i32,
+    position: rl.Vector3,
+    font_size: i32,
+    backface: bool,
+    tint: rl.Color,
+) void {
+    const index: usize = @intCast(rl.getGlyphIndex(font, code_point));
     const scale = @as(f32, @floatFromInt(font_size)) / @as(f32, @floatFromInt(font.baseSize));
 
-    pos.x += (font.glyphs[index].offsetX - font.glyphPadding) / (font.baseSize * scale);
-    pos.y += (font.glyphs[index].offsetY - font.glyphPadding) / (font.baseSize * scale);
+    var pos = position;
+
+    pos.x += @as(f32, @floatFromInt(font.glyphs[index].offsetX - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
+    pos.y += @as(f32, @floatFromInt(font.glyphs[index].offsetY - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
+
+    const base_size: f32 = @floatFromInt(font.baseSize);
+    const glyph_padding: f32 = @floatFromInt(font.glyphPadding);
 
     const src_rectangle = rl.Rectangle{
-        .x = font.recs[index].x - font.glyphPadding,
-        .y = font.recs[index].y - font.glyphPadding,
-        .width = font.recs[index].width + 2 * font.glyphPadding,
-        .height = font.recs[index].height + 2 * font.glyphPadding,
+        .x = font.recs[index].x - glyph_padding,
+        .y = font.recs[index].y - glyph_padding,
+        .width = font.recs[index].width + 2 * glyph_padding,
+        .height = font.recs[index].height + 2 * glyph_padding,
     };
-    const width = (font.recs[index].width + 2 * font.glyphPadding) / (font.baseSize * scale);
-    const height = (font.recs[index].height + 2 * font.glyphPadding) / (font.baseSize * scale);
+    const width = (font.recs[index].width + 2 * glyph_padding) / (base_size * scale);
+    const height = (font.recs[index].height + 2 * glyph_padding) / (base_size * scale);
 
     if (font.texture.id > 0) {
         defer rl.gl.rlSetTexture(0);
+
+        const font_texture_width: f32 = @floatFromInt(font.texture.width);
+        const font_texture_height: f32 = @floatFromInt(font.texture.height);
 
         const x: f32 = 0;
         const y: f32 = 0;
         const z: f32 = 0;
 
-        const tx: f32 = src_rectangle.x / font.texture.width;
-        const ty: f32 = src_rectangle.y / font.texture.height;
-        const tw: f32 = (src_rectangle.x + src_rectangle.width) / font.texture.width;
-        const th: f32 = (src_rectangle.y + src_rectangle.height) / font.texture.height;
+        const tx: f32 = src_rectangle.x / font_texture_width;
+        const ty: f32 = src_rectangle.y / font_texture_height;
+        const tw: f32 = (src_rectangle.x + src_rectangle.width) / font_texture_width;
+        const th: f32 = (src_rectangle.y + src_rectangle.height) / font_texture_height;
 
-        rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
+        rl.drawCubeWiresV(
+            .{ .x = pos.x + width / 2, .y = pos.y, .z = pos.z + height / 2 },
+            .{ .x = width, .y = 0.25, .z = height },
+            rl.Color.ray_white,
+        );
+
+        _ = rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
         rl.gl.rlSetTexture(font.texture.id);
 
         {
@@ -85,6 +126,7 @@ fn drawCodePoint3D(font: rl.Font, code_point: i32, pos: rl.Vector3, font_size: i
             defer rl.gl.rlPopMatrix();
 
             rl.gl.rlTranslatef(pos.x, pos.y, pos.z);
+
             {
                 const RL_QUADS = 0x0007;
                 rl.gl.rlBegin(RL_QUADS);
