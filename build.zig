@@ -128,6 +128,17 @@ pub fn build(b: *std.Build) void {
     }
 
     {
+        const path = "src/camera2d_example.zig";
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{
+            .name = "camera2d_example",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
+    }
+
+    {
         const path = "src/spawn_text_box_by_clicking.zig";
         const spawn_text = b.addExecutable(.{
             .name = "spawn_text_box_by_clicking",

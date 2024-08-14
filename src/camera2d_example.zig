@@ -1,3 +1,21 @@
+const std = @import("std");
+const rl = @import("raylib");
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const screen_width = 800;
+const screen_height = 450;
+
+pub fn main() !void {
+    ///////////////////////////// Window Initialization
+
+    // rl.setConfigFlags(.{ .window_transparent = true });
+
+    rl.initWindow(screen_width, screen_height, "Camera2DExample");
+    defer rl.closeWindow();
+
+    rl.setTargetFPS(60);
+    rl.setExitKey(rl.KeyboardKey.key_null);
 
     ///////////////////////////// Try out Camera 2D
 
@@ -31,16 +49,15 @@
         .zoom = 1,
     };
 
-
     ///////////////////////////////// before draw
 
-
-{
+    while (!rl.windowShouldClose()) {
+        {
             // Player movement
             if (rl.isKeyDown(rl.KeyboardKey.key_right)) {
-                player.x += 20;
+                player.x += 10;
             } else if (rl.isKeyDown(rl.KeyboardKey.key_left)) {
-                player.x -= 20;
+                player.x -= 10;
             }
 
             // Camera target follows player
@@ -68,15 +85,11 @@
             }
         }
 
+        ////////////////////////////////////////////////////////////////////////////////////////////////////// draw
 
-
-
-
-
-
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////// draw
-
+        rl.beginDrawing();
+        defer rl.endDrawing();
+        rl.clearBackground(rl.Color.ray_white);
         {
             {
                 camera.begin();
@@ -124,4 +137,5 @@
             rl.drawText("- A / S to Rotate", 40, 80, 10, rl.Color.dark_gray);
             rl.drawText("- R to reset Zoom and Rotation", 40, 100, 10, rl.Color.dark_gray);
         }
-
+    }
+}
