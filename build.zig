@@ -137,6 +137,16 @@ pub fn build(b: *std.Build) void {
         });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
+    {
+        const path = "src/drag_camera_example.zig";
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{
+            .name = "drag_camera_example",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
+    }
 
     {
         const path = "src/spawn_text_box_by_clicking.zig";
