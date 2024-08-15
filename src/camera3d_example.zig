@@ -34,7 +34,7 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         // TODO:
-        rl.updateCamera(&camera, .camera_orbital);
+        rl.updateCamera(&camera, .camera_free);
 
         ///////////////////////////// Draw
 
@@ -48,12 +48,12 @@ pub fn main() !void {
                 rl.drawGrid(10, 1);
                 // rl.drawCube(.{ .x = 0, .y = 0, .z = 0 }, 2, 2, 2, rl.Color.sky_blue);
                 {
-                    rl.gl.rlPushMatrix();
-                    defer rl.gl.rlPopMatrix();
+                    // rl.gl.rlPushMatrix();
+                    // defer rl.gl.rlPopMatrix();
                     drawChar3D(font, "z", .{ .x = 0, .y = 0, .z = 0 }, 40, false, rl.Color.yellow);
-                    drawChar3D(font, "o", .{ .x = 1, .y = 0, .z = 1 }, 40, false, rl.Color.yellow);
-                    drawChar3D(font, "o", .{ .x = 2, .y = 0, .z = 2 }, 40, false, rl.Color.yellow);
-                    drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.yellow);
+                    drawChar3D(font, "o", .{ .x = 1, .y = 0, .z = 1 }, 40, false, rl.Color.red);
+                    drawChar3D(font, "o", .{ .x = 2, .y = 0, .z = 2 }, 40, false, rl.Color.blue);
+                    drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.white);
                 }
             }
         }
@@ -91,29 +91,31 @@ fn drawChar3D(
     const width = (font.recs[index].width + 2 * glyph_padding) / (base_size * scale);
     const height = (font.recs[index].height + 2 * glyph_padding) / (base_size * scale);
 
+    rl.drawCubeWiresV(
+        .{ .x = pos.x + width / 2, .y = pos.y, .z = pos.z + height / 2 },
+        .{ .x = width, .y = 0.25, .z = height },
+        rl.Color.ray_white,
+    );
+
     if (font.texture.id > 0) {
-        defer rl.gl.rlSetTexture(0);
-
-        const font_texture_width: f32 = @floatFromInt(font.texture.width);
-        const font_texture_height: f32 = @floatFromInt(font.texture.height);
-
         const x: f32 = 0;
         const y: f32 = 0;
         const z: f32 = 0;
 
+        const font_texture_width: f32 = @floatFromInt(font.texture.width);
+        const font_texture_height: f32 = @floatFromInt(font.texture.height);
+
+        // normalized texture coordinates of the glyph inside the font texture (0.0f -> 1.0f)
         const tx: f32 = src_rectangle.x / font_texture_width;
         const ty: f32 = src_rectangle.y / font_texture_height;
         const tw: f32 = (src_rectangle.x + src_rectangle.width) / font_texture_width;
         const th: f32 = (src_rectangle.y + src_rectangle.height) / font_texture_height;
 
-        rl.drawCubeWiresV(
-            .{ .x = pos.x + width / 2, .y = pos.y, .z = pos.z + height / 2 },
-            .{ .x = width, .y = 0.25, .z = height },
-            rl.Color.ray_white,
-        );
+        const buf_overflow = rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
+        if (buf_overflow) @panic("internal buffer overflow for a given number of vertex");
 
-        _ = rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
         rl.gl.rlSetTexture(font.texture.id);
+        defer rl.gl.rlSetTexture(0);
 
         {
             rl.gl.rlPushMatrix();
@@ -129,17 +131,22 @@ fn drawChar3D(
                 rl.gl.rlColor4ub(tint.r, tint.g, tint.b, tint.a);
 
                 if (!backface) {
+                    // Normal Pointing Up
                     rl.gl.rlNormal3f(0, 1, 0);
 
+                    // Top Left Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tx, ty);
                     rl.gl.rlVertex3f(x, y, z);
 
+                    // Bottom Left Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tx, th);
                     rl.gl.rlVertex3f(x, y, z + height);
 
+                    // Bottom Right Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tw, th);
                     rl.gl.rlVertex3f(x + width, y, z + height);
 
+                    // Top Right Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tw, ty);
                     rl.gl.rlVertex3f(x + width, y, z);
 
@@ -147,17 +154,22 @@ fn drawChar3D(
                 }
 
                 {
+                    // Normal Pointing Down
                     rl.gl.rlNormal3f(0, -1, 0);
 
+                    // Top Right Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tx, ty);
                     rl.gl.rlVertex3f(x, y, z);
 
+                    // Top Left Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tw, ty);
                     rl.gl.rlVertex3f(x + width, y, z);
 
+                    // Bottom Left Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tw, th);
                     rl.gl.rlVertex3f(x + width, y, z + height);
 
+                    // Bottom Right Of The Texture and Quad
                     rl.gl.rlTexCoord2f(tx, th);
                     rl.gl.rlVertex3f(x, y, z + height);
                 }
