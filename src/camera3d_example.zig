@@ -19,7 +19,15 @@ pub fn main() !void {
 
     ///////////////////////////// Model
 
-    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
+    const font_size = 40;
+    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
+
+    const font_texture_width = font.texture.width;
+    const font_texture_height = font.texture.height;
+    const font_mem_footprint = font_texture_width * font_texture_height * 2;
+    const font_mem_footprint_kb = @divTrunc(font_mem_footprint, 1024);
+
+    var should_stop_camera = false;
 
     var camera = rl.Camera3D{
         .position = .{ .x = 0, .y = 10, .z = 10 },
@@ -35,8 +43,14 @@ pub fn main() !void {
 
         ///////////////////////////// Update
 
-        // TODO:
-        rl.updateCamera(&camera, .camera_free);
+        if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
+            should_stop_camera = !should_stop_camera;
+            rl.enableCursor();
+        }
+        if (!should_stop_camera) {
+            rl.updateCamera(&camera, .camera_free);
+            rl.disableCursor();
+        }
 
         ///////////////////////////// Draw
 
@@ -58,6 +72,22 @@ pub fn main() !void {
                     drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.white);
                 }
             }
+            {
+                var buf: [1024]u8 = undefined;
+
+                const wh_text = try std.fmt.bufPrintZ(&buf, "font_size: {d} | font_texture_width: {d} | font_texture_height: {d}\n", .{
+                    font_size,
+                    font_texture_width,
+                    font_texture_height,
+                });
+                rl.drawText(wh_text, 100, 100, 30, rl.Color.ray_white);
+
+                const foot_text = try std.fmt.bufPrintZ(&buf, "font_mem_footprint: {d} bytes -> {d} kb\n", .{
+                    font_mem_footprint,
+                    font_mem_footprint_kb,
+                });
+                rl.drawText(foot_text, 100, 175, 30, rl.Color.ray_white);
+            }
         }
     }
 }
@@ -73,18 +103,24 @@ fn drawChar3D(
     var code_point_byte_count: i32 = 0;
     const code_point = rl.getCodepoint(char, &code_point_byte_count);
 
+    // Character index position in sprite font
+    // NOTE: In case a codepoint is not available in the font, index returned points to '?'
     const index: usize = @intCast(rl.getGlyphIndex(font, code_point));
     const scale = @as(f32, @floatFromInt(font_size)) / @as(f32, @floatFromInt(font.baseSize));
 
     var pos = position;
 
+    // Character destination rectangle on screen
+    // NOTE: We consider charsPadding on drawing
     pos.x += @as(f32, @floatFromInt(font.glyphs[index].offsetX - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
     pos.z += @as(f32, @floatFromInt(font.glyphs[index].offsetY - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
 
     const base_size: f32 = @floatFromInt(font.baseSize);
     const glyph_padding: f32 = @floatFromInt(font.glyphPadding);
 
-    const src_rectangle = rl.Rectangle{
+    // Character source rectangle from font texture atlas
+    // NOTE: We consider chars padding when drawing, it could be required for outline/glow shader effects
+    const src_rec = rl.Rectangle{
         .x = font.recs[index].x - glyph_padding,
         .y = font.recs[index].y - glyph_padding,
         .width = font.recs[index].width + 2 * glyph_padding,
@@ -108,10 +144,10 @@ fn drawChar3D(
         const font_texture_height: f32 = @floatFromInt(font.texture.height);
 
         // normalized texture coordinates of the glyph inside the font texture (0.0f -> 1.0f)
-        const tx: f32 = src_rectangle.x / font_texture_width;
-        const ty: f32 = src_rectangle.y / font_texture_height;
-        const tw: f32 = (src_rectangle.x + src_rectangle.width) / font_texture_width;
-        const th: f32 = (src_rectangle.y + src_rectangle.height) / font_texture_height;
+        const tx: f32 = src_rec.x / font_texture_width;
+        const ty: f32 = src_rec.y / font_texture_height;
+        const tw: f32 = (src_rec.x + src_rec.width) / font_texture_width;
+        const th: f32 = (src_rec.y + src_rec.height) / font_texture_height;
 
         const buf_overflow = rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
         if (buf_overflow) @panic("internal buffer overflow for a given number of vertex");
