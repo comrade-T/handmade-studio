@@ -29,6 +29,8 @@ pub fn main() !void {
         .projection = .camera_perspective,
     };
 
+    rl.disableCursor();
+
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
@@ -77,7 +79,7 @@ fn drawChar3D(
     var pos = position;
 
     pos.x += @as(f32, @floatFromInt(font.glyphs[index].offsetX - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
-    pos.y += @as(f32, @floatFromInt(font.glyphs[index].offsetY - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
+    pos.z += @as(f32, @floatFromInt(font.glyphs[index].offsetY - font.glyphPadding)) / (@as(f32, @floatFromInt(font.baseSize)) * scale);
 
     const base_size: f32 = @floatFromInt(font.baseSize);
     const glyph_padding: f32 = @floatFromInt(font.glyphPadding);
