@@ -21,7 +21,7 @@ pub fn main() !void {
 
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
 
-    const camera = rl.Camera3D{
+    var camera = rl.Camera3D{
         .position = .{ .x = 0, .y = 10, .z = 10 },
         .target = .{ .x = 0, .y = 0, .z = 0 },
         .up = .{ .x = 0, .y = 1, .z = 0 },
@@ -34,7 +34,7 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         // TODO:
-        // rl.updateCamera(&camera, .camera_orbital);
+        rl.updateCamera(&camera, .camera_orbital);
 
         ///////////////////////////// Draw
 
@@ -63,24 +63,14 @@ pub fn main() !void {
 fn drawChar3D(
     font: rl.Font,
     char: [*:0]const u8,
-    pos: rl.Vector3,
+    position: rl.Vector3,
     font_size: i32,
     backface: bool,
     tint: rl.Color,
 ) void {
     var code_point_byte_count: i32 = 0;
     const code_point = rl.getCodepoint(char, &code_point_byte_count);
-    drawCodePoint3D(font, code_point, pos, font_size, backface, tint);
-}
 
-fn drawCodePoint3D(
-    font: rl.Font,
-    code_point: i32,
-    position: rl.Vector3,
-    font_size: i32,
-    backface: bool,
-    tint: rl.Color,
-) void {
     const index: usize = @intCast(rl.getGlyphIndex(font, code_point));
     const scale = @as(f32, @floatFromInt(font_size)) / @as(f32, @floatFromInt(font.baseSize));
 
