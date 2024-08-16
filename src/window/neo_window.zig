@@ -1,5 +1,4 @@
 const std = @import("std");
-const Cursor = @import("cursor").Cursor;
 const Buffer = @import("neo_buffer").Buffer;
 const ContentVendor = @import("content_vendor").ContentVendor;
 const testIter = ContentVendor.CurrentJobIterator.testIter;
@@ -12,6 +11,16 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+const Cursor = struct {
+    line: usize = 0,
+    col: usize = 0,
+
+    pub fn set(self: *Cursor, line: usize, col: usize) void {
+        self.line = line;
+        self.col = col;
+    }
+};
 
 pub const Window = struct {
     a: Allocator,
@@ -75,12 +84,13 @@ pub const Window = struct {
     }
 
     fn moveCursorLeft(self: *@This()) void {
-        self.cursor.left(1);
+        self.cursor.col = self.cursor.col -| 1;
     }
 
     fn moveCursorRight(self: *@This()) !void {
-        const noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line);
-        self.cursor.right(1, noc);
+        const cur_line_noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line);
+        const target = self.cursor.col + 1;
+        self.cursor.col = if (self.cursor.col + 1 < cur_line_noc) target else cur_line_noc;
     }
     test moveCursorRight {
         { // single line
@@ -136,7 +146,7 @@ pub const Window = struct {
             return;
         }
 
-        self.cursor.left(1);
+        self.moveCursorLeft();
         try self.vendor.buffer.deleteRange(
             .{ self.cursor.line, self.cursor.col },
             .{ self.cursor.line, self.cursor.col + 1 },
