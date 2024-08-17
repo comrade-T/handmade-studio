@@ -15,11 +15,19 @@ pub fn main() !void {
 
     const content = @embedFile("./content_vendor.zig");
 
+    const buf_create_zone = ztracy.ZoneN(@src(), "buf_create_zone");
     var buf = try Buffer.create(allocator, .string, content);
+    buf_create_zone.End();
     defer buf.destroy();
-    try buf.initiateTreeSitter(.zig);
 
+    const init_ts_zone = ztracy.ZoneN(@src(), "init_ts_zone");
+    try buf.initiateTreeSitter(.zig);
+    init_ts_zone.End();
+
+    const init_vendor_zone = ztracy.ZoneN(@src(), "init_vendor_zone");
     const vendor = try ContentVendor.init(allocator, buf);
+    init_vendor_zone.End();
+
     defer vendor.deinit();
 
     for (0..1) |_| {
@@ -28,7 +36,7 @@ pub fn main() !void {
 
         const request_lines_zone = ztracy.ZoneNC(@src(), "request_lines_zone", 0x00_00_00_ff);
         const start_line = 0;
-        const end_line = 999;
+        const end_line = 9999;
         const iter = try vendor.requestLines(start_line, end_line);
         request_lines_zone.End();
         defer iter.deinit();

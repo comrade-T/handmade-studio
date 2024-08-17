@@ -80,6 +80,9 @@ pub const PredicatesFilter = struct {
     }
 
     fn allPredicateMatchesOnDemand(self: *@This(), match: Query.Match) bool {
+        const zone = ztracy.ZoneNC(@src(), "allPredicateMatchesOnDemand()", 0xAAFF22);
+        defer zone.End();
+
         for (match.captures()) |cap| {
             const node = cap.node;
 
@@ -95,35 +98,52 @@ pub const PredicatesFilter = struct {
 
     ///////////////////////////// Limited Range
 
-    pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, line: usize) ?Query.Match {
+    const MatchRangeResult = union(enum) {
+        match: struct { match: ?Query.Match = null, cap_name: []const u8 = "", cap_node: ?b.Node = null },
+        ignore: bool,
+    };
+
+    pub fn nextMatchInLines(self: *@This(), query: *Query, cursor: *Query.Cursor, line: usize) MatchRangeResult {
         while (true) {
             const next_match_zone = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0xAA5522);
             const match = cursor.nextMatch() orelse {
                 next_match_zone.Name("NOMORE nextMatch()");
                 next_match_zone.End();
-                return null;
+                return .{ .match = .{} };
             };
             next_match_zone.End();
 
-            if (self.allPredicatesMatchesInLines(match, line)) return match;
+            const all_match = self.allPredicatesMatchesInLines(match);
+            if (!all_match) continue;
+
+            var cap_name: []const u8 = "";
+            var cap_node: b.Node = undefined;
+
+            for (match.captures()) |cap| {
+                const candidate = query.getCaptureNameForId(cap.id);
+                if (!std.mem.startsWith(u8, candidate, "_")) {
+                    cap_name = candidate;
+                    cap_node = cap.node;
+                    break;
+                }
+            }
+
+            if (cap_name.len == 0) @panic("capture_name.len == 0");
+
+            if (cap_node.getStartPoint().row > line or cap_node.getEndPoint().row < line) {
+                return .{ .ignore = true };
+            }
+
+            return .{ .match = .{ .match = match, .cap_name = cap_name, .cap_node = cap_node } };
         }
     }
 
-    fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match, line: usize) bool {
+    fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match) bool {
         const zone = ztracy.ZoneNC(@src(), "allPredicatesMatchesInLines()", 0xAAFF22);
         defer zone.End();
 
         for (match.captures()) |cap| {
             const node = cap.node;
-
-            if (node.getEndPoint().row < line) {
-                zone.Name("B4");
-                return false;
-            }
-            if (node.getStartPoint().row > line) {
-                zone.Name("AFTER");
-                return false;
-            }
 
             const buf_size = 1024;
             var buf: [buf_size]u8 = undefined;
