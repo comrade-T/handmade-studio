@@ -171,25 +171,44 @@ pub const ContentVendor = struct {
 
             const cursor_execute_zone = ztracy.ZoneNC(@src(), "cursor_execute_zone()", 0xAA0000);
             const cursor = try ts.Query.Cursor.create();
+            cursor.setPointRange(
+                ts.Point{ .row = @intCast(self.start_line), .column = 0 },
+                ts.Point{ .row = @intCast(self.end_line + 1), .column = 0 },
+            );
             cursor.execute(self.vendor.query, self.vendor.buffer.tstree.?.getRootNode());
             cursor_execute_zone.End();
             defer cursor.destroy();
 
             while (true) {
-                const next_match_in_lines_zone = ztracy.ZoneNC(@src(), "nextMatchInLines()", 0xAA0066);
-                defer next_match_in_lines_zone.End();
+                const while_zone = ztracy.ZoneNC(@src(), "while_zone", 0xAA0066);
+                defer while_zone.End();
 
-                const result = self.vendor.filter.nextMatchInLines(cursor, self.current_line);
+                const result = self.vendor.filter.nextMatchOnDemand(cursor);
                 if (result == null) break;
                 const match = result.?;
 
-                const cap = match.captures()[0];
-                const capture_name = self.vendor.query.getCaptureNameForId(cap.id);
-                const color = if (self.vendor.hl_map.get(capture_name)) |color| color else RAY_WHITE;
+                if (match.captures().len == 0) @panic("match.captures().len == 0");
 
-                const start = @max(cap.node.getStartByte(), self.line_start_byte) - self.line_start_byte;
-                const end = @min((cap.node.getEndByte()), self.line_end_byte) - self.line_start_byte;
-                @memset(self.highlights.?[start..end], color);
+                var cap_name: []const u8 = "";
+                var cap_node: ts.Node = undefined;
+                for (match.captures()) |cap| {
+                    const candidate = self.vendor.query.getCaptureNameForId(cap.id);
+                    if (!std.mem.startsWith(u8, candidate, "_")) {
+                        cap_name = candidate;
+                        cap_node = cap.node;
+                        break;
+                    }
+                }
+
+                if (cap_name.len == 0) @panic("capture_name.len == 0");
+
+                const color = if (self.vendor.hl_map.get(cap_name)) |color| color else RAY_WHITE;
+                const start = @max(cap_node.getStartByte(), self.line_start_byte) -| self.line_start_byte;
+                const end = @min((cap_node.getEndByte()), self.line_end_byte) -| self.line_start_byte;
+
+                if (start <= end and start <= self.line.?.len and end <= self.line.?.len) {
+                    @memset(self.highlights.?[start..end], color);
+                }
             }
         }
 
