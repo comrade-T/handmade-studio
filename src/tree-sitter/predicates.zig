@@ -1,6 +1,7 @@
 // Copied & Edited from https://github.com/ziglibs/treez
 
 const std = @import("std");
+const ztracy = @import("ztracy");
 const Regex = @import("regex").Regex;
 const b = @import("bindings.zig");
 
@@ -96,17 +97,33 @@ pub const PredicatesFilter = struct {
 
     pub fn nextMatchInLines(self: *@This(), cursor: *Query.Cursor, line: usize) ?Query.Match {
         while (true) {
-            const match = cursor.nextMatch() orelse return null;
+            const next_match_zone = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0xAA5522);
+            const match = cursor.nextMatch() orelse {
+                next_match_zone.Name("NOMORE nextMatch()");
+                next_match_zone.End();
+                return null;
+            };
+            next_match_zone.End();
+
             if (self.allPredicatesMatchesInLines(match, line)) return match;
         }
     }
 
     fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match, line: usize) bool {
+        const zone = ztracy.ZoneNC(@src(), "allPredicatesMatchesInLines()", 0xAAFF22);
+        defer zone.End();
+
         for (match.captures()) |cap| {
             const node = cap.node;
 
-            if (node.getEndPoint().row < line) return false;
-            if (node.getStartPoint().row > line) return false;
+            if (node.getEndPoint().row < line) {
+                zone.Name("B4");
+                return false;
+            }
+            if (node.getStartPoint().row > line) {
+                zone.Name("AFTER");
+                return false;
+            }
 
             const buf_size = 1024;
             var buf: [buf_size]u8 = undefined;

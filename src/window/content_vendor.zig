@@ -1,4 +1,5 @@
 const std = @import("std");
+const ztracy = @import("ztracy");
 const _neo_buffer = @import("neo_buffer");
 const code_point = _neo_buffer.code_point;
 const ts = _neo_buffer.ts;
@@ -132,6 +133,9 @@ pub const ContentVendor = struct {
         }
 
         fn updateLineContent(self: *@This()) !void {
+            const tracy_zone = ztracy.ZoneNC(@src(), "updateLineContent()", 0x00AAFF);
+            defer tracy_zone.End();
+
             const start_byte = if (self.line == null)
                 try self.vendor.buffer.roperoot.getByteOffsetOfPosition(self.current_line, 0)
             else
@@ -154,17 +158,31 @@ pub const ContentVendor = struct {
         }
 
         fn updateLineHighlights(self: *@This()) !void {
+            const tracy_zone = ztracy.ZoneNC(@src(), "updateLineHighlights()", 0xAA00FF);
+            defer tracy_zone.End();
+
             if (self.line) |line| if (line.len == 0) return;
 
+            const memset_zone = ztracy.ZoneNC(@src(), "memset_zone()", 0xAA9900);
             if (self.highlights) |highlights| self.a.free(highlights);
             self.highlights = try self.a.alloc(u32, self.line.?.len);
             @memset(self.highlights.?, DEFAULT_COLOR);
+            memset_zone.End();
 
+            const cursor_execute_zone = ztracy.ZoneNC(@src(), "cursor_execute_zone()", 0xAA0000);
             const cursor = try ts.Query.Cursor.create();
-            defer cursor.destroy();
             cursor.execute(self.vendor.query, self.vendor.buffer.tstree.?.getRootNode());
+            cursor_execute_zone.End();
+            defer cursor.destroy();
 
-            while (self.vendor.filter.nextMatchInLines(cursor, self.current_line)) |match| {
+            while (true) {
+                const next_match_in_lines_zone = ztracy.ZoneNC(@src(), "nextMatchInLines()", 0xAA0066);
+                defer next_match_in_lines_zone.End();
+
+                const result = self.vendor.filter.nextMatchInLines(cursor, self.current_line);
+                if (result == null) break;
+                const match = result.?;
+
                 const cap = match.captures()[0];
                 const capture_name = self.vendor.query.getCaptureNameForId(cap.id);
                 const color = if (self.vendor.hl_map.get(capture_name)) |color| color else RAY_WHITE;

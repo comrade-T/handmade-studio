@@ -25,12 +25,10 @@ pub fn build(b: *std.Build) void {
 
     const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
 
-    // const tracy_enable = true;
-    // const tracy = b.dependency("zig-tracy", .{
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .tracy_enable = tracy_enable,
-    // });
+    const ztracy = b.dependency("ztracy", .{
+        .enable_ztracy = true,
+        .enable_fibers = true,
+    });
 
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
@@ -80,8 +78,10 @@ pub fn build(b: *std.Build) void {
 
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
         .{ .name = "regex", .module = regex },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
     ts.compile.linkLibrary(tree_sitter);
+    ts.compile.linkLibrary(ztracy.artifact("tracy"));
 
     const neo_buffer = addTestableModule(&bops, "src/buffer/neo_buffer.zig", &.{
         .{ .name = "rope", .module = rope.module },
@@ -91,9 +91,11 @@ pub fn build(b: *std.Build) void {
 
     const content_vendor = addTestableModule(&bops, "src/window/content_vendor.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     content_vendor.compile.linkLibrary(tree_sitter);
+    content_vendor.compile.linkLibrary(ztracy.artifact("tracy"));
 
     const neo_window = addTestableModule(&bops, "src/window/neo_window.zig", &.{
         .{ .name = "cursor", .module = cursor.module },
@@ -131,12 +133,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
 
-        ///////////////////////////// Tracy
-
-        const ztracy = b.dependency("ztracy", .{
-            .enable_ztracy = true,
-            .enable_fibers = true,
-        });
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));
 
