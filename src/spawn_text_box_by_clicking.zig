@@ -70,7 +70,7 @@ pub fn main() anyerror!void {
     try buf.initiateTreeSitter(.zig);
     defer buf.destroy();
 
-    const vendor = try ContentVendor.init(gpa, buf);
+    var vendor = try ContentVendor.init(gpa, buf);
     defer vendor.deinit();
 
     const window = try Window.spawn(gpa, vendor, 400, 100);
@@ -106,7 +106,13 @@ pub fn main() anyerror!void {
                         if (eql(u8, trigger, "lctrl l")) {
                             if (try navigator.forward()) |path| {
                                 defer path.deinit();
-                                // TODO:
+
+                                buf.destroy();
+                                vendor.deinit();
+
+                                buf = try Buffer.create(gpa, .file, path.items);
+                                try buf.initiateTreeSitter(.zig);
+                                vendor = try ContentVendor.init(gpa, buf);
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
@@ -129,6 +135,8 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
         {
+            rl.drawFPS(10, 10);
+
             rl.clearBackground(rl.Color.blank);
             { // navigator
                 for (navigator.short_paths, 0..) |path, i| {
@@ -156,6 +164,12 @@ pub fn main() anyerror!void {
                         x = window.x;
                         continue;
                     }
+
+                    // it's not the rendering's fault that it's slow
+                    if (y > screen_height) {
+                        break;
+                    }
+
                     rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
                     const measure = rl.measureTextEx(font, txt, font_size, spacing);
                     x += measure.x;

@@ -20,6 +20,9 @@
             .url = "https://github.com/karlseguin/log.zig/archive/master.tar.gz",
             .hash = "1220996bf8517c7785a577811f6ee39574c274151a350e2be1896359e878e1ef9aa9",
         },
+        .ztracy = .{
+            .path = "copied-libs/ztracy",
+        },
     },
 
     .paths = .{

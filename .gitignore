@@ -3,3 +3,5 @@ zig-out/
 *.ttf
 submodules/
 *.log
+copied-libs/ztracy
+*.tracy

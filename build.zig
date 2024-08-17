@@ -25,6 +25,13 @@ pub fn build(b: *std.Build) void {
 
     const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
 
+    // const tracy_enable = true;
+    // const tracy = b.dependency("zig-tracy", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    //     .tracy_enable = tracy_enable,
+    // });
+
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
     const tree_sitter = b.addStaticLibrary(.{
@@ -115,6 +122,39 @@ pub fn build(b: *std.Build) void {
     window_backend.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
+
+    {
+        const exe = b.addExecutable(.{
+            .name = "profile_content_vendor",
+            .root_source_file = b.path("src/window/content_vendor_profiling.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+
+        ///////////////////////////// Tracy
+
+        const ztracy = b.dependency("ztracy", .{
+            .enable_ztracy = true,
+            .enable_fibers = true,
+        });
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.linkLibrary(ztracy.artifact("tracy"));
+
+        ///////////////////////////// Local Modules
+
+        exe.root_module.addImport("neo_buffer", neo_buffer.module);
+        exe.root_module.addImport("content_vendor", content_vendor.module);
+        exe.root_module.addImport("neo_window", neo_window.module);
+        exe.linkLibrary(tree_sitter);
+
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+
+        const run_step = b.step("profile", "profile_content_vendor");
+        run_step.dependOn(&run_cmd.step);
+    }
+
+    ///////////////////////////// Raylib
 
     {
         const path = "src/spawn_rec_by_clicking.zig";
