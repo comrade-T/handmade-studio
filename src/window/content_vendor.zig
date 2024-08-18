@@ -217,6 +217,9 @@ pub const ContentVendor = struct {
         }
 
         pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
+            const zone = ztracy.ZoneNC(@src(), "iter.nextChar()", 0x00AAFF);
+            defer zone.End();
+
             if (self.line_byte_offset >= self.line.?.len) {
                 self.current_line += 1;
                 if (self.current_line > self.end_line) return null;

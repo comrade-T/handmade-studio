@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const ztracy = @import("ztracy");
 
 const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
@@ -43,7 +44,7 @@ pub fn main() anyerror!void {
     var kem = try kbs.KeyboardEventsManager.init(gpa);
     defer kem.deinit();
 
-    const font_size = 200;
+    const font_size = 150;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
     var trigger_map = try exp.createTriggerMap(gpa);
@@ -192,7 +193,7 @@ pub fn main() anyerror!void {
                 defer rl.endMode2D();
 
                 // const iter = try vendor.requestLines(0, vendor.buffer.roperoot.weights().bols - 1);
-                const iter = try vendor.requestLines(0, 40);
+                const iter = try vendor.requestLines(0, 999);
                 defer iter.deinit();
 
                 const spacing = 0;
@@ -200,7 +201,10 @@ pub fn main() anyerror!void {
                 var y: f32 = window.y;
 
                 var char_buf: [10]u8 = undefined;
-                while (iter.nextChar(&char_buf)) |char| {
+                while (true) {
+                    const result = iter.nextChar(&char_buf);
+                    const char = if (result) |c| c else break;
+
                     const txt, const hex = char;
                     if (txt[0] == '\n') {
                         y += font_size;
@@ -208,9 +212,14 @@ pub fn main() anyerror!void {
                         continue;
                     }
 
-                    rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
-                    const measure = rl.measureTextEx(font, txt, font_size, spacing);
-                    x += measure.x;
+                    {
+                        const zone = ztracy.ZoneNC(@src(), "rl.drawText()", 0x0F00F0);
+                        defer zone.End();
+
+                        rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
+                        const measure = rl.measureTextEx(font, txt, font_size, spacing);
+                        x += measure.x;
+                    }
                 }
             }
             { // window cursor

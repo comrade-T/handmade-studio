@@ -26,6 +26,8 @@ pub fn main() !void {
         .zoom = 1,
     };
 
+    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
+
     ///////////////////////////// Texture
 
     var did_draw_to_render_texture = false;
@@ -79,6 +81,12 @@ pub fn main() !void {
 
                 rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
                 rl.drawCircle(200, 500, 100, rl.Color.yellow);
+
+                const measure = rl.measureTextEx(font, "a", 20, 0);
+
+                var buf: [1024]u8 = undefined;
+                const txt = try std.fmt.bufPrintZ(&buf, "measure width {d} | height {d}", .{ measure.x, measure.y });
+                rl.drawText(txt, 300, 300, 40, rl.Color.ray_white);
 
                 rl.drawTextureRec(
                     render_texture.texture,
