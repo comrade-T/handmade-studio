@@ -21,6 +21,8 @@ const ArrayList = std.ArrayList;
 const screen_width = 1920;
 const screen_height = 1080;
 
+// TODO: drag the camera around
+
 pub fn main() anyerror!void {
     ///////////////////////////// Window Initialization
 
@@ -41,7 +43,8 @@ pub fn main() anyerror!void {
     var kem = try kbs.KeyboardEventsManager.init(gpa);
     defer kem.deinit();
 
-    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
+    const font_size = 200;
+    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
     var trigger_map = try exp.createTriggerMap(gpa);
     defer trigger_map.deinit();
@@ -56,6 +59,15 @@ pub fn main() anyerror!void {
     const TriggerPicker = kbs.GenericTriggerPicker(exp.TriggerMap);
     var picker = try TriggerPicker.init(gpa, &trigger_map);
     defer picker.deinit();
+
+    ///////////////////////////// Camera
+
+    var camera = rl.Camera2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .target = .{ .x = 0, .y = 0 },
+        .rotation = 0,
+        .zoom = 1,
+    };
 
     ///////////////////////////// Models
 
@@ -73,12 +85,37 @@ pub fn main() anyerror!void {
     var vendor = try ContentVendor.init(gpa, buf);
     defer vendor.deinit();
 
-    const window = try Window.spawn(gpa, vendor, 400, 100);
+    var window = try Window.spawn(gpa, vendor, 400, 100);
     defer window.destroy();
 
-    ///////////////////////////// Main Loop
+    ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
+
+        ///////////////////////////// Camera
+
+        if (rl.isMouseButtonDown(.mouse_button_right)) {
+            var delta = rl.getMouseDelta();
+            delta = delta.scale(-1 / camera.zoom);
+            camera.target = delta.add(camera.target);
+        }
+
+        {
+            const wheel = rl.getMouseWheelMove();
+            if (wheel != 0) {
+                const mouse_pos = rl.getMousePosition();
+                const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, camera);
+                camera.offset = mouse_pos;
+                camera.target = mouse_world_pos;
+
+                var scale_factor = 1 + (0.25 * @abs(wheel));
+                if (wheel < 0) scale_factor = 1 / scale_factor;
+                camera.zoom = rl.math.clamp(camera.zoom * scale_factor, 0.125, 64);
+            }
+        }
+
+        ///////////////////////////// Keyboard
+
         try kem.startHandlingInputs();
         {
             const input_steps = try kem.inputSteps();
@@ -109,10 +146,12 @@ pub fn main() anyerror!void {
 
                                 buf.destroy();
                                 vendor.deinit();
+                                window.destroy();
 
                                 buf = try Buffer.create(gpa, .file, path.items);
                                 try buf.initiateTreeSitter(.zig);
                                 vendor = try ContentVendor.init(gpa, buf);
+                                window = try Window.spawn(gpa, vendor, 400, 100);
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
@@ -131,7 +170,8 @@ pub fn main() anyerror!void {
         }
         try kem.finishHandlingInputs();
 
-        // View
+        ///////////////////////////// Draw
+
         rl.beginDrawing();
         defer rl.endDrawing();
         {
@@ -148,11 +188,14 @@ pub fn main() anyerror!void {
                 }
             }
             { // window content
-                const iter = try vendor.requestLines(0, vendor.buffer.roperoot.weights().bols - 1);
+                rl.beginMode2D(camera);
+                defer rl.endMode2D();
+
+                // const iter = try vendor.requestLines(0, vendor.buffer.roperoot.weights().bols - 1);
+                const iter = try vendor.requestLines(0, 40);
                 defer iter.deinit();
 
                 const spacing = 0;
-                const font_size = 40;
                 var x: f32 = window.x;
                 var y: f32 = window.y;
 
@@ -164,9 +207,6 @@ pub fn main() anyerror!void {
                         x = window.x;
                         continue;
                     }
-
-                    // don't draw things off screen_height
-                    if (y > screen_height) break;
 
                     rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
                     const measure = rl.measureTextEx(font, txt, font_size, spacing);
