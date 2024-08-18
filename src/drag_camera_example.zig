@@ -26,6 +26,13 @@ pub fn main() !void {
         .zoom = 1,
     };
 
+    ///////////////////////////// Texture
+
+    var did_draw_to_render_texture = false;
+    const render_texture = rl.loadRenderTexture(1920, 1080);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
+
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
@@ -56,11 +63,34 @@ pub fn main() !void {
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
+
+            if (!did_draw_to_render_texture) {
+                render_texture.begin();
+                defer render_texture.end();
+                defer did_draw_to_render_texture = true;
+
+                rl.drawText("super idol", 100, 100, 30, rl.Color.ray_white);
+                rl.drawText("de xiao rong", 100, 400, 30, rl.Color.ray_white);
+            }
+
             {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
+
                 rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
                 rl.drawCircle(200, 500, 100, rl.Color.yellow);
+
+                rl.drawTextureRec(
+                    render_texture.texture,
+                    rl.Rectangle{
+                        .x = 0,
+                        .y = 0,
+                        .width = @floatFromInt(render_texture.texture.width),
+                        .height = @floatFromInt(-render_texture.texture.height),
+                    },
+                    .{ .x = 100, .y = 600 },
+                    rl.Color.white,
+                );
             }
         }
     }
