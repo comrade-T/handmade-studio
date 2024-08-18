@@ -24,6 +24,9 @@ pub const PredicatesFilter = struct {
     const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
 
     pub fn init(external_allocator: Allocator, query: *const Query) !*@This() {
+        const zone = ztracy.ZoneNC(@src(), "PredicatesFilter.init()", 0x00AA00);
+        defer zone.End();
+
         var self = try external_allocator.create(@This());
 
         self.* = .{

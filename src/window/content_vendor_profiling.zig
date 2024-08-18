@@ -6,8 +6,8 @@ const Buffer = _neo_buffer.Buffer;
 const ContentVendor = @import("content_vendor").ContentVendor;
 
 pub fn main() !void {
-    const tracy_zone = ztracy.ZoneN(@src(), "main_zone");
-    defer tracy_zone.End();
+    // const tracy_zone = ztracy.ZoneN(@src(), "main_zone");
+    // defer tracy_zone.End();
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -20,14 +20,11 @@ pub fn main() !void {
     buf_create_zone.End();
     defer buf.destroy();
 
-    const init_ts_zone = ztracy.ZoneN(@src(), "init_ts_zone");
+    const buf_init_ts_zone = ztracy.ZoneN(@src(), "buf_init_ts_zone");
     try buf.initiateTreeSitter(.zig);
-    init_ts_zone.End();
+    buf_init_ts_zone.End();
 
-    const init_vendor_zone = ztracy.ZoneN(@src(), "init_vendor_zone");
     const vendor = try ContentVendor.init(allocator, buf);
-    init_vendor_zone.End();
-
     defer vendor.deinit();
 
     for (0..1) |_| {

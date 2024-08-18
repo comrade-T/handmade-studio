@@ -17,13 +17,19 @@ const eqStr = std.testing.expectEqualStrings;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn getTSQuery(lang: SupportedLanguages) !*ts.Query {
+    const get_lang_zone = ztracy.ZoneNC(@src(), "ts.Language.get()", 0xFF00FF);
     const tslang = switch (lang) {
         .zig => try ts.Language.get("zig"),
     };
+    get_lang_zone.End();
+
+    const create_query_zone = ztracy.ZoneNC(@src(), "ts.Query.create()", 0x00AAFF);
     const patterns = switch (lang) {
         .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
     };
     const query = try ts.Query.create(tslang, patterns);
+    create_query_zone.End();
+
     return query;
 }
 
@@ -103,6 +109,9 @@ pub const ContentVendor = struct {
         highlights: ?[]u32,
 
         pub fn init(a: Allocator, vendor: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
+            const zone = ztracy.ZoneNC(@src(), "ContentVendor.init()", 0x00AAFF);
+            defer zone.End();
+
             const self = try a.create(@This());
             self.* = .{
                 .a = a,
@@ -119,11 +128,18 @@ pub const ContentVendor = struct {
 
                 .highlights = null,
             };
+
+            const update_line_zone = ztracy.ZoneNC(@src(), "PredicatesFilter.init().updateLineContent()", 0x00AAFF);
             self.updateLineContent() catch |err| switch (err) {
                 error.EndOfDocument => {},
                 else => @panic("error calling self.updateLineContent() on CurrentJobIterator.init()"),
             };
+            update_line_zone.End();
+
+            const update_highlights_zone = ztracy.ZoneNC(@src(), "PredicatesFilter.init().updateLineHighlights()", 0x00FFAA);
             try self.updateLineHighlights();
+            update_highlights_zone.End();
+
             return self;
         }
 

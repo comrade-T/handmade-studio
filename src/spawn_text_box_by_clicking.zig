@@ -165,10 +165,8 @@ pub fn main() anyerror!void {
                         continue;
                     }
 
-                    // it's not the rendering's fault that it's slow
-                    if (y > screen_height) {
-                        break;
-                    }
+                    // don't draw things off screen_height
+                    if (y > screen_height) break;
 
                     rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
                     const measure = rl.measureTextEx(font, txt, font_size, spacing);
