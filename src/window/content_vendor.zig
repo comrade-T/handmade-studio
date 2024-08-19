@@ -203,7 +203,7 @@ pub const Highlighter = struct {
                 const start = @max(match.cap_node.?.getStartByte(), area_start_offset) -| area_start_offset;
                 const end = @min((match.cap_node.?.getEndByte()), arena_end_offset) -| area_start_offset;
 
-                @memset(self.highlights[start..end], color);
+                if (start < end) @memset(self.highlights[start..end], color);
             }
         }
     };

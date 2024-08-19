@@ -6,11 +6,12 @@ const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
 const FileNavigator = @import("components/FileNavigator.zig");
 
-const _neo_buffer = @import("neo_buffer");
 const _content_vendor = @import("content_vendor");
+const Highlighter = _content_vendor.Highlighter;
+
+const _neo_buffer = @import("neo_buffer");
 const _neo_window = @import("neo_window");
 const Buffer = _neo_buffer.Buffer;
-const ContentVendor = _content_vendor.ContentVendor;
 const Window = _neo_window.Window;
 
 const eql = std.mem.eql;
@@ -83,10 +84,16 @@ pub fn main() anyerror!void {
     try buf.initiateTreeSitter(.zig);
     defer buf.destroy();
 
-    var vendor = try ContentVendor.init(gpa, buf);
-    defer vendor.deinit();
+    const query = try _content_vendor.getTSQuery(.zig);
+    defer query.destroy();
 
-    var window = try Window.spawn(gpa, vendor, 400, 100);
+    var highlight_map = try _content_vendor.createHighlightMap(gpa);
+    defer highlight_map.deinit();
+
+    var highlighter = try Highlighter.init(gpa, buf, &highlight_map, query);
+    defer highlighter.deinit();
+
+    var window = try Window.spawn(gpa, highlighter, 400, 100);
     defer window.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
@@ -146,13 +153,13 @@ pub fn main() anyerror!void {
                                 defer path.deinit();
 
                                 buf.destroy();
-                                vendor.deinit();
+                                highlighter.deinit();
                                 window.destroy();
 
                                 buf = try Buffer.create(gpa, .file, path.items);
                                 try buf.initiateTreeSitter(.zig);
-                                vendor = try ContentVendor.init(gpa, buf);
-                                window = try Window.spawn(gpa, vendor, 400, 100);
+                                highlighter = try Highlighter.init(gpa, buf, &highlight_map, query);
+                                window = try Window.spawn(gpa, highlighter, 400, 100);
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
@@ -192,21 +199,21 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
-                // const iter = try vendor.requestLines(0, vendor.buffer.roperoot.weights().bols - 1);
-                const iter = try vendor.requestLines(0, 999);
+                const iter = try highlighter.requestLines(gpa, 0, 80);
                 defer iter.deinit();
 
-                const spacing = 0;
                 var x: f32 = window.x;
                 var y: f32 = window.y;
 
-                var char_buf: [10]u8 = undefined;
                 while (true) {
-                    const result = iter.nextChar(&char_buf);
-                    const char = if (result) |c| c else break;
+                    const result = iter.nextChar();
+                    if (result == null) break;
+                    if (result.?.code_point >= 128) {
+                        std.debug.print("code points >= 128 not supported yet\n", .{});
+                        break;
+                    }
 
-                    const txt, const hex = char;
-                    if (txt[0] == '\n') {
+                    if (result.?.code_point == '\n') {
                         y += font_size;
                         x = window.x;
                         continue;
@@ -216,9 +223,8 @@ pub fn main() anyerror!void {
                         const zone = ztracy.ZoneNC(@src(), "rl.drawText()", 0x0F00F0);
                         defer zone.End();
 
-                        rl.drawTextEx(font, txt, .{ .x = x, .y = y }, font_size, spacing, rl.Color.fromInt(hex));
-                        const measure = rl.measureTextEx(font, txt, font_size, spacing);
-                        x += measure.x;
+                        rl.drawTextCodepoint(font, @intCast(result.?.code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(result.?.color));
+                        x += font_size / 3 + 4;
                     }
                 }
             }
