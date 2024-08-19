@@ -9,6 +9,7 @@ const SupportedLanguages = _neo_buffer.SupportedLanguages;
 
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
@@ -365,6 +366,8 @@ pub const Highlighter = struct {
     hl_map: std.StringHashMap(u32),
     filter: *PredicatesFilter,
 
+    const DEFAULT_COLOR = rgba(245, 245, 245, 245);
+
     pub fn init(a: Allocator, buffer: *Buffer, hl_map: std.StringHashMap(u32), query: *ts.Query) !*@This() {
         const self = try a.create(@This());
         self.* = .{
@@ -383,6 +386,7 @@ pub const Highlighter = struct {
     }
 
     const Iterator = struct {
+        arena: ArenaAllocator,
         a: Allocator,
         parent: *Highlighter,
 
@@ -401,7 +405,8 @@ pub const Highlighter = struct {
 
             const self = try parent.a.create(@This());
             self.* = .{
-                .a = parent.a,
+                .arena = ArenaAllocator.init(parent.a),
+                .a = self.arena.allocator(),
                 .parent = parent,
 
                 .start_line = start_line,
@@ -414,15 +419,58 @@ pub const Highlighter = struct {
                 .highlights = try ArrayList([]u32).initCapacity(self.a, end_line - start_line),
             };
 
+            try self.addLineContents();
+            try self.addLineHighlights();
+
             return self;
         }
 
         pub fn deinit(self: *@This()) !void {
-            for (self.lines.items) |line| self.a.free(line);
-            for (self.highlights.items) |slice| self.a.free(slice);
-            self.lines.deinit();
-            self.highlights.deinit();
+            self.arena.deinit();
             self.a.destroy(self);
+        }
+
+        fn addLineContents(self: *@This()) !void {
+            const zone = ztracy.ZoneNC(@src(), "Iterator.addLineContents()", 0x00AAFF);
+            defer zone.End();
+
+            for (self.start_line..self.end_line) |linenr| {
+                const line_content = try self.parent.buffer.roperoot.getLine(self.a, linenr);
+                try self.lines.append(line_content);
+            }
+        }
+
+        fn addLineHighlights(self: *@This()) !void {
+            const zone = ztracy.ZoneNC(@src(), "Iterator.addLineHighlights()", 0x000099);
+            defer zone.End();
+
+            const current_line_highlights = try self.a.alloc(u32, self.lines.items[self.current_line].len);
+            @memset(current_line_highlights, DEFAULT_COLOR);
+
+            const cursor = try ts.Query.Cursor.create();
+            cursor.setPointRange(
+                ts.Point{ .row = @intCast(self.current_line), .column = 0 },
+                ts.Point{ .row = @intCast(self.end_line + 1), .column = 0 },
+            );
+            cursor.execute(self.parent.query, self.parent.buffer.tstree.?.getRootNode());
+            defer cursor.destroy();
+
+            while (true) {
+                const result = self.parent.filter.nextMatchInLines(self.parent.query, cursor, self.current_line);
+                switch (result) {
+                    .match => |match| if (match.match == null) return,
+                    .ignore => return,
+                }
+
+                const match = result.match;
+                const color = if (self.vendor.hl_map.get(match.cap_name)) |color| color else RAY_WHITE;
+                const start = @max(match.cap_node.?.getStartByte(), self.line_start_byte) -| self.line_start_byte;
+                const end = @min((match.cap_node.?.getEndByte()), self.line_end_byte) -| self.line_start_byte;
+
+                @memset(current_line_highlights[start..end], color);
+            }
+
+            try self.highlights.append(current_line_highlights);
         }
     };
 };
