@@ -106,7 +106,13 @@ pub const PredicatesFilter = struct {
         ignore: bool,
     };
 
-    pub fn nextMatchInLines(self: *@This(), query: *Query, cursor: *Query.Cursor, line: usize) MatchRangeResult {
+    pub fn nextMatchInLines(
+        self: *@This(),
+        query: *Query,
+        cursor: *Query.Cursor,
+        start_line: usize,
+        end_line: usize,
+    ) MatchRangeResult {
         while (true) {
             const next_match_zone = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0xAA5522);
             const match = cursor.nextMatch() orelse {
@@ -133,7 +139,7 @@ pub const PredicatesFilter = struct {
 
             if (cap_name.len == 0) @panic("capture_name.len == 0");
 
-            if (cap_node.getStartPoint().row > line or cap_node.getEndPoint().row < line) {
+            if (cap_node.getStartPoint().row > end_line or cap_node.getEndPoint().row < start_line) {
                 return .{ .ignore = true };
             }
 

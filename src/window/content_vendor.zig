@@ -9,7 +9,6 @@ const SupportedLanguages = _neo_buffer.SupportedLanguages;
 
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
-const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
@@ -62,313 +61,16 @@ fn createHighlightMap(a: Allocator) !std.StringHashMap(u32) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const ContentVendor = struct {
-    a: Allocator,
-    buffer: *Buffer,
-    query: *ts.Query,
-    filter: *PredicatesFilter,
-    hl_map: std.StringHashMap(u32),
-
-    pub fn init(a: Allocator, buffer: *Buffer) !*@This() {
-        const self = try a.create(@This());
-        self.* = .{
-            .a = a,
-            .buffer = buffer,
-            .query = try getTSQuery(buffer.lang.?),
-            .filter = try PredicatesFilter.initWithContentCallback(a, self.query, Buffer.contentCallback, self.buffer),
-            .hl_map = try createHighlightMap(a),
-        };
-        return self;
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.query.destroy();
-        self.filter.deinit();
-        self.hl_map.deinit();
-        self.a.destroy(self);
-    }
-
-    ///////////////////////////// Job
-
-    const DEFAULT_COLOR = rgba(245, 245, 245, 245);
-    const JOB_BUF_SIZE = 1024;
-
-    pub const CurrentJobIterator = struct {
-        a: Allocator,
-        vendor: *ContentVendor,
-
-        start_line: usize,
-        end_line: usize,
-        current_line: usize,
-
-        buf: [JOB_BUF_SIZE + 1]u8 = undefined,
-
-        line: ?[]const u8,
-        line_byte_offset: usize,
-        line_start_byte: u32, // (relative to document)
-        line_end_byte: u32, // (relative to document)
-
-        highlights: ?[]u32,
-
-        pub fn init(a: Allocator, vendor: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
-            const zone = ztracy.ZoneNC(@src(), "ContentVendor.init()", 0x00AAFF);
-            defer zone.End();
-
-            const self = try a.create(@This());
-            self.* = .{
-                .a = a,
-                .vendor = vendor,
-
-                .start_line = start_line,
-                .end_line = end_line,
-                .current_line = start_line,
-
-                .line = null,
-                .line_byte_offset = 0,
-                .line_start_byte = 0,
-                .line_end_byte = 0,
-
-                .highlights = null,
-            };
-
-            const update_line_zone = ztracy.ZoneNC(@src(), "PredicatesFilter.init().updateLineContent()", 0x00AAFF);
-            self.updateLineContent() catch |err| switch (err) {
-                error.EndOfDocument => {},
-                else => @panic("error calling self.updateLineContent() on CurrentJobIterator.init()"),
-            };
-            update_line_zone.End();
-
-            const update_highlights_zone = ztracy.ZoneNC(@src(), "PredicatesFilter.init().updateLineHighlights()", 0x00FFAA);
-            try self.updateLineHighlights();
-            update_highlights_zone.End();
-
-            return self;
-        }
-
-        pub fn deinit(self: *@This()) void {
-            if (self.highlights) |highlights| self.a.free(highlights);
-            self.a.destroy(self);
-        }
-
-        fn updateLineContent(self: *@This()) !void {
-            const tracy_zone = ztracy.ZoneNC(@src(), "updateLineContent()", 0x00AAFF);
-            defer tracy_zone.End();
-
-            const start_byte = if (self.line == null)
-                try self.vendor.buffer.roperoot.getByteOffsetOfPosition(self.current_line, 0)
-            else
-                self.line_end_byte;
-
-            const line_content, const eol = self.vendor.buffer.roperoot.getRestOfLine(start_byte, &self.buf, JOB_BUF_SIZE);
-            if (eol) {
-                self.buf[line_content.len] = '\n';
-                self.line = self.buf[0 .. line_content.len + 1];
-            } else {
-                self.line = line_content;
-            }
-
-            if (self.line_end_byte >= self.vendor.buffer.roperoot.weights().len) return error.EndOfDocument;
-
-            const line_end_byte = start_byte + self.line.?.len;
-            self.line_start_byte = @intCast(start_byte);
-            self.line_end_byte = @intCast(line_end_byte);
-            self.line_byte_offset = 0;
-        }
-
-        fn updateLineHighlights(self: *@This()) !void {
-            const tracy_zone = ztracy.ZoneNC(@src(), "updateLineHighlights()", 0xAA00FF);
-            defer tracy_zone.End();
-
-            if (self.line) |line| if (line.len == 0) return;
-
-            const memset_zone = ztracy.ZoneNC(@src(), "memset_zone()", 0xAA9900);
-            if (self.highlights) |highlights| self.a.free(highlights);
-            self.highlights = try self.a.alloc(u32, self.line.?.len);
-            @memset(self.highlights.?, DEFAULT_COLOR);
-            memset_zone.End();
-
-            const cursor_execute_zone = ztracy.ZoneNC(@src(), "cursor_execute_zone()", 0xAA0000);
-            const cursor = try ts.Query.Cursor.create();
-            cursor.setPointRange(
-                ts.Point{ .row = @intCast(self.current_line), .column = 0 },
-                ts.Point{ .row = @intCast(self.end_line + 1), .column = 0 },
-            );
-            cursor.execute(self.vendor.query, self.vendor.buffer.tstree.?.getRootNode());
-            cursor_execute_zone.End();
-            defer cursor.destroy();
-
-            while (true) {
-                const while_zone = ztracy.ZoneNC(@src(), "while_zone", 0xAA0066);
-                defer while_zone.End();
-
-                const result = self.vendor.filter.nextMatchInLines(self.vendor.query, cursor, self.current_line);
-                switch (result) {
-                    .match => |match| if (match.match == null) return,
-                    .ignore => return,
-                }
-                const match = result.match;
-
-                const color = if (self.vendor.hl_map.get(match.cap_name)) |color| color else RAY_WHITE;
-                const start = @max(match.cap_node.?.getStartByte(), self.line_start_byte) -| self.line_start_byte;
-                const end = @min((match.cap_node.?.getEndByte()), self.line_end_byte) -| self.line_start_byte;
-
-                if (start <= end and start <= self.line.?.len and end <= self.line.?.len) {
-                    @memset(self.highlights.?[start..end], color);
-                }
-            }
-        }
-
-        pub fn nextChar(self: *@This(), buf: []u8) ?struct { [*:0]u8, u32 } {
-            const zone = ztracy.ZoneNC(@src(), "iter.nextChar()", 0x00AAFF);
-            defer zone.End();
-
-            if (self.line_byte_offset >= self.line.?.len) {
-                self.current_line += 1;
-                if (self.current_line > self.end_line) return null;
-                self.updateLineContent() catch return null;
-                self.updateLineHighlights() catch return null;
-                self.line_byte_offset = 0;
-            }
-
-            var cp_iter = code_point.Iterator{ .i = @intCast(self.line_byte_offset), .bytes = self.line.? };
-            if (cp_iter.next()) |cp| {
-                defer self.line_byte_offset += cp.len;
-                const char_bytes = self.line.?[self.line_byte_offset .. self.line_byte_offset + cp.len];
-                const sentichar = std.fmt.bufPrintZ(buf, "{s}", .{char_bytes}) catch @panic("error calling bufPrintZ");
-                const color = self.highlights.?[self.line_byte_offset];
-                return .{ sentichar, color };
-            }
-
-            return null;
-        }
-
-        test CurrentJobIterator {
-            { // out of bounds
-                const iter = try setupTestIter("const", 0, 100);
-                defer teardownTestIer(iter);
-                try testIter(iter, "const", "type.qualifier");
-                try testIter(iter, null, null);
-            }
-            {
-                const iter = try setupTestIter("const Allocator = @import(\"std\").mem.Allocator;", 0, 0);
-                defer teardownTestIer(iter);
-                try testIter(iter, "const", "type.qualifier");
-                try testIter(iter, " ", "variable");
-                try testIter(iter, "Allocator", "type");
-                try testIter(iter, " = ", "variable");
-                try testIter(iter, "@import", "include");
-                try testIter(iter, "(", "punctuation.bracket");
-                try testIter(iter, "\"std\"", "string");
-                try testIter(iter, ")", "punctuation.bracket");
-                try testIter(iter, ".", "punctuation.delimiter");
-                try testIter(iter, "mem", "field");
-                try testIter(iter, ".", "punctuation.delimiter");
-                try testIter(iter, "Allocator", "type");
-                try testIter(iter, ";", "punctuation.delimiter");
-                try testIter(iter, null, null);
-            }
-            {
-                const iter = try setupTestIter("const a = 10;\nvar not_false = true;", 0, 1);
-                defer teardownTestIer(iter);
-                try testIter(iter, "const", "type.qualifier");
-                try testIter(iter, " a = ", "variable");
-                try testIter(iter, "10", "number");
-                try testIter(iter, ";", "punctuation.delimiter");
-                try testIter(iter, "\n", "variable");
-                try testIter(iter, "var", "type.qualifier");
-                try testIter(iter, " not_false = ", "variable");
-                try testIter(iter, "true", "boolean");
-                try testIter(iter, ";", "punctuation.delimiter");
-                try testIter(iter, null, null);
-            }
-            {
-                const iter = try setupTestIter("const a = 10;\nvar not_false = true;", 1, 1);
-                defer teardownTestIer(iter);
-                try testIter(iter, "var", "type.qualifier");
-                try testIter(iter, " not_false = ", "variable");
-                try testIter(iter, "true", "boolean");
-                try testIter(iter, ";", "punctuation.delimiter");
-                try testIter(iter, null, null);
-            }
-            {
-                const iter = try setupTestIter("const\n", 0, 999);
-                defer teardownTestIer(iter);
-                try testIter(iter, "const", "type.qualifier");
-                try testIter(iter, "\n", "variable");
-                try testIter(iter, null, null);
-            }
-            {
-                const iter = try setupTestIter("const\n\n", 0, 999);
-                defer teardownTestIer(iter);
-                try testIter(iter, "const", "type.qualifier");
-                try testIter(iter, "\n", "variable");
-                try testIter(iter, "\n", "variable");
-                try testIter(iter, null, null);
-            }
-            {
-                const iter = try setupTestIter("const\n\nsomething", 0, 999);
-                defer teardownTestIer(iter);
-                try testIter(iter, "const", "type.qualifier");
-                try testIter(iter, "\n", "variable");
-                try testIter(iter, "\n", "variable");
-                try testIter(iter, "something", "variable");
-                try testIter(iter, null, null);
-            }
-        }
-        pub fn testIter(iter: *CurrentJobIterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
-            if (expected_sequence == null) {
-                var buf_: [10]u8 = undefined;
-                try eq(null, iter.nextChar(&buf_));
-                return;
-            }
-
-            var code_point_iter = code_point.Iterator{ .bytes = expected_sequence.? };
-            var i: usize = 0;
-            while (code_point_iter.next()) |cp| {
-                var buf_: [10]u8 = undefined;
-                const char, const color = iter.nextChar(&buf_).?;
-                const expected_char = expected_sequence.?[cp.offset .. cp.offset + cp.len];
-                eqStr(expected_char, std.mem.span(char)) catch {
-                    std.debug.print("\n================\n", .{});
-                    std.debug.print("Comparison failed on index [{d}] of expected_sequence '{s}'.\n", .{ i, expected_sequence.? });
-                    std.debug.print("=================\n", .{});
-                    return error.TestExpectedEqual;
-                };
-                try eq(iter.vendor.hl_map.get(expected_group.?).?, color);
-                defer i += 1;
-            }
-        }
-        fn teardownTestIer(iter: *CurrentJobIterator) void {
-            iter.vendor.buffer.destroy();
-            iter.vendor.deinit();
-            iter.deinit();
-        }
-        fn setupTestIter(source: []const u8, start_line: usize, end_line: usize) !*CurrentJobIterator {
-            var buf = try Buffer.create(testing_allocator, .string, source);
-            try buf.initiateTreeSitter(.zig);
-            const vendor = try ContentVendor.init(testing_allocator, buf);
-            const iter = try vendor.requestLines(start_line, end_line);
-            return iter;
-        }
-    };
-
-    pub fn requestLines(self: *ContentVendor, start_line: usize, end_line: usize) !*CurrentJobIterator {
-        return try CurrentJobIterator.init(self.a, self, start_line, end_line);
-    }
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 pub const Highlighter = struct {
     a: Allocator,
     buffer: *Buffer,
     query: *ts.Query,
-    hl_map: std.StringHashMap(u32),
+    hl_map: *std.StringHashMap(u32),
     filter: *PredicatesFilter,
 
     const DEFAULT_COLOR = rgba(245, 245, 245, 245);
 
-    pub fn init(a: Allocator, buffer: *Buffer, hl_map: std.StringHashMap(u32), query: *ts.Query) !*@This() {
+    pub fn init(a: Allocator, buffer: *Buffer, hl_map: *std.StringHashMap(u32), query: *ts.Query) !*const @This() {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
@@ -380,43 +82,45 @@ pub const Highlighter = struct {
         return self;
     }
 
-    pub fn deinit(self: *@This()) void {
+    pub fn deinit(self: *const @This()) void {
         self.filter.deinit();
         self.a.destroy(self);
     }
 
+    pub fn requestLines(self: *const @This(), a: Allocator, start_line: usize, end_line: usize) !*Iterator {
+        return Iterator.init(a, self, start_line, end_line);
+    }
+
     const Iterator = struct {
         arena: ArenaAllocator,
-        a: Allocator,
-        parent: *Highlighter,
+        exa: Allocator,
+        parent: *const Highlighter,
 
         start_line: usize,
         end_line: usize,
 
-        current_line: usize,
-        current_line_offset: usize,
+        current_line_index: usize = 0,
+        current_line_offset: usize = 0,
 
         lines: ArrayList([]const u8),
-        highlights: ArrayList([]u32),
 
-        pub fn init(parent: *const Highlighter, start_line: usize, end_line: usize) !*Iterator {
+        highlights: []u32 = undefined,
+        highlight_offset: usize = 0,
+
+        pub fn init(a: Allocator, parent: *const Highlighter, start_line: usize, end_line: usize) !*Iterator {
             const zone = ztracy.ZoneNC(@src(), "Highlighter.Iterator.init()", 0x00AAFF);
             defer zone.End();
 
             const self = try parent.a.create(@This());
             self.* = .{
-                .arena = ArenaAllocator.init(parent.a),
-                .a = self.arena.allocator(),
+                .arena = ArenaAllocator.init(a),
+                .exa = a,
                 .parent = parent,
 
                 .start_line = start_line,
                 .end_line = end_line,
 
-                .current_line = start_line,
-                .current_line_offset = 0,
-
-                .lines = try ArrayList([]const u8).initCapacity(self.a, end_line - start_line),
-                .highlights = try ArrayList([]u32).initCapacity(self.a, end_line - start_line),
+                .lines = try ArrayList([]const u8).initCapacity(self.arena.allocator(), end_line - start_line),
             };
 
             try self.addLineContents();
@@ -425,9 +129,32 @@ pub const Highlighter = struct {
             return self;
         }
 
-        pub fn deinit(self: *@This()) !void {
+        pub fn deinit(self: *@This()) void {
             self.arena.deinit();
-            self.a.destroy(self);
+            self.exa.destroy(self);
+        }
+
+        const NextCharResult = struct {
+            code_point: u21,
+            color: u32,
+        };
+
+        pub fn nextChar(self: *@This()) ?NextCharResult {
+            if (self.current_line_offset >= self.lines.items[self.current_line_index].len) {
+                self.current_line_index += 1;
+                self.current_line_offset = 0;
+                if (self.current_line_index + self.start_line >= self.end_line) return null;
+            }
+
+            var cp_iter = code_point.Iterator{ .i = @intCast(self.current_line_offset), .bytes = self.lines.items[self.current_line_index] };
+            if (cp_iter.next()) |cp| {
+                defer self.current_line_offset += cp.len;
+                defer self.highlight_offset += cp.len;
+                const color = self.highlights[self.highlight_offset];
+                return .{ .code_point = cp.code, .color = color };
+            }
+
+            return null;
         }
 
         fn addLineContents(self: *@This()) !void {
@@ -435,49 +162,154 @@ pub const Highlighter = struct {
             defer zone.End();
 
             for (self.start_line..self.end_line) |linenr| {
-                const line_content = try self.parent.buffer.roperoot.getLine(self.a, linenr);
+                const line_content = try self.parent.buffer.roperoot.getLine(self.arena.allocator(), linenr);
                 try self.lines.append(line_content);
             }
         }
 
         fn addLineHighlights(self: *@This()) !void {
-            const zone = ztracy.ZoneNC(@src(), "Iterator.addLineHighlights()", 0x000099);
-            defer zone.End();
+            const _tracy = ztracy.ZoneNC(@src(), "Iterator.addLineHighlights()", 0x000099);
+            defer _tracy.End();
 
-            const current_line_highlights = try self.a.alloc(u32, self.lines.items[self.current_line].len);
-            @memset(current_line_highlights, DEFAULT_COLOR);
+            const area_start_offset = try self.parent.buffer.roperoot.getByteOffsetOfPosition(self.start_line, 0);
+            var arena_end_offset = area_start_offset;
+            for (self.lines.items) |line| arena_end_offset += line.len;
+
+            self.highlights = try self.arena.allocator().alloc(u32, arena_end_offset - area_start_offset);
+            @memset(self.highlights, DEFAULT_COLOR);
 
             const cursor = try ts.Query.Cursor.create();
             cursor.setPointRange(
-                ts.Point{ .row = @intCast(self.current_line), .column = 0 },
+                ts.Point{ .row = @intCast(self.start_line), .column = 0 },
                 ts.Point{ .row = @intCast(self.end_line + 1), .column = 0 },
             );
             cursor.execute(self.parent.query, self.parent.buffer.tstree.?.getRootNode());
             defer cursor.destroy();
 
             while (true) {
-                const result = self.parent.filter.nextMatchInLines(self.parent.query, cursor, self.current_line);
+                const result = self.parent.filter.nextMatchInLines(self.parent.query, cursor, self.start_line, self.end_line);
                 switch (result) {
-                    .match => |match| if (match.match == null) return,
-                    .ignore => return,
+                    .match => |match| if (match.match == null) break,
+                    .ignore => break,
                 }
 
                 const match = result.match;
-                const color = if (self.vendor.hl_map.get(match.cap_name)) |color| color else RAY_WHITE;
-                const start = @max(match.cap_node.?.getStartByte(), self.line_start_byte) -| self.line_start_byte;
-                const end = @min((match.cap_node.?.getEndByte()), self.line_end_byte) -| self.line_start_byte;
+                const color = if (self.parent.hl_map.get(match.cap_name)) |color| color else RAY_WHITE;
+                const start = @max(match.cap_node.?.getStartByte(), area_start_offset) -| area_start_offset;
+                const end = @min((match.cap_node.?.getEndByte()), arena_end_offset) -| area_start_offset;
 
-                @memset(current_line_highlights[start..end], color);
+                @memset(self.highlights[start..end], color);
             }
-
-            try self.highlights.append(current_line_highlights);
         }
     };
+
+    test Iterator {
+        var hl_map = try createHighlightMap(testing_allocator);
+        defer hl_map.deinit();
+        {
+            const iter = try setupTestIter("const", &hl_map, 0, 1);
+            defer teardownTestIer(iter);
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, null, null);
+        }
+        {
+            const iter = try setupTestIter("const Allocator = @import(\"std\").mem.Allocator;", &hl_map, 0, 1);
+            defer teardownTestIer(iter);
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, " ", "variable");
+            try testIter(iter, "Allocator", "type");
+            try testIter(iter, " = ", "variable");
+            try testIter(iter, "@import", "include");
+            try testIter(iter, "(", "punctuation.bracket");
+            try testIter(iter, "\"std\"", "string");
+            try testIter(iter, ")", "punctuation.bracket");
+            try testIter(iter, ".", "punctuation.delimiter");
+            try testIter(iter, "mem", "field");
+            try testIter(iter, ".", "punctuation.delimiter");
+            try testIter(iter, "Allocator", "type");
+            try testIter(iter, ";", "punctuation.delimiter");
+            try testIter(iter, null, null);
+        }
+        {
+            const iter = try setupTestIter("const a = 10;\nvar not_false = true;", &hl_map, 0, 2);
+            defer teardownTestIer(iter);
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, " a = ", "variable");
+            try testIter(iter, "10", "number");
+            try testIter(iter, ";", "punctuation.delimiter");
+            try testIter(iter, "\n", "variable");
+            try testIter(iter, "var", "type.qualifier");
+            try testIter(iter, " not_false = ", "variable");
+            try testIter(iter, "true", "boolean");
+            try testIter(iter, ";", "punctuation.delimiter");
+            try testIter(iter, null, null);
+        }
+        {
+            const iter = try setupTestIter("const a = 10;\nvar not_false = true;", &hl_map, 1, 2);
+            defer teardownTestIer(iter);
+            try testIter(iter, "var", "type.qualifier");
+            try testIter(iter, " not_false = ", "variable");
+            try testIter(iter, "true", "boolean");
+            try testIter(iter, ";", "punctuation.delimiter");
+            try testIter(iter, null, null);
+        }
+        {
+            const iter = try setupTestIter("const\n", &hl_map, 0, 999);
+            defer teardownTestIer(iter);
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, "\n", "variable");
+            try testIter(iter, null, null);
+        }
+        {
+            const iter = try setupTestIter("const\n\n", &hl_map, 0, 999);
+            defer teardownTestIer(iter);
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, "\n", "variable");
+            try testIter(iter, "\n", "variable");
+            try testIter(iter, null, null);
+        }
+        {
+            const iter = try setupTestIter("const\n\nsomething", &hl_map, 0, 999);
+            defer teardownTestIer(iter);
+            try testIter(iter, "const", "type.qualifier");
+            try testIter(iter, "\n", "variable");
+            try testIter(iter, "\n", "variable");
+            try testIter(iter, "something", "variable");
+            try testIter(iter, null, null);
+        }
+    }
+    fn testIter(iter: *Iterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
+        if (expected_sequence == null) {
+            try eq(null, iter.nextChar());
+            return;
+        }
+        var code_point_iter = code_point.Iterator{ .bytes = expected_sequence.? };
+        var i: usize = 0;
+        while (code_point_iter.next()) |cp| {
+            const result = iter.nextChar();
+            try eq(cp.code, result.?.code_point);
+            try eq(iter.parent.hl_map.get(expected_group.?).?, result.?.color);
+            defer i += 1;
+        }
+    }
+    fn setupTestIter(source: []const u8, hl_map: *std.StringHashMap(u32), start_line: usize, end_line: usize) !*Iterator {
+        const query = try getTSQuery(.zig);
+        var buf = try Buffer.create(testing_allocator, .string, source);
+        try buf.initiateTreeSitter(.zig);
+        const highlighter = try Highlighter.init(testing_allocator, buf, hl_map, query);
+        const iter = try highlighter.requestLines(testing_allocator, start_line, end_line);
+        return iter;
+    }
+    fn teardownTestIer(iter: *Iterator) void {
+        iter.parent.buffer.destroy();
+        iter.parent.query.destroy();
+        iter.parent.deinit();
+        iter.deinit();
+    }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 test {
-    std.testing.refAllDeclsRecursive(ContentVendor);
     std.testing.refAllDeclsRecursive(Highlighter);
 }
