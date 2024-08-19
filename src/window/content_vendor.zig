@@ -17,7 +17,7 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn getTSQuery(lang: SupportedLanguages) !*ts.Query {
+pub fn getTSQuery(lang: SupportedLanguages) !*ts.Query {
     const get_lang_zone = ztracy.ZoneNC(@src(), "ts.Language.get()", 0xFF00FF);
     const tslang = switch (lang) {
         .zig => try ts.Language.get("zig"),
@@ -42,7 +42,7 @@ fn rgba(r: u32, g: u32, b: u32, a: u32) u32 {
 
 const RAY_WHITE = rgba(245, 245, 245, 245);
 
-fn createHighlightMap(a: Allocator) !std.StringHashMap(u32) {
+pub fn createHighlightMap(a: Allocator) !std.StringHashMap(u32) {
     var map = std.StringHashMap(u32).init(a);
     try map.put("__blank", rgba(0, 0, 0, 0)); // \n
     try map.put("variable", rgba(245, 245, 245, 245)); // identifier ray_white
@@ -108,6 +108,11 @@ pub const Highlighter = struct {
         highlight_offset: usize = 0,
 
         pub fn init(a: Allocator, parent: *const Highlighter, start_line: usize, end_line: usize) !*Iterator {
+            if (end_line <= start_line) return error.EndLineSmallerOrEqualToStartLine;
+
+            const num_of_lines_in_document = parent.buffer.roperoot.weights().bols;
+            const adjusted_end_line = if (end_line < num_of_lines_in_document) end_line else num_of_lines_in_document;
+
             const zone = ztracy.ZoneNC(@src(), "Highlighter.Iterator.init()", 0x00AAFF);
             defer zone.End();
 
@@ -118,9 +123,9 @@ pub const Highlighter = struct {
                 .parent = parent,
 
                 .start_line = start_line,
-                .end_line = end_line,
+                .end_line = adjusted_end_line,
 
-                .lines = try ArrayList([]const u8).initCapacity(self.arena.allocator(), end_line - start_line),
+                .lines = try ArrayList([]const u8).initCapacity(self.arena.allocator(), adjusted_end_line - start_line),
             };
 
             try self.addLineContents();
@@ -278,35 +283,38 @@ pub const Highlighter = struct {
             try testIter(iter, null, null);
         }
     }
-    fn testIter(iter: *Iterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
-        if (expected_sequence == null) {
-            try eq(null, iter.nextChar());
-            return;
-        }
-        var code_point_iter = code_point.Iterator{ .bytes = expected_sequence.? };
-        var i: usize = 0;
-        while (code_point_iter.next()) |cp| {
-            const result = iter.nextChar();
-            try eq(cp.code, result.?.code_point);
-            try eq(iter.parent.hl_map.get(expected_group.?).?, result.?.color);
-            defer i += 1;
-        }
-    }
-    fn setupTestIter(source: []const u8, hl_map: *std.StringHashMap(u32), start_line: usize, end_line: usize) !*Iterator {
-        const query = try getTSQuery(.zig);
-        var buf = try Buffer.create(testing_allocator, .string, source);
-        try buf.initiateTreeSitter(.zig);
-        const highlighter = try Highlighter.init(testing_allocator, buf, hl_map, query);
-        const iter = try highlighter.requestLines(testing_allocator, start_line, end_line);
-        return iter;
-    }
-    fn teardownTestIer(iter: *Iterator) void {
-        iter.parent.buffer.destroy();
-        iter.parent.query.destroy();
-        iter.parent.deinit();
-        iter.deinit();
-    }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn testIter(iter: *Highlighter.Iterator, expected_sequence: ?[]const u8, expected_group: ?[]const u8) !void {
+    if (expected_sequence == null) {
+        try eq(null, iter.nextChar());
+        return;
+    }
+    var code_point_iter = code_point.Iterator{ .bytes = expected_sequence.? };
+    var i: usize = 0;
+    while (code_point_iter.next()) |cp| {
+        const result = iter.nextChar();
+        try eq(cp.code, result.?.code_point);
+        try eq(iter.parent.hl_map.get(expected_group.?).?, result.?.color);
+        defer i += 1;
+    }
+}
+fn setupTestIter(source: []const u8, hl_map: *std.StringHashMap(u32), start_line: usize, end_line: usize) !*Highlighter.Iterator {
+    const query = try getTSQuery(.zig);
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    try buf.initiateTreeSitter(.zig);
+    const highlighter = try Highlighter.init(testing_allocator, buf, hl_map, query);
+    const iter = try highlighter.requestLines(testing_allocator, start_line, end_line);
+    return iter;
+}
+fn teardownTestIer(iter: *Highlighter.Iterator) void {
+    iter.parent.buffer.destroy();
+    iter.parent.query.destroy();
+    iter.parent.deinit();
+    iter.deinit();
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

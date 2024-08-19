@@ -1,7 +1,8 @@
 const std = @import("std");
 const Buffer = @import("neo_buffer").Buffer;
-const ContentVendor = @import("content_vendor").ContentVendor;
-const testIter = ContentVendor.CurrentJobIterator.testIter;
+const _content_vendor = @import("content_vendor");
+const Highlighter = _content_vendor.Highlighter;
+const testIter = _content_vendor.testIter;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -24,7 +25,7 @@ const Cursor = struct {
 
 pub const Window = struct {
     a: Allocator,
-    vendor: *ContentVendor,
+    highlighter: *const Highlighter,
 
     // TODO: let's work on single cursor first,
     // then we can move on to multiple cursors after that.
@@ -36,12 +37,12 @@ pub const Window = struct {
     x: f32,
     y: f32,
 
-    pub fn spawn(a: Allocator, vendor: *ContentVendor, x: f32, y: f32) !*@This() {
+    pub fn spawn(a: Allocator, highlighter: *const Highlighter, x: f32, y: f32) !*@This() {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
             .cursor = Cursor{},
-            .vendor = vendor,
+            .highlighter = highlighter,
 
             .x = x,
             .y = y,
@@ -70,15 +71,15 @@ pub const Window = struct {
 
     fn moveCursorUp(self: *@This()) !void {
         if (self.cursor.line == 0) return;
-        const new_line_noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line - 1);
+        const new_line_noc = try self.highlighter.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line - 1);
         const new_col = if (self.cursor.col > new_line_noc) new_line_noc else self.cursor.col;
         self.cursor.set(self.cursor.line - 1, new_col);
     }
 
     fn moveCursorDown(self: *@This()) !void {
         const new_line = self.cursor.line + 1;
-        if (new_line >= self.vendor.buffer.roperoot.weights().bols) return;
-        const new_line_noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(new_line);
+        if (new_line >= self.highlighter.buffer.roperoot.weights().bols) return;
+        const new_line_noc = try self.highlighter.buffer.roperoot.getNumOfCharsOfLine(new_line);
         const new_col = if (self.cursor.col > new_line_noc) new_line_noc else self.cursor.col;
         self.cursor.set(new_line, new_col);
     }
@@ -88,13 +89,15 @@ pub const Window = struct {
     }
 
     fn moveCursorRight(self: *@This()) !void {
-        const cur_line_noc = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line);
+        const cur_line_noc = try self.highlighter.buffer.roperoot.getNumOfCharsOfLine(self.cursor.line);
         const target = self.cursor.col + 1;
         self.cursor.col = if (self.cursor.col + 1 < cur_line_noc) target else cur_line_noc;
     }
     test moveCursorRight {
+        var hl_map = try _content_vendor.createHighlightMap(testing_allocator);
+        defer hl_map.deinit();
         { // single line
-            const win = try setupZigWindow("const");
+            const win = try setupZigWindow("const", &hl_map);
             defer teardownWindow(win);
             try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
             try testMoveCursorRight(win, Cursor{ .line = 0, .col = 1 });
@@ -107,7 +110,7 @@ pub const Window = struct {
             try testMoveCursorRight(win, Cursor{ .line = 0, .col = 5 });
         }
         { // multi line
-            const win = try setupZigWindow("one\n22");
+            const win = try setupZigWindow("one\n22", &hl_map);
             defer teardownWindow(win);
             try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
             try testMoveCursorRight(win, Cursor{ .line = 0, .col = 1 });
@@ -137,8 +140,8 @@ pub const Window = struct {
 
         if (self.cursor.col == 0) {
             const new_line = self.cursor.line - 1;
-            const new_col = try self.vendor.buffer.roperoot.getNumOfCharsOfLine(new_line);
-            try self.vendor.buffer.deleteRange(
+            const new_col = try self.highlighter.buffer.roperoot.getNumOfCharsOfLine(new_line);
+            try self.highlighter.buffer.deleteRange(
                 .{ new_line, new_col },
                 .{ self.cursor.line, self.cursor.col },
             );
@@ -147,15 +150,17 @@ pub const Window = struct {
         }
 
         self.moveCursorLeft();
-        try self.vendor.buffer.deleteRange(
+        try self.highlighter.buffer.deleteRange(
             .{ self.cursor.line, self.cursor.col },
             .{ self.cursor.line, self.cursor.col + 1 },
         );
     }
     test backspace {
+        var hl_map = try _content_vendor.createHighlightMap(testing_allocator);
+        defer hl_map.deinit();
         {
             { // single line case
-                const win = try setupZigWindow("");
+                const win = try setupZigWindow("", &hl_map);
                 defer teardownWindow(win);
 
                 win._insertOneCharAfterAnother("var");
@@ -174,12 +179,12 @@ pub const Window = struct {
                 try testFirstIter(win, null, "variable");
             }
             { // 2 lines cases
-                const win = try setupZigWindow("");
+                const win = try setupZigWindow("", &hl_map);
                 defer teardownWindow(win);
                 {
                     win._insertOneCharAfterAnother("var\nconst");
                     try eq(Cursor{ .line = 1, .col = 5 }, win.cursor);
-                    const iter = try win.vendor.requestLines(0, 9999);
+                    const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                     defer iter.deinit();
                     try testIter(iter, "var", "type.qualifier");
                     try testIter(iter, "\nconst", "variable");
@@ -187,7 +192,7 @@ pub const Window = struct {
                 }
                 {
                     try win.backspace();
-                    const iter = try win.vendor.requestLines(0, 9999);
+                    const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                     defer iter.deinit();
                     try testIter(iter, "var", "type.qualifier");
                     try testIter(iter, "\ncons", "variable");
@@ -197,7 +202,7 @@ pub const Window = struct {
                     try win.backspace();
                     try win.backspace();
                     try win.backspace();
-                    const iter = try win.vendor.requestLines(0, 9999);
+                    const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                     defer iter.deinit();
                     try testIter(iter, "var", "type.qualifier");
                     try testIter(iter, "\nc", "variable");
@@ -206,7 +211,7 @@ pub const Window = struct {
                 {
                     try eq(Cursor{ .line = 1, .col = 1 }, win.cursor);
                     try win.backspace();
-                    const iter = try win.vendor.requestLines(0, 9999);
+                    const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                     defer iter.deinit();
                     try testIter(iter, "var", "type.qualifier");
                     try testIter(iter, "\n", "variable");
@@ -215,7 +220,7 @@ pub const Window = struct {
                 {
                     try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
                     try win.backspace();
-                    const iter = try win.vendor.requestLines(0, 9999);
+                    const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                     defer iter.deinit();
                     try testIter(iter, "var", "type.qualifier");
                     try testIter(iter, null, null);
@@ -234,50 +239,52 @@ pub const Window = struct {
     ///////////////////////////// Insert
 
     fn insertCharsInternal(self: *@This(), chars: []const u8) !void {
-        const new_line, const new_col = try self.vendor.buffer.insertChars(chars, self.cursor.line, self.cursor.col);
+        const new_line, const new_col = try self.highlighter.buffer.insertChars(chars, self.cursor.line, self.cursor.col);
         self.cursor.set(new_line, new_col);
     }
     test insertCharsInternal {
+        var hl_map = try _content_vendor.createHighlightMap(testing_allocator);
+        defer hl_map.deinit();
         {
-            const win = try setupZigWindow("");
+            const win = try setupZigWindow("", &hl_map);
             defer teardownWindow(win);
             {
                 win.insertChars("c");
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "c", "variable");
             }
             {
                 win.insertChars("o");
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "co", "variable");
             }
             {
                 win.insertChars("n");
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "con", "variable");
             }
             {
                 win.insertChars("s");
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "cons", "variable");
             }
             {
                 win.insertChars("t");
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
             }
         }
         {
-            const win = try setupZigWindow("");
+            const win = try setupZigWindow("", &hl_map);
             defer teardownWindow(win);
             {
                 win._insertOneCharAfterAnother("const");
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, null, null);
@@ -285,7 +292,7 @@ pub const Window = struct {
             {
                 win.insertChars("\n");
                 try eq(Cursor{ .line = 1, .col = 0 }, win.cursor);
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
@@ -294,7 +301,7 @@ pub const Window = struct {
             {
                 win.insertChars("\n");
                 try eq(Cursor{ .line = 2, .col = 0 }, win.cursor);
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
@@ -304,7 +311,7 @@ pub const Window = struct {
             {
                 win.insertChars("v");
                 try eq(Cursor{ .line = 2, .col = 1 }, win.cursor);
-                const iter = try win.vendor.requestLines(0, 9999);
+                const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
                 defer iter.deinit();
                 try testIter(iter, "const", "type.qualifier");
                 try testIter(iter, "\n", "variable");
@@ -322,22 +329,23 @@ pub const Window = struct {
     }
 
     fn testFirstIter(win: *Window, expected_str: ?[]const u8, expected_hlgroup: []const u8) !void {
-        const iter = try win.vendor.requestLines(0, 9999);
+        const iter = try win.highlighter.requestLines(testing_allocator, 0, 9999);
         defer iter.deinit();
         try testIter(iter, expected_str, expected_hlgroup);
     }
 
-    fn setupZigWindow(source: []const u8) !*@This() {
+    fn setupZigWindow(source: []const u8, hl_map: *std.StringHashMap(u32)) !*@This() {
+        const query = try _content_vendor.getTSQuery(.zig);
         var buf = try Buffer.create(testing_allocator, .string, source);
         try buf.initiateTreeSitter(.zig);
-        const vendor = try ContentVendor.init(testing_allocator, buf);
-        const win = try Window.spawn(testing_allocator, vendor, 100, 100);
+        const highlighter = try Highlighter.init(testing_allocator, buf, hl_map, query);
+        const win = try Window.spawn(testing_allocator, highlighter, 100, 100);
         return win;
     }
 
     fn teardownWindow(win: *Window) void {
-        win.vendor.buffer.destroy();
-        win.vendor.deinit();
+        win.highlighter.buffer.destroy();
+        win.highlighter.deinit();
         win.destroy();
     }
 };
