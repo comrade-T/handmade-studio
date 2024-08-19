@@ -3,8 +3,10 @@ const rl = @import("raylib");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const screen_width = 1920;
-const screen_height = 1080;
+// const screen_width = 1920;
+// const screen_height = 1080;
+const screen_width = 4096;
+const screen_height = 2160;
 
 pub fn main() !void {
     ///////////////////////////// Window Initialization
@@ -58,6 +60,7 @@ pub fn main() !void {
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
+            rl.drawFPS(10, 10);
             {
                 rl.beginMode3D(camera);
                 defer rl.endMode3D();
@@ -70,6 +73,27 @@ pub fn main() !void {
                     drawChar3D(font, "o", .{ .x = 1, .y = 0, .z = 1 }, 40, false, rl.Color.red);
                     drawChar3D(font, "o", .{ .x = 2, .y = 0, .z = 2 }, 40, false, rl.Color.blue);
                     drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.white);
+
+                    {
+                        const x_limit = 200;
+                        const z_limit = 80;
+
+                        var x: f32 = 0;
+                        var z: f32 = 0;
+
+                        while (true) {
+                            drawChar3D(font, "z", .{ .x = x, .y = 0, .z = z }, 40, false, rl.Color.yellow);
+
+                            x += 0.5;
+
+                            if (x > x_limit) {
+                                x = 0;
+                                z += 1;
+                            }
+
+                            if (z > z_limit) break;
+                        }
+                    }
                 }
             }
             {
@@ -129,11 +153,11 @@ fn drawChar3D(
     const width = (font.recs[index].width + 2 * glyph_padding) / (base_size * scale);
     const height = (font.recs[index].height + 2 * glyph_padding) / (base_size * scale);
 
-    rl.drawCubeWiresV(
-        .{ .x = pos.x + width / 2, .y = pos.y, .z = pos.z + height / 2 },
-        .{ .x = width, .y = 0.25, .z = height },
-        rl.Color.ray_white,
-    );
+    // rl.drawCubeWiresV(
+    //     .{ .x = pos.x + width / 2, .y = pos.y, .z = pos.z + height / 2 },
+    //     .{ .x = width, .y = 0.25, .z = height },
+    //     rl.Color.ray_white,
+    // );
 
     if (font.texture.id > 0) {
         const x: f32 = 0;
@@ -149,8 +173,8 @@ fn drawChar3D(
         const tw: f32 = (src_rec.x + src_rec.width) / font_texture_width;
         const th: f32 = (src_rec.y + src_rec.height) / font_texture_height;
 
-        const buf_overflow = rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
-        if (buf_overflow) @panic("internal buffer overflow for a given number of vertex");
+        _ = rl.gl.rlCheckRenderBatchLimit(4 + 4 * @as(i32, @intCast(@intFromBool(backface))));
+        // if (buf_overflow) @panic("internal buffer overflow for a given number of vertex");
 
         rl.gl.rlSetTexture(font.texture.id);
         defer rl.gl.rlSetTexture(0);

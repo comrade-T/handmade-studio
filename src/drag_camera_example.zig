@@ -3,8 +3,8 @@ const rl = @import("raylib");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const screen_width = 1920;
-const screen_height = 1080;
+const screen_width = 4096;
+const screen_height = 2160;
 
 pub fn main() !void {
     ///////////////////////////// Window Initialization
@@ -26,7 +26,8 @@ pub fn main() !void {
         .zoom = 1,
     };
 
-    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 40, null);
+    const font_size = 30;
+    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
     ///////////////////////////// Texture
 
@@ -65,6 +66,7 @@ pub fn main() !void {
         defer rl.endDrawing();
         {
             rl.clearBackground(rl.Color.blank);
+            rl.drawFPS(10, 10);
 
             if (!did_draw_to_render_texture) {
                 render_texture.begin();
@@ -99,6 +101,31 @@ pub fn main() !void {
                     .{ .x = 100, .y = 600 },
                     rl.Color.white,
                 );
+
+                {
+                    var x: f32 = 0;
+                    var y: f32 = 0;
+
+                    var i: usize = 0;
+                    defer std.debug.print("i = {d}\n", .{i});
+
+                    while (true) {
+                        defer i += 1;
+
+                        // ==> we're getting around 50 FPS
+
+                        rl.drawTextEx(font, "a", .{ .x = x, .y = y }, font_size, 0, rl.Color.dark_gray);
+
+                        x += font_size / 3;
+
+                        if (x > screen_width) {
+                            x = 0;
+                            y += font_size;
+                        }
+
+                        if (y > screen_height) break;
+                    }
+                }
             }
         }
     }
