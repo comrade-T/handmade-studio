@@ -636,7 +636,10 @@ pub const Node = union(enum) {
             fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkResult {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
                 ctx.list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
-                if (leaf.eol) return WalkResult.stop;
+                if (leaf.eol) {
+                    ctx.list.append('\n') catch |err| return .{ .err = err };
+                    return WalkResult.stop;
+                }
                 return WalkResult.keep_walking;
             }
         };
@@ -658,20 +661,20 @@ pub const Node = union(enum) {
             const root = try Node.fromString(a, "1\n22\n333\n4444", true);
             const got = try root.getLine(std.testing.allocator, 0);
             defer std.testing.allocator.free(got);
-            try eqStr("1", got);
+            try eqStr("1\n", got);
         }
         {
             const root = try Node.fromString(a, "1\n22\n333\n4444", true);
-            try eqStr("1", try root.getLine(a, 0));
-            try eqStr("22", try root.getLine(a, 1));
-            try eqStr("333", try root.getLine(a, 2));
+            try eqStr("1\n", try root.getLine(a, 0));
+            try eqStr("22\n", try root.getLine(a, 1));
+            try eqStr("333\n", try root.getLine(a, 2));
             try eqStr("4444", try root.getLine(a, 3));
         }
         {
             const root = try __inputCharsOneAfterAnother(a, "1\n22\n333\n4444");
-            try eqStr("1", try root.getLine(a, 0));
-            try eqStr("22", try root.getLine(a, 1));
-            try eqStr("333", try root.getLine(a, 2));
+            try eqStr("1\n", try root.getLine(a, 0));
+            try eqStr("22\n", try root.getLine(a, 1));
+            try eqStr("333\n", try root.getLine(a, 2));
             try eqStr("4444", try root.getLine(a, 3));
         }
     }
