@@ -353,8 +353,7 @@ pub const Buffer = struct {
 
     pub fn contentCallback(ctx_: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8 {
         const ctx: *@This() = @ptrCast(@alignCast(ctx_));
-        const content = ctx.roperoot.getRange(start_byte, end_byte, buf, buf_size) catch "";
-        return content;
+        return ctx.roperoot.getRange(start_byte, end_byte, buf, buf_size) catch "";
     }
 };
 

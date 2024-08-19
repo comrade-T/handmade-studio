@@ -8,6 +8,7 @@ const PredicatesFilter = _neo_buffer.PredicatesFilter;
 const SupportedLanguages = _neo_buffer.SupportedLanguages;
 
 const ArenaAllocator = std.heap.ArenaAllocator;
+const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
@@ -355,6 +356,80 @@ pub const ContentVendor = struct {
     }
 };
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const Highlighter = struct {
+    a: Allocator,
+    buffer: *Buffer,
+    query: *ts.Query,
+    hl_map: std.StringHashMap(u32),
+    filter: *PredicatesFilter,
+
+    pub fn init(a: Allocator, buffer: *Buffer, hl_map: std.StringHashMap(u32), query: *ts.Query) !*@This() {
+        const self = try a.create(@This());
+        self.* = .{
+            .a = a,
+            .buffer = buffer,
+            .query = query,
+            .hl_map = hl_map,
+            .filter = try PredicatesFilter.initWithContentCallback(a, self.query, Buffer.contentCallback, self.buffer),
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.filter.deinit();
+        self.a.destroy(self);
+    }
+
+    const Iterator = struct {
+        a: Allocator,
+        parent: *Highlighter,
+
+        start_line: usize,
+        end_line: usize,
+
+        current_line: usize,
+        current_line_offset: usize,
+
+        lines: ArrayList([]const u8),
+        highlights: ArrayList([]u32),
+
+        pub fn init(parent: *const Highlighter, start_line: usize, end_line: usize) !*Iterator {
+            const zone = ztracy.ZoneNC(@src(), "Highlighter.Iterator.init()", 0x00AAFF);
+            defer zone.End();
+
+            const self = try parent.a.create(@This());
+            self.* = .{
+                .a = parent.a,
+                .parent = parent,
+
+                .start_line = start_line,
+                .end_line = end_line,
+
+                .current_line = start_line,
+                .current_line_offset = 0,
+
+                .lines = try ArrayList([]const u8).initCapacity(self.a, end_line - start_line),
+                .highlights = try ArrayList([]u32).initCapacity(self.a, end_line - start_line),
+            };
+
+            return self;
+        }
+
+        pub fn deinit(self: *@This()) !void {
+            for (self.lines.items) |line| self.a.free(line);
+            for (self.highlights.items) |slice| self.a.free(slice);
+            self.lines.deinit();
+            self.highlights.deinit();
+            self.a.destroy(self);
+        }
+    };
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 test {
     std.testing.refAllDeclsRecursive(ContentVendor);
+    std.testing.refAllDeclsRecursive(Highlighter);
 }
