@@ -102,30 +102,30 @@ pub fn main() !void {
                     rl.Color.white,
                 );
 
-                {
-                    var x: f32 = 0;
-                    var y: f32 = 0;
-
-                    var i: usize = 0;
-                    defer std.debug.print("i = {d}\n", .{i});
-
-                    while (true) {
-                        defer i += 1;
-
-                        // ==> we're getting around 50 FPS
-
-                        rl.drawTextEx(font, "a", .{ .x = x, .y = y }, font_size, 0, rl.Color.dark_gray);
-
-                        x += font_size / 3;
-
-                        if (x > screen_width) {
-                            x = 0;
-                            y += font_size;
-                        }
-
-                        if (y > screen_height) break;
-                    }
-                }
+                // {
+                //     var x: f32 = 0;
+                //     var y: f32 = 0;
+                //
+                //     var i: usize = 0;
+                //     defer std.debug.print("i = {d}\n", .{i});
+                //
+                //     while (true) {
+                //         defer i += 1;
+                //
+                //         // ==> we're getting around 50 FPS
+                //
+                //         rl.drawTextEx(font, "a", .{ .x = x, .y = y }, font_size, 0, rl.Color.dark_gray);
+                //
+                //         x += font_size / 3;
+                //
+                //         if (x > screen_width) {
+                //             x = 0;
+                //             y += font_size;
+                //         }
+                //
+                //         if (y > screen_height) break;
+                //     }
+                // }
             }
         }
     }

@@ -84,9 +84,10 @@ pub fn main() !void {
             rl.clearBackground(rl.Color.blank);
 
             for (0..bunnies_count) |i| {
-                rl.drawTexture(font.texture, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
+                // rl.drawTexture(font.texture, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
                 // rl.drawTexture(texBunny, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
                 // rl.drawText("a", @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), 30, bunnies[i].color);
+                rl.drawTextCodepoint(font, 97, .{ .x = bunnies[i].position.x, .y = bunnies[i].position.y }, 30, bunnies[i].color);
             }
 
             rl.drawRectangle(0, 0, screen_width, 80, rl.Color.black);

@@ -628,6 +628,54 @@ pub const Node = union(enum) {
         try eq(expected_eol, eol);
     }
 
+    ///////////////////////////// getLine
+
+    pub fn getLine(self: *const Node, a: Allocator, line: usize) ![]const u8 {
+        const GetLineToArrayListCtx = struct {
+            list: ArrayList(u8),
+            fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkResult {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                ctx.list.appendSlice(leaf.buf) catch |err| return .{ .err = err };
+                if (leaf.eol) return WalkResult.stop;
+                return WalkResult.keep_walking;
+            }
+        };
+
+        if (line > self.weights().bols) return "";
+
+        var list = try ArrayList(u8).initCapacity(a, 1024);
+        errdefer list.deinit();
+
+        var ctx = GetLineToArrayListCtx{ .list = list };
+        const walk_result = self.walkLine(line, GetLineToArrayListCtx.walker, &ctx);
+
+        if (walk_result.err) |err| return err;
+        return ctx.list.toOwnedSlice();
+    }
+    test getLine {
+        const a = idc_if_it_leaks;
+        {
+            const root = try Node.fromString(a, "1\n22\n333\n4444", true);
+            const got = try root.getLine(std.testing.allocator, 0);
+            defer std.testing.allocator.free(got);
+            try eqStr("1", got);
+        }
+        {
+            const root = try Node.fromString(a, "1\n22\n333\n4444", true);
+            try eqStr("1", try root.getLine(a, 0));
+            try eqStr("22", try root.getLine(a, 1));
+            try eqStr("333", try root.getLine(a, 2));
+            try eqStr("4444", try root.getLine(a, 3));
+        }
+        {
+            const root = try __inputCharsOneAfterAnother(a, "1\n22\n333\n4444");
+            try eqStr("1", try root.getLine(a, 0));
+            try eqStr("22", try root.getLine(a, 1));
+            try eqStr("333", try root.getLine(a, 2));
+            try eqStr("4444", try root.getLine(a, 3));
+        }
+    }
+
     ///////////////////////////// getNumOfCharsOfLine
 
     pub fn getNumOfCharsOfLine(self: *const Node, line: usize) !u32 {

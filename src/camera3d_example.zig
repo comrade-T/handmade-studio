@@ -66,35 +66,35 @@ pub fn main() !void {
                 defer rl.endMode3D();
                 rl.drawGrid(10, 1);
                 // rl.drawCube(.{ .x = 0, .y = 0, .z = 0 }, 2, 2, 2, rl.Color.sky_blue);
-                {
-                    // rl.gl.rlPushMatrix();
-                    // defer rl.gl.rlPopMatrix();
-                    drawChar3D(font, "z", .{ .x = 0, .y = 0, .z = 0 }, 40, false, rl.Color.yellow);
-                    drawChar3D(font, "o", .{ .x = 1, .y = 0, .z = 1 }, 40, false, rl.Color.red);
-                    drawChar3D(font, "o", .{ .x = 2, .y = 0, .z = 2 }, 40, false, rl.Color.blue);
-                    drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.white);
-
-                    {
-                        const x_limit = 200;
-                        const z_limit = 80;
-
-                        var x: f32 = 0;
-                        var z: f32 = 0;
-
-                        while (true) {
-                            drawChar3D(font, "z", .{ .x = x, .y = 0, .z = z }, 40, false, rl.Color.yellow);
-
-                            x += 0.5;
-
-                            if (x > x_limit) {
-                                x = 0;
-                                z += 1;
-                            }
-
-                            if (z > z_limit) break;
-                        }
-                    }
-                }
+                // {
+                //     // rl.gl.rlPushMatrix();
+                //     // defer rl.gl.rlPopMatrix();
+                //     drawChar3D(font, "z", .{ .x = 0, .y = 0, .z = 0 }, 40, false, rl.Color.yellow);
+                //     drawChar3D(font, "o", .{ .x = 1, .y = 0, .z = 1 }, 40, false, rl.Color.red);
+                //     drawChar3D(font, "o", .{ .x = 2, .y = 0, .z = 2 }, 40, false, rl.Color.blue);
+                //     drawChar3D(font, "m", .{ .x = 3, .y = 0, .z = 3 }, 40, false, rl.Color.white);
+                //
+                //     {
+                //         const x_limit = 200;
+                //         const z_limit = 80;
+                //
+                //         var x: f32 = 0;
+                //         var z: f32 = 0;
+                //
+                //         while (true) {
+                //             drawChar3D(font, "z", .{ .x = x, .y = 0, .z = z }, 40, false, rl.Color.yellow);
+                //
+                //             x += 0.5;
+                //
+                //             if (x > x_limit) {
+                //                 x = 0;
+                //                 z += 1;
+                //             }
+                //
+                //             if (z > z_limit) break;
+                //         }
+                //     }
+                // }
             }
             {
                 var buf: [1024]u8 = undefined;
