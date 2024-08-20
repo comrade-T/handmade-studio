@@ -103,6 +103,10 @@ pub fn main() !void {
                         .{ .x = 100, .y = 600 },
                         rl.Color.white,
                     );
+
+                    {
+                        rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
+                    }
                 }
 
                 {
@@ -125,6 +129,43 @@ pub fn main() !void {
                         .{camera.zoom},
                         30,
                         .{ .x = 40, .y = 160 },
+                    );
+
+                    const acksual_x = (camera.target.x - camera.offset.x / camera.zoom);
+                    const acksual_y = (camera.target.y - camera.offset.y / camera.zoom);
+                    try drawTextAtBottomRight(
+                        "x: {d} | y: {d} <- acksual coordinates",
+                        .{ acksual_x, acksual_y },
+                        30,
+                        .{ .x = 40, .y = 220 },
+                    );
+
+                    const acksual_width = (screen_width / camera.zoom);
+                    const acksual_height = (screen_height / camera.zoom);
+                    try drawTextAtBottomRight(
+                        "acksual_w: {d} | acksual_h: {d}",
+                        .{ acksual_width, acksual_height },
+                        30,
+                        .{ .x = 40, .y = 280 },
+                    );
+
+                    const view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
+                    const view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, camera);
+                    const view_width = view_end.x - view_start.x;
+                    const view_height = view_end.y - view_start.y;
+
+                    try drawTextAtBottomRight(
+                        "view_width: {d} | view_height: {d}",
+                        .{ view_width, view_height },
+                        30,
+                        .{ .x = 40, .y = 360 },
+                    );
+
+                    try drawTextAtBottomRight(
+                        "start_x: {d} | start_y: {d}",
+                        .{ view_start.x, view_start.y },
+                        30,
+                        .{ .x = 40, .y = 420 },
                     );
                 }
             }
