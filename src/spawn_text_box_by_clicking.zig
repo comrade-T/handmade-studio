@@ -220,7 +220,7 @@ pub fn main() anyerror!void {
                     }
 
                     {
-                        const zone = ztracy.ZoneNC(@src(), "rl.drawText()", 0x0F00F0);
+                        const zone = ztracy.ZoneNC(@src(), "rl.drawTextCodepoint()", 0x0F00F0);
                         defer zone.End();
 
                         rl.drawTextCodepoint(font, @intCast(result.?.code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(result.?.color));

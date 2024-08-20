@@ -157,6 +157,9 @@ pub const Highlighter = struct {
         };
 
         pub fn nextChar(self: *@This()) ?NextCharResult {
+            const _tracy = ztracy.ZoneNC(@src(), "Iterator.nextChar()", 0xFF00FF);
+            defer _tracy.End();
+
             if (self.current_line_offset >= self.lines.items[self.current_line_index].len) {
                 self.current_line_index += 1;
                 self.current_line_offset = 0;
