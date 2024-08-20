@@ -91,7 +91,7 @@ pub const Highlighter = struct {
         return Iterator.init(a, self, start_line, end_line);
     }
 
-    const Iterator = struct {
+    pub const Iterator = struct {
         arena: ArenaAllocator,
         exa: Allocator,
         parent: *const Highlighter,
@@ -137,6 +137,18 @@ pub const Highlighter = struct {
         pub fn deinit(self: *@This()) void {
             self.arena.deinit();
             self.exa.destroy(self);
+        }
+
+        pub fn update(self: *@This(), new_start_line: usize, new_end_line: usize) !*Iterator {
+            const old_self = self;
+            defer old_self.deinit();
+            return Iterator.init(self.exa, self.parent, new_start_line, new_end_line);
+        }
+
+        pub fn reset(self: *@This()) void {
+            self.current_line_index = 0;
+            self.current_line_offset = 0;
+            self.highlight_offset = 0;
         }
 
         const NextCharResult = struct {

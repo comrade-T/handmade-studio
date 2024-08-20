@@ -25,7 +25,12 @@ const Cursor = struct {
 
 pub const Window = struct {
     a: Allocator,
+
     highlighter: *const Highlighter,
+    highlight_iter: *Highlighter.Iterator,
+
+    start_line: usize,
+    end_line: usize,
 
     // TODO: let's work on single cursor first,
     // then we can move on to multiple cursors after that.
@@ -42,7 +47,14 @@ pub const Window = struct {
         self.* = .{
             .a = a,
             .cursor = Cursor{},
+
+            // hard coded values for now
+            // TODO: refactor to not hard code
+            .start_line = 0,
+            .end_line = highlighter.buffer.roperoot.weights().bols,
+
             .highlighter = highlighter,
+            .highlight_iter = try highlighter.requestLines(a, 0, self.end_line),
 
             .x = x,
             .y = y,
@@ -52,6 +64,7 @@ pub const Window = struct {
 
     pub fn destroy(self: *@This()) void {
         // self.cursors.deinit();
+        self.highlight_iter.deinit();
         self.a.destroy(self);
     }
 
@@ -154,6 +167,10 @@ pub const Window = struct {
             .{ self.cursor.line, self.cursor.col },
             .{ self.cursor.line, self.cursor.col + 1 },
         );
+
+        // TODO: refactor to not hard code
+        self.end_line = self.highlighter.buffer.roperoot.weights().bols;
+        self.highlight_iter = try self.highlight_iter.update(self.start_line, self.end_line);
     }
     test backspace {
         var hl_map = try _content_vendor.createHighlightMap(testing_allocator);
@@ -241,6 +258,10 @@ pub const Window = struct {
     fn insertCharsInternal(self: *@This(), chars: []const u8) !void {
         const new_line, const new_col = try self.highlighter.buffer.insertChars(chars, self.cursor.line, self.cursor.col);
         self.cursor.set(new_line, new_col);
+
+        // TODO: refactor to not hard code
+        self.end_line = self.highlighter.buffer.roperoot.weights().bols;
+        self.highlight_iter = try self.highlight_iter.update(self.start_line, self.end_line);
     }
     test insertCharsInternal {
         var hl_map = try _content_vendor.createHighlightMap(testing_allocator);

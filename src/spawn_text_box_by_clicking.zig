@@ -199,8 +199,8 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
-                const iter = try highlighter.requestLines(gpa, 0, 80);
-                defer iter.deinit();
+                const iter = window.highlight_iter;
+                defer iter.reset();
 
                 var x: f32 = window.x;
                 var y: f32 = window.y;
