@@ -3,10 +3,11 @@ const rl = @import("raylib");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const screen_width = 4096;
-const screen_height = 2160;
+const screen_width = 1920;
+const screen_height = 1080;
 
 pub fn main() !void {
+
     ///////////////////////////// Window Initialization
 
     rl.setConfigFlags(.{ .window_transparent = true, .vsync_hint = true });
@@ -78,55 +79,64 @@ pub fn main() !void {
             }
 
             {
-                rl.beginMode2D(camera);
-                defer rl.endMode2D();
+                {
+                    rl.beginMode2D(camera);
+                    defer rl.endMode2D();
 
-                rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
-                rl.drawCircle(200, 500, 100, rl.Color.yellow);
+                    rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
+                    rl.drawCircle(200, 500, 100, rl.Color.yellow);
 
-                const measure = rl.measureTextEx(font, "a", 20, 0);
+                    const measure = rl.measureTextEx(font, "a", 20, 0);
 
-                var buf: [1024]u8 = undefined;
-                const txt = try std.fmt.bufPrintZ(&buf, "measure width {d} | height {d}", .{ measure.x, measure.y });
-                rl.drawText(txt, 300, 300, 40, rl.Color.ray_white);
+                    var buf: [1024]u8 = undefined;
+                    const txt = try std.fmt.bufPrintZ(&buf, "measure width {d} | height {d}", .{ measure.x, measure.y });
+                    rl.drawText(txt, 300, 300, 40, rl.Color.ray_white);
 
-                rl.drawTextureRec(
-                    render_texture.texture,
-                    rl.Rectangle{
-                        .x = 0,
-                        .y = 0,
-                        .width = @floatFromInt(render_texture.texture.width),
-                        .height = @floatFromInt(-render_texture.texture.height),
-                    },
-                    .{ .x = 100, .y = 600 },
-                    rl.Color.white,
-                );
+                    rl.drawTextureRec(
+                        render_texture.texture,
+                        rl.Rectangle{
+                            .x = 0,
+                            .y = 0,
+                            .width = @floatFromInt(render_texture.texture.width),
+                            .height = @floatFromInt(-render_texture.texture.height),
+                        },
+                        .{ .x = 100, .y = 600 },
+                        rl.Color.white,
+                    );
+                }
 
-                // {
-                //     var x: f32 = 0;
-                //     var y: f32 = 0;
-                //
-                //     var i: usize = 0;
-                //     defer std.debug.print("i = {d}\n", .{i});
-                //
-                //     while (true) {
-                //         defer i += 1;
-                //
-                //         // ==> we're getting around 50 FPS
-                //
-                //         rl.drawTextEx(font, "a", .{ .x = x, .y = y }, font_size, 0, rl.Color.dark_gray);
-                //
-                //         x += font_size / 3;
-                //
-                //         if (x > screen_width) {
-                //             x = 0;
-                //             y += font_size;
-                //         }
-                //
-                //         if (y > screen_height) break;
-                //     }
-                // }
+                {
+                    try drawTextAtBottomRight(
+                        "x: {d} | y: {d} <- camera.offset",
+                        .{ camera.offset.x, camera.offset.y },
+                        30,
+                        .{ .x = 40, .y = 40 },
+                    );
+
+                    try drawTextAtBottomRight(
+                        "x: {d} | y: {d} <- camera.target",
+                        .{ camera.target.x, camera.target.y },
+                        30,
+                        .{ .x = 40, .y = 100 },
+                    );
+
+                    try drawTextAtBottomRight(
+                        "{d} <- camera.zoom",
+                        .{camera.zoom},
+                        30,
+                        .{ .x = 40, .y = 160 },
+                    );
+                }
             }
         }
     }
+}
+
+fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32, offset: rl.Vector2) !void {
+    var buf: [1024]u8 = undefined;
+    const text = try std.fmt.bufPrintZ(&buf, fmt, args);
+    const measure = rl.measureText(text, font_size);
+    const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
+    const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
+    rl.drawText(text, x, y, font_size, rl.Color.ray_white);
 }
