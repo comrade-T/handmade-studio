@@ -71,6 +71,11 @@ pub fn main() anyerror!void {
         .zoom = 1,
     };
 
+    var view_start = rl.Vector2{ .x = 0, .y = 0 };
+    var view_end = rl.Vector2{ .x = screen_width, .y = screen_height };
+    var view_width: f32 = screen_width;
+    var view_height: f32 = screen_height;
+
     ///////////////////////////// Models
 
     // FileNavigator
@@ -102,13 +107,14 @@ pub fn main() anyerror!void {
 
         ///////////////////////////// Camera
 
+        // drag while holding Right Mouse Button
         if (rl.isMouseButtonDown(.mouse_button_right)) {
             var delta = rl.getMouseDelta();
             delta = delta.scale(-1 / camera.zoom);
             camera.target = delta.add(camera.target);
         }
 
-        {
+        { // zoom with scroll wheel
             const wheel = rl.getMouseWheelMove();
             if (wheel != 0) {
                 const mouse_pos = rl.getMousePosition();
@@ -120,6 +126,13 @@ pub fn main() anyerror!void {
                 if (wheel < 0) scale_factor = 1 / scale_factor;
                 camera.zoom = rl.math.clamp(camera.zoom * scale_factor, 0.125, 64);
             }
+        }
+
+        { // update screen bounding box variables
+            view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
+            view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, camera);
+            view_width = view_end.x - view_start.x;
+            view_height = view_end.y - view_start.y;
         }
 
         ///////////////////////////// Keyboard
@@ -195,6 +208,8 @@ pub fn main() anyerror!void {
                     rl.drawText(text, 100, 100 + idx * 40, 30, color);
                 }
             }
+
+            var chars_rendered: usize = 0;
             { // window content
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
@@ -206,8 +221,22 @@ pub fn main() anyerror!void {
                 var y: f32 = window.y;
 
                 while (true) {
+
+                    ///////////////////////////// Vertical Culling
+
+                    if (y > view_end.y) break;
+                    if (y + font_size < view_start.y) {
+                        iter.skipLine();
+                        x = window.x;
+                        y += font_size;
+                        continue;
+                    }
+
+                    ///////////////////////////// nextChar()
+
                     const result = iter.nextChar();
                     if (result == null) break;
+
                     if (result.?.code_point >= 128) {
                         std.debug.print("code points >= 128 not supported yet\n", .{});
                         break;
@@ -219,20 +248,57 @@ pub fn main() anyerror!void {
                         continue;
                     }
 
+                    ///////////////////////////// Horizonal Culling
+
+                    const char_width = font_size / 3 + 4;
+
+                    if (x + char_width < view_start.x) {
+                        x += char_width;
+                        continue;
+                    }
+                    if (x > view_end.x) {
+                        iter.skipLine();
+                        x = window.x;
+                        y += font_size;
+                        continue;
+                    }
+
+                    ///////////////////////////// Rendering
+
                     {
                         const zone = ztracy.ZoneNC(@src(), "rl.drawTextCodepoint()", 0x0F00F0);
                         defer zone.End();
 
+                        defer chars_rendered += 1;
+
                         rl.drawTextCodepoint(font, @intCast(result.?.code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(result.?.color));
-                        x += font_size / 3 + 4;
+                        x += char_width;
                     }
                 }
             }
-            { // window cursor
-                var txt_buf: [20]u8 = undefined;
-                const txt = try std.fmt.bufPrintZ(&txt_buf, "[{d}, {d}]", .{ window.cursor.line, window.cursor.col });
-                rl.drawTextEx(font, txt, .{ .x = screen_width - 200, .y = screen_height - 100 }, 40, 0, rl.Color.ray_white);
-            }
+
+            try drawTextAtBottomRight(
+                "chars rendered: {d}",
+                .{chars_rendered},
+                30,
+                .{ .x = 40, .y = 120 },
+            );
+
+            try drawTextAtBottomRight(
+                "[{d}, {d}]",
+                .{ window.cursor.line, window.cursor.col },
+                30,
+                .{ .x = 40, .y = 40 },
+            );
         }
     }
+}
+
+fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32, offset: rl.Vector2) !void {
+    var buf: [1024]u8 = undefined;
+    const text = try std.fmt.bufPrintZ(&buf, fmt, args);
+    const measure = rl.measureText(text, font_size);
+    const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
+    const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
+    rl.drawText(text, x, y, font_size, rl.Color.ray_white);
 }

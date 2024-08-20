@@ -156,6 +156,13 @@ pub const Highlighter = struct {
             color: u32,
         };
 
+        pub fn skipLine(self: *@This()) void {
+            const highliight_indexes_to_skip = self.lines.items[self.current_line_index].len - self.current_line_offset;
+            self.highlight_offset += highliight_indexes_to_skip;
+            self.current_line_offset = 0;
+            self.current_line_index += 1;
+        }
+
         pub fn nextChar(self: *@This()) ?NextCharResult {
             const _tracy = ztracy.ZoneNC(@src(), "Iterator.nextChar()", 0xFF00FF);
             defer _tracy.End();
