@@ -70,10 +70,10 @@ pub fn main() !void {
                 var scale_factor = 1 + (0.25 * @abs(wheel));
                 if (wheel < 0) scale_factor = 1 / scale_factor;
 
-                cam_zoom_target = rl.math.clamp(camera.zoom * scale_factor, 0.125, 64);
+                cam_zoom_target = rl.math.clamp(cam_zoom_target * scale_factor, 0.125, 64);
             }
 
-            camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.1);
+            camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
         }
 
         ///////////////////////////// Draw
