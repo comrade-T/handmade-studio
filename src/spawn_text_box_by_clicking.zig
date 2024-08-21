@@ -209,7 +209,9 @@ pub fn main() anyerror!void {
                 }
             }
 
-            var chars_rendered: usize = 0;
+            var chars_rendered: u64 = 0;
+            defer ztracy.PlotU("chars_rendered", chars_rendered);
+
             { // window content
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
@@ -269,7 +271,7 @@ pub fn main() anyerror!void {
                         const zone = ztracy.ZoneNC(@src(), "rl.drawTextCodepoint()", 0x0F00F0);
                         defer zone.End();
 
-                        defer chars_rendered += 1;
+                        chars_rendered += 1;
 
                         rl.drawTextCodepoint(font, @intCast(result.?.code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(result.?.color));
                         x += char_width;

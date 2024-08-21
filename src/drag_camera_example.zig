@@ -30,16 +30,28 @@ pub fn main() !void {
     const font_size = 30;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
-    ///////////////////////////// Texture
-
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(1920, 1080);
+
+    ///////////////////////////// Ball
+
+    var ball_position = rl.Vector2{ .x = 0, .y = 0 };
+    var ball_target = ball_position;
+
+    var cam_zoom_target = camera.zoom;
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
+
+        {
+            if (rl.isMouseButtonPressed(.mouse_button_left)) {
+                ball_target.x = if (ball_target.x != 1000) 1000 else 0;
+            }
+            ball_position = rl.math.vector2Lerp(ball_position, ball_target, 0.05);
+        }
 
         if (rl.isMouseButtonDown(.mouse_button_right)) {
             var delta = rl.getMouseDelta();
@@ -57,8 +69,11 @@ pub fn main() !void {
 
                 var scale_factor = 1 + (0.25 * @abs(wheel));
                 if (wheel < 0) scale_factor = 1 / scale_factor;
-                camera.zoom = rl.math.clamp(camera.zoom * scale_factor, 0.125, 64);
+
+                cam_zoom_target = rl.math.clamp(camera.zoom * scale_factor, 0.125, 64);
             }
+
+            camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.1);
         }
 
         ///////////////////////////// Draw
@@ -82,6 +97,10 @@ pub fn main() !void {
                 {
                     rl.beginMode2D(camera);
                     defer rl.endMode2D();
+
+                    { // ball
+                        rl.drawCircle(@intFromFloat(ball_position.x), @intFromFloat(ball_position.y), 40, rl.Color.sky_blue);
+                    }
 
                     rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
                     rl.drawCircle(200, 500, 100, rl.Color.yellow);
@@ -110,45 +129,6 @@ pub fn main() !void {
                 }
 
                 {
-                    try drawTextAtBottomRight(
-                        "x: {d} | y: {d} <- camera.offset",
-                        .{ camera.offset.x, camera.offset.y },
-                        30,
-                        .{ .x = 40, .y = 40 },
-                    );
-
-                    try drawTextAtBottomRight(
-                        "x: {d} | y: {d} <- camera.target",
-                        .{ camera.target.x, camera.target.y },
-                        30,
-                        .{ .x = 40, .y = 100 },
-                    );
-
-                    try drawTextAtBottomRight(
-                        "{d} <- camera.zoom",
-                        .{camera.zoom},
-                        30,
-                        .{ .x = 40, .y = 160 },
-                    );
-
-                    const acksual_x = (camera.target.x - camera.offset.x / camera.zoom);
-                    const acksual_y = (camera.target.y - camera.offset.y / camera.zoom);
-                    try drawTextAtBottomRight(
-                        "x: {d} | y: {d} <- acksual coordinates",
-                        .{ acksual_x, acksual_y },
-                        30,
-                        .{ .x = 40, .y = 220 },
-                    );
-
-                    const acksual_width = (screen_width / camera.zoom);
-                    const acksual_height = (screen_height / camera.zoom);
-                    try drawTextAtBottomRight(
-                        "acksual_w: {d} | acksual_h: {d}",
-                        .{ acksual_width, acksual_height },
-                        30,
-                        .{ .x = 40, .y = 280 },
-                    );
-
                     const view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
                     const view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, camera);
                     const view_width = view_end.x - view_start.x;
@@ -158,14 +138,14 @@ pub fn main() !void {
                         "view_width: {d} | view_height: {d}",
                         .{ view_width, view_height },
                         30,
-                        .{ .x = 40, .y = 360 },
+                        .{ .x = 40, .y = 40 },
                     );
 
                     try drawTextAtBottomRight(
                         "start_x: {d} | start_y: {d}",
                         .{ view_start.x, view_start.y },
                         30,
-                        .{ .x = 40, .y = 420 },
+                        .{ .x = 40, .y = 100 },
                     );
                 }
             }
