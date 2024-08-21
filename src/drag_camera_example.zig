@@ -27,6 +27,10 @@ pub fn main() !void {
         .zoom = 1,
     };
 
+    var current_velocity: f32 = 0;
+    const smooth_time = 0.1;
+    const max_speed = 40;
+
     const font_size = 30;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
@@ -73,7 +77,8 @@ pub fn main() !void {
                 cam_zoom_target = rl.math.clamp(cam_zoom_target * scale_factor, 0.125, 64);
             }
 
-            camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
+            // camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
+            camera.zoom = smoothDamp(camera.zoom, cam_zoom_target, &current_velocity, smooth_time, max_speed, rl.getFrameTime());
         }
 
         ///////////////////////////// Draw
@@ -151,6 +156,65 @@ pub fn main() !void {
             }
         }
     }
+}
+
+// // Gradually changes a value towards a desired goal over time.
+// public static float SmoothDamp(float current, float target, ref float currentVelocity, float smoothTime, [uei.DefaultValue("Mathf.Infinity")]  float maxSpeed, [uei.DefaultValue("Time.deltaTime")]  float deltaTime)
+// {
+//     // Based on Game Programming Gems 4 Chapter 1.10
+//     smoothTime = Mathf.Max(0.0001F, smoothTime);
+//     float omega = 2F / smoothTime;
+//
+//     float x = omega * deltaTime;
+//     float exp = 1F / (1F + x + 0.48F * x * x + 0.235F * x * x * x);
+//     float change = current - target;
+//     float originalTo = target;
+//
+//     // Clamp maximum speed
+//     float maxChange = maxSpeed * smoothTime;
+//     change = Mathf.Clamp(change, -maxChange, maxChange);
+//     target = current - change;
+//
+//     float temp = (currentVelocity + omega * change) * deltaTime;
+//     currentVelocity = (currentVelocity - omega * temp) * exp;
+//     float output = target + (change + temp) * exp;
+//
+//     // Prevent overshooting
+//     if (originalTo - current > 0.0F == output > originalTo)
+//     {
+//         output = originalTo;
+//         currentVelocity = (output - originalTo) / deltaTime;
+//     }
+//
+//     return output;
+// }
+
+// https://stackoverflow.com/questions/61372498/how-does-mathf-smoothdamp-work-what-is-it-algorithm
+fn smoothDamp(current: f32, target_: f32, current_velocity: *f32, smooth_time_: f32, max_speed: f32, delta_time: f32) f32 {
+    const smooth_time = @max(0.0001, smooth_time_);
+    var target = target_;
+
+    const omega = 2 / smooth_time;
+
+    const x = omega * delta_time;
+    const exp = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    var change = current - target;
+    const original_to = target;
+
+    const max_change = max_speed * smooth_time;
+    change = rl.math.clamp(change, -max_change, max_change);
+    target = current - change;
+
+    const temp = (current_velocity.* + omega * change) * delta_time;
+    current_velocity.* = (current_velocity.* - omega * temp) * exp;
+    var output = target + (change + temp) * exp;
+
+    if (original_to - current > 0 and output > original_to) {
+        output = original_to;
+        current_velocity.* = (output - original_to) / delta_time;
+    }
+
+    return output;
 }
 
 fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32, offset: rl.Vector2) !void {
