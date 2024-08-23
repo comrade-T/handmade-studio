@@ -1,7 +1,7 @@
 const std = @import("std");
 const code_point = @import("code_point");
 
-const List = std.ArrayList;
+const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
 const Allocator = std.mem.Allocator;
 const eql = std.mem.eql;
@@ -58,8 +58,8 @@ pub const Line = struct {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn createCellsAndLines(a: Allocator, source: []const u8) !struct { []Cell, []Line } {
-    var cells = List(Cell).init(a);
-    var lines = List(Line).init(a);
+    var cells = ArrayList(Cell).init(a);
+    var lines = ArrayList(Line).init(a);
 
     var iter = code_point.Iterator{ .bytes = source };
     var i: usize = 0;

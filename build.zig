@@ -115,6 +115,10 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
+    _ = addTestableModule(&bops, "src/window/neo_cell.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
+
     const window_backend = addTestableModule(&bops, "src/window/backend.zig", &.{
         .{ .name = "buffer", .module = buffer.module },
         .{ .name = "ts", .module = ts.module },
