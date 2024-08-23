@@ -95,6 +95,15 @@ test getCharBoundaryType {
     try eq(.both, getCharBoundaryType("h", ";", null));
 }
 
+fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType) !void {
+    const prev_char = if (colnr == 0) null else line[colnr - 1];
+    const curr_char = line[colnr];
+    const next_char = if (colnr >= line.len) null else line[colnr + 1];
+    const char_boundary_type = getCharBoundaryType(prev_char, curr_char, next_char);
+    if (char_boundary_type == boundary_type or char_boundary_type == .both) return true;
+    return false;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn isSpace(c: []const u8) bool {
