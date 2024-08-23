@@ -9,15 +9,43 @@ const testing_allocator = std.testing.allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn bringPositionInBound(lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
-    var linenr, var colnr = .{ input_linenr, input_colnr };
-    if (linenr > lines.len -| 1) {
-        linenr = lines.len -| 1;
-        colnr = lines[linenr].len -| 1;
-        return .{ linenr, colnr };
+pub fn backwardsByWord(destination: WordBoundaryType, lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = bringPositionInBound(lines, input_linenr, input_colnr);
+    colnr -|= 1;
+    while (true) {
+        defer colnr -|= 1;
+        if (colnr == 0) {
+            if (linenr == 0) return .{ 0, 0 };
+            if (input_colnr > 0 and foundTargetBoundary(lines[linenr], colnr, destination)) return .{ linenr, colnr };
+            linenr -= 1;
+            colnr = lines[linenr].len - 1;
+        }
+        if (foundTargetBoundary(lines[linenr], colnr, destination)) return .{ linenr, colnr };
     }
-    if (colnr > lines[linenr].len -| 1) colnr = lines[linenr].len -| 1;
     return .{ linenr, colnr };
+}
+
+test backwardsByWord {
+    // .start
+    {
+        const lines = try createLinesFromSource(testing_allocator, "one;two--3|||four;");
+        //                                                          0  34  7 90  3   7
+        defer freeLines(testing_allocator, lines);
+        try testBackwardsByWord(.{ 0, 13 }, .start, lines, 0, 14, 17);
+        try testBackwardsByWord(.{ 0, 10 }, .start, lines, 0, 11, 13);
+        try testBackwardsByWord(.{ 0, 9 }, .start, lines, 0, 10, 10);
+        try testBackwardsByWord(.{ 0, 7 }, .start, lines, 0, 8, 9);
+        try testBackwardsByWord(.{ 0, 4 }, .start, lines, 0, 5, 7);
+        try testBackwardsByWord(.{ 0, 3 }, .start, lines, 0, 4, 4);
+        try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 3);
+    }
+}
+
+fn testBackwardsByWord(expeced: struct { usize, usize }, boundary_type: WordBoundaryType, lines: []Line, linenr: usize, start_col: usize, end_col: usize) !void {
+    for (start_col..end_col + 1) |colnr| {
+        const result = backwardsByWord(boundary_type, lines, linenr, colnr);
+        try eq(expeced, result);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,33 +71,33 @@ test forwardByWord {
         const lines = try createLinesFromSource(testing_allocator, "hello world");
         //                                                              4     0
         defer freeLines(testing_allocator, lines);
-        try eqUntil(.{ 0, 4 }, .end, lines, 0, 0, 3);
-        try eqUntil(.{ 0, 10 }, .end, lines, 0, 4, 10);
-        try eqUntil(.{ 0, 10 }, .end, lines, 0, 11, 100); // out of bounds
+        try testForwardByWord(.{ 0, 4 }, .end, lines, 0, 0, 3);
+        try testForwardByWord(.{ 0, 10 }, .end, lines, 0, 4, 10);
+        try testForwardByWord(.{ 0, 10 }, .end, lines, 0, 11, 100); // out of bounds
     }
     {
         const lines = try createLinesFromSource(testing_allocator, "one#two--3|||four;;;;");
         //                                                            23  6 89  2   6   0
         defer freeLines(testing_allocator, lines);
-        try eqUntil(.{ 0, 2 }, .end, lines, 0, 0, 1);
-        try eqUntil(.{ 0, 3 }, .end, lines, 0, 2, 2);
-        try eqUntil(.{ 0, 6 }, .end, lines, 0, 3, 5);
-        try eqUntil(.{ 0, 8 }, .end, lines, 0, 6, 7);
-        try eqUntil(.{ 0, 9 }, .end, lines, 0, 8, 8);
-        try eqUntil(.{ 0, 12 }, .end, lines, 0, 9, 11);
-        try eqUntil(.{ 0, 16 }, .end, lines, 0, 12, 15);
-        try eqUntil(.{ 0, 20 }, .end, lines, 0, 16, 19);
+        try testForwardByWord(.{ 0, 2 }, .end, lines, 0, 0, 1);
+        try testForwardByWord(.{ 0, 3 }, .end, lines, 0, 2, 2);
+        try testForwardByWord(.{ 0, 6 }, .end, lines, 0, 3, 5);
+        try testForwardByWord(.{ 0, 8 }, .end, lines, 0, 6, 7);
+        try testForwardByWord(.{ 0, 9 }, .end, lines, 0, 8, 8);
+        try testForwardByWord(.{ 0, 12 }, .end, lines, 0, 9, 11);
+        try testForwardByWord(.{ 0, 16 }, .end, lines, 0, 12, 15);
+        try testForwardByWord(.{ 0, 20 }, .end, lines, 0, 16, 19);
     }
     {
         const lines = try createLinesFromSource(testing_allocator, "draw forth\nmy map");
         //                                                             3     9   1   5
         defer freeLines(testing_allocator, lines);
-        try eqUntil(.{ 0, 3 }, .end, lines, 0, 0, 2);
-        try eqUntil(.{ 0, 9 }, .end, lines, 0, 3, 8);
-        try eqUntil(.{ 1, 1 }, .end, lines, 0, 9, 9);
-        try eqUntil(.{ 1, 1 }, .end, lines, 1, 0, 0);
-        try eqUntil(.{ 1, 5 }, .end, lines, 1, 1, 4);
-        try eqUntil(.{ 1, 5 }, .end, lines, 1, 5, 100); // out of bounds
+        try testForwardByWord(.{ 0, 3 }, .end, lines, 0, 0, 2);
+        try testForwardByWord(.{ 0, 9 }, .end, lines, 0, 3, 8);
+        try testForwardByWord(.{ 1, 1 }, .end, lines, 0, 9, 9);
+        try testForwardByWord(.{ 1, 1 }, .end, lines, 1, 0, 0);
+        try testForwardByWord(.{ 1, 5 }, .end, lines, 1, 1, 4);
+        try testForwardByWord(.{ 1, 5 }, .end, lines, 1, 5, 100); // out of bounds
     }
     // start
     {
@@ -77,98 +105,111 @@ test forwardByWord {
             const lines = try createLinesFromSource(testing_allocator, "hello world");
             //                                                                6   0
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
-            try eqUntil(.{ 0, 10 }, .start, lines, 0, 6, 9);
-            try eqUntil(.{ 0, 10 }, .start, lines, 0, 10, 100); // out of bounds
+            try testForwardByWord(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try testForwardByWord(.{ 0, 10 }, .start, lines, 0, 6, 9);
+            try testForwardByWord(.{ 0, 10 }, .start, lines, 0, 10, 100); // out of bounds
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "hello; world");
             //                                                               5 7   1
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 5 }, .start, lines, 0, 0, 4);
-            try eqUntil(.{ 0, 7 }, .start, lines, 0, 5, 6);
-            try eqUntil(.{ 0, 11 }, .start, lines, 0, 7, 11);
+            try testForwardByWord(.{ 0, 5 }, .start, lines, 0, 0, 4);
+            try testForwardByWord(.{ 0, 7 }, .start, lines, 0, 5, 6);
+            try testForwardByWord(.{ 0, 11 }, .start, lines, 0, 7, 11);
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "hello ; world");
             //                                                                6 8   2
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
-            try eqUntil(.{ 0, 8 }, .start, lines, 0, 6, 7);
-            try eqUntil(.{ 0, 12 }, .start, lines, 0, 8, 12);
+            try testForwardByWord(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try testForwardByWord(.{ 0, 8 }, .start, lines, 0, 6, 7);
+            try testForwardByWord(.{ 0, 12 }, .start, lines, 0, 8, 12);
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "hello ;; world");
             //                                                                6  9   3
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
-            try eqUntil(.{ 0, 9 }, .start, lines, 0, 6, 8);
-            try eqUntil(.{ 0, 13 }, .start, lines, 0, 9, 13);
+            try testForwardByWord(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try testForwardByWord(.{ 0, 9 }, .start, lines, 0, 6, 8);
+            try testForwardByWord(.{ 0, 13 }, .start, lines, 0, 9, 13);
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "hello  world one  two");
             //                                                                 7     3    8 0
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 7 }, .start, lines, 0, 0, 6);
-            try eqUntil(.{ 0, 13 }, .start, lines, 0, 7, 12);
-            try eqUntil(.{ 0, 18 }, .start, lines, 0, 13, 17);
-            try eqUntil(.{ 0, 20 }, .start, lines, 0, 18, 20);
+            try testForwardByWord(.{ 0, 7 }, .start, lines, 0, 0, 6);
+            try testForwardByWord(.{ 0, 13 }, .start, lines, 0, 7, 12);
+            try testForwardByWord(.{ 0, 18 }, .start, lines, 0, 13, 17);
+            try testForwardByWord(.{ 0, 20 }, .start, lines, 0, 18, 20);
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "one|two||3|||four");
             //                                                             34  7 90  3  6
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 3 }, .start, lines, 0, 0, 2);
-            try eqUntil(.{ 0, 4 }, .start, lines, 0, 3, 3);
-            try eqUntil(.{ 0, 7 }, .start, lines, 0, 4, 6);
-            try eqUntil(.{ 0, 9 }, .start, lines, 0, 7, 8);
-            try eqUntil(.{ 0, 10 }, .start, lines, 0, 9, 9);
-            try eqUntil(.{ 0, 13 }, .start, lines, 0, 10, 12);
-            try eqUntil(.{ 0, 16 }, .start, lines, 0, 13, 16);
+            try testForwardByWord(.{ 0, 3 }, .start, lines, 0, 0, 2);
+            try testForwardByWord(.{ 0, 4 }, .start, lines, 0, 3, 3);
+            try testForwardByWord(.{ 0, 7 }, .start, lines, 0, 4, 6);
+            try testForwardByWord(.{ 0, 9 }, .start, lines, 0, 7, 8);
+            try testForwardByWord(.{ 0, 10 }, .start, lines, 0, 9, 9);
+            try testForwardByWord(.{ 0, 13 }, .start, lines, 0, 10, 12);
+            try testForwardByWord(.{ 0, 16 }, .start, lines, 0, 13, 16);
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "const std = @import(\"std\");\nconst");
             //                                                          0     6   0 2      9  1   4    0   4
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
-            try eqUntil(.{ 0, 10 }, .start, lines, 0, 6, 9);
-            try eqUntil(.{ 0, 12 }, .start, lines, 0, 10, 11);
-            try eqUntil(.{ 0, 19 }, .start, lines, 0, 12, 18);
-            try eqUntil(.{ 0, 21 }, .start, lines, 0, 19, 20);
-            try eqUntil(.{ 0, 24 }, .start, lines, 0, 21, 23);
-            try eqUntil(.{ 1, 0 }, .start, lines, 0, 24, 26);
-            try eqUntil(.{ 1, 0 }, .start, lines, 0, 27, 100); // out of bounds on line 0
-            try eqUntil(.{ 1, 4 }, .start, lines, 1, 0, 3);
-            try eqUntil(.{ 1, 4 }, .start, lines, 1, 4, 100); // out of bounds on line 1
+            try testForwardByWord(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try testForwardByWord(.{ 0, 10 }, .start, lines, 0, 6, 9);
+            try testForwardByWord(.{ 0, 12 }, .start, lines, 0, 10, 11);
+            try testForwardByWord(.{ 0, 19 }, .start, lines, 0, 12, 18);
+            try testForwardByWord(.{ 0, 21 }, .start, lines, 0, 19, 20);
+            try testForwardByWord(.{ 0, 24 }, .start, lines, 0, 21, 23);
+            try testForwardByWord(.{ 1, 0 }, .start, lines, 0, 24, 26);
+            try testForwardByWord(.{ 1, 0 }, .start, lines, 0, 27, 100); // out of bounds on line 0
+            try testForwardByWord(.{ 1, 4 }, .start, lines, 1, 0, 3);
+            try testForwardByWord(.{ 1, 4 }, .start, lines, 1, 4, 100); // out of bounds on line 1
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "hello\nworld\nvenus\nmars");
             //                                                          0      0      0      0  3
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 1, 0 }, .start, lines, 0, 0, 4);
-            try eqUntil(.{ 2, 0 }, .start, lines, 1, 0, 4);
-            try eqUntil(.{ 3, 0 }, .start, lines, 2, 0, 4);
-            try eqUntil(.{ 3, 3 }, .start, lines, 3, 0, 2);
-            try eqUntil(.{ 3, 3 }, .start, lines, 3, 3, 100); // out of bouds on line 3
+            try testForwardByWord(.{ 1, 0 }, .start, lines, 0, 0, 4);
+            try testForwardByWord(.{ 2, 0 }, .start, lines, 1, 0, 4);
+            try testForwardByWord(.{ 3, 0 }, .start, lines, 2, 0, 4);
+            try testForwardByWord(.{ 3, 3 }, .start, lines, 3, 0, 2);
+            try testForwardByWord(.{ 3, 3 }, .start, lines, 3, 3, 100); // out of bouds on line 3
         }
         {
             const lines = try createLinesFromSource(testing_allocator, "hello world\nvenus and mars");
             //                                                          0     6      0     6   0  3
             defer freeLines(testing_allocator, lines);
-            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
-            try eqUntil(.{ 1, 0 }, .start, lines, 0, 6, 10);
-            try eqUntil(.{ 1, 6 }, .start, lines, 1, 0, 5);
-            try eqUntil(.{ 1, 10 }, .start, lines, 1, 6, 9);
-            try eqUntil(.{ 1, 13 }, .start, lines, 1, 10, 13);
+            try testForwardByWord(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try testForwardByWord(.{ 1, 0 }, .start, lines, 0, 6, 10);
+            try testForwardByWord(.{ 1, 6 }, .start, lines, 1, 0, 5);
+            try testForwardByWord(.{ 1, 10 }, .start, lines, 1, 6, 9);
+            try testForwardByWord(.{ 1, 13 }, .start, lines, 1, 10, 13);
         }
     }
 }
 
-fn eqUntil(expeced: struct { usize, usize }, boundary_type: WordBoundaryType, lines: []Line, linenr: usize, start_col: usize, end_col: usize) !void {
+fn testForwardByWord(expeced: struct { usize, usize }, boundary_type: WordBoundaryType, lines: []Line, linenr: usize, start_col: usize, end_col: usize) !void {
     for (start_col..end_col + 1) |colnr| {
         const result = forwardByWord(boundary_type, lines, linenr, colnr);
         try eq(expeced, result);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn bringPositionInBound(lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = .{ input_linenr, input_colnr };
+    if (linenr > lines.len -| 1) {
+        linenr = lines.len -| 1;
+        colnr = lines[linenr].len -| 1;
+        return .{ linenr, colnr };
+    }
+    if (colnr > lines[linenr].len -| 1) colnr = lines[linenr].len -| 1;
+    return .{ linenr, colnr };
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
