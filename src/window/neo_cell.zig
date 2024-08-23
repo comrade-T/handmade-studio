@@ -45,6 +45,7 @@ test forwardByWord {
         defer freeLines(testing_allocator, lines);
         try eqUntil(.{ 0, 4 }, .end, lines, 0, 0, 3);
         try eqUntil(.{ 0, 10 }, .end, lines, 0, 4, 10);
+        try eqUntil(.{ 0, 10 }, .end, lines, 0, 11, 100); // out of bounds
     }
     {
         const lines = try createLinesFromSource(testing_allocator, "one#two--3|||four;;;;");
@@ -68,6 +69,98 @@ test forwardByWord {
         try eqUntil(.{ 1, 1 }, .end, lines, 0, 9, 9);
         try eqUntil(.{ 1, 1 }, .end, lines, 1, 0, 0);
         try eqUntil(.{ 1, 5 }, .end, lines, 1, 1, 4);
+        try eqUntil(.{ 1, 5 }, .end, lines, 1, 5, 100); // out of bounds
+    }
+    // start
+    {
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello world");
+            //                                                                6   0
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try eqUntil(.{ 0, 10 }, .start, lines, 0, 6, 9);
+            try eqUntil(.{ 0, 10 }, .start, lines, 0, 10, 100); // out of bounds
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello; world");
+            //                                                               5 7   1
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 5 }, .start, lines, 0, 0, 4);
+            try eqUntil(.{ 0, 7 }, .start, lines, 0, 5, 6);
+            try eqUntil(.{ 0, 11 }, .start, lines, 0, 7, 11);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello ; world");
+            //                                                                6 8   2
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try eqUntil(.{ 0, 8 }, .start, lines, 0, 6, 7);
+            try eqUntil(.{ 0, 12 }, .start, lines, 0, 8, 12);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello ;; world");
+            //                                                                6  9   3
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try eqUntil(.{ 0, 9 }, .start, lines, 0, 6, 8);
+            try eqUntil(.{ 0, 13 }, .start, lines, 0, 9, 13);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello  world one  two");
+            //                                                                 7     3    8 0
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 7 }, .start, lines, 0, 0, 6);
+            try eqUntil(.{ 0, 13 }, .start, lines, 0, 7, 12);
+            try eqUntil(.{ 0, 18 }, .start, lines, 0, 13, 17);
+            try eqUntil(.{ 0, 20 }, .start, lines, 0, 18, 20);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "one|two||3|||four");
+            //                                                             34  7 90  3  6
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 3 }, .start, lines, 0, 0, 2);
+            try eqUntil(.{ 0, 4 }, .start, lines, 0, 3, 3);
+            try eqUntil(.{ 0, 7 }, .start, lines, 0, 4, 6);
+            try eqUntil(.{ 0, 9 }, .start, lines, 0, 7, 8);
+            try eqUntil(.{ 0, 10 }, .start, lines, 0, 9, 9);
+            try eqUntil(.{ 0, 13 }, .start, lines, 0, 10, 12);
+            try eqUntil(.{ 0, 16 }, .start, lines, 0, 13, 16);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "const std = @import(\"std\");\nconst");
+            //                                                          0     6   0 2      9  1   4    0   4
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try eqUntil(.{ 0, 10 }, .start, lines, 0, 6, 9);
+            try eqUntil(.{ 0, 12 }, .start, lines, 0, 10, 11);
+            try eqUntil(.{ 0, 19 }, .start, lines, 0, 12, 18);
+            try eqUntil(.{ 0, 21 }, .start, lines, 0, 19, 20);
+            try eqUntil(.{ 0, 24 }, .start, lines, 0, 21, 23);
+            try eqUntil(.{ 1, 0 }, .start, lines, 0, 24, 26);
+            try eqUntil(.{ 1, 0 }, .start, lines, 0, 27, 100); // out of bounds on line 0
+            try eqUntil(.{ 1, 4 }, .start, lines, 1, 0, 3);
+            try eqUntil(.{ 1, 4 }, .start, lines, 1, 4, 100); // out of bounds on line 1
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello\nworld\nvenus\nmars");
+            //                                                          0      0      0      0  3
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 1, 0 }, .start, lines, 0, 0, 4);
+            try eqUntil(.{ 2, 0 }, .start, lines, 1, 0, 4);
+            try eqUntil(.{ 3, 0 }, .start, lines, 2, 0, 4);
+            try eqUntil(.{ 3, 3 }, .start, lines, 3, 0, 2);
+            try eqUntil(.{ 3, 3 }, .start, lines, 3, 3, 100); // out of bouds on line 3
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "hello world\nvenus and mars");
+            //                                                          0     6      0     6   0  3
+            defer freeLines(testing_allocator, lines);
+            try eqUntil(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try eqUntil(.{ 1, 0 }, .start, lines, 0, 6, 10);
+            try eqUntil(.{ 1, 6 }, .start, lines, 1, 0, 5);
+            try eqUntil(.{ 1, 10 }, .start, lines, 1, 6, 9);
+            try eqUntil(.{ 1, 13 }, .start, lines, 1, 10, 13);
+        }
     }
 }
 
