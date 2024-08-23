@@ -9,7 +9,55 @@ const testing_allocator = std.testing.allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub fn forwardByWord(destination: WordBoundaryType, lines: []Line, linenr: usize, colnr: usize) struct { usize, usize } {
+    var new_linenr, var new_colnr = .{ linenr, colnr };
+    while (true) {
+        defer new_colnr += 1;
+        if (colnr >= lines[new_linenr].len) {
+            if (linenr == lines.len - 1) return .{ linenr, lines[linenr].len - 1 };
+            new_linenr += 1;
+            new_colnr = 0;
+        }
+        if (foundTargetBoundary(lines[new_linenr], new_colnr, destination)) return .{ new_linenr, new_colnr };
+    }
+    return .{ new_linenr, new_colnr };
+}
+
+test forwardByWord {
+    // .end
+    {
+        const lines = try createLinesFromSource(testing_allocator, "hello world");
+        defer freeLines(testing_allocator, lines);
+        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 0));
+        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 1));
+        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 2));
+        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 3));
+        try eqStr("o", lines[0][4]);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const Line = [][]const u8;
+
+fn createLinesFromSource(a: Allocator, source: []const u8) ![]Line {
+    var lines = std.ArrayList(Line).init(a);
+    var start_line: usize = 0;
+    for (source, 0..) |byte, i| {
+        if (byte == '\n') {
+            const new_line = try createLine(a, source[start_line..i]);
+            try lines.append(new_line);
+            defer start_line = i;
+        }
+    }
+    const last_line = try createLine(a, source[start_line..]);
+    if (last_line.len > 0) try lines.append(last_line);
+    return try lines.toOwnedSlice();
+}
+fn freeLines(a: Allocator, lines: []Line) void {
+    for (lines) |line| a.free(line);
+    a.free(lines);
+}
 
 fn createLine(a: Allocator, source: []const u8) !Line {
     var cells = try std.ArrayList([]const u8).initCapacity(a, source.len);
@@ -95,7 +143,7 @@ test getCharBoundaryType {
     try eq(.both, getCharBoundaryType("h", ";", null));
 }
 
-fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType) !void {
+fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType) bool {
     const prev_char = if (colnr == 0) null else line[colnr - 1];
     const curr_char = line[colnr];
     const next_char = if (colnr >= line.len) null else line[colnr + 1];
