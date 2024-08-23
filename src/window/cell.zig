@@ -2,6 +2,7 @@ const std = @import("std");
 const code_point = @import("code_point");
 
 const List = std.ArrayList;
+const testing_allocator = std.testing.allocator;
 const Allocator = std.mem.Allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
@@ -56,7 +57,7 @@ pub const Line = struct {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn createCellListAndLineList(a: Allocator, source: []const u8) !struct { List(Cell), List(Line) } {
+fn createCellsAndLines(a: Allocator, source: []const u8) !struct { []Cell, []Line } {
     var cells = List(Cell).init(a);
     var lines = List(Line).init(a);
 
@@ -71,29 +72,23 @@ pub fn createCellListAndLineList(a: Allocator, source: []const u8) !struct { Lis
     }
     try lines.append(Line{ .start = i, .end = cells.items.len });
 
-    return .{ cells, lines };
-}
-
-fn createCellSliceAndLineSlice(a: Allocator, source: []const u8) !struct { []Cell, []Line } {
-    var cells, var lines = try createCellListAndLineList(a, source);
     return .{ try cells.toOwnedSlice(), try lines.toOwnedSlice() };
 }
 
-test createCellListAndLineList {
-    const a = std.testing.allocator;
+test createCellsAndLines {
     const source = "안녕하세요!\nHello there 👋!";
-    const cells, const lines = try createCellListAndLineList(a, source);
-    defer cells.deinit();
-    defer lines.deinit();
+    const cells, const lines = try createCellsAndLines(testing_allocator, source);
+    defer testing_allocator.free(cells);
+    defer testing_allocator.free(lines);
 
-    try eqStr("안", cells.items[0].getText(source));
-    try eqStr("\n", cells.items[6].getText(source));
-    try eqStr("!", cells.items[cells.items.len - 1].getText(source));
-    try eqStr("👋", cells.items[cells.items.len - 2].getText(source));
+    try eqStr("안", cells[0].getText(source));
+    try eqStr("\n", cells[6].getText(source));
+    try eqStr("!", cells[cells.len - 1].getText(source));
+    try eqStr("👋", cells[cells.len - 2].getText(source));
 
-    try eq(2, lines.items.len);
-    try eqStr("안녕하세요!", lines.items[0].getText(cells.items, source));
-    try eqStr("Hello there 👋!", lines.items[1].getText(cells.items, source));
+    try eq(2, lines.len);
+    try eqStr("안녕하세요!", lines[0].getText(cells, source));
+    try eqStr("Hello there 👋!", lines[1].getText(cells, source));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,32 +109,32 @@ test bringLinenrAndColnrInBound {
     defer arena.deinit();
     const a = arena.allocator();
     {
-        _, const lines = try createCellListAndLineList(a, "");
-        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 0, 100));
-        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 100, 0));
-        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 200, 200));
+        _, const lines = try createCellsAndLines(a, "");
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines, 0, 100));
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines, 100, 0));
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines, 200, 200));
     }
     {
-        const cells, const lines = try createCellListAndLineList(a, "1234567890");
-        try eq(10, lines.items[0].getCells(cells.items).len);
-        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 0, 100));
-        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 100, 0));
-        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 100, 100));
-        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines.items, 1, 5));
-        try eq(.{ 0, 5 }, bringLinenrAndColnrInBound(lines.items, 0, 5));
+        const cells, const lines = try createCellsAndLines(a, "1234567890");
+        try eq(10, lines[0].getCells(cells).len);
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines, 0, 100));
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines, 100, 0));
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines, 100, 100));
+        try eq(.{ 0, 9 }, bringLinenrAndColnrInBound(lines, 1, 5));
+        try eq(.{ 0, 5 }, bringLinenrAndColnrInBound(lines, 0, 5));
     }
     {
-        const cells, const lines = try createCellListAndLineList(a, "12345\n6789");
-        try eq(5, lines.items[0].getCells(cells.items).len);
-        try eq(4, lines.items[1].getCells(cells.items).len);
-        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines.items, 0, 0));
-        try eq(.{ 0, 4 }, bringLinenrAndColnrInBound(lines.items, 0, 10));
-        try eq(.{ 0, 4 }, bringLinenrAndColnrInBound(lines.items, 0, 5));
-        try eq(.{ 1, 0 }, bringLinenrAndColnrInBound(lines.items, 1, 0));
-        try eq(.{ 1, 2 }, bringLinenrAndColnrInBound(lines.items, 1, 2));
-        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines.items, 1, 3));
-        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines.items, 1, 4));
-        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines.items, 1, 100));
+        const cells, const lines = try createCellsAndLines(a, "12345\n6789");
+        try eq(5, lines[0].getCells(cells).len);
+        try eq(4, lines[1].getCells(cells).len);
+        try eq(.{ 0, 0 }, bringLinenrAndColnrInBound(lines, 0, 0));
+        try eq(.{ 0, 4 }, bringLinenrAndColnrInBound(lines, 0, 10));
+        try eq(.{ 0, 4 }, bringLinenrAndColnrInBound(lines, 0, 5));
+        try eq(.{ 1, 0 }, bringLinenrAndColnrInBound(lines, 1, 0));
+        try eq(.{ 1, 2 }, bringLinenrAndColnrInBound(lines, 1, 2));
+        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines, 1, 3));
+        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines, 1, 4));
+        try eq(.{ 1, 3 }, bringLinenrAndColnrInBound(lines, 1, 100));
     }
 }
 
@@ -278,14 +273,14 @@ test "forwardByWord.end" {
 
     {
         const source = "";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 0 }, forwardByWord(.end, source, cells, lines, 0, 0));
         try eq(.{ 0, 0 }, forwardByWord(.end, source, cells, lines, 100, 0));
         try eq(.{ 0, 0 }, forwardByWord(.end, source, cells, lines, 0, 200));
     }
     {
         const source = "hello world";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 4 }, forwardByWord(.end, source, cells, lines, 0, 0));
         try eq(.{ 0, 4 }, forwardByWord(.end, source, cells, lines, 0, 1));
         try eq(.{ 0, 4 }, forwardByWord(.end, source, cells, lines, 0, 2));
@@ -302,7 +297,7 @@ test "forwardByWord.end" {
     }
     {
         const source = "one#two--3|||four;;;;";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 2 }, forwardByWord(.end, source, cells, lines, 0, 0));
         try eq(.{ 0, 2 }, forwardByWord(.end, source, cells, lines, 0, 1));
         try eqStr("e", lines[0].cell(cells, 2).?.getText(source));
@@ -334,7 +329,7 @@ test "forwardByWord.end" {
     }
     {
         const source = "draw forth\nmy map";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 3 }, forwardByWord(.end, source, cells, lines, 0, 0));
         try eqStr("w", lines[0].cell(cells, 3).?.getText(source));
         try eq(.{ 0, 9 }, forwardByWord(.end, source, cells, lines, 0, 3));
@@ -353,14 +348,14 @@ test "forwardByWord.start" {
 
     {
         const source = "";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 0 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eq(.{ 0, 0 }, forwardByWord(.start, source, cells, lines, 100, 0));
         try eq(.{ 0, 0 }, forwardByWord(.start, source, cells, lines, 0, 200));
     }
     {
         const source = "hello world";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 6 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr("w", lines[0].cell(cells, 6).?.getText(source));
         try eq(.{ 0, 10 }, forwardByWord(.start, source, cells, lines, 0, 6));
@@ -370,7 +365,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "hello; world";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 5 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr(";", lines[0].cell(cells, 5).?.getText(source));
         try eq(.{ 0, 7 }, forwardByWord(.start, source, cells, lines, 0, 5));
@@ -380,7 +375,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "hello ; world";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 6 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr(";", lines[0].cell(cells, 6).?.getText(source));
         try eq(.{ 0, 8 }, forwardByWord(.start, source, cells, lines, 0, 6));
@@ -390,7 +385,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "hello ;; world";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 6 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr(";", lines[0].cell(cells, 6).?.getText(source));
         try eq(.{ 0, 9 }, forwardByWord(.start, source, cells, lines, 0, 6));
@@ -400,7 +395,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "hello  world";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 7 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr("w", lines[0].cell(cells, 7).?.getText(source));
         try eq(.{ 0, 11 }, forwardByWord(.start, source, cells, lines, 0, 7));
@@ -408,7 +403,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "hello   world one  two";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 8 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr("w", lines[0].cell(cells, 8).?.getText(source));
         try eq(.{ 0, 14 }, forwardByWord(.start, source, cells, lines, 0, 8));
@@ -418,7 +413,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "one|two||3|||four";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 3 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eq(.{ 0, 3 }, forwardByWord(.start, source, cells, lines, 0, 1));
         try eq(.{ 0, 3 }, forwardByWord(.start, source, cells, lines, 0, 2));
@@ -446,7 +441,7 @@ test "forwardByWord.start" {
     }
     {
         const source = "const std = @import(\"std\");\nconst";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 6 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eqStr("s", lines[0].cell(cells, 6).?.getText(source));
         try eq(.{ 0, 10 }, forwardByWord(.start, source, cells, lines, 0, 6));
@@ -464,14 +459,14 @@ test "forwardByWord.start" {
     }
     {
         const source = "hello\nworld\nvenus\nmars";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 1, 0 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eq(.{ 2, 0 }, forwardByWord(.start, source, cells, lines, 1, 0));
         try eq(.{ 3, 0 }, forwardByWord(.start, source, cells, lines, 2, 0));
     }
     {
         const source = "hello world\nvenus and mars";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 6 }, forwardByWord(.start, source, cells, lines, 0, 0));
         try eq(.{ 1, 0 }, forwardByWord(.start, source, cells, lines, 0, 6));
         try eq(.{ 1, 6 }, forwardByWord(.start, source, cells, lines, 1, 0));
@@ -515,14 +510,14 @@ test backwardsByWord {
 
     {
         const source = "";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 0));
         try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 100, 0));
         try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 0, 200));
     }
     {
         const source = "one;two--3|||four;";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 17));
         try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 16));
         try eq(.{ 0, 13 }, backwardsByWord(.start, source, cells, lines, 0, 15));
@@ -551,14 +546,14 @@ test backwardsByWord {
 
     {
         const source = "one\ntwo";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 1, 0 }, backwardsByWord(.start, source, cells, lines, 1, 2));
         try eq(.{ 1, 0 }, backwardsByWord(.start, source, cells, lines, 1, 1));
         try eq(.{ 0, 0 }, backwardsByWord(.start, source, cells, lines, 1, 0));
     }
     {
         const source = "draw forth\na map";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 1, 2 }, backwardsByWord(.start, source, cells, lines, 1, 4));
         try eq(.{ 1, 2 }, backwardsByWord(.start, source, cells, lines, 1, 3));
         try eqStr("m", lines[1].cell(cells, 2).?.getText(source));
@@ -572,7 +567,7 @@ test backwardsByWord {
     }
     {
         const source = "draw forth;\na map";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 10 }, backwardsByWord(.start, source, cells, lines, 1, 0));
         try eqStr(";", lines[0].cell(cells, 10).?.getText(source));
         try eq(.{ 0, 5 }, backwardsByWord(.start, source, cells, lines, 0, 10));
@@ -586,14 +581,14 @@ test "backByWord.end" {
 
     {
         const source = "";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 0));
         try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 100, 0));
         try eq(.{ 0, 0 }, backwardsByWord(.end, source, cells, lines, 0, 200));
     }
     {
         const source = "one;two--3|||four;;;;";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 20));
         try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 19));
         try eq(.{ 0, 16 }, backwardsByWord(.end, source, cells, lines, 0, 18));
@@ -626,7 +621,7 @@ test "backByWord.end" {
     }
     {
         const source = "draw forth\na map";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 1, 0 }, backwardsByWord(.end, source, cells, lines, 1, 4));
         try eqStr("a", lines[1].cell(cells, 0).?.getText(source));
         try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 1, 0));
@@ -636,7 +631,7 @@ test "backByWord.end" {
     }
     {
         const source = "draw forth\nmy map";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 1, 1 }, backwardsByWord(.end, source, cells, lines, 1, 5));
         try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
         try eq(.{ 0, 9 }, backwardsByWord(.end, source, cells, lines, 1, 1));
@@ -647,7 +642,7 @@ test "backByWord.end" {
     }
     {
         const source = "draw forth;\nmy map";
-        const cells, const lines = try createCellSliceAndLineSlice(a, source);
+        const cells, const lines = try createCellsAndLines(a, source);
         try eq(.{ 1, 1 }, backwardsByWord(.end, source, cells, lines, 1, 5));
         try eqStr("y", lines[1].cell(cells, 1).?.getText(source));
         try eq(.{ 0, 10 }, backwardsByWord(.end, source, cells, lines, 1, 1));
