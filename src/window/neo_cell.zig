@@ -9,30 +9,72 @@ const testing_allocator = std.testing.allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn forwardByWord(destination: WordBoundaryType, lines: []Line, linenr: usize, colnr: usize) struct { usize, usize } {
-    var new_linenr, var new_colnr = .{ linenr, colnr };
-    while (true) {
-        defer new_colnr += 1;
-        if (colnr >= lines[new_linenr].len) {
-            if (linenr == lines.len - 1) return .{ linenr, lines[linenr].len - 1 };
-            new_linenr += 1;
-            new_colnr = 0;
-        }
-        if (foundTargetBoundary(lines[new_linenr], new_colnr, destination)) return .{ new_linenr, new_colnr };
+fn bringPositionInBound(lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = .{ input_linenr, input_colnr };
+    if (linenr > lines.len -| 1) {
+        linenr = lines.len -| 1;
+        colnr = lines[linenr].len -| 1;
+        return .{ linenr, colnr };
     }
-    return .{ new_linenr, new_colnr };
+    if (colnr > lines[linenr].len -| 1) colnr = lines[linenr].len -| 1;
+    return .{ linenr, colnr };
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn forwardByWord(destination: WordBoundaryType, lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
+    var linenr, var colnr = bringPositionInBound(lines, input_linenr, input_colnr);
+    if (linenr == lines.len -| 1 and colnr == lines[lines.len -| 1].len -| 1) return .{ linenr, colnr };
+    colnr += 1;
+    while (true) {
+        defer colnr += 1;
+        if (colnr >= lines[linenr].len) {
+            if (linenr == lines.len - 1) return .{ linenr, lines[linenr].len - 1 };
+            linenr += 1;
+            colnr = 0;
+        }
+        if (foundTargetBoundary(lines[linenr], colnr, destination)) return .{ linenr, colnr };
+    }
 }
 
 test forwardByWord {
     // .end
     {
         const lines = try createLinesFromSource(testing_allocator, "hello world");
+        //                                                              4     0
         defer freeLines(testing_allocator, lines);
-        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 0));
-        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 1));
-        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 2));
-        try eq(.{ 0, 4 }, forwardByWord(.end, lines, 0, 3));
-        try eqStr("o", lines[0][4]);
+        try eqUntil(.{ 0, 4 }, .end, lines, 0, 0, 3);
+        try eqUntil(.{ 0, 10 }, .end, lines, 0, 4, 10);
+    }
+    {
+        const lines = try createLinesFromSource(testing_allocator, "one#two--3|||four;;;;");
+        //                                                            23  6 89  2   6   0
+        defer freeLines(testing_allocator, lines);
+        try eqUntil(.{ 0, 2 }, .end, lines, 0, 0, 1);
+        try eqUntil(.{ 0, 3 }, .end, lines, 0, 2, 2);
+        try eqUntil(.{ 0, 6 }, .end, lines, 0, 3, 5);
+        try eqUntil(.{ 0, 8 }, .end, lines, 0, 6, 7);
+        try eqUntil(.{ 0, 9 }, .end, lines, 0, 8, 8);
+        try eqUntil(.{ 0, 12 }, .end, lines, 0, 9, 11);
+        try eqUntil(.{ 0, 16 }, .end, lines, 0, 12, 15);
+        try eqUntil(.{ 0, 20 }, .end, lines, 0, 16, 19);
+    }
+    {
+        const lines = try createLinesFromSource(testing_allocator, "draw forth\nmy map");
+        //                                                             3     9   1   5
+        defer freeLines(testing_allocator, lines);
+        try eqUntil(.{ 0, 3 }, .end, lines, 0, 0, 2);
+        try eqUntil(.{ 0, 9 }, .end, lines, 0, 3, 8);
+        try eqUntil(.{ 1, 1 }, .end, lines, 0, 9, 9);
+        try eqUntil(.{ 1, 1 }, .end, lines, 1, 0, 0);
+        try eqUntil(.{ 1, 5 }, .end, lines, 1, 1, 4);
+    }
+}
+
+fn eqUntil(expeced: struct { usize, usize }, boundary_type: WordBoundaryType, lines: []Line, linenr: usize, start_col: usize, end_col: usize) !void {
+    for (start_col..end_col + 1) |colnr| {
+        const result = forwardByWord(boundary_type, lines, linenr, colnr);
+        try eq(expeced, result);
     }
 }
 
@@ -42,16 +84,18 @@ const Line = [][]const u8;
 
 fn createLinesFromSource(a: Allocator, source: []const u8) ![]Line {
     var lines = std.ArrayList(Line).init(a);
-    var start_line: usize = 0;
+    var line_start: usize = 0;
     for (source, 0..) |byte, i| {
         if (byte == '\n') {
-            const new_line = try createLine(a, source[start_line..i]);
-            try lines.append(new_line);
-            defer start_line = i;
+            const new_line = try createLine(a, source[line_start .. i + 1]);
+            try lines.append(new_line); // '\n' included at end of line
+            defer line_start = i + 1;
         }
     }
-    const last_line = try createLine(a, source[start_line..]);
-    if (last_line.len > 0) try lines.append(last_line);
+    if (line_start < source.len) {
+        const last_line = try createLine(a, source[line_start..]);
+        if (last_line.len > 0) try lines.append(last_line);
+    }
     return try lines.toOwnedSlice();
 }
 fn freeLines(a: Allocator, lines: []Line) void {
@@ -146,7 +190,7 @@ test getCharBoundaryType {
 fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType) bool {
     const prev_char = if (colnr == 0) null else line[colnr - 1];
     const curr_char = line[colnr];
-    const next_char = if (colnr >= line.len) null else line[colnr + 1];
+    const next_char = if (colnr + 1 >= line.len) null else line[colnr + 1];
     const char_boundary_type = getCharBoundaryType(prev_char, curr_char, next_char);
     if (char_boundary_type == boundary_type or char_boundary_type == .both) return true;
     return false;
