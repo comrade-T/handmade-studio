@@ -111,10 +111,6 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     ugly_window.compile.linkLibrary(tree_sitter);
 
-    _ = addTestableModule(&bops, "src/window/cell.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
-
     _ = addTestableModule(&bops, "src/window/neo_cell.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
