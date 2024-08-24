@@ -41,11 +41,23 @@ pub fn main() !void {
 
     const font = rl.getFontDefault();
 
+    var scissor_mode = true;
+    var scissor_x: i32 = 0;
+    var scissor_y: i32 = 0;
+    const scissor_width: i32 = 300;
+    const scissor_height: i32 = 300;
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
+
+        {
+            if (rl.isKeyPressed(rl.KeyboardKey.key_s)) scissor_mode = !scissor_mode;
+            scissor_x = rl.getMouseX() - scissor_width / 2;
+            scissor_y = rl.getMouseY() - scissor_height / 2;
+        }
 
         if (rl.isMouseButtonDown(rl.MouseButton.mouse_button_left)) {
             if (bunnies_count < max_bunnies) {
@@ -83,11 +95,16 @@ pub fn main() !void {
 
             rl.clearBackground(rl.Color.blank);
 
-            for (0..bunnies_count) |i| {
-                // rl.drawTexture(font.texture, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
-                // rl.drawTexture(texBunny, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
-                // rl.drawText("a", @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), 30, bunnies[i].color);
-                rl.drawTextCodepoint(font, 97, .{ .x = bunnies[i].position.x, .y = bunnies[i].position.y }, 30, bunnies[i].color);
+            {
+                // if (scissor_mode) rl.beginScissorMode(scissor_x, scissor_y, scissor_width, scissor_height);
+                // defer if (scissor_mode) rl.endScissorMode();
+
+                for (0..bunnies_count) |i| {
+                    // rl.drawTexture(font.texture, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
+                    // rl.drawTexture(texBunny, @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), bunnies[i].color);
+                    // rl.drawText("a", @intFromFloat(bunnies[i].position.x), @intFromFloat(bunnies[i].position.y), 30, bunnies[i].color);
+                    rl.drawTextCodepoint(font, 97, .{ .x = bunnies[i].position.x, .y = bunnies[i].position.y }, 30, bunnies[i].color);
+                }
             }
 
             rl.drawRectangle(0, 0, screen_width, 80, rl.Color.black);
