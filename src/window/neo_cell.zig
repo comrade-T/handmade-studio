@@ -39,6 +39,78 @@ test backwardsByWord {
         try testBackwardsByWord(.{ 0, 3 }, .start, lines, 0, 4, 4);
         try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 3);
     }
+    {
+        const lines = try createLinesFromSource(testing_allocator, "one\ntwo");
+        //                                                          012  012
+        defer freeLines(testing_allocator, lines);
+        try testBackwardsByWord(.{ 1, 0 }, .start, lines, 1, 1, 2);
+        try testBackwardsByWord(.{ 0, 0 }, .start, lines, 1, 0, 0);
+        try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 2);
+    }
+    {
+        const lines = try createLinesFromSource(testing_allocator, "draw forth\na map");
+        //                                                          0    5      0 2
+        defer freeLines(testing_allocator, lines);
+        try testBackwardsByWord(.{ 1, 2 }, .start, lines, 1, 3, 4);
+        try testBackwardsByWord(.{ 1, 0 }, .start, lines, 1, 1, 2);
+        try testBackwardsByWord(.{ 0, 5 }, .start, lines, 1, 0, 0);
+        try testBackwardsByWord(.{ 0, 5 }, .start, lines, 0, 6, 10);
+        try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 5);
+    }
+    {
+        const lines = try createLinesFromSource(testing_allocator, "draw forth;\na map");
+        //                                                          0    5    0 0 2
+        defer freeLines(testing_allocator, lines);
+        try testBackwardsByWord(.{ 1, 2 }, .start, lines, 1, 3, 4);
+        try testBackwardsByWord(.{ 1, 0 }, .start, lines, 1, 1, 2);
+        try testBackwardsByWord(.{ 0, 10 }, .start, lines, 1, 0, 0);
+        try testBackwardsByWord(.{ 0, 5 }, .start, lines, 0, 6, 10);
+        try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 5);
+    }
+    // .end
+    {
+        {
+            const lines = try createLinesFromSource(testing_allocator, "one;two--3|||four;;;;");
+            //                                                          0 23  6 89  2   6   0
+            defer freeLines(testing_allocator, lines);
+            try testBackwardsByWord(.{ 0, 16 }, .end, lines, 0, 17, 20);
+            try testBackwardsByWord(.{ 0, 12 }, .end, lines, 0, 13, 16);
+            try testBackwardsByWord(.{ 0, 9 }, .end, lines, 0, 10, 12);
+            try testBackwardsByWord(.{ 0, 8 }, .end, lines, 0, 9, 9);
+            try testBackwardsByWord(.{ 0, 6 }, .end, lines, 0, 7, 8);
+            try testBackwardsByWord(.{ 0, 3 }, .end, lines, 0, 4, 6);
+            try testBackwardsByWord(.{ 0, 2 }, .end, lines, 0, 3, 3);
+            try testBackwardsByWord(.{ 0, 0 }, .end, lines, 0, 0, 2);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "draw forth\na map");
+            //                                                          0  3     9  0
+            defer freeLines(testing_allocator, lines);
+            try testBackwardsByWord(.{ 1, 0 }, .end, lines, 1, 1, 4);
+            try testBackwardsByWord(.{ 0, 9 }, .end, lines, 1, 0, 0);
+            try testBackwardsByWord(.{ 0, 3 }, .end, lines, 0, 4, 8);
+            try testBackwardsByWord(.{ 0, 0 }, .end, lines, 0, 0, 3);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "draw forth\nmy map");
+            //                                                          0  3     9   1
+            defer freeLines(testing_allocator, lines);
+            try testBackwardsByWord(.{ 1, 1 }, .end, lines, 1, 2, 5);
+            try testBackwardsByWord(.{ 0, 9 }, .end, lines, 1, 0, 1);
+            try testBackwardsByWord(.{ 0, 3 }, .end, lines, 0, 4, 9);
+            try testBackwardsByWord(.{ 0, 0 }, .end, lines, 0, 0, 3);
+        }
+        {
+            const lines = try createLinesFromSource(testing_allocator, "draw forth;\nmy map");
+            //                                                          0  3     90  1
+            defer freeLines(testing_allocator, lines);
+            try testBackwardsByWord(.{ 1, 1 }, .end, lines, 1, 2, 5);
+            try testBackwardsByWord(.{ 0, 10 }, .end, lines, 1, 0, 1);
+            try testBackwardsByWord(.{ 0, 9 }, .end, lines, 0, 10, 10);
+            try testBackwardsByWord(.{ 0, 3 }, .end, lines, 0, 4, 9);
+            try testBackwardsByWord(.{ 0, 0 }, .end, lines, 0, 0, 3);
+        }
+    }
 }
 
 fn testBackwardsByWord(expeced: struct { usize, usize }, boundary_type: WordBoundaryType, lines: []Line, linenr: usize, start_col: usize, end_col: usize) !void {
