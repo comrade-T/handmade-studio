@@ -79,12 +79,20 @@ pub const Window = struct {
         if (eql(u8, trigger, "left")) self.moveCursorLeft();
         if (eql(u8, trigger, "right")) try self.moveCursorRight();
         if (eql(u8, trigger, "backspace")) try self.backspace();
+        if (eql(u8, trigger, "lctrl p")) self.cursorBackwardsdByWord();
+        if (eql(u8, trigger, "lctrl n")) self.cursorForwardByWord();
     }
 
     ///////////////////////////// Vim Cursor Movement
 
-    fn cursorForwardByWord(self: *@This()) !void {
-        // TODO:
+    fn cursorForwardByWord(self: *@This()) void {
+        const line, const col = nc.forwardByWord(.start, self.highlight_iter.vim_lines, self.cursor.line, self.cursor.col);
+        self.cursor.set(line, col);
+    }
+
+    fn cursorBackwardsdByWord(self: *@This()) void {
+        const line, const col = nc.backwardsByWord(.start, self.highlight_iter.vim_lines, self.cursor.line, self.cursor.col);
+        self.cursor.set(line, col);
     }
 
     ///////////////////////////// Cursor Movement
