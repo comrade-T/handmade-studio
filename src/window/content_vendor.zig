@@ -6,6 +6,7 @@ const ts = _neo_buffer.ts;
 const Buffer = _neo_buffer.Buffer;
 const PredicatesFilter = _neo_buffer.PredicatesFilter;
 const SupportedLanguages = _neo_buffer.SupportedLanguages;
+pub const nc = @import("neo_cell");
 
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
@@ -104,6 +105,9 @@ pub const Highlighter = struct {
 
         lines: ArrayList([]const u8),
 
+        // TODO: I know this is a mess, I'll figure out how to deal with it later
+        vim_lines: []nc.Line = undefined,
+
         highlights: []u32 = undefined,
         highlight_offset: usize = 0,
 
@@ -130,11 +134,13 @@ pub const Highlighter = struct {
 
             try self.addLineContents();
             try self.addLineHighlights();
+            try self.addLinesForVim();
 
             return self;
         }
 
         pub fn deinit(self: *@This()) void {
+            nc.freeLines(self.exa, self.vim_lines);
             self.arena.deinit();
             self.exa.destroy(self);
         }
@@ -192,6 +198,15 @@ pub const Highlighter = struct {
                 const line_content = try self.parent.buffer.roperoot.getLine(self.arena.allocator(), linenr);
                 try self.lines.append(line_content);
             }
+        }
+
+        fn addLinesForVim(self: *@This()) !void {
+            var vim_lines = ArrayList(nc.Line).init(self.exa);
+            for (self.lines.items) |line| {
+                const vim_line = try nc.createLine(self.exa, line);
+                try vim_lines.append(vim_line);
+            }
+            self.vim_lines = try vim_lines.toOwnedSlice();
         }
 
         fn addLineHighlights(self: *@This()) !void {

@@ -286,7 +286,7 @@ fn bringPositionInBound(lines: []Line, input_linenr: usize, input_colnr: usize) 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Line = [][]const u8;
+pub const Line = [][]const u8;
 
 fn createLinesFromSource(a: Allocator, source: []const u8) ![]Line {
     var lines = std.ArrayList(Line).init(a);
@@ -304,12 +304,13 @@ fn createLinesFromSource(a: Allocator, source: []const u8) ![]Line {
     }
     return try lines.toOwnedSlice();
 }
-fn freeLines(a: Allocator, lines: []Line) void {
+
+pub fn freeLines(a: Allocator, lines: []Line) void {
     for (lines) |line| a.free(line);
     a.free(lines);
 }
 
-fn createLine(a: Allocator, source: []const u8) !Line {
+pub fn createLine(a: Allocator, source: []const u8) !Line {
     var cells = try std.ArrayList([]const u8).initCapacity(a, source.len);
     var iter = code_point.Iterator{ .bytes = source };
     while (iter.next()) |cp| try cells.append(source[cp.offset .. cp.offset + cp.len]);

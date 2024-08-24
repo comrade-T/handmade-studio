@@ -1,6 +1,7 @@
 const std = @import("std");
 const Buffer = @import("neo_buffer").Buffer;
 const _content_vendor = @import("content_vendor");
+const nc = _content_vendor.nc;
 const Highlighter = _content_vendor.Highlighter;
 const testIter = _content_vendor.testIter;
 
@@ -78,6 +79,12 @@ pub const Window = struct {
         if (eql(u8, trigger, "left")) self.moveCursorLeft();
         if (eql(u8, trigger, "right")) try self.moveCursorRight();
         if (eql(u8, trigger, "backspace")) try self.backspace();
+    }
+
+    ///////////////////////////// Vim Cursor Movement
+
+    fn cursorForwardByWord(self: *@This()) !void {
+        // TODO:
     }
 
     ///////////////////////////// Cursor Movement

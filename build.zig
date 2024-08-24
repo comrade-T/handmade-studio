@@ -89,9 +89,14 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     neo_buffer.compile.linkLibrary(tree_sitter);
 
+    const neo_cell = addTestableModule(&bops, "src/window/neo_cell.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
+
     const content_vendor = addTestableModule(&bops, "src/window/content_vendor.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "neo_cell", .module = neo_cell.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     content_vendor.compile.linkLibrary(tree_sitter);
@@ -110,10 +115,6 @@ pub fn build(b: *std.Build) void {
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     ugly_window.compile.linkLibrary(tree_sitter);
-
-    _ = addTestableModule(&bops, "src/window/neo_cell.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
 
     const window_backend = addTestableModule(&bops, "src/window/backend.zig", &.{
         .{ .name = "buffer", .module = buffer.module },
