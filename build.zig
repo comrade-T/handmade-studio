@@ -102,6 +102,12 @@ pub fn build(b: *std.Build) void {
     content_vendor.compile.linkLibrary(tree_sitter);
     content_vendor.compile.linkLibrary(ztracy.artifact("tracy"));
 
+    const virtuous_window = addTestableModule(&bops, "src/window/virtuous_window.zig", &.{
+        .{ .name = "neo_buffer", .module = neo_buffer.module },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    virtuous_window.compile.linkLibrary(tree_sitter);
+
     const neo_window = addTestableModule(&bops, "src/window/neo_window.zig", &.{
         .{ .name = "cursor", .module = cursor.module },
         .{ .name = "content_vendor", .module = content_vendor.module },
