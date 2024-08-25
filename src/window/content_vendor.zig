@@ -78,7 +78,7 @@ pub const Highlighter = struct {
             .buffer = buffer,
             .query = query,
             .hl_map = hl_map,
-            .filter = try PredicatesFilter.initWithContentCallback(a, self.query, Buffer.contentCallback, self.buffer),
+            .filter = try PredicatesFilter.init(a, self.query),
         };
         return self;
     }
@@ -229,7 +229,14 @@ pub const Highlighter = struct {
             defer cursor.destroy();
 
             while (true) {
-                const result = self.parent.filter.nextMatchInLines(self.parent.query, cursor, self.start_line, self.end_line);
+                const result = self.parent.filter.nextMatchInLines(
+                    self.parent.query,
+                    cursor,
+                    Buffer.contentCallback,
+                    self.parent.buffer,
+                    self.start_line,
+                    self.end_line,
+                );
                 switch (result) {
                     .match => |match| if (match.match == null) break,
                     .ignore => break,

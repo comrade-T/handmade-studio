@@ -18,9 +18,6 @@ pub const PredicatesFilter = struct {
     a: std.mem.Allocator,
     patterns: [][]Predicate,
 
-    getContentCallback: F = undefined,
-    callbackCtx: *anyopaque = undefined,
-
     const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
 
     pub fn init(external_allocator: Allocator, query: *const Query) !*@This() {
@@ -66,39 +63,6 @@ pub const PredicatesFilter = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// With Callback
 
-    pub fn initWithContentCallback(external_allocator: Allocator, query: *const Query, callback: F, ctx: *anyopaque) !*@This() {
-        var self = try PredicatesFilter.init(external_allocator, query);
-        self.getContentCallback = callback;
-        self.callbackCtx = ctx;
-        return self;
-    }
-
-    ///////////////////////////// Everything
-
-    pub fn nextMatchOnDemand(self: *@This(), cursor: *Query.Cursor) ?Query.Match {
-        while (true) {
-            const match = cursor.nextMatch() orelse return null;
-            if (self.allPredicateMatchesOnDemand(match)) return match;
-        }
-    }
-
-    fn allPredicateMatchesOnDemand(self: *@This(), match: Query.Match) bool {
-        const zone = ztracy.ZoneNC(@src(), "allPredicateMatchesOnDemand()", 0xAAFF22);
-        defer zone.End();
-
-        for (match.captures()) |cap| {
-            const node = cap.node;
-
-            const buf_size = 1024;
-            var buf: [buf_size]u8 = undefined;
-            const node_contents = self.getContentCallback(self.callbackCtx, node.getStartByte(), node.getEndByte(), &buf, buf_size);
-
-            const predicates = self.patterns[match.pattern_index];
-            for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
-        }
-        return true;
-    }
-
     ///////////////////////////// Limited Range
 
     const MatchRangeResult = union(enum) {
@@ -110,19 +74,21 @@ pub const PredicatesFilter = struct {
         self: *@This(),
         query: *Query,
         cursor: *Query.Cursor,
+        content_callback: F,
+        ctx: *anyopaque,
         start_line: usize,
         end_line: usize,
     ) MatchRangeResult {
         while (true) {
             const next_match_zone = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0xAA5522);
             const match = cursor.nextMatch() orelse {
-                next_match_zone.Name("NOMORE nextMatch()");
+                next_match_zone.Name("no more nextMatch()");
                 next_match_zone.End();
                 return .{ .match = .{} };
             };
             next_match_zone.End();
 
-            const all_match = self.allPredicatesMatchesInLines(match);
+            const all_match = self.allPredicatesMatchesInLines(content_callback, ctx, match);
             if (!all_match) continue;
 
             var cap_name: []const u8 = "";
@@ -147,7 +113,7 @@ pub const PredicatesFilter = struct {
         }
     }
 
-    fn allPredicatesMatchesInLines(self: *@This(), match: Query.Match) bool {
+    fn allPredicatesMatchesInLines(self: *@This(), content_callback: F, ctx: *anyopaque, match: Query.Match) bool {
         const zone = ztracy.ZoneNC(@src(), "allPredicatesMatchesInLines()", 0xAAFF22);
         defer zone.End();
 
@@ -156,7 +122,7 @@ pub const PredicatesFilter = struct {
 
             const buf_size = 1024;
             var buf: [buf_size]u8 = undefined;
-            const node_contents = self.getContentCallback(self.callbackCtx, node.getStartByte(), node.getEndByte(), &buf, buf_size);
+            const node_contents = content_callback(ctx, node.getStartByte(), node.getEndByte(), &buf, buf_size);
 
             const predicates = self.patterns[match.pattern_index];
             for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
