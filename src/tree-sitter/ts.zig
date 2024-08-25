@@ -19,36 +19,38 @@ const eqStr = std.testing.expectEqualStrings;
 pub const SupportedLanguages = enum { zig };
 
 pub const LangSuite = struct {
+    lang_choice: SupportedLanguages,
     language: *const Language,
-    query: ?*const Query,
+    query: ?*const Query = null,
+    filter: ?*PredicatesFilter = null,
 
-    pub fn create(choice: SupportedLanguages, with_query: bool) !LangSuite {
-        var language: *const b.Language = undefined;
-        {
-            const zone = ztracy.ZoneNC(@src(), "ts.Language.get()", 0xFF00FF);
-            defer zone.End();
+    pub fn create(lang_choice: SupportedLanguages) !LangSuite {
+        const zone = ztracy.ZoneNC(@src(), "LangSuite.create()", 0xFF00FF);
+        defer zone.End();
 
-            language = switch (choice) {
-                .zig => try Language.get("zig"),
-            };
-        }
-
-        var query: ?*const b.Query = null;
-        if (with_query) {
-            const zone = ztracy.ZoneNC(@src(), "ts.Query.create()", 0x00AAFF);
-            defer zone.End();
-
-            const patterns = switch (choice) {
-                .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
-            };
-            query = try b.Query.create(language, patterns);
-        }
-
-        return .{ .language = language, .query = query };
+        const language = switch (lang_choice) {
+            .zig => try Language.get("zig"),
+        };
+        return .{ .lang_choice = lang_choice, .language = language };
     }
 
     pub fn destroy(self: *@This()) void {
-        self.query.destroy();
+        if (self.query) |query| query.destroy();
+        if (self.filter) |filter| filter.deinit();
+    }
+
+    pub fn createQuery(self: *@This()) !void {
+        const zone = ztracy.ZoneNC(@src(), "LangSuite.createQuery()", 0x00AAFF);
+        defer zone.End();
+
+        const patterns = switch (self.lang_choice) {
+            .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
+        };
+        self.query = try b.Query.create(self.language, patterns);
+    }
+
+    pub fn initializeFilter(self: *@This(), a: Allocator) !void {
+        self.filter = try PredicatesFilter.init(a, self.query.?);
     }
 
     pub fn newParser(self: *@This()) !*Parser {

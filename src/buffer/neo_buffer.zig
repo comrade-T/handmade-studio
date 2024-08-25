@@ -131,7 +131,7 @@ pub const Buffer = struct {
 
         // Insert + Tree Sitter update
         {
-            const langsuite = try sitter.LangSuite.create(.zig, false);
+            const langsuite = try sitter.LangSuite.create(.zig);
             {
                 const buf = try Buffer.create(testing_allocator, .string, "const");
                 defer buf.destroy();
@@ -223,7 +223,7 @@ pub const Buffer = struct {
         }
     }
     test deleteRange {
-        const langsuite = try sitter.LangSuite.create(.zig, false);
+        const langsuite = try sitter.LangSuite.create(.zig);
         { // content only
             {
                 var buf = try Buffer.create(testing_allocator, .string, "const");
@@ -305,7 +305,7 @@ pub const Buffer = struct {
         self.tstree = try self.tsparser.?.parse(self.tstree, input);
     }
     test parse {
-        const langsuite = try sitter.LangSuite.create(.zig, false);
+        const langsuite = try sitter.LangSuite.create(.zig);
         {
             const source = "const a = 10;\nconst b = true;";
             var buf = try Buffer.create(testing_allocator, .string, source);
