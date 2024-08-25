@@ -131,10 +131,11 @@ pub const Buffer = struct {
 
         // Insert + Tree Sitter update
         {
+            const langsuite = try sitter.LangSuite.create(.zig, false);
             {
                 const buf = try Buffer.create(testing_allocator, .string, "const");
                 defer buf.destroy();
-                try buf.initiateTreeSitter(.zig);
+                try buf.initiateTreeSitter(langsuite);
                 {
                     const new_line, const new_col = try buf.insertChars(" std", 0, 5);
                     try eq(0, new_line);
@@ -154,7 +155,7 @@ pub const Buffer = struct {
             {
                 const buf = try Buffer.create(testing_allocator, .string, "const");
                 defer buf.destroy();
-                try buf.initiateTreeSitter(.zig);
+                try buf.initiateTreeSitter(langsuite);
                 {
                     const new_line, const new_col = try buf.insertChars("\n", 0, 5);
                     try eq(1, new_line);
@@ -222,6 +223,7 @@ pub const Buffer = struct {
         }
     }
     test deleteRange {
+        const langsuite = try sitter.LangSuite.create(.zig, false);
         { // content only
             {
                 var buf = try Buffer.create(testing_allocator, .string, "const");
@@ -242,7 +244,7 @@ pub const Buffer = struct {
             {
                 var buf = try Buffer.create(testing_allocator, .string, "const std");
                 defer buf.destroy();
-                try buf.initiateTreeSitter(.zig);
+                try buf.initiateTreeSitter(langsuite);
                 try eqStr(
                     \\source_file
                     \\  Decl
@@ -265,7 +267,7 @@ pub const Buffer = struct {
             {
                 var buf = try Buffer.create(testing_allocator, .string, "var\nc");
                 defer buf.destroy();
-                try buf.initiateTreeSitter(.zig);
+                try buf.initiateTreeSitter(langsuite);
                 try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr("var\n", content.items);
@@ -303,11 +305,12 @@ pub const Buffer = struct {
         self.tstree = try self.tsparser.?.parse(self.tstree, input);
     }
     test parse {
+        const langsuite = try sitter.LangSuite.create(.zig, false);
         {
             const source = "const a = 10;\nconst b = true;";
             var buf = try Buffer.create(testing_allocator, .string, source);
             defer buf.destroy();
-            try buf.initiateTreeSitter(.zig);
+            try buf.initiateTreeSitter(langsuite);
             try eqStr(
                 \\source_file
                 \\  Decl
@@ -332,8 +335,8 @@ pub const Buffer = struct {
         }
     }
 
-    pub fn initiateTreeSitter(self: *@This(), lang_choice: SupportedLanguages) !void {
-        self.langsuite = try sitter.LangSuite.create(lang_choice, false);
+    pub fn initiateTreeSitter(self: *@This(), langsuite: sitter.LangSuite) !void {
+        self.langsuite = langsuite;
         self.tsparser = try self.langsuite.?.newParser();
         try self.parse();
     }
