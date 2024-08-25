@@ -1,6 +1,11 @@
 const std = @import("std");
+const ztracy = @import("ztracy");
 pub const b = @import("bindings.zig");
 pub const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
+
+const Language = b.Language;
+const Query = b.Query;
+const Parser = b.Parser;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -9,34 +14,46 @@ const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
-////////////////////////////////////////////////////////////////////////////////////////////// Notes
+//////////////////////////////////////////////////////////////////////////////////////////////
 
-// This file contians tests for the entire 'ts' module.
-// It also exposes the Tree Sitter bindings, PredicatesFilter struct and Tarzan struct.
+pub const SupportedLanguages = enum { zig };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Tests
+pub const LangSuite = struct {
+    language: *const Language,
+    query: ?*const Query,
 
-// TODO:
+    pub fn create(choice: SupportedLanguages, with_query: bool) !LangSuite {
+        var language: *const b.Language = undefined;
+        {
+            const zone = ztracy.ZoneNC(@src(), "ts.Language.get()", 0xFF00FF);
+            defer zone.End();
 
-////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
+            language = switch (choice) {
+                .zig => try Language.get("zig"),
+            };
+        }
 
-fn setupTest(source: []const u8, patterns: []const u8) !struct { *b.Parser, *b.Tree, *b.Query, *b.Query.Cursor } {
-    const ziglang = try b.Language.get("zig");
+        var query: ?*const b.Query = null;
+        if (with_query) {
+            const zone = ztracy.ZoneNC(@src(), "ts.Query.create()", 0x00AAFF);
+            defer zone.End();
 
-    var parser = try b.Parser.create();
-    try parser.setLanguage(ziglang);
+            const patterns = switch (choice) {
+                .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
+            };
+            query = try b.Query.create(language, patterns);
+        }
 
-    const tree = try parser.parseString(null, source);
-    const query = try b.Query.create(ziglang, patterns);
-    const cursor = try b.Query.Cursor.create();
-    cursor.execute(query, tree.getRootNode());
+        return .{ .language = language, .query = query };
+    }
 
-    return .{ parser, tree, query, cursor };
-}
+    pub fn destroy(self: *@This()) void {
+        self.query.destroy();
+    }
 
-fn teardownTest(parser: *b.Parser, tree: *b.Tree, query: *b.Query, cursor: *b.Query.Cursor) !void {
-    parser.destroy();
-    tree.destroy();
-    query.destroy();
-    cursor.destroy();
-}
+    pub fn newParser(self: *@This()) !*Parser {
+        var parser = try Parser.create();
+        try parser.setLanguage(self.language);
+        return parser;
+    }
+};

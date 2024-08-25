@@ -1,8 +1,11 @@
 const std = @import("std");
-const rope = @import("rope");
 pub const code_point = rope.code_point;
-pub const ts = @import("ts").b;
+
+const rope = @import("rope");
+pub const sitter = @import("ts");
+pub const ts = sitter.b;
 pub const PredicatesFilter = @import("ts").PredicatesFilter;
+pub const SupportedLanguages = sitter.SupportedLanguages;
 
 const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
@@ -11,27 +14,13 @@ const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
-// remember: multiple windows need to be able to require different views from the same Buffer.
-// remember: Cursor is managed by Window, not Buffer.
-
-pub const SupportedLanguages = enum { zig };
-
-fn getTSParser(lang: SupportedLanguages) !*ts.Parser {
-    const tslang = switch (lang) {
-        .zig => try ts.Language.get("zig"),
-    };
-    var parser = try ts.Parser.create();
-    try parser.setLanguage(tslang);
-    return parser;
-}
-
 pub const Buffer = struct {
     exa: Allocator,
     rope_arena: ArenaAllocator,
 
     roperoot: *const rope.Node,
 
-    lang: ?SupportedLanguages = null,
+    langsuite: ?sitter.LangSuite = null,
     tsparser: ?*ts.Parser = null,
     tstree: ?*ts.Tree = null,
 
@@ -343,9 +332,9 @@ pub const Buffer = struct {
         }
     }
 
-    pub fn initiateTreeSitter(self: *@This(), lang: SupportedLanguages) !void {
-        self.tsparser = try getTSParser(lang);
-        self.lang = lang;
+    pub fn initiateTreeSitter(self: *@This(), lang_choice: SupportedLanguages) !void {
+        self.langsuite = try sitter.LangSuite.create(lang_choice, false);
+        self.tsparser = try self.langsuite.?.newParser();
         try self.parse();
     }
 
