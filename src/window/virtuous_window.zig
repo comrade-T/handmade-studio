@@ -27,6 +27,8 @@ pub const Window = struct {
             .buf = buf,
             .cursor = Cursor{},
 
+            // TODO: out of necessity, we need a Master Oggway to provide us with convenient Tree Sitter functionalities.
+
             .pane_x = pane_x,
             .pane_y = pane_y,
         };
