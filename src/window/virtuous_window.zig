@@ -2,6 +2,7 @@ const std = @import("std");
 const __buf_mod = @import("neo_buffer");
 const Buffer = __buf_mod.Buffer;
 const sitter = __buf_mod.sitter;
+const ts = sitter.b;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -54,26 +55,54 @@ pub const Window = struct {
         end_line: usize,
 
         fn createWithCapacity(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
+            const end_line = start_line + num_of_lines;
+
             // add lines
             var lines = try win.exa.alloc(LineColors, num_of_lines);
             for (start_line..start_line + num_of_lines, 0..) |linenr, i| {
                 lines[i] = try win.buf.roperoot.getLineEx(win.exa, linenr);
             }
 
-            // add colors
+            // add default color
             var line_colors = try win.exa.alloc(LineColors, num_of_lines);
             for (lines, 0..) |line, i| {
                 line_colors[i] = try win.exa.alloc(u32, line.len);
                 @memset(line_colors[i], 0xF5F5F5F5);
             }
 
-            // TODO: add TS highlights
-            // where do I even get highlights hashmap??
-            // from `sitter`, of course!
+            // add TS highlights
+            if (win.buf.langsuite) |langsuite| {
+                const cursor = try ts.Query.Cursor.create();
+                cursor.setPointRange(
+                    ts.Point{ .row = @intCast(start_line), .column = 0 },
+                    ts.Point{ .row = @intCast(end_line + 1), .column = 0 },
+                );
+                cursor.execute(langsuite.query.?, win.buf.tstree.?.getRootNode());
+                defer cursor.destroy();
+
+                while (true) {
+                    const result = langsuite.filter.?.nextMatchInLines(langsuite.query, cursor, Buffer.contentCallback, win.buf, start_line, end_line);
+                    switch (result) {
+                        .match => |match| if (match.match == null) break,
+                        .ignore => break,
+                    }
+                    const match = result.match;
+                    if (langsuite.highlight_map.get(match.cap_name)) |color| {
+                        const node_start = match.cap_node.?.getStartPoint();
+                        const node_end = match.cap_node.?.getEndPoint();
+                        for (node_start.row..node_end.row + 1) |linenr| {
+                            const line_index = linenr - start_line;
+                            const start_col = if (linenr == node_start.row) node_start.column else 0;
+                            const end_col = if (linenr == node_end.row) node_start.end else lines[line_index].len;
+                            @memset(line_colors[line_index][start_col..end_col], color);
+                        }
+                    }
+                }
+            }
 
             return .{
                 .start_line = start_line,
-                .end_line = start_line + num_of_lines,
+                .end_line = end_line,
                 .lines = lines,
                 .line_colors = line_colors,
             };
