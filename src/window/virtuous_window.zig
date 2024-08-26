@@ -58,7 +58,7 @@ pub const Window = struct {
             const end_line = start_line + num_of_lines;
 
             // add lines
-            var lines = try win.exa.alloc(LineColors, num_of_lines);
+            var lines = try win.exa.alloc(Line, num_of_lines);
             for (start_line..start_line + num_of_lines, 0..) |linenr, i| {
                 lines[i] = try win.buf.roperoot.getLineEx(win.exa, linenr);
             }
@@ -81,19 +81,19 @@ pub const Window = struct {
                 defer cursor.destroy();
 
                 while (true) {
-                    const result = langsuite.filter.?.nextMatchInLines(langsuite.query, cursor, Buffer.contentCallback, win.buf, start_line, end_line);
+                    const result = langsuite.filter.?.nextMatchInLines(langsuite.query.?, cursor, Buffer.contentCallback, win.buf, start_line, end_line);
                     switch (result) {
                         .match => |match| if (match.match == null) break,
                         .ignore => break,
                     }
                     const match = result.match;
-                    if (langsuite.highlight_map.get(match.cap_name)) |color| {
+                    if (langsuite.highlight_map.?.get(match.cap_name)) |color| {
                         const node_start = match.cap_node.?.getStartPoint();
                         const node_end = match.cap_node.?.getEndPoint();
                         for (node_start.row..node_end.row + 1) |linenr| {
                             const line_index = linenr - start_line;
                             const start_col = if (linenr == node_start.row) node_start.column else 0;
-                            const end_col = if (linenr == node_end.row) node_start.end else lines[line_index].len;
+                            const end_col = if (linenr == node_end.row) node_end.column else lines[line_index].len;
                             @memset(line_colors[line_index][start_col..end_col], color);
                         }
                     }
@@ -101,11 +101,34 @@ pub const Window = struct {
             }
 
             return .{
+                .window = win,
                 .start_line = start_line,
                 .end_line = end_line,
                 .lines = lines,
                 .line_colors = line_colors,
             };
+        }
+
+        test createWithCapacity {
+            var langsuite = try sitter.LangSuite.create(.zig);
+            defer langsuite.destroy();
+            try langsuite.createQuery();
+            try langsuite.initializeFilter(testing_allocator);
+            try langsuite.initializeHighlightMap(testing_allocator);
+
+            var buf = try Buffer.create(testing_allocator, .string, "const std");
+            defer buf.destroy();
+            try buf.initiateTreeSitter(langsuite);
+
+            var win = try Window.spawn(testing_allocator, buf, 40, .{ .unbound = .{ .x = 100, .y = 100 } });
+            defer win.destroy();
+        }
+
+        fn destroy(self: *@This()) void {
+            for (self.lines) |line| self.window.exa.free(line);
+            for (self.line_colors) |lc| self.window.exa.free(lc);
+            self.window.exa.free(self.lines);
+            self.window.exa.free(self.line_colors);
         }
     };
 
@@ -129,6 +152,7 @@ pub const Window = struct {
     }
 
     pub fn destroy(self: *@This()) void {
+        self.contents.destroy();
         self.exa.destroy(self);
     }
 };
@@ -144,3 +168,9 @@ const Cursor = struct {
         self.col = col;
     }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test {
+    std.testing.refAllDeclsRecursive(Window);
+}

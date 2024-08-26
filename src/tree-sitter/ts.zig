@@ -21,9 +21,9 @@ pub const SupportedLanguages = enum { zig };
 pub const LangSuite = struct {
     lang_choice: SupportedLanguages,
     language: *const Language,
-    query: ?*const Query = null,
+    query: ?*Query = null,
     filter: ?*PredicatesFilter = null,
-    highlight_map: *std.StringHashMap(u32) = null,
+    highlight_map: ?std.StringHashMap(u32) = null,
 
     pub fn create(lang_choice: SupportedLanguages) !LangSuite {
         const zone = ztracy.ZoneNC(@src(), "LangSuite.create()", 0xFF00FF);
@@ -38,7 +38,7 @@ pub const LangSuite = struct {
     pub fn destroy(self: *@This()) void {
         if (self.query) |query| query.destroy();
         if (self.filter) |filter| filter.deinit();
-        if (self.highlight_map) |map| map.deinit();
+        if (self.highlight_map) |_| self.highlight_map.?.deinit();
     }
 
     pub fn createQuery(self: *@This()) !void {

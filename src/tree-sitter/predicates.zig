@@ -72,7 +72,7 @@ pub const PredicatesFilter = struct {
 
     pub fn nextMatchInLines(
         self: *@This(),
-        query: *Query,
+        query: *const Query,
         cursor: *Query.Cursor,
         content_callback: F,
         ctx: *anyopaque,
