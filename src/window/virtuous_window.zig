@@ -12,42 +12,73 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Dimensions = union(enum) {
-    bounded: struct {
-        x: f32,
-        y: f32,
-        width: f32 = 400,
-        height: f32 = 400,
-    },
-    unbound: struct {
-        x: f32,
-        y: f32,
-    },
-};
-
-/// A slice of `[]const u8` values. Each `[]const u8` represents a single character,
-/// regardless of its byte length.
-const Line = [][]const u8;
-
-/// A slice of `u32` values. Each `u32` represents an RGBA color.
-const LineColors = []u32;
-
-/// Holds text content and color content for each line that Window holds.
-/// Window can hold more contents than it can display.
-/// Let's say Window height makes it can only display 40 lines,
-/// but internally it can hold say for example 80 lines, 400 lines, etc...
-/// The number of lines a Window should hold is still being worked on.
-const Contents = struct {
-    lines: []Line,
-    line_colors: []LineColors,
-};
-
 pub const Window = struct {
     exa: Allocator,
     buf: *Buffer,
     cursor: Cursor,
     dimensions: Dimensions,
-    font_size: i32 = 40,
+    font_size: i32,
+    contents: Contents = undefined,
+
+    const Dimensions = union(enum) {
+        bounded: struct {
+            x: f32,
+            y: f32,
+            width: f32,
+            height: f32,
+            offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
+        },
+        unbound: struct {
+            x: f32,
+            y: f32,
+        },
+    };
+
+    /// A slice of `[]const u8` values. Each `[]const u8` represents a single character,
+    /// regardless of its byte length.
+    const Line = [][]const u8;
+
+    /// A slice of `u32` values. Each `u32` represents an RGBA color.
+    const LineColors = []u32;
+
+    /// Holds text content and color content for each line that Window holds.
+    /// Window can hold more contents than it can display.
+    /// Let's say Window height makes it can only display 40 lines,
+    /// but internally it can hold say for example 80 lines, 400 lines, etc...
+    /// The number of lines a Window should hold is still being worked on.
+    const Contents = struct {
+        window: *Window,
+        lines: []Line,
+        line_colors: []LineColors,
+        start_line: usize,
+        end_line: usize,
+
+        fn createWithCapacity(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
+            // add lines
+            var lines = try win.exa.alloc(LineColors, num_of_lines);
+            for (start_line..start_line + num_of_lines, 0..) |linenr, i| {
+                lines[i] = try win.buf.roperoot.getLineEx(win.exa, linenr);
+            }
+
+            // add colors
+            var line_colors = try win.exa.alloc(LineColors, num_of_lines);
+            for (lines, 0..) |line, i| {
+                line_colors[i] = try win.exa.alloc(u32, line.len);
+                @memset(line_colors[i], 0xF5F5F5F5);
+            }
+
+            // TODO: add TS highlights
+            // where do I even get highlights hashmap??
+            // from `sitter`, of course!
+
+            return .{
+                .start_line = start_line,
+                .end_line = start_line + num_of_lines,
+                .lines = lines,
+                .line_colors = line_colors,
+            };
+        }
+    };
 
     pub fn spawn(exa: Allocator, buf: *Buffer, font_size: i32, dimensions: Dimensions) !*@This() {
         const self = try exa.create(@This());
@@ -57,11 +88,14 @@ pub const Window = struct {
             .cursor = Cursor{},
             .dimensions = dimensions,
             .font_size = font_size,
-
-            // we have a problem here...
-            // how do we know how many lines to store and parse?
-            // so we have the window height and the font size..
         };
+
+        // store the content of the entire buffer for now,
+        // we'll explore more delicate solutions after we deal with scissor mode.
+        const start_line = 0;
+        const num_of_lines = buf.roperoot.weights().bols;
+        self.contents = try Contents.createWithCapacity(self, start_line, num_of_lines);
+
         return self;
     }
 
