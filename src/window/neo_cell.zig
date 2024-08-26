@@ -9,6 +9,8 @@ const testing_allocator = std.testing.allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub const Line = [][]const u8;
+
 pub fn backwardsByWord(destination: WordBoundaryType, lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
     var linenr, var colnr = bringPositionInBound(lines, input_linenr, input_colnr);
     colnr -|= 1;
@@ -285,8 +287,6 @@ fn bringPositionInBound(lines: []Line, input_linenr: usize, input_colnr: usize) 
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const Line = [][]const u8;
 
 fn createLinesFromSource(a: Allocator, source: []const u8) ![]Line {
     var lines = std.ArrayList(Line).init(a);
