@@ -628,6 +628,37 @@ pub const Node = union(enum) {
         try eq(expected_eol, eol);
     }
 
+    ///////////////////////////// getLineEx
+
+    pub fn getLineEx(self: *const Node, a: Allocator, line: usize) ![][]const u8 {
+        const GetLineExCtx = struct {
+            list: ArrayList([]const u8),
+            fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkResult {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+                var iter = code_point.Iterator{ .bytes = leaf.buf };
+                while (iter.next()) |cp| {
+                    ctx.list.append(leaf.buf[cp.offset .. cp.offset + cp.len]) catch |err| return .{ .err = err };
+                }
+                if (leaf.eol) {
+                    ctx.list.append("\n") catch |err| return .{ .err = err };
+                    return WalkResult.stop;
+                }
+                return WalkResult.keep_walking;
+            }
+        };
+
+        if (line > self.weights().bols) return error.LineOutOfBounds;
+
+        var list = try ArrayList([]const u8).initCapacity(a, 1024);
+        errdefer list.deinit();
+
+        var ctx = GetLineExCtx{ .list = list };
+        const walk_result = self.walkLine(line, GetLineExCtx.walker, &ctx);
+
+        if (walk_result.err) |err| return err;
+        return ctx.list.toOwnedSlice();
+    }
+
     ///////////////////////////// getLine
 
     pub fn getLine(self: *const Node, a: Allocator, line: usize) ![]const u8 {
