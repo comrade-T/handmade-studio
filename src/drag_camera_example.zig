@@ -49,6 +49,31 @@ pub fn main() !void {
         std.debug.print("glyphPadding {d}\n", .{font.glyphPadding});
     }
 
+    { // testing text stuffs
+        std.debug.print("\n================================================================\n", .{});
+        defer std.debug.print("================================================================\n\n", .{});
+        {
+            const measure = rl.measureTextEx(font, "a", 30, 0);
+            std.debug.print("measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ measure.x, measure.y });
+        }
+        {
+            // if (font.glyphs[index].advanceX != 0) textWidth += font.glyphs[index].advanceX;
+            // else textWidth += (font.recs[index].width + font.glyphs[index].offsetX);
+            const index: usize = @intCast(rl.getGlyphIndex(font, 'a'));
+            const width = if (font.glyphs[index].advanceX != 0)
+                @as(f32, @floatFromInt(font.glyphs[index].advanceX))
+            else
+                font.recs[index].width + @as(f32, @floatFromInt(font.glyphs[index].offsetX));
+
+            std.debug.print("custom measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ width, font_size });
+        }
+        std.debug.print("----------------------------------------------------------------------------------\n", .{});
+        {
+            const width = rl.measureText("a", 30);
+            std.debug.print("measure of char 'a' w/ `default` font -> width: {d} -> height: {d}\n", .{ width, font_size });
+        }
+    }
+
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(1920, 1080);
 
