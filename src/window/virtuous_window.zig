@@ -21,6 +21,16 @@ pub const Window = struct {
     font_size: i32,
     contents: Contents = undefined,
 
+    const Cursor = struct {
+        line: usize = 0,
+        col: usize = 0,
+
+        pub fn set(self: *Cursor, line: usize, col: usize) void {
+            self.line = line;
+            self.col = col;
+        }
+    };
+
     const Dimensions = union(enum) {
         bounded: struct {
             x: f32,
@@ -109,21 +119,6 @@ pub const Window = struct {
             };
         }
 
-        test createWithCapacity {
-            var langsuite = try sitter.LangSuite.create(.zig);
-            defer langsuite.destroy();
-            try langsuite.createQuery();
-            try langsuite.initializeFilter(testing_allocator);
-            try langsuite.initializeHighlightMap(testing_allocator);
-
-            var buf = try Buffer.create(testing_allocator, .string, "const std");
-            defer buf.destroy();
-            try buf.initiateTreeSitter(langsuite);
-
-            var win = try Window.spawn(testing_allocator, buf, 40, .{ .unbound = .{ .x = 100, .y = 100 } });
-            defer win.destroy();
-        }
-
         fn destroy(self: *@This()) void {
             for (self.lines) |line| self.window.exa.free(line);
             for (self.line_colors) |lc| self.window.exa.free(lc);
@@ -157,16 +152,62 @@ pub const Window = struct {
     }
 };
 
+test Window {
+    var langsuite = try sitter.LangSuite.create(.zig);
+    defer langsuite.destroy();
+    try langsuite.initializeQuery();
+    try langsuite.initializeFilter(testing_allocator);
+    try langsuite.initializeHighlightMap(testing_allocator);
+
+    var buf = try Buffer.create(testing_allocator, .string, "const std");
+    defer buf.destroy();
+    try buf.initiateTreeSitter(langsuite);
+
+    var win = try Window.spawn(testing_allocator, buf, 40, .{ .unbound = .{ .x = 100, .y = 100 } });
+    defer win.destroy();
+
+    var iter = langsuite.highlight_map.?.iterator();
+    while (iter.next()) |entry| {
+        std.debug.print("key: {s} | value: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
+
+    // TODO: test iterator
+    // REMEMBER: this iterator not only have to return the correct character, its color, but also its size and position
+
+    // font size wise I just spit back out the font size given in
+
+    // problem here is 2 fold:
+    // 1. I don't know the glyph size of each character
+    // ==> some sort of array, cast the codepoint to index, get the width / height from there
+
+    // 2. position wise we just calculate base on x, y of the Window
+
+    // 3. if it's out of bounds then don't render it
+
+    // ===> All of these are testable, so yeah
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Cursor = struct {
-    line: usize = 0,
-    col: usize = 0,
+// These structs exist so that this module doeesn't have to import Raylib.
+// These structs are trimmed down versions of Raylib equivalents.
 
-    pub fn set(self: *Cursor, line: usize, col: usize) void {
-        self.line = line;
-        self.col = col;
-    }
+pub const GlyphData = struct {
+    advanceX: i32,
+};
+
+pub const Rectangle = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+};
+
+pub const FontData = struct {
+    base_size: i32,
+    glyph_padding: i32,
+    recs: []Rectangle,
+    glyphs: []GlyphData,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////

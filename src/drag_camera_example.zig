@@ -34,6 +34,21 @@ pub fn main() !void {
     const font_size = 30;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
+    {
+        for (0..@intCast(font.glyphCount)) |i| {
+            std.debug.print("i = {d}, char: '{c}', x: {d}, y: {d}, width: {d}, height: {d}\n", .{
+                i,
+                @as(u8, @intCast(font.glyphs[i].value)),
+                font.recs[i].x,
+                font.recs[i].y,
+                font.recs[i].width,
+                font.recs[i].height,
+            });
+        }
+
+        std.debug.print("glyphPadding {d}\n", .{font.glyphPadding});
+    }
+
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(1920, 1080);
 

@@ -41,7 +41,7 @@ pub const LangSuite = struct {
         if (self.highlight_map) |_| self.highlight_map.?.deinit();
     }
 
-    pub fn createQuery(self: *@This()) !void {
+    pub fn initializeQuery(self: *@This()) !void {
         const zone = ztracy.ZoneNC(@src(), "LangSuite.createQuery()", 0x00AAFF);
         defer zone.End();
 
