@@ -35,18 +35,43 @@ pub fn main() !void {
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
     {
+        const a = std.heap.page_allocator;
+
+        var recs = try a.alloc(Rectangle, @intCast(font.glyphCount));
+        var glyphs = try a.alloc(GlyphData, @intCast(font.glyphCount));
+
         for (0..@intCast(font.glyphCount)) |i| {
-            std.debug.print("i = {d}, char: '{c}', x: {d}, y: {d}, width: {d}, height: {d}\n", .{
-                i,
-                @as(u8, @intCast(font.glyphs[i].value)),
-                font.recs[i].x,
-                font.recs[i].y,
-                font.recs[i].width,
-                font.recs[i].height,
-            });
+            recs[i] = Rectangle{
+                .x = font.recs[i].x,
+                .y = font.recs[i].y,
+                .width = font.recs[i].width,
+                .height = font.recs[i].height,
+            };
+
+            glyphs[i] = GlyphData{
+                .advanceX = font.glyphs[i].advanceX,
+            };
         }
 
-        std.debug.print("glyphPadding {d}\n", .{font.glyphPadding});
+        const font_data = FontData{
+            .base_size = font.baseSize,
+            .glyph_padding = font.glyphPadding,
+            .recs = recs,
+            .glyphs = glyphs,
+        };
+
+        const json_str = try std.json.stringifyAlloc(a, font_data, .{ .whitespace = .indent_4 });
+        {
+            const file = try std.fs.cwd().createFile("src/window/font_data.json", .{
+                .read = true,
+                .truncate = true,
+            });
+            defer file.close();
+
+            _ = try file.writeAll(json_str);
+
+            std.debug.print("\nwritten to font_data.json successfully\n", .{});
+        }
     }
 
     { // testing text stuffs
@@ -265,3 +290,27 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
     const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
     rl.drawText(text, x, y, font_size, rl.Color.ray_white);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const GlyphData = struct {
+    advanceX: i32,
+};
+
+pub const Rectangle = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+};
+
+pub const FontData = struct {
+    base_size: i32,
+    glyph_padding: i32,
+    recs: []Rectangle,
+    glyphs: []GlyphData,
+};
