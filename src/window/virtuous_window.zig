@@ -150,6 +150,47 @@ pub const Window = struct {
         self.contents.destroy();
         self.exa.destroy(self);
     }
+
+    ///////////////////////////// Code Point Iterator
+
+    const CodePointIterator = struct {
+        win: *const Window,
+        col_start: usize,
+        current_line: usize,
+        current_col: usize,
+        screen: Screen,
+
+        const Screen = struct {
+            start_x: f32,
+            start_y: f32,
+            end_x: f32,
+            end_y: f32,
+        };
+
+        const CodePoint = struct {
+            value: i32,
+            color: u32,
+            x: f32,
+            y: f32,
+            font_size: i32,
+        };
+
+        pub fn init(win: *const Window, screen: Screen) !CodePointIterator {
+            // TODO:
+        }
+
+        pub fn deinit(self: *@This()) void {
+            // TODO:
+        }
+
+        pub fn next(self: *@This()) ?CodePoint {
+            return null;
+        }
+    };
+
+    pub fn codePointIter(self: *@This()) !CodePointIterator {
+        // TODO:
+    }
 };
 
 test Window {
@@ -185,6 +226,26 @@ test Window {
     // 3. if it's out of bounds then don't render it
 
     // ===> All of these are testable, so yeah
+
+    //////////////////////////////////////////////////////////
+
+    // So I have GlyphData, now what?
+    // --> with GlyphData, I can have `measureText()` without importing Raylib.
+
+    // what can I even do with `measureText()`?
+    // --> I can measure a glyph's size in pixels.
+    // with the measurement, I can decide on what kind of operation to execute next.
+
+    //////////////////////////////////////////////////////////
+
+    // Let's recite our memory for a bit:
+
+    // I need to return an Iterator, so the application can go through to receive information,
+    // and render text based on that information.
+
+    // The information includes: codepoint, color, position, font size.
+    // We don't want to return everything due to Window's width & height limit.
+    // So we only return what needs to be rendered.
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
