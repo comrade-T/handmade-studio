@@ -31,8 +31,9 @@ pub fn main() !void {
     const smooth_time = 0.1;
     const max_speed = 40;
 
-    const font_size = 30;
+    const font_size = 40;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
+    // const font = rl.getFontDefault();
 
     {
         const a = std.heap.page_allocator;
@@ -50,7 +51,21 @@ pub fn main() !void {
 
             glyphs[i] = GlyphData{
                 .advanceX = font.glyphs[i].advanceX,
+                .offsetX = @intCast(font.glyphs[i].offsetX),
+                .value = font.glyphs[i].value,
             };
+
+            // {
+            //     const text = try std.fmt.allocPrintZ(a, "{c}", .{@as(u8, @intCast(font.glyphs[i].value))});
+            //     {
+            //         const measure = rl.measureTextEx(font, text, font_size, 0);
+            //         std.debug.print("char: {c}, width: {d} | height: {d}\n", .{ text, measure.x, measure.y });
+            //     }
+            //     {
+            //         const width = rl.measureText(text, font_size);
+            //         std.debug.print("char: {c}, width: {d}\n", .{ text, width });
+            //     }
+            // }
         }
 
         const font_data = FontData{
@@ -298,7 +313,9 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub const GlyphData = struct {
+    value: i32,
     advanceX: i32,
+    offsetX: i32,
 };
 
 pub const Rectangle = struct {
