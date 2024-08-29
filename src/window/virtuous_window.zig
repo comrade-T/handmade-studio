@@ -164,8 +164,8 @@ pub const Window = struct {
 
         current_line: usize = 0,
         current_col: usize = 0,
-        current_x: f32 = 0,
-        current_y: f32 = 0,
+        current_x: f32 = undefined,
+        current_y: f32 = undefined,
 
         pub fn create(win: *const Window, font_data: FontData, index_map: FontDataIndexMap, screen: Screen) CodePointIterator {
             var self = CodePointIterator{
@@ -179,20 +179,25 @@ pub const Window = struct {
                 .bounded => |d| {
                     const cut_above: usize = @intFromFloat(@divTrunc(d.offset.y, @as(f32, @floatFromInt(win.font_size))));
                     self.current_line = cut_above;
+                    self.current_x = d.x;
+                    self.current_y = d.y;
                 },
-                .unbound => {},
+                .unbound => |u| {
+                    self.current_x = u.x;
+                    self.current_y = u.y;
+                },
             }
 
             return self;
         }
 
-        pub fn next(self: *@This()) ?CodePoint {
-            defer self.current_col += 1;
+        pub fn next(self: *@This()) ?IterResult {
+            if (self.currentLineOutOfBounds()) return null;
 
-            { // screen check
+            { // screen end check
                 if (self.current_x >= self.screen.end_x) {
                     self.advanceToNextLine();
-                    if (self.currentLineOutOfBounds()) return null;
+                    return .skip;
                 }
                 if (self.current_y >= self.screen.end_y) return null;
             }
@@ -200,14 +205,14 @@ pub const Window = struct {
             // bounded check
             if (self.win.dimensions == .bounded and self.current_x >= self.win.dimensions.bounded.width) {
                 self.advanceToNextLine();
-                if (self.currentLineOutOfBounds()) return null;
+                return .skip;
             }
 
             // col check
-            if (self.currentColOutOfBounds()) self.advanceToNextLine();
-
-            // line check
-            if (self.currentLineOutOfBounds()) return null;
+            if (self.currentColOutOfBounds()) {
+                self.advanceToNextLine();
+                return .skip;
+            }
 
             // get code point
             const char = self.win.contents.lines[self.current_line][self.current_col];
@@ -218,28 +223,23 @@ pub const Window = struct {
             const glyph_index = self.index_map.get(cp_i32) orelse @panic("CodePoint doesn't exist in Font!");
             var char_width: f32 = @floatFromInt(self.font_data.glyphs[glyph_index].advanceX);
             if (char_width == 0) char_width = self.font_data.recs[glyph_index].width + @as(f32, @floatFromInt(self.font_data.glyphs[glyph_index].offsetX));
-            defer self.current_x += char_width;
 
-            // x, y
-            var x: f32, var y: f32 = .{ 0, 0 };
-            switch (self.win.dimensions) {
-                .bounded => |b| {
-                    x = b.x + self.current_x;
-                    y = b.x + self.current_y;
-                },
-                .unbound => |u| {
-                    x = u.x + self.current_x;
-                    y = u.x + self.current_y;
-                },
+            defer self.current_x += char_width;
+            defer self.current_col += 1;
+
+            { // screen start check
+                if (self.current_x + char_width <= self.screen.start_x) {
+                    return .skip;
+                }
             }
 
-            return CodePoint{
+            return .{ .code_point = CodePoint{
                 .value = cp_i32,
                 .color = self.win.contents.line_colors[self.current_line][self.current_col],
-                .x = x,
-                .y = y,
+                .x = self.current_x,
+                .y = self.current_y,
                 .font_size = self.win.font_size,
-            };
+            } };
         }
 
         fn currentColOutOfBounds(self: *@This()) bool {
@@ -253,7 +253,10 @@ pub const Window = struct {
         fn advanceToNextLine(self: *@This()) void {
             self.current_line += 1;
             self.current_col = 0;
-            self.current_x = 0;
+            switch (self.win.dimensions) {
+                .bounded => |b| self.current_x = b.x,
+                .unbound => |u| self.current_x = u.x,
+            }
             self.current_y += @floatFromInt(self.win.font_size + self.win.line_spacing);
         }
     };
@@ -278,7 +281,7 @@ test "unbound window" {
         try testIterBatch(&iter, " ten = ", "variable", 45, 42, 15);
         try testIterBatch(&iter, "10", "number", 150, 42, 15);
         try testIterBatch(&iter, ";", "punctuation.delimiter", 180, 42, 15);
-        try eq(null, iter.next());
+        try testIterNull(&iter);
     }
 
     { // .{ .x = 100, .y = 100 }
@@ -292,7 +295,7 @@ test "unbound window" {
         try testIterBatch(&iter, " ten = ", "variable", 145, 142, 15);
         try testIterBatch(&iter, "10", "number", 250, 142, 15);
         try testIterBatch(&iter, ";", "punctuation.delimiter", 280, 142, 15);
-        try eq(null, iter.next());
+        try testIterNull(&iter);
     }
 
     ///////////////////////////// don't render off screen
@@ -304,7 +307,16 @@ test "unbound window" {
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
         try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
         try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
-        try eq(null, iter.next());
+        try testIterNull(&iter);
+    }
+
+    { // don't render chars before screen x starts and after screen x ends
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 50, .start_y = 0, .end_x = 100, .end_y = 100 });
+        try testIterBatch(&iter, "st", "type.qualifier", 45, 0, 15); // x are [45, 60], ends at 75
+        try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
+        try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
+        try testIterNull(&iter);
     }
 }
 
@@ -327,18 +339,33 @@ test "bounded window" {
         try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
         try testIterBatch(&iter, "const", "type.qualifier", 0, 84, 15); // L2, x are [0, 15, 30, 45, 60], ends at 75
         try testIterBatch(&iter, " n", "variable", 75, 84, 15); // L2, x are [75, 90], ends at 105
-        try eq(null, iter.next());
+        try testIterNull(&iter);
     }
+}
+
+fn testIterNull(iter: *Window.CodePointIterator) !void {
+    while (iter.next()) |result| try eq(false, result == .code_point);
 }
 
 fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group: []const u8, start_x: f32, y: f32, x_inc: f32) !void {
     var cp_iter = __buf_mod.code_point.Iterator{ .bytes = sequence };
-    while (cp_iter.next()) |cp| {
-        const result = iter.next().?;
-        eq(cp.code, result.value) catch std.debug.print("wanted: '{c}', got: '{c}'\n", .{ @as(u8, @intCast(cp.code)), @as(u8, @intCast(result.value)) });
-        try eq(iter.win.buf.langsuite.?.highlight_map.?.get(hl_group).?, result.color);
-        try eq(start_x + (x_inc * @as(f32, @floatFromInt(cp_iter.i - 1))), result.x);
-        try eq(y, result.y);
+    while (iter.next()) |result| {
+        switch (result) {
+            .code_point => |r| {
+                const cp = cp_iter.next().?;
+                errdefer std.debug.print("cp_iter.i {d},  wanted: '{c}', got: '{c}'\n", .{
+                    cp_iter.i,
+                    @as(u8, @intCast(cp.code)),
+                    @as(u8, @intCast(r.value)),
+                });
+                try eq(cp.code, r.value);
+                try eq(iter.win.buf.langsuite.?.highlight_map.?.get(hl_group).?, r.color);
+                try eq(start_x + (x_inc * @as(f32, @floatFromInt(cp_iter.i - 1))), r.x);
+                try eq(y, r.y);
+                if (cp_iter.peek() == null) return;
+            },
+            .skip => continue,
+        }
     }
 }
 
@@ -377,6 +404,11 @@ fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+const IterResult = union(enum) {
+    code_point: CodePoint,
+    skip,
+};
 
 const CodePoint = struct {
     value: i32,
