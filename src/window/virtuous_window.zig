@@ -189,16 +189,22 @@ pub const Window = struct {
         pub fn next(self: *@This()) ?CodePoint {
             defer self.current_col += 1;
 
-            // advance to next line if reached eol
-            if (self.current_col >= self.win.contents.lines[self.current_line].len) {
-                self.current_line += 1;
-                self.current_col = 0;
-                self.current_x = 0;
-                self.current_y += @floatFromInt(self.win.font_size + self.win.line_spacing);
+            switch (self.win.dimensions) {
+                .bounded => |b| {
+                    if (self.current_x >= b.width) {
+                        self.advanceToNextLine();
+                        if (self.currentLineOutOfBounds()) return null;
+                    }
+                },
+                .unbound => {},
             }
 
-            // return null if there's no next line
-            if (self.current_line >= self.win.contents.lines.len) return null;
+            // advance to next line if reached eol
+            if (self.current_col >= self.win.contents.lines[self.current_line].len) {
+                self.advanceToNextLine();
+            }
+
+            if (self.currentLineOutOfBounds()) return null;
 
             // get code point
             const char = self.win.contents.lines[self.current_line][self.current_col];
@@ -218,6 +224,17 @@ pub const Window = struct {
                 .y = self.current_y,
                 .font_size = self.win.font_size,
             };
+        }
+
+        fn currentLineOutOfBounds(self: *@This()) bool {
+            return self.current_line >= self.win.contents.lines.len;
+        }
+
+        fn advanceToNextLine(self: *@This()) void {
+            self.current_line += 1;
+            self.current_col = 0;
+            self.current_x = 0;
+            self.current_y += @floatFromInt(self.win.font_size + self.win.line_spacing);
         }
     };
 
@@ -243,13 +260,30 @@ test Window {
         try testIterBatch(&iter, ";", "punctuation.delimiter", 180, 42, 15);
         try eq(null, iter.next());
     }
+    { // bounded multi line
+        var win = try setupBufAndWin(a, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, .{ .bounded = .{
+            .x = 0,
+            .y = 0,
+            .width = 100,
+            .height = 100,
+            .offset = .{ .x = 0, .y = 0 },
+        } });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
+        try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
+        try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
+        try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
+        try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
+        try testIterBatch(&iter, "const", "type.qualifier", 0, 84, 15); // L2, x are [0, 15, 30, 45, 60], ends at 75
+        try testIterBatch(&iter, " n", "variable", 75, 84, 15); // L2, x are [75, 90], ends at 105
+        try eq(null, iter.next());
+    }
 }
 
 fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group: []const u8, start_x: f32, y: f32, x_inc: f32) !void {
     var cp_iter = __buf_mod.code_point.Iterator{ .bytes = sequence };
     while (cp_iter.next()) |cp| {
         const result = iter.next().?;
-        try eq(cp.code, result.value);
+        eq(cp.code, result.value) catch std.debug.print("wanted: '{c}', got: '{c}'\n", .{ @as(u8, @intCast(cp.code)), @as(u8, @intCast(result.value)) });
         try eq(iter.win.buf.langsuite.?.highlight_map.?.get(hl_group).?, result.color);
         try eq(start_x + (x_inc * @as(f32, @floatFromInt(cp_iter.i - 1))), result.x);
         try eq(y, result.y);
