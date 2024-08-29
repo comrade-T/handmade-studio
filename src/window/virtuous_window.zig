@@ -217,11 +217,24 @@ pub const Window = struct {
             if (char_width == 0) char_width = self.font_data.recs[glyph_index].width + @as(f32, @floatFromInt(self.font_data.glyphs[glyph_index].offsetX));
             defer self.current_x += char_width;
 
+            // x, y
+            var x: f32, var y: f32 = .{ 0, 0 };
+            switch (self.win.dimensions) {
+                .bounded => |b| {
+                    x = b.x + self.current_x;
+                    y = b.x + self.current_y;
+                },
+                .unbound => |u| {
+                    x = u.x + self.current_x;
+                    y = u.x + self.current_y;
+                },
+            }
+
             return CodePoint{
                 .value = cp_i32,
                 .color = self.win.contents.line_colors[self.current_line][self.current_col],
-                .x = self.current_x,
-                .y = self.current_y,
+                .x = x,
+                .y = y,
                 .font_size = self.win.font_size,
             };
         }
@@ -243,13 +256,13 @@ pub const Window = struct {
     }
 };
 
-test Window {
-    const a = idc_if_it_leaks;
-    const langsuite = try setupLangSuite(a, .zig);
+test "unbound window" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
     const font_data, const index_map = try setupFontDataAndIndexMap();
-    {
-        var win = try setupBufAndWin(a, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
-        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
+
+    { // .{ .x = 0, .y = 0 }
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15);
         try testIterBatch(&iter, " a = ", "variable", 75, 0, 15);
         try testIterBatch(&iter, "true", "boolean", 150, 0, 15);
@@ -260,15 +273,35 @@ test Window {
         try testIterBatch(&iter, ";", "punctuation.delimiter", 180, 42, 15);
         try eq(null, iter.next());
     }
-    { // bounded multi line
-        var win = try setupBufAndWin(a, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, .{ .bounded = .{
+
+    { // .{ .x = 100, .y = 100 }
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 100, .y = 100 } });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        try testIterBatch(&iter, "const", "type.qualifier", 100, 100, 15);
+        try testIterBatch(&iter, " a = ", "variable", 175, 100, 15);
+        try testIterBatch(&iter, "true", "boolean", 250, 100, 15);
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 310, 100, 15);
+        try testIterBatch(&iter, "var", "type.qualifier", 100, 142, 15);
+        try testIterBatch(&iter, " ten = ", "variable", 145, 142, 15);
+        try testIterBatch(&iter, "10", "number", 250, 142, 15);
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 280, 142, 15);
+        try eq(null, iter.next());
+    }
+}
+
+test "bounded window" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
+
+    { // offsetY = 0
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, .{ .bounded = .{
             .x = 0,
             .y = 0,
             .width = 100,
             .height = 100,
             .offset = .{ .x = 0, .y = 0 },
         } });
-        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
         try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
