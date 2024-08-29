@@ -192,6 +192,8 @@ pub const Window = struct {
             // advance to next line if reached eol
             if (self.current_col >= self.win.contents.lines[self.current_line].len) {
                 self.current_line += 1;
+                self.current_col = 0;
+                self.current_x = 0;
                 self.current_y += @floatFromInt(self.win.font_size + self.win.line_spacing);
             }
 
@@ -227,28 +229,30 @@ pub const Window = struct {
 test Window {
     const a = idc_if_it_leaks;
     const langsuite = try setupLangSuite(a, .zig);
-    const hlmap = langsuite.highlight_map.?;
     const font_data, const index_map = try setupFontDataAndIndexMap();
-    { // single line
-        var win = try setupBufAndWin(a, langsuite, "const a = true;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+    {
+        var win = try setupBufAndWin(a, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
-        try testIterBatch(&iter, "const", 40, hlmap.get("type.qualifier").?, 0, 0, 15);
-        try testIterBatch(&iter, " a = ", 40, hlmap.get("variable").?, 75, 0, 15);
-        try testIterBatch(&iter, "true", 40, hlmap.get("boolean").?, 150, 0, 15);
-        try testIterBatch(&iter, ";", 40, hlmap.get("punctuation.delimiter").?, 210, 0, 15);
+        try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15);
+        try testIterBatch(&iter, " a = ", "variable", 75, 0, 15);
+        try testIterBatch(&iter, "true", "boolean", 150, 0, 15);
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 210, 0, 15);
+        try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15);
+        try testIterBatch(&iter, " ten = ", "variable", 45, 42, 15);
+        try testIterBatch(&iter, "10", "number", 150, 42, 15);
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 180, 42, 15);
         try eq(null, iter.next());
     }
 }
 
-fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, font_size: i32, color: u32, start_x: f32, y: f32, x_inc: f32) !void {
+fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group: []const u8, start_x: f32, y: f32, x_inc: f32) !void {
     var cp_iter = __buf_mod.code_point.Iterator{ .bytes = sequence };
     while (cp_iter.next()) |cp| {
         const result = iter.next().?;
         try eq(cp.code, result.value);
-        try eq(color, result.color);
+        try eq(iter.win.buf.langsuite.?.highlight_map.?.get(hl_group).?, result.color);
         try eq(start_x + (x_inc * @as(f32, @floatFromInt(cp_iter.i - 1))), result.x);
         try eq(y, result.y);
-        try eq(font_size, result.font_size);
     }
 }
 
