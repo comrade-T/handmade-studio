@@ -18,8 +18,11 @@ pub const Window = struct {
     exa: Allocator,
     buf: *Buffer,
     cursor: Cursor,
-    dimensions: Dimensions,
     contents: Contents = undefined,
+
+    x: f32,
+    y: f32,
+    bounded: ?Bounded,
 
     font_size: i32,
     line_spacing: i32 = 2,
@@ -34,18 +37,10 @@ pub const Window = struct {
         }
     };
 
-    const Dimensions = union(enum) {
-        bounded: struct {
-            x: f32,
-            y: f32,
-            width: f32,
-            height: f32,
-            offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
-        },
-        unbound: struct {
-            x: f32,
-            y: f32,
-        },
+    const Bounded = struct {
+        width: f32,
+        height: f32,
+        offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
     };
 
     /// A slice of `[]const u8` values. Each `[]const u8` represents a single character,
@@ -130,13 +125,15 @@ pub const Window = struct {
         }
     };
 
-    pub fn spawn(exa: Allocator, buf: *Buffer, font_size: i32, dimensions: Dimensions) !*@This() {
+    pub fn spawn(exa: Allocator, buf: *Buffer, font_size: i32, x: f32, y: f32, bounded: ?Bounded) !*@This() {
         const self = try exa.create(@This());
         self.* = .{
             .exa = exa,
             .buf = buf,
             .cursor = Cursor{},
-            .dimensions = dimensions,
+            .x = x,
+            .y = y,
+            .bounded = bounded,
             .font_size = font_size,
         };
 
@@ -168,26 +165,14 @@ pub const Window = struct {
         current_y: f32 = undefined,
 
         pub fn create(win: *const Window, font_data: FontData, index_map: FontDataIndexMap, screen: Screen) CodePointIterator {
-            var self = CodePointIterator{
+            const self = CodePointIterator{
                 .win = win,
                 .screen = screen,
                 .font_data = font_data,
                 .index_map = index_map,
+                .current_x = win.x,
+                .current_y = win.y,
             };
-
-            switch (win.dimensions) {
-                .bounded => |d| {
-                    const cut_above: usize = @intFromFloat(@divTrunc(d.offset.y, @as(f32, @floatFromInt(win.font_size))));
-                    self.current_line = cut_above;
-                    self.current_x = d.x;
-                    self.current_y = d.y;
-                },
-                .unbound => |u| {
-                    self.current_x = u.x;
-                    self.current_y = u.y;
-                },
-            }
-
             return self;
         }
 
@@ -203,7 +188,7 @@ pub const Window = struct {
             }
 
             // bounded check
-            if (self.win.dimensions == .bounded and self.current_x >= self.win.dimensions.bounded.width) {
+            if (self.win.bounded != null and self.current_x >= self.win.bounded.?.width) {
                 self.advanceToNextLine();
                 return .skip;
             }
@@ -253,10 +238,7 @@ pub const Window = struct {
         fn advanceToNextLine(self: *@This()) void {
             self.current_line += 1;
             self.current_col = 0;
-            switch (self.win.dimensions) {
-                .bounded => |b| self.current_x = b.x,
-                .unbound => |u| self.current_x = u.x,
-            }
+            self.current_x = self.win.x;
             self.current_y += @floatFromInt(self.win.font_size + self.win.line_spacing);
         }
     };
@@ -271,7 +253,7 @@ test "unbound window" {
     const font_data, const index_map = try setupFontDataAndIndexMap();
 
     { // .{ .x = 0, .y = 0 }
-        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 0, 0, null);
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15);
         try testIterBatch(&iter, " a = ", "variable", 75, 0, 15);
@@ -285,7 +267,7 @@ test "unbound window" {
     }
 
     { // .{ .x = 100, .y = 100 }
-        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 100, .y = 100 } });
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 100, 100, null);
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
         try testIterBatch(&iter, "const", "type.qualifier", 100, 100, 15);
         try testIterBatch(&iter, " a = ", "variable", 175, 100, 15);
@@ -301,7 +283,7 @@ test "unbound window" {
     ///////////////////////////// don't render off screen
 
     { // don't render chars after screen x ends
-        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 0, 0, null);
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 100, .end_y = 100 });
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
@@ -311,7 +293,7 @@ test "unbound window" {
     }
 
     { // don't render chars before screen x starts and after screen x ends
-        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 0, 0, null);
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 50, .start_y = 0, .end_x = 100, .end_y = 100 });
         try testIterBatch(&iter, "st", "type.qualifier", 45, 0, 15); // x are [45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
@@ -325,13 +307,11 @@ test "bounded window" {
     const font_data, const index_map = try setupFontDataAndIndexMap();
 
     { // offsetY = 0
-        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, .{ .bounded = .{
-            .x = 0,
-            .y = 0,
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, .{
             .width = 100,
             .height = 100,
             .offset = .{ .x = 0, .y = 0 },
-        } });
+        });
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
@@ -377,10 +357,10 @@ fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.
     return langsuite;
 }
 
-fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, dimensions: Window.Dimensions) !*Window {
+fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, x: f32, y: f32, bounded: ?Window.Bounded) !*Window {
     var buf = try Buffer.create(a, .string, source);
     try buf.initiateTreeSitter(langsuite);
-    return try Window.spawn(a, buf, font_size, dimensions);
+    return try Window.spawn(a, buf, font_size, x, y, bounded);
 }
 fn teardownWindow(win: *Window) void {
     win.buf.destroy();
