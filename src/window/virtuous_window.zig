@@ -182,7 +182,7 @@ pub const Window = struct {
             { // screen end check
                 if (self.current_x >= self.screen.end_x) {
                     self.advanceToNextLine();
-                    return .skip;
+                    return .skip_to_new_line;
                 }
                 if (self.current_y >= self.screen.end_y) return null;
             }
@@ -190,13 +190,13 @@ pub const Window = struct {
             // bounded check
             if (self.win.bounded != null and self.current_x >= self.win.bounded.?.width) {
                 self.advanceToNextLine();
-                return .skip;
+                return .skip_to_new_line;
             }
 
             // col check
             if (self.currentColOutOfBounds()) {
                 self.advanceToNextLine();
-                return .skip;
+                return .skip_to_new_line;
             }
 
             // get code point
@@ -214,7 +214,7 @@ pub const Window = struct {
 
             { // screen start check
                 if (self.current_x + char_width <= self.screen.start_x) {
-                    return .skip;
+                    return .skip_this_char;
                 }
             }
 
@@ -256,6 +256,12 @@ test "unbound window" {
     {
         var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 0, 0, null);
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:0
+            \\[const a = true;]
+            \\[var ten = 10;]
+        );
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15);
         try testIterBatch(&iter, " a = ", "variable", 75, 0, 15);
         try testIterBatch(&iter, "true", "boolean", 150, 0, 15);
@@ -273,6 +279,12 @@ test "unbound window" {
     {
         var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 100, 100, null);
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 100:100
+            \\[const a = true;]
+            \\[var ten = 10;]
+        );
         try testIterBatch(&iter, "const", "type.qualifier", 100, 100, 15);
         try testIterBatch(&iter, " a = ", "variable", 175, 100, 15);
         try testIterBatch(&iter, "true", "boolean", 250, 100, 15);
@@ -290,6 +302,12 @@ test "unbound window" {
         var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 0, 0, null);
         const screen = .{ .start_x = 0, .start_y = 0, .end_x = 100, .end_y = 100 }; // anything with x > 100 shouldn't be rendered
         var iter = win.codePointIter(font_data, index_map, screen);
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:0
+            \\[const a]
+            \\[var ten]
+        );
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
         try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
@@ -299,8 +317,14 @@ test "unbound window" {
 
     { // don't render chars before screen x starts and after screen x ends
         var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, 0, 0, null);
-        const screen = .{ .start_x = 50, .start_y = 0, .end_x = 100, .end_y = 100 }; // anything with x < 50 or x > 100 shouldn't be rendered.
+        const screen = .{ .start_x = 50, .start_y = 0, .end_x = 100, .end_y = 100 }; // anything with x + char width < 50 or x > 100 shouldn't be rendered.
         var iter = win.codePointIter(font_data, index_map, screen);
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 45:0
+            \\[st a]
+            \\[ ten]
+        );
         try testIterBatch(&iter, "st", "type.qualifier", 45, 0, 15); // x are [45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
         try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
@@ -321,6 +345,13 @@ test "bounded window" {
             .offset = .{ .x = 0, .y = 0 },
         });
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:0
+            \\[const a]
+            \\[var ten]
+            \\[const n]
+        );
         try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
         try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
@@ -340,12 +371,46 @@ test "bounded window" {
         });
         const screen = .{ .start_x = 0, .start_y = 0, .end_x = 50, .end_y = 100 }; // anything with x > 50 shouldn't be rendered
         var iter = win.codePointIter(font_data, index_map, screen);
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:0
+            \\[cons]
+            \\[var ]
+            \\[cons]
+        );
         try testIterBatch(&iter, "cons", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45], ends at 60
         try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
         try testIterBatch(&iter, " ", "variable", 45, 42, 15); // L1, x are [45], ends at 60
         try testIterBatch(&iter, "cons", "type.qualifier", 0, 84, 15); // L2, x are [0, 15, 30, 45], ends at 60
         try testIterNull(&iter);
     }
+}
+
+fn testVisibility(iter: *Window.CodePointIterator, expected_str: []const u8) !void {
+    var str = ArrayList(u8).init(testing_allocator);
+    defer str.deinit();
+
+    var started = false;
+
+    while (iter.next()) |result| {
+        switch (result) {
+            .code_point => |r| {
+                if (started == false) {
+                    const pos_str = try std.fmt.allocPrint(testing_allocator, " {d}:{d}\n", .{ r.x, r.y });
+                    defer testing_allocator.free(pos_str);
+                    try str.appendSlice(pos_str);
+                    try str.append('[');
+                    started = true;
+                }
+                try str.append(@intCast(r.value));
+            },
+            .skip_to_new_line => {
+                try str.appendSlice("]\n[");
+            },
+            .skip_this_char => continue,
+        }
+    }
+    try eqStr(expected_str, str.items[0 .. str.items.len - 2]);
 }
 
 fn testIterNull(iter: *Window.CodePointIterator) !void {
@@ -369,7 +434,7 @@ fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group
                 try eq(y, r.y);
                 if (cp_iter.peek() == null) return;
             },
-            .skip => continue,
+            else => continue,
         }
     }
 }
@@ -412,7 +477,8 @@ fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
 
 const IterResult = union(enum) {
     code_point: CodePoint,
-    skip,
+    skip_to_new_line,
+    skip_this_char,
 };
 
 const CodePoint = struct {
