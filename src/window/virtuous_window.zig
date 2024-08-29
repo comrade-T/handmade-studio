@@ -225,22 +225,27 @@ pub const Window = struct {
 };
 
 test Window {
-    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const a = idc_if_it_leaks;
+    const langsuite = try setupLangSuite(a, .zig);
     const font_data, const index_map = try setupFontDataAndIndexMap();
     {
-        var win = try setupBufAndWin(langsuite, "const std", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
-        defer teardownWindow(win);
+        var win = try setupBufAndWin(a, langsuite, "const std", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
-        try eq(CodePoint{ .value = 'c', .color = 0xC87AFFFF, .x = 0, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 'o', .color = 0xC87AFFFF, .x = 15, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 'n', .color = 0xC87AFFFF, .x = 30, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 's', .color = 0xC87AFFFF, .x = 45, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 't', .color = 0xC87AFFFF, .x = 60, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = ' ', .color = 0xF5F5F5F5, .x = 75, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 's', .color = 0xF5F5F5F5, .x = 90, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 't', .color = 0xF5F5F5F5, .x = 105, .y = 0, .font_size = 40 }, iter.next().?);
-        try eq(CodePoint{ .value = 'd', .color = 0xF5F5F5F5, .x = 120, .y = 0, .font_size = 40 }, iter.next().?);
+        try testIterBatch(&iter, "const", 40, 0xC87AFFFF, 0, 0, 15);
+        try testIterBatch(&iter, " std", 40, 0xF5F5F5F5, 75, 0, 15);
         try eq(null, iter.next());
+    }
+}
+
+fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, font_size: i32, color: u32, start_x: f32, y: f32, x_inc: f32) !void {
+    var cp_iter = __buf_mod.code_point.Iterator{ .bytes = sequence };
+    while (cp_iter.next()) |cp| {
+        const result = iter.next().?;
+        try eq(cp.code, result.value);
+        try eq(color, result.color);
+        try eq(start_x + (x_inc * @as(f32, @floatFromInt(cp_iter.i - 1))), result.x);
+        try eq(y, result.y);
+        try eq(font_size, result.font_size);
     }
 }
 
@@ -252,10 +257,10 @@ fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.
     return langsuite;
 }
 
-fn setupBufAndWin(langsuite: sitter.LangSuite, source: []const u8, font_size: i32, dimensions: Window.Dimensions) !*Window {
-    var buf = try Buffer.create(testing_allocator, .string, source);
+fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, dimensions: Window.Dimensions) !*Window {
+    var buf = try Buffer.create(a, .string, source);
     try buf.initiateTreeSitter(langsuite);
-    return try Window.spawn(testing_allocator, buf, font_size, dimensions);
+    return try Window.spawn(a, buf, font_size, dimensions);
 }
 fn teardownWindow(win: *Window) void {
     win.buf.destroy();
