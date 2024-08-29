@@ -6,6 +6,7 @@ const ts = sitter.b;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const idc_if_it_leaks = std.heap.page_allocator;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
@@ -224,32 +225,12 @@ pub const Window = struct {
 };
 
 test Window {
-    var langsuite = try sitter.LangSuite.create(.zig);
-    defer langsuite.destroy();
-    try langsuite.initializeQuery();
-    try langsuite.initializeFilter(testing_allocator);
-    try langsuite.initializeHighlightMap(testing_allocator);
-
-    var buf = try Buffer.create(testing_allocator, .string, "const std");
-    defer buf.destroy();
-    try buf.initiateTreeSitter(langsuite);
-
-    var win = try Window.spawn(testing_allocator, buf, 40, .{ .unbound = .{ .x = 100, .y = 100 } });
-    defer win.destroy();
-
-    var file = try std.fs.cwd().openFile("src/window/font_data.json", .{});
-    defer file.close();
-    const json_str = try file.readToEndAlloc(testing_allocator, 1024 * 1024 * 10);
-    defer testing_allocator.free(json_str);
-
-    const font_data = try std.json.parseFromSlice(FontData, testing_allocator, json_str, .{});
-    defer font_data.deinit();
-
-    var index_map = try getFontDataIndexMap(testing_allocator, font_data.value);
-    defer index_map.deinit();
-
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
     {
-        var iter = win.codePointIter(font_data.value, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
+        var win = try setupBufAndWin(langsuite, "const std", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        defer teardownWindow(win);
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
         try eq(CodePoint{ .value = 'c', .color = 0xC87AFFFF, .x = 0, .y = 0, .font_size = 40 }, iter.next().?);
         try eq(CodePoint{ .value = 'o', .color = 0xC87AFFFF, .x = 15, .y = 0, .font_size = 40 }, iter.next().?);
         try eq(CodePoint{ .value = 'n', .color = 0xC87AFFFF, .x = 30, .y = 0, .font_size = 40 }, iter.next().?);
@@ -263,8 +244,35 @@ test Window {
     }
 }
 
-const FontDataIndexMap = std.AutoHashMap(i32, usize);
-fn getFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
+fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.LangSuite {
+    var langsuite = try sitter.LangSuite.create(lang_choice);
+    try langsuite.initializeQuery();
+    try langsuite.initializeFilter(a);
+    try langsuite.initializeHighlightMap(a);
+    return langsuite;
+}
+
+fn setupBufAndWin(langsuite: sitter.LangSuite, source: []const u8, font_size: i32, dimensions: Window.Dimensions) !*Window {
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    try buf.initiateTreeSitter(langsuite);
+    return try Window.spawn(testing_allocator, buf, font_size, dimensions);
+}
+fn teardownWindow(win: *Window) void {
+    win.buf.destroy();
+    win.destroy();
+}
+
+fn setupFontDataAndIndexMap() !struct { FontData, FontDataIndexMap } {
+    const a = idc_if_it_leaks;
+    var file = try std.fs.cwd().openFile("src/window/font_data.json", .{});
+    const json_str = try file.readToEndAlloc(a, 1024 * 1024 * 10);
+    const font_data = try std.json.parseFromSlice(FontData, a, json_str, .{});
+    const index_map = try createFontDataIndexMap(a, font_data.value);
+    return .{ font_data.value, index_map };
+}
+
+pub const FontDataIndexMap = std.AutoHashMap(i32, usize);
+fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
     var map = FontDataIndexMap.init(a);
     for (0..font_data.glyphs.len) |i| try map.put(font_data.glyphs[i].value, i);
     return map;
