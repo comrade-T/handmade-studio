@@ -639,10 +639,7 @@ pub const Node = union(enum) {
                 while (iter.next()) |cp| {
                     ctx.list.append(leaf.buf[cp.offset .. cp.offset + cp.len]) catch |err| return .{ .err = err };
                 }
-                if (leaf.eol) {
-                    ctx.list.append("\n") catch |err| return .{ .err = err };
-                    return WalkResult.stop;
-                }
+                if (leaf.eol) return WalkResult.stop;
                 return WalkResult.keep_walking;
             }
         };
