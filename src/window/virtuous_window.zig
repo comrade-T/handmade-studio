@@ -227,12 +227,15 @@ pub const Window = struct {
 test Window {
     const a = idc_if_it_leaks;
     const langsuite = try setupLangSuite(a, .zig);
+    const hlmap = langsuite.highlight_map.?;
     const font_data, const index_map = try setupFontDataAndIndexMap();
-    {
-        var win = try setupBufAndWin(a, langsuite, "const std", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+    { // single line
+        var win = try setupBufAndWin(a, langsuite, "const a = true;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 0, .end_y = 0 });
-        try testIterBatch(&iter, "const", 40, 0xC87AFFFF, 0, 0, 15);
-        try testIterBatch(&iter, " std", 40, 0xF5F5F5F5, 75, 0, 15);
+        try testIterBatch(&iter, "const", 40, hlmap.get("type.qualifier").?, 0, 0, 15);
+        try testIterBatch(&iter, " a = ", 40, hlmap.get("variable").?, 75, 0, 15);
+        try testIterBatch(&iter, "true", 40, hlmap.get("boolean").?, 150, 0, 15);
+        try testIterBatch(&iter, ";", 40, hlmap.get("punctuation.delimiter").?, 210, 0, 15);
         try eq(null, iter.next());
     }
 }
