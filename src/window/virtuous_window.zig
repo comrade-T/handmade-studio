@@ -189,21 +189,24 @@ pub const Window = struct {
         pub fn next(self: *@This()) ?CodePoint {
             defer self.current_col += 1;
 
-            switch (self.win.dimensions) {
-                .bounded => |b| {
-                    if (self.current_x >= b.width) {
-                        self.advanceToNextLine();
-                        if (self.currentLineOutOfBounds()) return null;
-                    }
-                },
-                .unbound => {},
+            { // screen check
+                if (self.current_x >= self.screen.end_x) {
+                    self.advanceToNextLine();
+                    if (self.currentLineOutOfBounds()) return null;
+                }
+                if (self.current_y >= self.screen.end_y) return null;
             }
 
-            // advance to next line if reached eol
-            if (self.current_col >= self.win.contents.lines[self.current_line].len) {
+            // bounded check
+            if (self.win.dimensions == .bounded and self.current_x >= self.win.dimensions.bounded.width) {
                 self.advanceToNextLine();
+                if (self.currentLineOutOfBounds()) return null;
             }
 
+            // col check
+            if (self.currentColOutOfBounds()) self.advanceToNextLine();
+
+            // line check
             if (self.currentLineOutOfBounds()) return null;
 
             // get code point
@@ -237,6 +240,10 @@ pub const Window = struct {
                 .y = y,
                 .font_size = self.win.font_size,
             };
+        }
+
+        fn currentColOutOfBounds(self: *@This()) bool {
+            return self.current_col >= self.win.contents.lines[self.current_line].len;
         }
 
         fn currentLineOutOfBounds(self: *@This()) bool {
@@ -285,6 +292,18 @@ test "unbound window" {
         try testIterBatch(&iter, " ten = ", "variable", 145, 142, 15);
         try testIterBatch(&iter, "10", "number", 250, 142, 15);
         try testIterBatch(&iter, ";", "punctuation.delimiter", 280, 142, 15);
+        try eq(null, iter.next());
+    }
+
+    ///////////////////////////// don't render off screen
+
+    { // don't render chars after screen x ends
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;", 40, .{ .unbound = .{ .x = 0, .y = 0 } });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 100, .end_y = 100 });
+        try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
+        try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
+        try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
+        try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
         try eq(null, iter.next());
     }
 }
