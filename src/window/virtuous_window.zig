@@ -165,7 +165,7 @@ pub const Window = struct {
         current_y: f32 = undefined,
 
         pub fn create(win: *const Window, font_data: FontData, index_map: FontDataIndexMap, screen: Screen) CodePointIterator {
-            const self = CodePointIterator{
+            var self = CodePointIterator{
                 .win = win,
                 .screen = screen,
                 .font_data = font_data,
@@ -173,6 +173,10 @@ pub const Window = struct {
                 .current_x = win.x,
                 .current_y = win.y,
             };
+            if (self.win.bounded) |b| {
+                self.current_x -= b.offset.x;
+                self.current_y -= b.offset.y;
+            }
             return self;
         }
 
@@ -181,27 +185,29 @@ pub const Window = struct {
 
             { // screen end check
                 if (self.current_x >= self.screen.end_x) {
-                    self.advanceToNextLine();
-                    return .skip_to_new_line;
+                    return self.advanceToNextLine();
                 }
                 if (self.current_y >= self.screen.end_y) return null;
             }
 
             // bounded check
-            if (self.win.bounded != null) {
-                if (self.current_x >= self.win.bounded.?.width + self.win.x) {
-                    self.advanceToNextLine();
-                    return .skip_to_new_line;
+            if (self.win.bounded) |b| {
+                // over boundary check
+                if (self.current_x >= b.width + self.win.x) {
+                    return self.advanceToNextLine();
                 }
-                if (self.current_y >= self.win.bounded.?.height + self.win.y) {
+                if (self.current_y >= b.height + self.win.y) {
                     return null;
+                }
+
+                if (self.current_y + self.lineHeight() < self.win.y) {
+                    return self.advanceToNextLine();
                 }
             }
 
             // col check
             if (self.currentColOutOfBounds()) {
-                self.advanceToNextLine();
-                return .skip_to_new_line;
+                return self.advanceToNextLine();
             }
 
             // get code point
@@ -240,11 +246,16 @@ pub const Window = struct {
             return self.current_line >= self.win.contents.lines.len;
         }
 
-        fn advanceToNextLine(self: *@This()) void {
+        fn advanceToNextLine(self: *@This()) IterResult {
             self.current_line += 1;
             self.current_col = 0;
             self.current_x = self.win.x;
-            self.current_y += @floatFromInt(self.win.font_size + self.win.line_spacing);
+            self.current_y += self.lineHeight();
+            return .skip_to_new_line;
+        }
+
+        fn lineHeight(self: *@This()) f32 {
+            return @floatFromInt(self.win.font_size + self.win.line_spacing);
         }
     };
 
@@ -446,6 +457,37 @@ test "bounded window fully on screen, vertically cut off" {
     }
 }
 
+test "y offset bounded window fully on screen, no content cut off" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
+
+    // window height can't contain all the lines vertically, lines are horizontally cut of,
+    // window position .{ .x = 0, .y = 0 }.
+    {
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, .{
+            .width = 500,
+            .height = 500,
+            .offset = .{ .x = 0, .y = 50 },
+        });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:-8
+            \\[var ten = 10;]
+            \\[const not_true = false;]
+        );
+        try testIterBatch(&iter, "var", "type.qualifier", 0, -8, 15); // L1, x are [0, 15, 30], ends at 45
+        try testIterBatch(&iter, " ten = ", "variable", 45, -8, 15); // L1, x are [45, 60, 75, 90, 105, 120, 135], ends at 150
+        try testIterBatch(&iter, "10", "number", 150, -8, 15); // L1, x are [150, 165], ends at 180
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 180, -8, 15); // L1, x are [180], ends at 195
+        try testIterBatch(&iter, "const", "type.qualifier", 0, 34, 15); // L2, x are [0, 15, 45, 60], ends at 75
+        try testIterBatch(&iter, " not_true = ", "variable", 75, 34, 15); // L2, ends at 255
+        try testIterBatch(&iter, "false", "boolean", 255, 34, 15); // L2, ends at 330
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 330, 34, 15); // L2
+        try testIterNull(&iter);
+    }
+}
+
 test "bounded window partially on screen" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
     const font_data, const index_map = try setupFontDataAndIndexMap();
@@ -493,9 +535,7 @@ fn testVisibility(iter: *Window.CodePointIterator, expected_str: []const u8) !vo
                 }
                 try str.append(@intCast(r.value));
             },
-            .skip_to_new_line => {
-                try str.appendSlice("]\n[");
-            },
+            .skip_to_new_line => if (started) try str.appendSlice("]\n["),
             .skip_this_char => continue,
         }
     }
