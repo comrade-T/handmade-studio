@@ -221,8 +221,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         spawn_text.root_module.addImport("neo_buffer", neo_buffer.module);
-        spawn_text.root_module.addImport("content_vendor", content_vendor.module);
-        spawn_text.root_module.addImport("neo_window", neo_window.module);
+        spawn_text.root_module.addImport("virtuous_window", virtuous_window.module);
         spawn_text.root_module.addImport("ztracy", ztracy.module("root"));
         spawn_text.linkLibrary(tree_sitter);
         spawn_text.linkLibrary(ztracy.artifact("tracy"));

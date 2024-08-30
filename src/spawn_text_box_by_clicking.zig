@@ -6,13 +6,10 @@ const kbs = @import("keyboard/state.zig");
 const exp = @import("keyboard/experimental_mappings.zig");
 const FileNavigator = @import("components/FileNavigator.zig");
 
-const _content_vendor = @import("content_vendor");
-const Highlighter = _content_vendor.Highlighter;
-
 const _neo_buffer = @import("neo_buffer");
-const _neo_window = @import("neo_window");
+const _virtuous_window = @import("virtuous_window");
+const Window = _virtuous_window.Window;
 const Buffer = _neo_buffer.Buffer;
-const Window = _neo_window.Window;
 
 const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
@@ -83,22 +80,19 @@ pub fn main() anyerror!void {
     var navigator = try FileNavigator.new(gpa);
     defer navigator.deinit();
 
-    // Buffer & ContentVendor
+    // Buffer & Tree Sitter & Window
+
+    var zig_langsuite = try _neo_buffer.sitter.LangSuite.create(.zig);
+    defer zig_langsuite.destroy();
+    try zig_langsuite.initializeQuery();
+    try zig_langsuite.initializeFilter(gpa);
+    try zig_langsuite.initializeHighlightMap(gpa);
 
     var buf = try Buffer.create(gpa, .string, "");
-    try buf.initiateTreeSitter(.zig);
+    try buf.initiateTreeSitter(zig_langsuite);
     defer buf.destroy();
 
-    const query = try _content_vendor.getTSQuery(.zig);
-    defer query.destroy();
-
-    var highlight_map = try _content_vendor.createHighlightMap(gpa);
-    defer highlight_map.deinit();
-
-    var highlighter = try Highlighter.init(gpa, buf, &highlight_map, query);
-    defer highlighter.deinit();
-
-    var window = try Window.spawn(gpa, highlighter, 400, 100);
+    var window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
     defer window.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
@@ -165,14 +159,7 @@ pub fn main() anyerror!void {
                             if (try navigator.forward()) |path| {
                                 defer path.deinit();
 
-                                buf.destroy();
-                                highlighter.deinit();
-                                window.destroy();
-
-                                buf = try Buffer.create(gpa, .file, path.items);
-                                try buf.initiateTreeSitter(.zig);
-                                highlighter = try Highlighter.init(gpa, buf, &highlight_map, query);
-                                window = try Window.spawn(gpa, highlighter, 400, 100);
+                                // TODO:
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
@@ -180,10 +167,11 @@ pub fn main() anyerror!void {
 
                     { // Buffer actions
                         if (trigger_map.get(trigger)) |a| {
-                            switch (a) {
-                                .insert => |chars| window.insertChars(chars),
-                                .custom => try window.doCustomStuffs(trigger),
-                            }
+                            _ = a;
+                            // switch (a) {
+                            //     // .insert => |chars| window.insertChars(chars),
+                            //     // .custom => try window.doCustomStuffs(trigger),
+                            // }
                         }
                     }
                 }
@@ -209,89 +197,30 @@ pub fn main() anyerror!void {
                 }
             }
 
-            var chars_rendered: u64 = 0;
-            defer ztracy.PlotU("chars_rendered", chars_rendered);
+            // var chars_rendered: u64 = 0;
+            // defer ztracy.PlotU("chars_rendered", chars_rendered);
 
             { // window content
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
-                const iter = window.highlight_iter;
-                defer iter.reset();
-
-                var x: f32 = window.x;
-                var y: f32 = window.y;
-
-                while (true) {
-
-                    ///////////////////////////// Vertical Culling
-
-                    if (y > view_end.y) break;
-                    if (y + font_size < view_start.y) {
-                        iter.skipLine();
-                        x = window.x;
-                        y += font_size;
-                        continue;
-                    }
-
-                    ///////////////////////////// nextChar()
-
-                    const result = iter.nextChar();
-                    if (result == null) break;
-
-                    if (result.?.code_point >= 128) {
-                        std.debug.print("code points >= 128 not supported yet\n", .{});
-                        break;
-                    }
-
-                    if (result.?.code_point == '\n') {
-                        y += font_size;
-                        x = window.x;
-                        continue;
-                    }
-
-                    ///////////////////////////// Horizonal Culling
-
-                    const char_width = font_size / 3 + 4;
-
-                    if (x + char_width < view_start.x) {
-                        x += char_width;
-                        continue;
-                    }
-                    if (x > view_end.x) {
-                        iter.skipLine();
-                        x = window.x;
-                        y += font_size;
-                        continue;
-                    }
-
-                    ///////////////////////////// Rendering
-
-                    {
-                        const zone = ztracy.ZoneNC(@src(), "rl.drawTextCodepoint()", 0x0F00F0);
-                        defer zone.End();
-
-                        chars_rendered += 1;
-
-                        rl.drawTextCodepoint(font, @intCast(result.?.code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(result.?.color));
-                        x += char_width;
-                    }
-                }
+                // TODO:
+                _ = font;
             }
 
-            try drawTextAtBottomRight(
-                "chars rendered: {d}",
-                .{chars_rendered},
-                30,
-                .{ .x = 40, .y = 120 },
-            );
+            // try drawTextAtBottomRight(
+            //     "chars rendered: {d}",
+            //     .{chars_rendered},
+            //     30,
+            //     .{ .x = 40, .y = 120 },
+            // );
 
-            try drawTextAtBottomRight(
-                "[{d}, {d}]",
-                .{ window.cursor.line, window.cursor.col },
-                30,
-                .{ .x = 40, .y = 40 },
-            );
+            // try drawTextAtBottomRight(
+            //     "[{d}, {d}]",
+            //     .{ window.cursor.line, window.cursor.col },
+            //     30,
+            //     .{ .x = 40, .y = 40 },
+            // );
         }
     }
 }

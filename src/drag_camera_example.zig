@@ -35,84 +35,84 @@ pub fn main() !void {
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
     // const font = rl.getFontDefault();
 
-    {
-        const a = std.heap.page_allocator;
+    // {
+    //     const a = std.heap.page_allocator;
+    //
+    //     var recs = try a.alloc(Rectangle, @intCast(font.glyphCount));
+    //     var glyphs = try a.alloc(GlyphData, @intCast(font.glyphCount));
+    //
+    //     for (0..@intCast(font.glyphCount)) |i| {
+    //         recs[i] = Rectangle{
+    //             .x = font.recs[i].x,
+    //             .y = font.recs[i].y,
+    //             .width = font.recs[i].width,
+    //             .height = font.recs[i].height,
+    //         };
+    //
+    //         glyphs[i] = GlyphData{
+    //             .advanceX = font.glyphs[i].advanceX,
+    //             .offsetX = @intCast(font.glyphs[i].offsetX),
+    //             .value = font.glyphs[i].value,
+    //         };
+    //
+    //         // {
+    //         //     const text = try std.fmt.allocPrintZ(a, "{c}", .{@as(u8, @intCast(font.glyphs[i].value))});
+    //         //     {
+    //         //         const measure = rl.measureTextEx(font, text, font_size, 0);
+    //         //         std.debug.print("char: {c}, width: {d} | height: {d}\n", .{ text, measure.x, measure.y });
+    //         //     }
+    //         //     {
+    //         //         const width = rl.measureText(text, font_size);
+    //         //         std.debug.print("char: {c}, width: {d}\n", .{ text, width });
+    //         //     }
+    //         // }
+    //     }
+    //
+    //     const font_data = FontData{
+    //         .base_size = font.baseSize,
+    //         .glyph_padding = font.glyphPadding,
+    //         .recs = recs,
+    //         .glyphs = glyphs,
+    //     };
+    //
+    //     const json_str = try std.json.stringifyAlloc(a, font_data, .{ .whitespace = .indent_4 });
+    //     {
+    //         const file = try std.fs.cwd().createFile("src/window/font_data.json", .{
+    //             .read = true,
+    //             .truncate = true,
+    //         });
+    //         defer file.close();
+    //
+    //         _ = try file.writeAll(json_str);
+    //
+    //         std.debug.print("\nwritten to font_data.json successfully\n", .{});
+    //     }
+    // }
 
-        var recs = try a.alloc(Rectangle, @intCast(font.glyphCount));
-        var glyphs = try a.alloc(GlyphData, @intCast(font.glyphCount));
-
-        for (0..@intCast(font.glyphCount)) |i| {
-            recs[i] = Rectangle{
-                .x = font.recs[i].x,
-                .y = font.recs[i].y,
-                .width = font.recs[i].width,
-                .height = font.recs[i].height,
-            };
-
-            glyphs[i] = GlyphData{
-                .advanceX = font.glyphs[i].advanceX,
-                .offsetX = @intCast(font.glyphs[i].offsetX),
-                .value = font.glyphs[i].value,
-            };
-
-            // {
-            //     const text = try std.fmt.allocPrintZ(a, "{c}", .{@as(u8, @intCast(font.glyphs[i].value))});
-            //     {
-            //         const measure = rl.measureTextEx(font, text, font_size, 0);
-            //         std.debug.print("char: {c}, width: {d} | height: {d}\n", .{ text, measure.x, measure.y });
-            //     }
-            //     {
-            //         const width = rl.measureText(text, font_size);
-            //         std.debug.print("char: {c}, width: {d}\n", .{ text, width });
-            //     }
-            // }
-        }
-
-        const font_data = FontData{
-            .base_size = font.baseSize,
-            .glyph_padding = font.glyphPadding,
-            .recs = recs,
-            .glyphs = glyphs,
-        };
-
-        const json_str = try std.json.stringifyAlloc(a, font_data, .{ .whitespace = .indent_4 });
-        {
-            const file = try std.fs.cwd().createFile("src/window/font_data.json", .{
-                .read = true,
-                .truncate = true,
-            });
-            defer file.close();
-
-            _ = try file.writeAll(json_str);
-
-            std.debug.print("\nwritten to font_data.json successfully\n", .{});
-        }
-    }
-
-    { // testing text stuffs
-        std.debug.print("\n================================================================\n", .{});
-        defer std.debug.print("================================================================\n\n", .{});
-        {
-            const measure = rl.measureTextEx(font, "a", 30, 0);
-            std.debug.print("measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ measure.x, measure.y });
-        }
-        {
-            // if (font.glyphs[index].advanceX != 0) textWidth += font.glyphs[index].advanceX;
-            // else textWidth += (font.recs[index].width + font.glyphs[index].offsetX);
-            const index: usize = @intCast(rl.getGlyphIndex(font, 'a'));
-            const width = if (font.glyphs[index].advanceX != 0)
-                @as(f32, @floatFromInt(font.glyphs[index].advanceX))
-            else
-                font.recs[index].width + @as(f32, @floatFromInt(font.glyphs[index].offsetX));
-
-            std.debug.print("custom measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ width, font_size });
-        }
-        std.debug.print("----------------------------------------------------------------------------------\n", .{});
-        {
-            const width = rl.measureText("a", 30);
-            std.debug.print("measure of char 'a' w/ `default` font -> width: {d} -> height: {d}\n", .{ width, font_size });
-        }
-    }
+    // { // testing text stuffs
+    //     std.debug.print("\n================================================================\n", .{});
+    //     defer std.debug.print("================================================================\n\n", .{});
+    //     {
+    //         const measure = rl.measureTextEx(font, "a", 30, 0);
+    //         std.debug.print("measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ measure.x, measure.y });
+    //     }
+    //     {
+    //         // if (font.glyphs[index].advanceX != 0) textWidth += font.glyphs[index].advanceX;
+    //         // else textWidth += (font.recs[index].width + font.glyphs[index].offsetX);
+    //         const index: usize = @intCast(rl.getGlyphIndex(font, 'a'));
+    //         const width = if (font.glyphs[index].advanceX != 0)
+    //             @as(f32, @floatFromInt(font.glyphs[index].advanceX))
+    //         else
+    //             font.recs[index].width + @as(f32, @floatFromInt(font.glyphs[index].offsetX));
+    //
+    //         std.debug.print("custom measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ width, font_size });
+    //     }
+    //     std.debug.print("----------------------------------------------------------------------------------\n", .{});
+    //     {
+    //         const width = rl.measureText("a", 30);
+    //         std.debug.print("measure of char 'a' w/ `default` font -> width: {d} -> height: {d}\n", .{ width, font_size });
+    //     }
+    // }
 
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(1920, 1080);
@@ -237,37 +237,6 @@ pub fn main() !void {
         }
     }
 }
-
-// // Gradually changes a value towards a desired goal over time.
-// public static float SmoothDamp(float current, float target, ref float currentVelocity, float smoothTime, [uei.DefaultValue("Mathf.Infinity")]  float maxSpeed, [uei.DefaultValue("Time.deltaTime")]  float deltaTime)
-// {
-//     // Based on Game Programming Gems 4 Chapter 1.10
-//     smoothTime = Mathf.Max(0.0001F, smoothTime);
-//     float omega = 2F / smoothTime;
-//
-//     float x = omega * deltaTime;
-//     float exp = 1F / (1F + x + 0.48F * x * x + 0.235F * x * x * x);
-//     float change = current - target;
-//     float originalTo = target;
-//
-//     // Clamp maximum speed
-//     float maxChange = maxSpeed * smoothTime;
-//     change = Mathf.Clamp(change, -maxChange, maxChange);
-//     target = current - change;
-//
-//     float temp = (currentVelocity + omega * change) * deltaTime;
-//     currentVelocity = (currentVelocity - omega * temp) * exp;
-//     float output = target + (change + temp) * exp;
-//
-//     // Prevent overshooting
-//     if (originalTo - current > 0.0F == output > originalTo)
-//     {
-//         output = originalTo;
-//         currentVelocity = (output - originalTo) / deltaTime;
-//     }
-//
-//     return output;
-// }
 
 // https://stackoverflow.com/questions/61372498/how-does-mathf-smoothdamp-work-what-is-it-algorithm
 fn smoothDamp(current: f32, target_: f32, current_velocity: *f32, smooth_time_: f32, max_speed: f32, delta_time: f32) f32 {
