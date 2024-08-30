@@ -7,8 +7,8 @@ const exp = @import("keyboard/experimental_mappings.zig");
 const FileNavigator = @import("components/FileNavigator.zig");
 
 const _neo_buffer = @import("neo_buffer");
-const _virtuous_window = @import("virtuous_window");
-const Window = _virtuous_window.Window;
+const _vw = @import("virtuous_window");
+const Window = _vw.Window;
 const Buffer = _neo_buffer.Buffer;
 
 const eql = std.mem.eql;
@@ -33,17 +33,28 @@ pub fn main() anyerror!void {
     rl.setTargetFPS(60);
     rl.setExitKey(rl.KeyboardKey.key_null);
 
-    ///////////////////////////// Controller
+    ///////////////////////////// GPA
 
     var gpa__ = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa__.deinit();
     const gpa = gpa__.allocator();
 
-    var kem = try kbs.KeyboardEventsManager.init(gpa);
-    defer kem.deinit();
+    ///////////////////////////// Font
 
     const font_size = 150;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
+
+    const font_data = try generateFontData(gpa, font);
+    defer gpa.free(font_data.recs);
+    defer gpa.free(font_data.glyphs);
+
+    var font_data_index_map = try _vw.createFontDataIndexMap(gpa, font_data);
+    defer font_data_index_map.deinit();
+
+    ///////////////////////////// Controller
+
+    var kem = try kbs.KeyboardEventsManager.init(gpa);
+    defer kem.deinit();
 
     var trigger_map = try exp.createTriggerMap(gpa);
     defer trigger_map.deinit();
@@ -159,7 +170,12 @@ pub fn main() anyerror!void {
                             if (try navigator.forward()) |path| {
                                 defer path.deinit();
 
-                                // TODO:
+                                buf.destroy();
+                                window.destroy();
+
+                                buf = try Buffer.create(gpa, .file, path.items);
+                                try buf.initiateTreeSitter(zig_langsuite);
+                                window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
@@ -197,23 +213,37 @@ pub fn main() anyerror!void {
                 }
             }
 
-            // var chars_rendered: u64 = 0;
-            // defer ztracy.PlotU("chars_rendered", chars_rendered);
+            var chars_rendered: u64 = 0;
+            defer ztracy.PlotU("chars_rendered", chars_rendered);
 
             { // window content
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
-                // TODO:
-                _ = font;
+                var iter = window.codePointIter(font_data, font_data_index_map, .{
+                    .start_x = view_start.x,
+                    .start_y = view_start.y,
+                    .end_x = view_end.x,
+                    .end_y = view_end.y,
+                });
+
+                while (iter.next()) |result| {
+                    switch (result) {
+                        .code_point => |char| {
+                            rl.drawTextCodepoint(font, char.value, .{ .x = char.x, .y = char.y }, font_size, rl.Color.fromInt(char.color));
+                            chars_rendered += 1;
+                        },
+                        else => continue,
+                    }
+                }
             }
 
-            // try drawTextAtBottomRight(
-            //     "chars rendered: {d}",
-            //     .{chars_rendered},
-            //     30,
-            //     .{ .x = 40, .y = 120 },
-            // );
+            try drawTextAtBottomRight(
+                "chars rendered: {d}",
+                .{chars_rendered},
+                30,
+                .{ .x = 40, .y = 120 },
+            );
 
             // try drawTextAtBottomRight(
             //     "[{d}, {d}]",
@@ -232,4 +262,31 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
     const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
     const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
     rl.drawText(text, x, y, font_size, rl.Color.ray_white);
+}
+
+fn generateFontData(a: Allocator, font: rl.Font) !_vw.FontData {
+    var recs = try a.alloc(_vw.Rectangle, @intCast(font.glyphCount));
+    var glyphs = try a.alloc(_vw.GlyphData, @intCast(font.glyphCount));
+
+    for (0..@intCast(font.glyphCount)) |i| {
+        recs[i] = _vw.Rectangle{
+            .x = font.recs[i].x,
+            .y = font.recs[i].y,
+            .width = font.recs[i].width,
+            .height = font.recs[i].height,
+        };
+
+        glyphs[i] = _vw.GlyphData{
+            .advanceX = font.glyphs[i].advanceX,
+            .offsetX = @intCast(font.glyphs[i].offsetX),
+            .value = font.glyphs[i].value,
+        };
+    }
+
+    return .{
+        .base_size = font.baseSize,
+        .glyph_padding = font.glyphPadding,
+        .recs = recs,
+        .glyphs = glyphs,
+    };
 }

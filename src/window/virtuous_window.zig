@@ -666,7 +666,7 @@ fn setupFontDataAndIndexMap() !struct { FontData, FontDataIndexMap } {
 }
 
 pub const FontDataIndexMap = std.AutoHashMap(i32, usize);
-fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
+pub fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
     var map = FontDataIndexMap.init(a);
     for (0..font_data.glyphs.len) |i| try map.put(font_data.glyphs[i].value, i);
     return map;
