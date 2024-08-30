@@ -241,6 +241,7 @@ pub const Window = struct {
             self.current_line += 1;
             self.current_col = 0;
             self.current_x = self.win.x;
+            if (self.win.bounded) |b| self.current_x -= b.offset.x;
             self.current_y += self.lineHeight();
             return .skip_to_new_line;
         }
@@ -468,18 +469,13 @@ test "bounded window fully on screen, vertically cut off" {
     }
 }
 
-test "y offset bounded window fully on screen, no content cut off" {
+test "bounded window fully on screen, offset y cut off" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
     const font_data, const index_map = try setupFontDataAndIndexMap();
-
-    // window height can't contain all the lines vertically, lines are horizontally cut of,
-    // window position .{ .x = 0, .y = 0 }.
+    const source = "const a = true;\nvar ten = 10;\nconst not_true = false;";
     {
-        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, .{
-            .width = 500,
-            .height = 500,
-            .offset = .{ .x = 0, .y = 50 },
-        });
+        const offset = .{ .x = 0, .y = 50 };
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, source, 40, 0, 0, .{ .width = 500, .height = 500, .offset = offset });
         var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
         var iter_clone = iter;
         try testVisibility(&iter_clone,
@@ -496,6 +492,46 @@ test "y offset bounded window fully on screen, no content cut off" {
         try testIterBatch(&iter, "false", "boolean", 255, 34, 15); // L2, ends at 330
         try testIterBatch(&iter, ";", "punctuation.delimiter", 330, 34, 15); // L2
         try testIterNull(&iter);
+    }
+    {
+        const offset = .{ .x = 0, .y = 100 };
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, source, 40, 0, 0, .{ .width = 500, .height = 500, .offset = offset });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        // why -16? --> 100 - ( (40_font_size + 2_line_spacing) * 2 ) = 16
+        try testVisibility(&iter,
+            \\ 0:-16
+            \\[const not_true = false;]
+        );
+    }
+}
+
+test "bounded window fully on screen, offset x cut off" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
+    const source = "const a = true;\nvar ten = 10;\nconst not_true = false;";
+    {
+        const offset = .{ .x = 50, .y = 0 };
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, source, 40, 0, 0, .{ .width = 500, .height = 500, .offset = offset });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        // why -5? -> 50 - 15*3 = 5
+        try testVisibility(&iter_clone,
+            \\ -5:0
+            \\[st a = true;]
+            \\[ ten = 10;]
+            \\[st not_true = false;]
+        );
+        try testIterBatch(&iter, "st", "type.qualifier", -5, 0, 15); // L0, [-5, 10], ends at 25
+        try testIterBatch(&iter, " a = ", "variable", 25, 0, 15); // L0, [25, 40, 55, 70, 85], ends at 100
+        try testIterBatch(&iter, "true", "boolean", 100, 0, 15); // L0, [100, 115, 130, 145], ends at 160
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 160, 0, 15); // L0
+        try testIterBatch(&iter, " ten = ", "variable", -5, 42, 15); // L1, [-5, 10, 25, 40, 55, 70, 85], ends at 100
+        try testIterBatch(&iter, "10", "number", 100, 42, 15); // L1, [100, 115], ends at 130
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 130, 42, 15); // L1
+        try testIterBatch(&iter, "st", "type.qualifier", -5, 84, 15); // L2, [-5, 10], ends at 25
+        try testIterBatch(&iter, " not_true = ", "variable", 25, 84, 15); // L2, [25, 40, 55, 70, 85, 100, 115, 130, 145, 160, 175, 190], ends at 205
+        try testIterBatch(&iter, "false", "boolean", 205, 84, 15); // L2, [205, 220, 235, 250, 265], ends at 280
+        try testIterBatch(&iter, ";", "punctuation.delimiter", 280, 84, 15); // L2
     }
 }
 
