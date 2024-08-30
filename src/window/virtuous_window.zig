@@ -188,9 +188,14 @@ pub const Window = struct {
             }
 
             // bounded check
-            if (self.win.bounded != null and self.current_x >= self.win.bounded.?.width) {
-                self.advanceToNextLine();
-                return .skip_to_new_line;
+            if (self.win.bounded != null) {
+                if (self.current_x >= self.win.bounded.?.width + self.win.x) {
+                    self.advanceToNextLine();
+                    return .skip_to_new_line;
+                }
+                if (self.current_y >= self.win.bounded.?.height + self.win.y) {
+                    return null;
+                }
             }
 
             // col check
@@ -338,7 +343,9 @@ test "bounded window" {
 
     ///////////////////////////// window completely visible on screen
 
-    { // offsetY = 0
+    // all lines vertically visible, but lines being cut off horizontally
+    // window position .{ .x = 0, .y = 0 }.
+    {
         var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, .{
             .width = 100,
             .height = 100,
@@ -360,6 +367,78 @@ test "bounded window" {
         try testIterBatch(&iter, " n", "variable", 75, 84, 15); // L2, x are [75, 90], ends at 105
         try testIterNull(&iter);
     }
+
+    // all lines vertically visible, but lines being cut off horizontally
+    // window position .{ .x = 100, .y = 100 }.
+    {
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 100, 100, .{
+            .width = 100,
+            .height = 100,
+            .offset = .{ .x = 0, .y = 0 },
+        });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 100:100
+            \\[const a]
+            \\[var ten]
+            \\[const n]
+        );
+        try testIterBatch(&iter, "const", "type.qualifier", 100, 100, 15); // x are [100, 115, 130, 145, 160], ends at 175
+        try testIterBatch(&iter, " a", "variable", 175, 100, 15); // x are [175, 190], ends at 205
+        try testIterBatch(&iter, "var", "type.qualifier", 100, 142, 15); // L1, x are [100, 115, 130], ends at 145
+        try testIterBatch(&iter, " ten", "variable", 145, 142, 15); // L1, x are [145, 160, 175, 190], ends at 205
+        try testIterBatch(&iter, "const", "type.qualifier", 100, 184, 15); // L2, x are [100, 115, 130, 145, 160], ends at 175
+        try testIterBatch(&iter, " n", "variable", 175, 184, 15); // L2, x are [175, 190], ends at 205
+        try testIterNull(&iter);
+    }
+
+    // window height can't contain all the lines vertically, lines are horizontally cut of,
+    // window position .{ .x = 0, .y = 0 }.
+    {
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, .{
+            .width = 100,
+            .height = 50,
+            .offset = .{ .x = 0, .y = 0 },
+        });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:0
+            \\[const a]
+            \\[var ten]
+        );
+        try testIterBatch(&iter, "const", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45, 60], ends at 75
+        try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
+        try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
+        try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
+        try testIterNull(&iter);
+    }
+
+    // window height can't contain all the lines vertically, lines are horizontally cut of,
+    // window position .{ .x = 100, .y = 100 }.
+    {
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 100, 100, .{
+            .width = 100,
+            .height = 50,
+            .offset = .{ .x = 0, .y = 0 },
+        });
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 1920, .end_y = 1080 });
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 100:100
+            \\[const a]
+            \\[var ten]
+        );
+        try testIterBatch(&iter, "const", "type.qualifier", 100, 100, 15); // x are [100, 115, 130, 145, 160], ends at 175
+        try testIterBatch(&iter, " a", "variable", 175, 100, 15); // x are [175, 190], ends at 205
+        try testIterBatch(&iter, "var", "type.qualifier", 100, 142, 15); // L1, x are [100, 115, 130], ends at 145
+        try testIterBatch(&iter, " ten", "variable", 145, 142, 15); // L1, x are [145, 160, 175, 190], ends at 205
+        try testIterNull(&iter);
+    }
+
+    // TODO: change offsetY
+    // TODO: change offsetX
 
     ///////////////////////////// only parts of window is visible on screen
 
