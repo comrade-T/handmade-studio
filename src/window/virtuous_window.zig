@@ -253,7 +253,7 @@ pub const Window = struct {
     }
 };
 
-test "unbound window" {
+test "unbound window fully on screen" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
     const font_data, const index_map = try setupFontDataAndIndexMap();
 
@@ -300,6 +300,11 @@ test "unbound window" {
         try testIterBatch(&iter, ";", "punctuation.delimiter", 280, 142, 15);
         try testIterNull(&iter);
     }
+}
+
+test "unbound window partially on screen" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
 
     ///////////////////////////// don't render off screen
 
@@ -337,11 +342,9 @@ test "unbound window" {
     }
 }
 
-test "bounded window" {
+test "bounded window fully on screen, horizontal cut off" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
     const font_data, const index_map = try setupFontDataAndIndexMap();
-
-    ///////////////////////////// window completely visible on screen
 
     // all lines vertically visible, but lines being cut off horizontally
     // window position .{ .x = 0, .y = 0 }.
@@ -392,6 +395,11 @@ test "bounded window" {
         try testIterBatch(&iter, " n", "variable", 175, 184, 15); // L2, x are [175, 190], ends at 205
         try testIterNull(&iter);
     }
+}
+
+test "bounded window fully on screen, vertically cut off" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
 
     // window height can't contain all the lines vertically, lines are horizontally cut of,
     // window position .{ .x = 0, .y = 0 }.
@@ -436,9 +444,11 @@ test "bounded window" {
         try testIterBatch(&iter, " ten", "variable", 145, 142, 15); // L1, x are [145, 160, 175, 190], ends at 205
         try testIterNull(&iter);
     }
+}
 
-    // TODO: change offsetY
-    // TODO: change offsetX
+test "bounded window partially on screen" {
+    const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
+    const font_data, const index_map = try setupFontDataAndIndexMap();
 
     ///////////////////////////// only parts of window is visible on screen
 
