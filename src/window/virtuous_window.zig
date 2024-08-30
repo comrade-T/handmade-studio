@@ -183,32 +183,26 @@ pub const Window = struct {
         pub fn next(self: *@This()) ?IterResult {
             if (self.currentLineOutOfBounds()) return null;
 
+            // screen.start_y check
+            if (self.current_y + self.lineHeight() <= self.screen.start_y) return self.advanceToNextLine();
+
             { // screen end check
-                if (self.current_x >= self.screen.end_x) {
-                    return self.advanceToNextLine();
-                }
+                if (self.current_x >= self.screen.end_x) return self.advanceToNextLine();
                 if (self.current_y >= self.screen.end_y) return null;
             }
 
             // bounded check
             if (self.win.bounded) |b| {
                 // over boundary check
-                if (self.current_x >= b.width + self.win.x) {
-                    return self.advanceToNextLine();
-                }
-                if (self.current_y >= b.height + self.win.y) {
-                    return null;
-                }
+                if (self.current_x >= b.width + self.win.x) return self.advanceToNextLine();
+                if (self.current_y >= b.height + self.win.y) return null;
 
-                if (self.current_y + self.lineHeight() < self.win.y) {
-                    return self.advanceToNextLine();
-                }
+                // offset check
+                if (self.current_y + self.lineHeight() < self.win.y) return self.advanceToNextLine();
             }
 
             // col check
-            if (self.currentColOutOfBounds()) {
-                return self.advanceToNextLine();
-            }
+            if (self.currentColOutOfBounds()) return self.advanceToNextLine();
 
             // get code point
             const char = self.win.contents.lines[self.current_line][self.current_col];
@@ -223,11 +217,8 @@ pub const Window = struct {
             defer self.current_x += char_width;
             defer self.current_col += 1;
 
-            { // screen start check
-                if (self.current_x + char_width <= self.screen.start_x) {
-                    return .skip_this_char;
-                }
-            }
+            // screen.start_x check
+            if (self.current_x + char_width <= self.screen.start_x) return .skip_this_char;
 
             return .{ .code_point = CodePoint{
                 .value = cp_i32,
@@ -350,6 +341,26 @@ test "unbound window partially on screen" {
         try testIterBatch(&iter, " a", "variable", 75, 0, 15); // x are [75, 90], ends at 105
         try testIterBatch(&iter, " ten", "variable", 45, 42, 15); // L1, x are [45, 60, 75, 90], ends at 105
         try testIterNull(&iter);
+    }
+
+    { // don't render chars before screen y starts
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, null);
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 50, .end_x = 100, .end_y = 100 });
+        try testVisibility(&iter,
+            \\ 0:42
+            \\[var ten]
+            \\[const n]
+        );
+    }
+
+    { // don't render chars after screen y ends
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, null);
+        var iter = win.codePointIter(font_data, index_map, .{ .start_x = 0, .start_y = 0, .end_x = 100, .end_y = 50 });
+        try testVisibility(&iter,
+            \\ 0:0
+            \\[const a]
+            \\[var ten]
+        );
     }
 }
 
@@ -515,6 +526,26 @@ test "bounded window partially on screen" {
         try testIterBatch(&iter, "cons", "type.qualifier", 0, 84, 15); // L2, x are [0, 15, 30, 45], ends at 60
         try testIterNull(&iter);
     }
+
+    { // don't render chars after screen y ends
+        var win = try setupBufAndWin(idc_if_it_leaks, langsuite, "const a = true;\nvar ten = 10;\nconst not_true = false;", 40, 0, 0, .{
+            .width = 100,
+            .height = 100,
+            .offset = .{ .x = 0, .y = 0 },
+        });
+        const screen = .{ .start_x = 0, .start_y = 0, .end_x = 50, .end_y = 50 }; // anything with y + line height > 50 shouldn't be rendered
+        var iter = win.codePointIter(font_data, index_map, screen);
+        var iter_clone = iter;
+        try testVisibility(&iter_clone,
+            \\ 0:0
+            \\[cons]
+            \\[var ]
+        );
+        try testIterBatch(&iter, "cons", "type.qualifier", 0, 0, 15); // x are [0, 15, 30, 45], ends at 60
+        try testIterBatch(&iter, "var", "type.qualifier", 0, 42, 15); // L1, x are [0, 15, 30], ends at 45
+        try testIterBatch(&iter, " ", "variable", 45, 42, 15); // L1, x are [45], ends at 60
+        try testIterNull(&iter);
+    }
 }
 
 fn testVisibility(iter: *Window.CodePointIterator, expected_str: []const u8) !void {
@@ -548,9 +579,11 @@ fn testIterNull(iter: *Window.CodePointIterator) !void {
 
 fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group: []const u8, start_x: f32, y: f32, x_inc: f32) !void {
     var cp_iter = __buf_mod.code_point.Iterator{ .bytes = sequence };
+    var got_result = false;
     while (iter.next()) |result| {
         switch (result) {
             .code_point => |r| {
+                got_result = true;
                 const cp = cp_iter.next().?;
                 errdefer std.debug.print("cp_iter.i {d},  wanted: '{c}', got: '{c}'\n", .{
                     cp_iter.i,
@@ -566,6 +599,7 @@ fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group
             else => continue,
         }
     }
+    eq(true, got_result) catch @panic("Expected batch result, got nothing!\n");
 }
 
 fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.LangSuite {
