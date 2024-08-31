@@ -702,7 +702,7 @@ pub fn GenericTriggerPicker(comptime trigger_map_type: type) type {
         a: Allocator,
         trigger_map: *trigger_map_type,
         previous_trigger: ?Candidate = null,
-        threshold: i64 = 100,
+        threshold: i64 = 250,
 
         pub fn init(a: std.mem.Allocator, trigger_map: *trigger_map_type) !*@This() {
             const picker = try a.create(@This());

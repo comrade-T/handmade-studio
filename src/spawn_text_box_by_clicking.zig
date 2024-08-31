@@ -161,7 +161,7 @@ pub fn main() anyerror!void {
                 }
 
                 if (!eql(u8, trigger, "")) {
-                    defer picker.a.free(trigger);
+                    std.debug.print("trigger: {s}\n", .{trigger});
 
                     { // navigator stuffs
                         if (eql(u8, trigger, "lctrl j")) navigator.moveDown();
@@ -176,19 +176,30 @@ pub fn main() anyerror!void {
                                 buf = try Buffer.create(gpa, .file, path.items);
                                 try buf.initiateTreeSitter(zig_langsuite);
                                 window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
+                                // window = try Window.spawn(gpa, buf, font_size, 400, 100, .{
+                                //     .width = 500,
+                                //     .height = 500,
+                                // });
                             }
                         }
                         if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
                     }
 
                     { // Buffer actions
-                        if (trigger_map.get(trigger)) |a| {
-                            _ = a;
-                            // switch (a) {
-                            //     // .insert => |chars| window.insertChars(chars),
-                            //     // .custom => try window.doCustomStuffs(trigger),
-                            // }
+                        if (eql(u8, trigger, "z")) {
+                            var delta = rl.getMouseDelta();
+                            delta = delta.scale(-1 / camera.zoom);
+                            window.moveBy(delta.x, delta.y);
                         }
+                        // if (trigger_map.get(trigger)) |a| {
+                        //     switch (a) {
+                        //         .insert => |chars| {
+                        //             _ = chars;
+                        //             // window.insertChars(chars);
+                        //         },
+                        //         .custom => {},
+                        //     }
+                        // }
                     }
                 }
             }
@@ -242,14 +253,14 @@ pub fn main() anyerror!void {
                 "chars rendered: {d}",
                 .{chars_rendered},
                 30,
-                .{ .x = 40, .y = 120 },
+                .{ .x = 40, .y = 40 },
             );
 
             // try drawTextAtBottomRight(
             //     "[{d}, {d}]",
             //     .{ window.cursor.line, window.cursor.col },
             //     30,
-            //     .{ .x = 40, .y = 40 },
+            //     .{ .x = 40, .y = 120 },
             // );
         }
     }

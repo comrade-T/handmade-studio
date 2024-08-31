@@ -31,88 +31,8 @@ pub fn main() !void {
     const smooth_time = 0.1;
     const max_speed = 40;
 
-    const font_size = 40;
-    const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
-    // const font = rl.getFontDefault();
-
-    // {
-    //     const a = std.heap.page_allocator;
-    //
-    //     var recs = try a.alloc(Rectangle, @intCast(font.glyphCount));
-    //     var glyphs = try a.alloc(GlyphData, @intCast(font.glyphCount));
-    //
-    //     for (0..@intCast(font.glyphCount)) |i| {
-    //         recs[i] = Rectangle{
-    //             .x = font.recs[i].x,
-    //             .y = font.recs[i].y,
-    //             .width = font.recs[i].width,
-    //             .height = font.recs[i].height,
-    //         };
-    //
-    //         glyphs[i] = GlyphData{
-    //             .advanceX = font.glyphs[i].advanceX,
-    //             .offsetX = @intCast(font.glyphs[i].offsetX),
-    //             .value = font.glyphs[i].value,
-    //         };
-    //
-    //         // {
-    //         //     const text = try std.fmt.allocPrintZ(a, "{c}", .{@as(u8, @intCast(font.glyphs[i].value))});
-    //         //     {
-    //         //         const measure = rl.measureTextEx(font, text, font_size, 0);
-    //         //         std.debug.print("char: {c}, width: {d} | height: {d}\n", .{ text, measure.x, measure.y });
-    //         //     }
-    //         //     {
-    //         //         const width = rl.measureText(text, font_size);
-    //         //         std.debug.print("char: {c}, width: {d}\n", .{ text, width });
-    //         //     }
-    //         // }
-    //     }
-    //
-    //     const font_data = FontData{
-    //         .base_size = font.baseSize,
-    //         .glyph_padding = font.glyphPadding,
-    //         .recs = recs,
-    //         .glyphs = glyphs,
-    //     };
-    //
-    //     const json_str = try std.json.stringifyAlloc(a, font_data, .{ .whitespace = .indent_4 });
-    //     {
-    //         const file = try std.fs.cwd().createFile("src/window/font_data.json", .{
-    //             .read = true,
-    //             .truncate = true,
-    //         });
-    //         defer file.close();
-    //
-    //         _ = try file.writeAll(json_str);
-    //
-    //         std.debug.print("\nwritten to font_data.json successfully\n", .{});
-    //     }
-    // }
-
-    // { // testing text stuffs
-    //     std.debug.print("\n================================================================\n", .{});
-    //     defer std.debug.print("================================================================\n\n", .{});
-    //     {
-    //         const measure = rl.measureTextEx(font, "a", 30, 0);
-    //         std.debug.print("measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ measure.x, measure.y });
-    //     }
-    //     {
-    //         // if (font.glyphs[index].advanceX != 0) textWidth += font.glyphs[index].advanceX;
-    //         // else textWidth += (font.recs[index].width + font.glyphs[index].offsetX);
-    //         const index: usize = @intCast(rl.getGlyphIndex(font, 'a'));
-    //         const width = if (font.glyphs[index].advanceX != 0)
-    //             @as(f32, @floatFromInt(font.glyphs[index].advanceX))
-    //         else
-    //             font.recs[index].width + @as(f32, @floatFromInt(font.glyphs[index].offsetX));
-    //
-    //         std.debug.print("custom measure of char 'a' w/ `Meslo` font -> width: {d} -> height: {d}\n", .{ width, font_size });
-    //     }
-    //     std.debug.print("----------------------------------------------------------------------------------\n", .{});
-    //     {
-    //         const width = rl.measureText("a", 30);
-    //         std.debug.print("measure of char 'a' w/ `default` font -> width: {d} -> height: {d}\n", .{ width, font_size });
-    //     }
-    // }
+    // const font_size = 40;
+    // const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(1920, 1080);
@@ -174,65 +94,36 @@ pub fn main() !void {
                 defer render_texture.end();
                 defer did_draw_to_render_texture = true;
 
-                rl.drawText("super idol", 100, 100, 30, rl.Color.ray_white);
-                rl.drawText("de xiao rong", 100, 400, 30, rl.Color.ray_white);
+                rl.drawText("super idol", 300, 100, 30, rl.Color.ray_white);
+                rl.drawText("de xiao rong", 300, 200, 30, rl.Color.ray_white);
             }
 
             {
-                {
-                    rl.beginMode2D(camera);
-                    defer rl.endMode2D();
+                rl.beginMode2D(camera);
+                defer rl.endMode2D();
 
-                    { // ball
-                        rl.drawCircle(@intFromFloat(ball_position.x), @intFromFloat(ball_position.y), 40, rl.Color.sky_blue);
-                    }
+                // draw ball
+                rl.drawCircle(@intFromFloat(ball_position.x), @intFromFloat(ball_position.y), 40, rl.Color.sky_blue);
 
-                    rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
-                    rl.drawCircle(200, 500, 100, rl.Color.yellow);
+                // normal raylib calls
+                rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
+                rl.drawCircle(200, 500, 100, rl.Color.yellow);
 
-                    const measure = rl.measureTextEx(font, "a", 20, 0);
+                // texture test
+                rl.drawTextureRec(
+                    render_texture.texture,
+                    rl.Rectangle{
+                        .x = 0,
+                        .y = 0,
+                        .width = @floatFromInt(render_texture.texture.width),
+                        .height = @floatFromInt(-render_texture.texture.height),
+                    },
+                    .{ .x = 100, .y = 600 },
+                    rl.Color.white,
+                );
 
-                    var buf: [1024]u8 = undefined;
-                    const txt = try std.fmt.bufPrintZ(&buf, "measure width {d} | height {d}", .{ measure.x, measure.y });
-                    rl.drawText(txt, 300, 300, 40, rl.Color.ray_white);
-
-                    rl.drawTextureRec(
-                        render_texture.texture,
-                        rl.Rectangle{
-                            .x = 0,
-                            .y = 0,
-                            .width = @floatFromInt(render_texture.texture.width),
-                            .height = @floatFromInt(-render_texture.texture.height),
-                        },
-                        .{ .x = 100, .y = 600 },
-                        rl.Color.white,
-                    );
-
-                    {
-                        rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
-                    }
-                }
-
-                {
-                    const view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
-                    const view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, camera);
-                    const view_width = view_end.x - view_start.x;
-                    const view_height = view_end.y - view_start.y;
-
-                    try drawTextAtBottomRight(
-                        "view_width: {d} | view_height: {d}",
-                        .{ view_width, view_height },
-                        30,
-                        .{ .x = 40, .y = 40 },
-                    );
-
-                    try drawTextAtBottomRight(
-                        "start_x: {d} | start_y: {d}",
-                        .{ view_start.x, view_start.y },
-                        30,
-                        .{ .x = 40, .y = 100 },
-                    );
-                }
+                // draw border of original view
+                rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
             }
         }
     }
@@ -275,6 +166,27 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
     rl.drawText(text, x, y, font_size, rl.Color.ray_white);
 }
 
+fn printViewInfo(camera: rl.Camera2D) !void {
+    const view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
+    const view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, camera);
+    const view_width = view_end.x - view_start.x;
+    const view_height = view_end.y - view_start.y;
+
+    try drawTextAtBottomRight(
+        "view_width: {d} | view_height: {d}",
+        .{ view_width, view_height },
+        30,
+        .{ .x = 40, .y = 40 },
+    );
+
+    try drawTextAtBottomRight(
+        "start_x: {d} | start_y: {d}",
+        .{ view_start.x, view_start.y },
+        30,
+        .{ .x = 40, .y = 100 },
+    );
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -300,3 +212,45 @@ pub const FontData = struct {
     recs: []Rectangle,
     glyphs: []GlyphData,
 };
+
+fn saveFontDataToFile(font: rl.Font) !void {
+    const a = std.heap.page_allocator;
+
+    var recs = try a.alloc(Rectangle, @intCast(font.glyphCount));
+    var glyphs = try a.alloc(GlyphData, @intCast(font.glyphCount));
+
+    for (0..@intCast(font.glyphCount)) |i| {
+        recs[i] = Rectangle{
+            .x = font.recs[i].x,
+            .y = font.recs[i].y,
+            .width = font.recs[i].width,
+            .height = font.recs[i].height,
+        };
+
+        glyphs[i] = GlyphData{
+            .advanceX = font.glyphs[i].advanceX,
+            .offsetX = @intCast(font.glyphs[i].offsetX),
+            .value = font.glyphs[i].value,
+        };
+    }
+
+    const font_data = FontData{
+        .base_size = font.baseSize,
+        .glyph_padding = font.glyphPadding,
+        .recs = recs,
+        .glyphs = glyphs,
+    };
+
+    const json_str = try std.json.stringifyAlloc(a, font_data, .{ .whitespace = .indent_4 });
+    {
+        const file = try std.fs.cwd().createFile("src/window/font_data.json", .{
+            .read = true,
+            .truncate = true,
+        });
+        defer file.close();
+
+        _ = try file.writeAll(json_str);
+
+        std.debug.print("\nwritten to font_data.json successfully\n", .{});
+    }
+}

@@ -151,6 +151,11 @@ pub const Window = struct {
         self.exa.destroy(self);
     }
 
+    pub fn moveBy(self: *@This(), x: f32, y: f32) void {
+        self.x += x;
+        self.y += y;
+    }
+
     ///////////////////////////// Code Point Iterator
 
     const CodePointIterator = struct {
