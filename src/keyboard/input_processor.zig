@@ -123,19 +123,26 @@ pub const KeyHasher = struct {
     value: u128 = 0,
     bits_to_shift: u7 = 128 - 8,
 
+    fn fromSlice(keys: []const Key) KeyHasher {
+        var self = KeyHasher{};
+        for (keys) |key| self.update(key);
+        return self;
+    }
+    test fromSlice {
+        const hasher = KeyHasher.fromSlice(&[_]Key{ .a, .b });
+        try eq(0x12130000000000000000000000000000, hasher.value);
+    }
+
     fn update(self: *@This(), key: Key) void {
         const new_part: u128 = @intCast(Key.indexOf[@intFromEnum(key)]);
         self.value |= new_part << self.bits_to_shift;
         self.bits_to_shift -= 8;
     }
-
-    test KeyHasher {
+    test update {
         var hasher = KeyHasher{};
         try eq(0, hasher.value);
-
         hasher.update(.a);
         try eq(0x12000000000000000000000000000000, hasher.value);
-
         hasher.update(.b);
         try eq(0x12130000000000000000000000000000, hasher.value);
     }
