@@ -55,38 +55,20 @@ const InputFrame = struct {
         self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, capacity);
     }
 
-    const hash_prime = 0x1000000000000000000013b;
-    const hash_offset = 0x6c62272e07bb014262b821756295c58d;
-    fn hash(self: *@This()) u128 {
-        if (self.downs.items.len == 0) return 0;
-        var hash_value: u128 = hash_offset;
-        for (self.downs.items) |e| {
-            hash_value ^= @intFromEnum(e.key);
-            hash_value *%= hash_prime;
-        }
-        return hash_value;
+    fn hash(self: *@This()) u32 {
+        var hasher = KeyHasher_32.init();
+        for (self.downs.items) |e| hasher.update(e.key);
+        return hasher.final();
     }
     test hash {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
         try frame.keyDown(.a);
-        try eq(0xd228cb694f1a8caf78912b704e4a6204, frame.hash());
+        try eq(0xc40bf6cc, frame.hash());
 
         try frame.keyUp(.a);
-        try eq(0, frame.hash());
-
-        try frame.keyDown(.a);
-        try eq(0xd228cb694f1a8caf78912b704e4a6204, frame.hash());
-
-        try frame.keyDown(.b);
-        try eq(0x88094f69bab1be95aa073305586ec22, frame.hash());
-
-        try frame.keyUp(.b);
-        try eq(0xd228cb694f1a8caf78912b704e4a6204, frame.hash());
-
-        try frame.keyUp(.a);
-        try eq(0, frame.hash());
+        try eq(0x811c9dc5, frame.hash());
     }
 };
 
@@ -110,6 +92,29 @@ test InputFrame {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const KeyHasher_32 = KeyHasher(u32, 0x01000193, 0x811c9dc5);
+pub const KeyHasher_64 = KeyHasher(u64, 0x100000001b3, 0xcbf29ce484222325);
+pub const KeyHasher_128 = KeyHasher(u128, 0x1000000000000000000013b, 0x6c62272e07bb014262b821756295c58d);
+
+fn KeyHasher(comptime T: type, comptime prime: T, comptime offset: T) type {
+    return struct {
+        value: T,
+
+        pub fn init() @This() {
+            return @This(){ .value = offset };
+        }
+
+        pub fn update(self: *@This(), key: Key) void {
+            self.value ^= @intFromEnum(key);
+            self.value *%= prime;
+        }
+
+        pub fn final(self: *@This()) T {
+            return self.value;
+        }
+    };
+}
 
 const Key = enum(u16) {
     null = 0,
