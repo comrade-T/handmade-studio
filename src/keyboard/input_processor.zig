@@ -9,57 +9,75 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const KeyboardTrigger = struct {
+const InputFrame = struct {
     const KeyDownEvent = struct { key: Key = .null, timestamp: i64 = 0 };
-    const cap = 10;
+    const capacity = 10;
 
-    arr: [cap]KeyDownEvent = [_]KeyDownEvent{.{}} ** cap,
-    len: usize = 0,
+    a: Allocator,
+    downs: ArrayList(KeyDownEvent),
+    ups: ArrayList(KeyDownEvent),
 
-    const AppendEventError = error{ReachedMaxCap};
-    pub fn addEvent(self: *@This(), e: KeyDownEvent) AppendEventError!void {
-        if (self.len == cap) return AppendEventError.ReachedMaxCap;
-        self.arr[self.len] = e;
-        self.len += 1;
-    }
-    test addEvent {
-        var state = KeyboardTrigger{};
-        try state.addEvent(KeyDownEvent{ .key = .a, .timestamp = 100 });
-        try eq(1, state.len);
-        try eq(KeyDownEvent{ .key = .a, .timestamp = 100 }, state.arr[0]);
+    pub fn init(a: Allocator) !InputFrame {
+        return .{
+            .a = a,
+            .downs = try ArrayList(KeyDownEvent).initCapacity(a, capacity),
+            .ups = try ArrayList(KeyDownEvent).initCapacity(a, capacity),
+        };
     }
 
-    fn removeEvent(self: *@This(), key: Key) void {
-        if (key == .null) return;
+    pub fn deinit(self: *@This()) void {
+        self.downs.deinit();
+        self.ups.deinit();
+    }
+
+    pub fn keyDown(self: *@This(), key: Key) !void {
+        try self.downs.append(.{ .key = key, .timestamp = std.time.microTimestamp() });
+    }
+
+    pub fn keyUp(self: *@This(), key: Key) !void {
         var found = false;
-        for (self.arr, 0..) |e, i| {
+        var index: usize = 0;
+        for (self.downs.items, 0..) |e, i| {
             if (key == e.key) {
                 found = true;
-                continue;
+                index = i;
+                break;
             }
-            if (!found) continue;
-            if (found) self.arr[i - 1] = e;
         }
-        self.arr[cap - 1] = KeyDownEvent{};
-        if (found) self.len -= 1;
+        if (found) {
+            const removed = self.downs.orderedRemove(index);
+            try self.ups.append(removed);
+        }
     }
-    test removeEvent {
-        var state = KeyboardTrigger{};
-        try state.addEvent(KeyDownEvent{ .key = .a, .timestamp = 100 });
-        state.removeEvent(.a);
-        try eq(0, state.len);
+
+    pub fn clearKeyUps(self: *@This()) !void {
+        self.ups.deinit();
+        self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, capacity);
     }
 };
 
-test KeyboardTrigger {
-    const state = KeyboardTrigger{};
-    try eq(10, state.arr.len);
-    try eq(0, state.len);
+test InputFrame {
+    var frame = try InputFrame.init(testing_allocator);
+    defer frame.deinit();
+
+    try eq(0, frame.downs.items.len);
+    try eq(0, frame.ups.items.len);
+
+    try frame.keyDown(.a);
+    try eq(1, frame.downs.items.len);
+    try eq(0, frame.ups.items.len);
+
+    try frame.keyUp(.a);
+    try eq(0, frame.downs.items.len);
+    try eq(1, frame.ups.items.len);
+
+    try frame.clearKeyUps();
+    try eq(0, frame.ups.items.len);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Key = enum(c_int) {
+const Key = enum(u16) {
     null = 0,
     apostrophe = 39,
     comma = 44,
@@ -174,5 +192,5 @@ const Key = enum(c_int) {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 test {
-    std.testing.refAllDeclsRecursive(KeyboardTrigger);
+    std.testing.refAllDeclsRecursive(InputFrame);
 }
