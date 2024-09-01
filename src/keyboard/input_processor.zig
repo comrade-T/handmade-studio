@@ -11,7 +11,7 @@ const eqStr = std.testing.expectEqualStrings;
 
 const InputFrame = struct {
     const KeyDownEvent = struct { key: Key = .null, timestamp: i64 = 0 };
-    const capacity = 10;
+    const trigger_capacity = 10;
 
     a: Allocator,
     downs: ArrayList(KeyDownEvent),
@@ -20,8 +20,8 @@ const InputFrame = struct {
     pub fn init(a: Allocator) !InputFrame {
         return .{
             .a = a,
-            .downs = try ArrayList(KeyDownEvent).initCapacity(a, capacity),
-            .ups = try ArrayList(KeyDownEvent).initCapacity(a, capacity),
+            .downs = try ArrayList(KeyDownEvent).initCapacity(a, trigger_capacity),
+            .ups = try ArrayList(KeyDownEvent).initCapacity(a, trigger_capacity),
         };
     }
 
@@ -31,6 +31,7 @@ const InputFrame = struct {
     }
 
     pub fn keyDown(self: *@This(), key: Key) !void {
+        if (self.downs.items.len >= trigger_capacity) return error.TriggerOverflow;
         try self.downs.append(.{ .key = key, .timestamp = std.time.microTimestamp() });
     }
 
@@ -52,7 +53,7 @@ const InputFrame = struct {
 
     pub fn clearKeyUps(self: *@This()) !void {
         self.ups.deinit();
-        self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, capacity);
+        self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, trigger_capacity);
     }
 
     pub fn hash(self: *@This()) u128 {
@@ -115,29 +116,6 @@ test InputFrame {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const KeyHasher_32 = KeyHasher(u32, 0x01000193, 0x811c9dc5);
-pub const KeyHasher_64 = KeyHasher(u64, 0x100000001b3, 0xcbf29ce484222325);
-pub const KeyHasher_128 = KeyHasher(u128, 0x1000000000000000000013b, 0x6c62272e07bb014262b821756295c58d);
-
-fn KeyHasher(comptime T: type, comptime prime: T, comptime offset: T) type {
-    return struct {
-        value: T,
-
-        pub fn init() @This() {
-            return @This(){ .value = offset };
-        }
-
-        pub fn update(self: *@This(), key: Key) void {
-            self.value ^= @intFromEnum(key);
-            self.value *%= prime;
-        }
-
-        pub fn final(self: *@This()) T {
-            return self.value;
-        }
-    };
-}
 
 const KeyEnumType = u16;
 const Key = enum(KeyEnumType) {
