@@ -63,6 +63,8 @@ test InputFrame {
     var frame = try InputFrame.init(testing_allocator);
     defer frame.deinit();
 
+    std.debug.print("temp a: {d}\n", .{@intFromEnum(Key.index.null)});
+
     try eq(0, frame.downs.items.len);
     try eq(0, frame.ups.items.len);
 
@@ -103,7 +105,8 @@ fn KeyHasher(comptime T: type, comptime prime: T, comptime offset: T) type {
     };
 }
 
-const Key = enum(u16) {
+const KeyEnumType = u16;
+const Key = enum(KeyEnumType) {
     null = 0,
     apostrophe = 39,
     comma = 44,
@@ -213,6 +216,29 @@ const Key = enum(u16) {
     back = 4,
     volume_up = 24,
     key_volume_down = 25,
+
+    const num_of_fields = std.meta.fields(Key).len;
+    const supported_keys = array();
+    fn array() [num_of_fields]KeyEnumType {
+        comptime var keys: [num_of_fields]KeyEnumType = undefined;
+        inline for (std.meta.fields(Key), 0..) |f, i| keys[i] = f.value;
+        return keys;
+    }
+
+    const index = indexEnum();
+    fn indexEnum() type {
+        comptime var fields: [num_of_fields]std.builtin.Type.EnumField = undefined;
+        for (@typeInfo(Key).Enum.fields, 0..) |field, i| {
+            fields[i] = .{ .name = field.name, .value = @intCast(i) };
+        }
+        const enumInfo = std.builtin.Type.Enum{
+            .tag_type = u8,
+            .fields = &fields,
+            .decls = &[0]std.builtin.Type.Declaration{},
+            .is_exhaustive = true,
+        };
+        return @Type(std.builtin.Type{ .Enum = enumInfo });
+    }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
