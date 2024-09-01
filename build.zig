@@ -51,6 +51,8 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
+    _ = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
+
     _ = addTestableModule(&bops, "src/buffer/write_struct_to_file.zig", &.{
         .{ .name = "s2s", .module = s2s },
     }, zig_build_test_step);
