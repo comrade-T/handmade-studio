@@ -54,6 +54,40 @@ const InputFrame = struct {
         self.ups.deinit();
         self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, capacity);
     }
+
+    const hash_prime = 0x1000000000000000000013b;
+    const hash_offset = 0x6c62272e07bb014262b821756295c58d;
+    fn hash(self: *@This()) u128 {
+        if (self.downs.items.len == 0) return 0;
+        var hash_value: u128 = hash_offset;
+        for (self.downs.items) |e| {
+            hash_value ^= @intFromEnum(e.key);
+            hash_value *%= hash_prime;
+        }
+        return hash_value;
+    }
+    test hash {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a);
+        try eq(0xd228cb694f1a8caf78912b704e4a6204, frame.hash());
+
+        try frame.keyUp(.a);
+        try eq(0, frame.hash());
+
+        try frame.keyDown(.a);
+        try eq(0xd228cb694f1a8caf78912b704e4a6204, frame.hash());
+
+        try frame.keyDown(.b);
+        try eq(0x88094f69bab1be95aa073305586ec22, frame.hash());
+
+        try frame.keyUp(.b);
+        try eq(0xd228cb694f1a8caf78912b704e4a6204, frame.hash());
+
+        try frame.keyUp(.a);
+        try eq(0, frame.hash());
+    }
 };
 
 test InputFrame {
