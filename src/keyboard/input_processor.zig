@@ -56,6 +56,73 @@ const InputFrame = struct {
         self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, trigger_capacity);
     }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    const CandidateReport = struct {
+        over_threshold: bool = false,
+        quick_cut_candidate: ?u128 = null,
+        down_candidate: ?u128 = null,
+        up_candidate: ?u128 = null,
+    };
+
+    const threshold_micro = 250_000;
+    fn hasDownGapsOverThreshold(self: *@This()) bool {
+        if (self.downs.items.len < 2) return false;
+        for (1..self.downs.items.len) |i| {
+            const curr = self.downs.items[i];
+            const prev = self.downs.items[i - 1];
+            if (curr.timestamp - prev.timestamp > threshold_micro) return true;
+        }
+        return false;
+    }
+
+    pub fn produceCandidateReport(self: *@This()) CandidateReport {
+        if (self.downs.items.len == 0) return CandidateReport{};
+
+        var result = CandidateReport{ .over_threshold = self.hasDownGapsOverThreshold() };
+
+        if (!result.over_threshold) {
+            var hasher = KeyHasher{};
+            hasher.update(self.downs.items[self.downs.items.len - 1].key);
+            result.quick_cut_candidate = hasher.value;
+        }
+
+        var hasher = KeyHasher{};
+        for (self.downs.items) |e| hasher.update(e.key);
+        result.down_candidate = hasher.value;
+
+        for (self.ups.items) |e| hasher.update(e.key);
+        result.up_candidate = hasher.value;
+
+        return result;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    const KeyHasher = struct {
+        value: u128 = 0,
+        bits_to_shift: u7 = 128 - 8,
+
+        fn update(self: *@This(), key: Key) void {
+            const new_part: u128 = @intCast(Key.indexOf[@intFromEnum(key)]);
+            self.value |= new_part << self.bits_to_shift;
+            self.bits_to_shift -= 8;
+        }
+
+        test KeyHasher {
+            var hasher = KeyHasher{};
+            try eq(0, hasher.value);
+
+            hasher.update(.a);
+            try eq(0x12000000000000000000000000000000, hasher.value);
+
+            hasher.update(.b);
+            try eq(0x12130000000000000000000000000000, hasher.value);
+        }
+    };
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
     pub fn hash(self: *@This()) u128 {
         var result: u128 = 0;
         for (self.downs.items, 0..) |e, i| {
@@ -243,4 +310,5 @@ const Key = enum(KeyEnumType) {
 
 test {
     std.testing.refAllDeclsRecursive(InputFrame);
+    std.testing.refAllDeclsRecursive(InputFrame.KeyHasher);
 }
