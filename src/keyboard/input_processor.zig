@@ -55,15 +55,49 @@ const InputFrame = struct {
         self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, capacity);
     }
 
-    // TODO: create an array to index Key enum to u8
-    // TODO: try out hashmap inside hashmap instead
+    pub fn hash(self: *@This()) u128 {
+        var result: u128 = 0;
+        for (self.downs.items, 0..) |e, i| {
+            const value: u128 = @intCast(Key.indexOf[@intFromEnum(e.key)]);
+            const num_of_bits_to_shift = 8 * (16 - 1 - @as(u7, @intCast(i)));
+            result |= value << num_of_bits_to_shift;
+        }
+        return result;
+    }
+    test hash {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+        try eq(0, frame.hash());
+        {
+            try frame.keyDown(.a);
+            try eq(0x12000000000000000000000000000000, frame.hash());
+            try frame.keyUp(.a);
+            try eq(0, frame.hash());
+        }
+        {
+            try frame.keyDown(.a);
+            try eq(0x12000000000000000000000000000000, frame.hash());
+            try frame.keyDown(.b);
+            try eq(0x12130000000000000000000000000000, frame.hash());
+            try frame.keyUp(.b);
+            try eq(0x12000000000000000000000000000000, frame.hash());
+            try frame.keyUp(.a);
+            try eq(0, frame.hash());
+        }
+        {
+            try frame.keyDown(.a);
+            try frame.keyDown(.b);
+            try frame.keyUp(.a);
+            try eq(0x13000000000000000000000000000000, frame.hash());
+            try frame.keyUp(.b);
+            try eq(0, frame.hash());
+        }
+    }
 };
 
 test InputFrame {
     var frame = try InputFrame.init(testing_allocator);
     defer frame.deinit();
-
-    std.debug.print("temp a: {d}\n", .{@intFromEnum(Key.index.null)});
 
     try eq(0, frame.downs.items.len);
     try eq(0, frame.ups.items.len);
@@ -218,26 +252,12 @@ const Key = enum(KeyEnumType) {
     key_volume_down = 25,
 
     const num_of_fields = std.meta.fields(Key).len;
-    const supported_keys = array();
-    fn array() [num_of_fields]KeyEnumType {
-        comptime var keys: [num_of_fields]KeyEnumType = undefined;
-        inline for (std.meta.fields(Key), 0..) |f, i| keys[i] = f.value;
+    const lookup_array_len = 400;
+    const indexOf = generateLookUpArray();
+    fn generateLookUpArray() [lookup_array_len]u8 {
+        comptime var keys = [_]u8{0} ** lookup_array_len;
+        inline for (std.meta.fields(Key), 0..) |f, i| keys[@intCast(f.value)] = @intCast(i);
         return keys;
-    }
-
-    const index = indexEnum();
-    fn indexEnum() type {
-        comptime var fields: [num_of_fields]std.builtin.Type.EnumField = undefined;
-        for (@typeInfo(Key).Enum.fields, 0..) |field, i| {
-            fields[i] = .{ .name = field.name, .value = @intCast(i) };
-        }
-        const enumInfo = std.builtin.Type.Enum{
-            .tag_type = u8,
-            .fields = &fields,
-            .decls = &[0]std.builtin.Type.Declaration{},
-            .is_exhaustive = true,
-        };
-        return @Type(std.builtin.Type{ .Enum = enumInfo });
     }
 };
 
