@@ -9,7 +9,7 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const InputFrame = struct {
+pub const InputFrame = struct {
     const KeyDownEvent = struct { key: Key = .null, timestamp: i64 = 0 };
     const trigger_capacity = 10;
 
@@ -96,71 +96,6 @@ const InputFrame = struct {
 
         return result;
     }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////
-
-    const KeyHasher = struct {
-        value: u128 = 0,
-        bits_to_shift: u7 = 128 - 8,
-
-        fn update(self: *@This(), key: Key) void {
-            const new_part: u128 = @intCast(Key.indexOf[@intFromEnum(key)]);
-            self.value |= new_part << self.bits_to_shift;
-            self.bits_to_shift -= 8;
-        }
-
-        test KeyHasher {
-            var hasher = KeyHasher{};
-            try eq(0, hasher.value);
-
-            hasher.update(.a);
-            try eq(0x12000000000000000000000000000000, hasher.value);
-
-            hasher.update(.b);
-            try eq(0x12130000000000000000000000000000, hasher.value);
-        }
-    };
-
-    //////////////////////////////////////////////////////////////////////////////////////////////
-
-    pub fn hash(self: *@This()) u128 {
-        var result: u128 = 0;
-        for (self.downs.items, 0..) |e, i| {
-            const value: u128 = @intCast(Key.indexOf[@intFromEnum(e.key)]);
-            const num_of_bits_to_shift = 8 * (16 - 1 - @as(u7, @intCast(i)));
-            result |= value << num_of_bits_to_shift;
-        }
-        return result;
-    }
-    test hash {
-        var frame = try InputFrame.init(testing_allocator);
-        defer frame.deinit();
-        try eq(0, frame.hash());
-        {
-            try frame.keyDown(.a);
-            try eq(0x12000000000000000000000000000000, frame.hash());
-            try frame.keyUp(.a);
-            try eq(0, frame.hash());
-        }
-        {
-            try frame.keyDown(.a);
-            try eq(0x12000000000000000000000000000000, frame.hash());
-            try frame.keyDown(.b);
-            try eq(0x12130000000000000000000000000000, frame.hash());
-            try frame.keyUp(.b);
-            try eq(0x12000000000000000000000000000000, frame.hash());
-            try frame.keyUp(.a);
-            try eq(0, frame.hash());
-        }
-        {
-            try frame.keyDown(.a);
-            try frame.keyDown(.b);
-            try frame.keyUp(.a);
-            try eq(0x13000000000000000000000000000000, frame.hash());
-            try frame.keyUp(.b);
-            try eq(0, frame.hash());
-        }
-    }
 };
 
 test InputFrame {
@@ -183,6 +118,28 @@ test InputFrame {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const KeyHasher = struct {
+    value: u128 = 0,
+    bits_to_shift: u7 = 128 - 8,
+
+    fn update(self: *@This(), key: Key) void {
+        const new_part: u128 = @intCast(Key.indexOf[@intFromEnum(key)]);
+        self.value |= new_part << self.bits_to_shift;
+        self.bits_to_shift -= 8;
+    }
+
+    test KeyHasher {
+        var hasher = KeyHasher{};
+        try eq(0, hasher.value);
+
+        hasher.update(.a);
+        try eq(0x12000000000000000000000000000000, hasher.value);
+
+        hasher.update(.b);
+        try eq(0x12130000000000000000000000000000, hasher.value);
+    }
+};
 
 const KeyEnumType = u16;
 const Key = enum(KeyEnumType) {
@@ -310,5 +267,5 @@ const Key = enum(KeyEnumType) {
 
 test {
     std.testing.refAllDeclsRecursive(InputFrame);
-    std.testing.refAllDeclsRecursive(InputFrame.KeyHasher);
+    std.testing.refAllDeclsRecursive(KeyHasher);
 }
