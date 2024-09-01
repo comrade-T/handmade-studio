@@ -55,21 +55,8 @@ const InputFrame = struct {
         self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, capacity);
     }
 
-    fn hash(self: *@This()) u32 {
-        var hasher = KeyHasher_32.init();
-        for (self.downs.items) |e| hasher.update(e.key);
-        return hasher.final();
-    }
-    test hash {
-        var frame = try InputFrame.init(testing_allocator);
-        defer frame.deinit();
-
-        try frame.keyDown(.a);
-        try eq(0xc40bf6cc, frame.hash());
-
-        try frame.keyUp(.a);
-        try eq(0x811c9dc5, frame.hash());
-    }
+    // TODO: create an array to index Key enum to u8
+    // TODO: try out hashmap inside hashmap instead
 };
 
 test InputFrame {
