@@ -16,7 +16,10 @@ pub const InputFrame = struct {
     a: Allocator,
     downs: ArrayList(KeyDownEvent),
     ups: ArrayList(KeyDownEvent),
+
     previous_down_candidate: ?u128 = null,
+    latest_event_type: enum { up, down, none } = .none,
+    emitted: bool = false,
 
     pub fn init(a: Allocator) !InputFrame {
         return .{
@@ -33,6 +36,7 @@ pub const InputFrame = struct {
 
     const TimeStampOpttion = union(enum) { now, testing: i64 };
     pub fn keyDown(self: *@This(), key: Key, timestamp_opt: TimeStampOpttion) !void {
+        defer self.latest_event_type = .down;
         if (self.downs.items.len >= trigger_capacity) return error.TriggerOverflow;
         const timestamp = switch (timestamp_opt) {
             .now => std.time.milliTimestamp(),
@@ -42,6 +46,10 @@ pub const InputFrame = struct {
     }
 
     pub fn keyUp(self: *@This(), key: Key) !void {
+        defer {
+            self.latest_event_type = .up;
+            if (self.downs.items.len == 0) self.emitted = false;
+        }
         var found = false;
         var index: usize = 0;
         for (self.downs.items, 0..) |e, i| {
@@ -98,29 +106,31 @@ pub const InputFrame = struct {
         over_threshold: bool = false,
         quick: ?u128 = null,
         down: ?u128 = null,
-        prev: ?u128 = null,
+        prev_down: ?u128 = null,
+        prev_up: ?u128 = null,
     };
 
     pub fn produceCandidateReport(self: *@This()) CandidateReport {
-        if (self.downs.items.len == 0) return CandidateReport{ .prev = self.previous_down_candidate };
+        if (self.downs.items.len == 0) return CandidateReport{ .prev_down = self.previous_down_candidate };
 
-        var result = CandidateReport{
+        var report = CandidateReport{
             .over_threshold = self.hasDownGapsOverThreshold(),
-            .prev = self.previous_down_candidate,
+            .prev_down = self.previous_down_candidate,
         };
 
-        if (!result.over_threshold) {
+        if (!report.over_threshold) {
             var hasher = KeyHasher{};
             hasher.update(self.downs.items[self.downs.items.len - 1].key);
-            result.quick = hasher.value;
+            report.quick = hasher.value;
         }
 
         var hasher = KeyHasher{};
         for (self.downs.items) |e| hasher.update(e.key);
-        result.down = hasher.value;
-        self.previous_down_candidate = hasher.value;
+        report.down = hasher.value;
 
-        return result;
+        if (!self.emitted) self.previous_down_candidate = hasher.value;
+
+        return report;
     }
 
     test produceCandidateReport {
@@ -137,31 +147,44 @@ pub const InputFrame = struct {
         try eq(CandidateReport{
             .quick = 0x13000000000000000000000000000000,
             .down = 0x12130000000000000000000000000000,
-            .prev = 0x12000000000000000000000000000000,
+            .prev_down = 0x12000000000000000000000000000000,
         }, frame.produceCandidateReport());
 
         try frame.keyUp(.a);
         try eq(CandidateReport{
             .quick = 0x13000000000000000000000000000000,
             .down = 0x13000000000000000000000000000000,
-            .prev = 0x12130000000000000000000000000000,
+            .prev_down = 0x12130000000000000000000000000000,
         }, frame.produceCandidateReport());
     }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const EditorMode = union(enum) {
-    editor: enum { editor },
-    window: enum { normal, visual, insert, select },
-};
+const EditorMode = enum { editor, normal, visual, insert, select };
 
 const MappingChecker = *const fn (ctx: *anyopaque, mode: EditorMode, trigger: ?u128) bool;
-pub fn devilTrigger(mode: EditorMode, frame: *InputFrame, ck: MappingChecker, cx: *anyopaque) ?u128 {
+pub fn devilTrigger(
+    mode: EditorMode,
+    frame: *InputFrame,
+    down_ck: MappingChecker,
+    up_ck: MappingChecker,
+    cx: *anyopaque,
+) ?u128 {
     const r = frame.produceCandidateReport();
 
     switch (mode) {
-        .editor => if (ck(cx, mode, r.down)) return r.down,
+        .editor, .normal, .visual => {
+            if (up_ck(cx, mode, r.down)) return null;
+            if (down_ck(cx, mode, r.down)) {
+                frame.emitted = true;
+                return r.down;
+            }
+            if (frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
+                frame.emitted = true;
+                return r.prev_down;
+            }
+        },
         else => return null,
     }
 
@@ -169,12 +192,26 @@ pub fn devilTrigger(mode: EditorMode, frame: *InputFrame, ck: MappingChecker, cx
 }
 
 const Mock = struct {
-    fn chk(_: *anyopaque, mode: EditorMode, trigger: ?u128) bool {
+    fn down_ck(_: *anyopaque, mode: EditorMode, trigger: ?u128) bool {
         if (trigger == null) return false;
         switch (mode) {
             .editor => {
                 return switch (trigger.?) {
                     0x12000000000000000000000000000000 => true, // a
+                    0x1d120000000000000000000000000000 => true, // l a
+                    else => false,
+                };
+            },
+            else => return false,
+        }
+        return false;
+    }
+    fn up_ck(_: *anyopaque, mode: EditorMode, trigger: ?u128) bool {
+        if (trigger == null) return false;
+        switch (mode) {
+            .editor => {
+                return switch (trigger.?) {
+                    0x1d000000000000000000000000000000 => true, // l
                     else => false,
                 };
             },
@@ -183,35 +220,89 @@ const Mock = struct {
         return false;
     }
 };
+fn testDTWithMock(expected: ?u128, mode: EditorMode, frame: *InputFrame) !void {
+    var cx = Mock{};
+    const result = devilTrigger(mode, frame, Mock.down_ck, Mock.up_ck, &cx);
+    errdefer if (result) |value| std.debug.print("got 0x{x} instead\n", .{value});
+    try eq(expected, result);
+}
 
 test "editor mode" {
-    const f = devilTrigger;
-    var cx = Mock{};
-
-    { // unmapped, not prefix, single key down, then up
+    { // f12, unmapped, not prefix, single key down, then up
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+        try testDTWithMock(null, .editor, &frame);
 
         try frame.keyDown(.f12, .{ .testing = 0 });
-        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+        try testDTWithMock(null, .editor, &frame);
 
         try frame.keyUp(.f12);
-        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+        try testDTWithMock(null, .editor, &frame);
     }
 
-    { // mapped, not prefix, single key down, then up
+    { // a, mapped, not prefix, single key down, then up
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+        try testDTWithMock(null, .editor, &frame);
 
         try frame.keyDown(.a, .{ .testing = 0 });
-        try eq(0x12000000000000000000000000000000, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+        try testDTWithMock(0x12000000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.a);
-        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+        try testDTWithMock(null, .editor, &frame);
+    }
+
+    { // l, mapped, is prefix
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testDTWithMock(0x1d000000000000000000000000000000, .editor, &frame);
+    }
+
+    { // l a, mapped, not prefix | l mapped, is prefix
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 200 });
+        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.a);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testDTWithMock(null, .editor, &frame);
+    }
+
+    { // l f12, unmapped, not prefix | l mapped, is prefix
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.f12, .{ .testing = 200 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.f12);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testDTWithMock(0x1d000000000000000000000000000000, .editor, &frame);
     }
 }
 
