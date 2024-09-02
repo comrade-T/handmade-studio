@@ -16,6 +16,7 @@ pub const InputFrame = struct {
     a: Allocator,
     downs: ArrayList(KeyDownEvent),
     ups: ArrayList(KeyDownEvent),
+    previous_down_candidate: ?u128 = null,
 
     pub fn init(a: Allocator) !InputFrame {
         return .{
@@ -97,13 +98,16 @@ pub const InputFrame = struct {
         over_threshold: bool = false,
         quick_cut_candidate: ?u128 = null,
         down_candidate: ?u128 = null,
-        up_candidate: ?u128 = null,
+        previous_down_candidate: ?u128 = null,
     };
 
     pub fn produceCandidateReport(self: *@This()) CandidateReport {
-        if (self.downs.items.len == 0) return CandidateReport{};
+        if (self.downs.items.len == 0) return CandidateReport{ .previous_down_candidate = self.previous_down_candidate };
 
-        var result = CandidateReport{ .over_threshold = self.hasDownGapsOverThreshold() };
+        var result = CandidateReport{
+            .over_threshold = self.hasDownGapsOverThreshold(),
+            .previous_down_candidate = self.previous_down_candidate,
+        };
 
         if (!result.over_threshold) {
             var hasher = KeyHasher{};
@@ -114,9 +118,7 @@ pub const InputFrame = struct {
         var hasher = KeyHasher{};
         for (self.downs.items) |e| hasher.update(e.key);
         result.down_candidate = hasher.value;
-
-        for (self.ups.items) |e| hasher.update(e.key);
-        result.up_candidate = hasher.value;
+        self.previous_down_candidate = hasher.value;
 
         return result;
     }
@@ -129,7 +131,20 @@ pub const InputFrame = struct {
         try eq(CandidateReport{
             .quick_cut_candidate = 0x12000000000000000000000000000000,
             .down_candidate = 0x12000000000000000000000000000000,
-            .up_candidate = 0x12000000000000000000000000000000,
+        }, frame.produceCandidateReport());
+
+        try frame.keyDown(.b, .{ .testing = 50 });
+        try eq(CandidateReport{
+            .quick_cut_candidate = 0x13000000000000000000000000000000,
+            .down_candidate = 0x12130000000000000000000000000000,
+            .previous_down_candidate = 0x12000000000000000000000000000000,
+        }, frame.produceCandidateReport());
+
+        try frame.keyUp(.a);
+        try eq(CandidateReport{
+            .quick_cut_candidate = 0x13000000000000000000000000000000,
+            .down_candidate = 0x13000000000000000000000000000000,
+            .previous_down_candidate = 0x12130000000000000000000000000000,
         }, frame.produceCandidateReport());
     }
 };
