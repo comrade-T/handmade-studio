@@ -30,9 +30,14 @@ pub const InputFrame = struct {
         self.ups.deinit();
     }
 
-    pub fn keyDown(self: *@This(), key: Key) !void {
+    const TimeStampOpttion = union(enum) { now, testing: i64 };
+    pub fn keyDown(self: *@This(), key: Key, timestamp_opt: TimeStampOpttion) !void {
         if (self.downs.items.len >= trigger_capacity) return error.TriggerOverflow;
-        try self.downs.append(.{ .key = key, .timestamp = std.time.microTimestamp() });
+        const timestamp = switch (timestamp_opt) {
+            .now => std.time.milliTimestamp(),
+            .testing => |t| t,
+        };
+        try self.downs.append(.{ .key = key, .timestamp = timestamp });
     }
 
     pub fn keyUp(self: *@This(), key: Key) !void {
@@ -56,7 +61,37 @@ pub const InputFrame = struct {
         self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, trigger_capacity);
     }
 
+    test "keyDown, keyUp, clearKeyUps" {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try eq(0, frame.downs.items.len);
+        try eq(0, frame.ups.items.len);
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try eq(1, frame.downs.items.len);
+        try eq(0, frame.ups.items.len);
+
+        try frame.keyUp(.a);
+        try eq(0, frame.downs.items.len);
+        try eq(1, frame.ups.items.len);
+
+        try frame.clearKeyUps();
+        try eq(0, frame.ups.items.len);
+    }
+
     //////////////////////////////////////////////////////////////////////////////////////////////
+
+    const threshold_millis = 250;
+    fn hasDownGapsOverThreshold(self: *@This()) bool {
+        if (self.downs.items.len < 2) return false;
+        for (1..self.downs.items.len) |i| {
+            const curr = self.downs.items[i];
+            const prev = self.downs.items[i - 1];
+            if (curr.timestamp - prev.timestamp > threshold_millis) return true;
+        }
+        return false;
+    }
 
     const CandidateReport = struct {
         over_threshold: bool = false,
@@ -64,17 +99,6 @@ pub const InputFrame = struct {
         down_candidate: ?u128 = null,
         up_candidate: ?u128 = null,
     };
-
-    const threshold_micro = 250_000;
-    fn hasDownGapsOverThreshold(self: *@This()) bool {
-        if (self.downs.items.len < 2) return false;
-        for (1..self.downs.items.len) |i| {
-            const curr = self.downs.items[i];
-            const prev = self.downs.items[i - 1];
-            if (curr.timestamp - prev.timestamp > threshold_micro) return true;
-        }
-        return false;
-    }
 
     pub fn produceCandidateReport(self: *@This()) CandidateReport {
         if (self.downs.items.len == 0) return CandidateReport{};
@@ -96,26 +120,19 @@ pub const InputFrame = struct {
 
         return result;
     }
+
+    test produceCandidateReport {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try eq(CandidateReport{
+            .quick_cut_candidate = 0x12000000000000000000000000000000,
+            .down_candidate = 0x12000000000000000000000000000000,
+            .up_candidate = 0x12000000000000000000000000000000,
+        }, frame.produceCandidateReport());
+    }
 };
-
-test InputFrame {
-    var frame = try InputFrame.init(testing_allocator);
-    defer frame.deinit();
-
-    try eq(0, frame.downs.items.len);
-    try eq(0, frame.ups.items.len);
-
-    try frame.keyDown(.a);
-    try eq(1, frame.downs.items.len);
-    try eq(0, frame.ups.items.len);
-
-    try frame.keyUp(.a);
-    try eq(0, frame.downs.items.len);
-    try eq(1, frame.ups.items.len);
-
-    try frame.clearKeyUps();
-    try eq(0, frame.ups.items.len);
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
