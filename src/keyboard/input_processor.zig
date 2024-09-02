@@ -96,28 +96,28 @@ pub const InputFrame = struct {
 
     const CandidateReport = struct {
         over_threshold: bool = false,
-        quick_cut_candidate: ?u128 = null,
-        down_candidate: ?u128 = null,
-        previous_down_candidate: ?u128 = null,
+        quick: ?u128 = null,
+        down: ?u128 = null,
+        prev: ?u128 = null,
     };
 
     pub fn produceCandidateReport(self: *@This()) CandidateReport {
-        if (self.downs.items.len == 0) return CandidateReport{ .previous_down_candidate = self.previous_down_candidate };
+        if (self.downs.items.len == 0) return CandidateReport{ .prev = self.previous_down_candidate };
 
         var result = CandidateReport{
             .over_threshold = self.hasDownGapsOverThreshold(),
-            .previous_down_candidate = self.previous_down_candidate,
+            .prev = self.previous_down_candidate,
         };
 
         if (!result.over_threshold) {
             var hasher = KeyHasher{};
             hasher.update(self.downs.items[self.downs.items.len - 1].key);
-            result.quick_cut_candidate = hasher.value;
+            result.quick = hasher.value;
         }
 
         var hasher = KeyHasher{};
         for (self.downs.items) |e| hasher.update(e.key);
-        result.down_candidate = hasher.value;
+        result.down = hasher.value;
         self.previous_down_candidate = hasher.value;
 
         return result;
@@ -129,22 +129,22 @@ pub const InputFrame = struct {
 
         try frame.keyDown(.a, .{ .testing = 0 });
         try eq(CandidateReport{
-            .quick_cut_candidate = 0x12000000000000000000000000000000,
-            .down_candidate = 0x12000000000000000000000000000000,
+            .quick = 0x12000000000000000000000000000000,
+            .down = 0x12000000000000000000000000000000,
         }, frame.produceCandidateReport());
 
         try frame.keyDown(.b, .{ .testing = 50 });
         try eq(CandidateReport{
-            .quick_cut_candidate = 0x13000000000000000000000000000000,
-            .down_candidate = 0x12130000000000000000000000000000,
-            .previous_down_candidate = 0x12000000000000000000000000000000,
+            .quick = 0x13000000000000000000000000000000,
+            .down = 0x12130000000000000000000000000000,
+            .prev = 0x12000000000000000000000000000000,
         }, frame.produceCandidateReport());
 
         try frame.keyUp(.a);
         try eq(CandidateReport{
-            .quick_cut_candidate = 0x13000000000000000000000000000000,
-            .down_candidate = 0x13000000000000000000000000000000,
-            .previous_down_candidate = 0x12130000000000000000000000000000,
+            .quick = 0x13000000000000000000000000000000,
+            .down = 0x13000000000000000000000000000000,
+            .prev = 0x12130000000000000000000000000000,
         }, frame.produceCandidateReport());
     }
 };
@@ -156,28 +156,63 @@ const EditorMode = union(enum) {
     window: enum { normal, visual, insert, select },
 };
 
-const MappingChecker = *const fn (ctx: *anyopaque, mode: EditorMode, trigger: u128) bool;
-pub fn devilTrigger(frame: InputFrame, chk: MappingChecker, ctx: *anyopaque, mode: EditorMode) ?u128 {
-    // TODO:
+const MappingChecker = *const fn (ctx: *anyopaque, mode: EditorMode, trigger: ?u128) bool;
+pub fn devilTrigger(mode: EditorMode, frame: *InputFrame, ck: MappingChecker, cx: *anyopaque) ?u128 {
+    const r = frame.produceCandidateReport();
+
+    switch (mode) {
+        .editor => if (ck(cx, mode, r.down)) return r.down,
+        else => return null,
+    }
 
     return null;
 }
 
-test devilTrigger {
-    const f = devilTrigger;
-
-    const Mock = struct {
-        fn chk(_: *anyopaque, mode: EditorMode, trigger: u128) bool {
-            // TODO:
+const Mock = struct {
+    fn chk(_: *anyopaque, mode: EditorMode, trigger: ?u128) bool {
+        if (trigger == null) return false;
+        switch (mode) {
+            .editor => {
+                return switch (trigger.?) {
+                    0x12000000000000000000000000000000 => true, // a
+                    else => false,
+                };
+            },
+            else => return false,
         }
-    };
-    const mock_ctx = Mock{};
+        return false;
+    }
+};
 
-    var ipf = try InputFrame.init(testing_allocator);
-    defer ipf.deinit();
+test "editor mode" {
+    const f = devilTrigger;
+    var cx = Mock{};
 
-    try ipf.keyDown(.a, .{ .testing = 0 });
-    try eq(0x12000000000000000000000000000000, f(ipf, Mock.chk, &mock_ctx, .{ .editor = .editor }));
+    { // unmapped, not prefix, single key down, then up
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+
+        try frame.keyDown(.f12, .{ .testing = 0 });
+        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+
+        try frame.keyUp(.f12);
+        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+    }
+
+    { // mapped, not prefix, single key down, then up
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try eq(0x12000000000000000000000000000000, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+
+        try frame.keyUp(.a);
+        try eq(null, f(.{ .editor = .editor }, &frame, Mock.chk, &cx));
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
