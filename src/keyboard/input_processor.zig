@@ -151,6 +151,37 @@ pub const InputFrame = struct {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const EditorMode = union(enum) {
+    editor: enum { editor },
+    window: enum { normal, visual, insert, select },
+};
+
+const MappingChecker = *const fn (ctx: *anyopaque, mode: EditorMode, trigger: u128) bool;
+pub fn devilTrigger(frame: InputFrame, chk: MappingChecker, ctx: *anyopaque, mode: EditorMode) ?u128 {
+    // TODO:
+
+    return null;
+}
+
+test devilTrigger {
+    const f = devilTrigger;
+
+    const Mock = struct {
+        fn chk(_: *anyopaque, mode: EditorMode, trigger: u128) bool {
+            // TODO:
+        }
+    };
+    const mock_ctx = Mock{};
+
+    var ipf = try InputFrame.init(testing_allocator);
+    defer ipf.deinit();
+
+    try ipf.keyDown(.a, .{ .testing = 0 });
+    try eq(0x12000000000000000000000000000000, f(ipf, Mock.chk, &mock_ctx, .{ .editor = .editor }));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 pub const KeyHasher = struct {
     value: u128 = 0,
     bits_to_shift: u7 = 128 - 8,
