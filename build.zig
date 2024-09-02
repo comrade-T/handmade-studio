@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
-    _ = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
+    const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/buffer/write_struct_to_file.zig", &.{
         .{ .name = "s2s", .module = s2s },
@@ -192,6 +192,17 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
+    }
+    {
+        const path = "src/input_processor_sim.zig";
+        const exe = b.addExecutable(.{
+            .name = "input_processor_sim",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("input_processor", input_processor.module);
+        addRunnableRaylibFile(b, exe, raylib, path);
     }
     {
         const path = "src/camera3d_example.zig";

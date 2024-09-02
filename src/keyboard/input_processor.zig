@@ -38,6 +38,8 @@ pub const InputFrame = struct {
 
     const TimeStampOpttion = union(enum) { now, testing: i64 };
     pub fn keyDown(self: *@This(), key: Key, timestamp_opt: TimeStampOpttion) !void {
+        for (self.downs.items) |e| if (e.key == key) return;
+
         self.latest_event_type = .down;
         if (self.downs.items.len >= trigger_capacity) return error.TriggerOverflow;
         const timestamp = switch (timestamp_opt) {
@@ -479,7 +481,7 @@ pub const KeyHasher = struct {
 };
 
 const KeyEnumType = u16;
-const Key = enum(KeyEnumType) {
+pub const Key = enum(KeyEnumType) {
     null = 0,
     apostrophe = 39,
     comma = 44,
@@ -591,11 +593,18 @@ const Key = enum(KeyEnumType) {
     key_volume_down = 25,
 
     const num_of_fields = std.meta.fields(Key).len;
-    const lookup_array_len = 400;
-    const indexOf = generateLookUpArray();
-    fn generateLookUpArray() [lookup_array_len]u8 {
-        comptime var keys = [_]u8{0} ** lookup_array_len;
+    const index_array_len = 400;
+    const indexOf = generateIndexArray();
+    fn generateIndexArray() [index_array_len]u8 {
+        comptime var keys = [_]u8{0} ** index_array_len;
         inline for (std.meta.fields(Key), 0..) |f, i| keys[@intCast(f.value)] = @intCast(i);
+        return keys;
+    }
+
+    pub const values = generateValuesArray();
+    fn generateValuesArray() [num_of_fields]KeyEnumType {
+        comptime var keys = [_]KeyEnumType{0} ** num_of_fields;
+        inline for (std.meta.fields(Key), 0..) |f, i| keys[i] = f.value;
         return keys;
     }
 };
