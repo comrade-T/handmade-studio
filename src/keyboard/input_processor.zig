@@ -36,7 +36,7 @@ pub const InputFrame = struct {
 
     const TimeStampOpttion = union(enum) { now, testing: i64 };
     pub fn keyDown(self: *@This(), key: Key, timestamp_opt: TimeStampOpttion) !void {
-        defer self.latest_event_type = .down;
+        self.latest_event_type = .down;
         if (self.downs.items.len >= trigger_capacity) return error.TriggerOverflow;
         const timestamp = switch (timestamp_opt) {
             .now => std.time.milliTimestamp(),
@@ -46,8 +46,8 @@ pub const InputFrame = struct {
     }
 
     pub fn keyUp(self: *@This(), key: Key) !void {
+        self.latest_event_type = .up;
         defer {
-            self.latest_event_type = .up;
             if (self.downs.items.len == 0) self.emitted = false;
         }
         var found = false;
@@ -176,10 +176,14 @@ pub fn devilTrigger(
     switch (mode) {
         .editor, .normal, .visual => {
             if (up_ck(cx, mode, r.down)) return null;
-            if (down_ck(cx, mode, r.down)) {
+
+            if (frame.latest_event_type == .down and down_ck(cx, mode, r.down)) {
                 frame.emitted = true;
                 return r.down;
             }
+
+            if (frame.emitted) return null;
+
             if (frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
                 frame.emitted = true;
                 return r.prev_down;
@@ -199,6 +203,7 @@ const Mock = struct {
                 return switch (trigger.?) {
                     0x12000000000000000000000000000000 => true, // a
                     0x1d120000000000000000000000000000 => true, // l a
+                    0x1d130000000000000000000000000000 => true, // l b
                     else => false,
                 };
             },
@@ -228,7 +233,9 @@ fn testDTWithMock(expected: ?u128, mode: EditorMode, frame: *InputFrame) !void {
 }
 
 test "editor mode" {
-    { // f12, unmapped, not prefix, single key down, then up
+    // f12 down -> f12 up
+    // f12, unmapped, not prefix, single key down, then up
+    {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
@@ -241,7 +248,9 @@ test "editor mode" {
         try testDTWithMock(null, .editor, &frame);
     }
 
-    { // a, mapped, not prefix, single key down, then up
+    // a down -> a up
+    // a, mapped, not prefix
+    {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
@@ -254,7 +263,9 @@ test "editor mode" {
         try testDTWithMock(null, .editor, &frame);
     }
 
-    { // l, mapped, is prefix
+    // l down -> l up
+    // l, mapped, is prefix
+    {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
@@ -267,7 +278,9 @@ test "editor mode" {
         try testDTWithMock(0x1d000000000000000000000000000000, .editor, &frame);
     }
 
-    { // l a, mapped, not prefix | l mapped, is prefix
+    // l down -> a down -> l up -> a up
+    // l a, mapped, not prefix | l mapped, is prefix
+    {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
@@ -286,11 +299,38 @@ test "editor mode" {
         try testDTWithMock(null, .editor, &frame);
     }
 
-    { // l f12, unmapped, not prefix | l mapped, is prefix
+    // l down -> a down -> a up -> b down -> b up -> l up
+    // l a -> l b, both mapped, both not prefix | l mapped, is prefix
+    {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
         try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 200 });
+        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.a);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.b, .{ .testing = 400 });
+        try testDTWithMock(0x1d130000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.b);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testDTWithMock(null, .editor, &frame);
+    }
+
+    // l down -> f12 down -> f12 up -> l up
+    // l f12, unmapped, not prefix | l mapped, is prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
 
         try frame.keyDown(.l, .{ .testing = 0 });
         try testDTWithMock(null, .editor, &frame);
@@ -303,6 +343,53 @@ test "editor mode" {
 
         try frame.keyUp(.l);
         try testDTWithMock(0x1d000000000000000000000000000000, .editor, &frame);
+    }
+
+    //       l f12    ->       l a
+    // combo unmapped -> combo mapped
+    // l down -> f12 down -> f12 up -> a down -> a up -> l up
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.f12, .{ .testing = 200 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.f12);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 500 });
+        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.a);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testDTWithMock(null, .editor, &frame);
+    }
+
+    // oh no I slipeed
+    // l down -> a down -> l up -> a up
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 200 });
+        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testDTWithMock(null, .editor, &frame);
+
+        try frame.keyUp(.a);
+        try testDTWithMock(null, .editor, &frame);
     }
 }
 
