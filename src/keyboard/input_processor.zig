@@ -17,6 +17,8 @@ pub const InputFrame = struct {
     downs: ArrayList(KeyDownEvent),
     ups: ArrayList(KeyDownEvent),
 
+    threshold_millis: i64 = 250,
+
     previous_down_candidate: ?u128 = null,
     latest_event_type: enum { up, down, none } = .none,
     emitted: bool = false,
@@ -91,13 +93,12 @@ pub const InputFrame = struct {
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    const threshold_millis = 250;
     fn hasDownGapsOverThreshold(self: *@This()) bool {
         if (self.downs.items.len < 2) return false;
         for (1..self.downs.items.len) |i| {
             const curr = self.downs.items[i];
             const prev = self.downs.items[i - 1];
-            if (curr.timestamp - prev.timestamp > threshold_millis) return true;
+            if (curr.timestamp - prev.timestamp > self.threshold_millis) return true;
         }
         return false;
     }
@@ -164,7 +165,7 @@ pub const InputFrame = struct {
 const EditorMode = enum { editor, normal, visual, insert, select };
 
 const MappingChecker = *const fn (ctx: *anyopaque, mode: EditorMode, trigger: ?u128) bool;
-pub fn devilTrigger(
+pub fn produceTrigger(
     mode: EditorMode,
     frame: *InputFrame,
     down_ck: MappingChecker,
@@ -172,26 +173,32 @@ pub fn devilTrigger(
     cx: *anyopaque,
 ) ?u128 {
     const r = frame.produceCandidateReport();
-
-    switch (mode) {
-        .editor, .normal, .visual => {
-            if (up_ck(cx, mode, r.down)) return null;
-
-            if (frame.latest_event_type == .down and down_ck(cx, mode, r.down)) {
-                frame.emitted = true;
-                return r.down;
-            }
-
-            if (frame.emitted) return null;
-
-            if (frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
-                frame.emitted = true;
-                return r.prev_down;
-            }
-        },
-        else => return null,
+    if (mode == .insert or mode == .select) {
+        if (frame.latest_event_type == .down and !r.over_threshold and down_ck(cx, mode, r.quick)) {
+            frame.emitted = true;
+            return r.quick;
+        }
     }
+    return produceDefaultTrigger(r, mode, frame, down_ck, up_ck, cx);
+}
 
+fn produceDefaultTrigger(
+    r: InputFrame.CandidateReport,
+    mode: EditorMode,
+    frame: *InputFrame,
+    down_ck: MappingChecker,
+    up_ck: MappingChecker,
+    cx: *anyopaque,
+) ?u128 {
+    if (up_ck(cx, mode, r.down)) return null;
+    if (frame.latest_event_type == .down and down_ck(cx, mode, r.down)) {
+        frame.emitted = true;
+        return r.down;
+    }
+    if (!frame.emitted and frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
+        frame.emitted = true;
+        return r.prev_down;
+    }
     return null;
 }
 
@@ -204,6 +211,15 @@ const Mock = struct {
                     0x12000000000000000000000000000000 => true, // a
                     0x1d120000000000000000000000000000 => true, // l a
                     0x1d130000000000000000000000000000 => true, // l b
+                    else => false,
+                };
+            },
+            .insert => {
+                return switch (trigger.?) {
+                    0x12000000000000000000000000000000 => true, // a
+                    0x13000000000000000000000000000000 => true, // b
+                    0x14000000000000000000000000000000 => true, // c
+                    0x15000000000000000000000000000000 => true, // d
                     else => false,
                 };
             },
@@ -225,9 +241,9 @@ const Mock = struct {
         return false;
     }
 };
-fn testDTWithMock(expected: ?u128, mode: EditorMode, frame: *InputFrame) !void {
+fn testTrigger(expected: ?u128, mode: EditorMode, frame: *InputFrame) !void {
     var cx = Mock{};
-    const result = devilTrigger(mode, frame, Mock.down_ck, Mock.up_ck, &cx);
+    const result = produceTrigger(mode, frame, Mock.down_ck, Mock.up_ck, &cx);
     errdefer if (result) |value| std.debug.print("got 0x{x} instead\n", .{value});
     try eq(expected, result);
 }
@@ -239,13 +255,13 @@ test "editor mode" {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.f12, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.f12);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
     }
 
     // a down -> a up
@@ -254,13 +270,13 @@ test "editor mode" {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.a, .{ .testing = 0 });
-        try testDTWithMock(0x12000000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x12000000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.a);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
     }
 
     // l down -> l up
@@ -269,13 +285,13 @@ test "editor mode" {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.l, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testDTWithMock(0x1d000000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d000000000000000000000000000000, .editor, &frame);
     }
 
     // l down -> a down -> l up -> a up
@@ -284,19 +300,19 @@ test "editor mode" {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.l, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.a, .{ .testing = 200 });
-        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d120000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.a);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
     }
 
     // l down -> a down -> a up -> b down -> b up -> l up
@@ -305,25 +321,25 @@ test "editor mode" {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.l, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.a, .{ .testing = 200 });
-        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d120000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.a);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.b, .{ .testing = 400 });
-        try testDTWithMock(0x1d130000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d130000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.b);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
     }
 
     // l down -> f12 down -> f12 up -> l up
@@ -333,16 +349,16 @@ test "editor mode" {
         defer frame.deinit();
 
         try frame.keyDown(.l, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.f12, .{ .testing = 200 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.f12);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testDTWithMock(0x1d000000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d000000000000000000000000000000, .editor, &frame);
     }
 
     //       l f12    ->       l a
@@ -353,22 +369,22 @@ test "editor mode" {
         defer frame.deinit();
 
         try frame.keyDown(.l, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.f12, .{ .testing = 200 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.f12);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.a, .{ .testing = 500 });
-        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d120000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.a);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
     }
 
     // oh no I slipeed
@@ -377,19 +393,57 @@ test "editor mode" {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.l, .{ .testing = 0 });
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.a, .{ .testing = 200 });
-        try testDTWithMock(0x1d120000000000000000000000000000, .editor, &frame);
+        try testTrigger(0x1d120000000000000000000000000000, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.a);
-        try testDTWithMock(null, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
+    }
+}
+
+test "insert mode" {
+    // a down -> b down -> a up -> b up
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try testTrigger(0x12000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyDown(.b, .{ .testing = 100 });
+        try testTrigger(0x13000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyUp(.a);
+        try testTrigger(null, .insert, &frame);
+
+        try frame.keyUp(.b);
+        try testTrigger(null, .insert, &frame);
+    }
+
+    // a down -> b down -> b up -> a up
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try testTrigger(0x12000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyDown(.b, .{ .testing = 100 });
+        try testTrigger(0x13000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyUp(.b);
+        try testTrigger(null, .insert, &frame);
+
+        try frame.keyUp(.a);
+        try testTrigger(null, .insert, &frame);
     }
 }
 
