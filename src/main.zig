@@ -23,8 +23,14 @@ const hash = _input_processor.hash;
 // --> that would require setting up APIs in a way that is re-mappable.
 
 // TODO: RIGHT NOW:
-// - Window controls (window position, window bounds)
-// - Vim editting
+
+// Window controls (window position, window bounds)
+// - I don't know how to integrate mouse movement / mouse drag with keyboard events yet
+// --> Start with having draggable handles on the window. Integrate with keyboard events comes later.
+//
+// Start with displaying a box / circle on top of the window
+
+// Vim editting
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -136,6 +142,9 @@ pub fn main() anyerror!void {
 
     var window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
     defer window.destroy();
+
+    const window_dragger_y_offset = -40;
+    var move_window = false;
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -257,6 +266,22 @@ pub fn main() anyerror!void {
             }
         }
 
+        // window handle checking
+
+        const mouse = rl.getMousePosition();
+        const collides = rl.checkCollisionPointCircle(mouse, .{ .x = window.x, .y = window.y + window_dragger_y_offset }, 30);
+        if (collides and rl.isMouseButtonDown(.mouse_button_left)) {
+            move_window = true;
+        }
+
+        if (move_window) {
+            window.x = mouse.x;
+            window.y = mouse.y - window_dragger_y_offset;
+            if (rl.isMouseButtonReleased(.mouse_button_left)) {
+                move_window = false;
+            }
+        }
+
         ///////////////////////////// Draw
 
         rl.beginDrawing();
@@ -297,6 +322,11 @@ pub fn main() anyerror!void {
                         },
                         else => continue,
                     }
+                }
+
+                { // Window dragger
+                    const radius: f32 = if (collides) 40 else 30;
+                    rl.drawCircle(@intFromFloat(window.x), @intFromFloat(window.y - 40), radius, rl.Color.sky_blue);
                 }
             }
 
