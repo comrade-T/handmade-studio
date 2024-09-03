@@ -213,9 +213,6 @@ pub const InputFrame = struct {
 
     pub fn keyUp(self: *@This(), key: Key) !void {
         self.latest_event_type = .up;
-        defer {
-            if (self.downs.items.len == 0) self.emitted = false;
-        }
         var found = false;
         var index: usize = 0;
         for (self.downs.items, 0..) |e, i| {
@@ -229,6 +226,7 @@ pub const InputFrame = struct {
             const removed = self.downs.orderedRemove(index);
             try self.ups.append(removed);
         }
+        if (self.downs.items.len == 0) self.emitted = false;
     }
 
     pub fn clearKeyUps(self: *@This()) !void {
@@ -361,6 +359,12 @@ fn produceDefaultTrigger(
     }
     if (!frame.emitted and frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
         frame.emitted = true;
+        defer {
+            if (frame.downs.items.len == 0) {
+                frame.emitted = false;
+                frame.previous_down_candidate = null;
+            }
+        }
         return r.prev_down;
     }
     return null;

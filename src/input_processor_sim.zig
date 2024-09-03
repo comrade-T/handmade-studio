@@ -35,7 +35,12 @@ pub fn main() !void {
     {
         try vault.emap(&[_]Key{.j});
         try vault.emap(&[_]Key{.k});
+        try vault.emap(&[_]Key{.l});
+
         try vault.emap(&[_]Key{.a});
+        try vault.emap(&[_]Key{ .l, .a });
+        try vault.emap(&[_]Key{ .l, .z });
+        try vault.emap(&[_]Key{ .l, .z, .c });
     }
 
     var frame = try _input_processor.InputFrame.init(a);
