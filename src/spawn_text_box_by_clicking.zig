@@ -176,7 +176,7 @@ pub fn main() anyerror!void {
                 if (rl.isKeyUp(key)) {
                     try frame.keyUp(frame.downs.items[i].key);
 
-                    std.debug.print("up it!\n", .{});
+                    // std.debug.print("up it!\n", .{});
                     reached_trigger_delay = false;
                     reached_repeat_rate = false;
                 }
@@ -198,22 +198,23 @@ pub fn main() anyerror!void {
                 vault,
             )) |trigger| {
                 // std.debug.print("trigger: 0x{x}\n", .{trigger});
+                const current_time = std.time.milliTimestamp();
 
                 if (reached_repeat_rate) {
-                    if (std.time.milliTimestamp() - last_trigger_timestamp < repeat_rate) break :blk;
-                    last_trigger_timestamp = std.time.milliTimestamp();
+                    if (current_time - last_trigger_timestamp < repeat_rate) break :blk;
+                    last_trigger_timestamp = current_time;
+                }
+
+                if (reached_trigger_delay and !reached_repeat_rate) {
+                    if (current_time - last_trigger_timestamp < trigger_delay) break :blk;
+                    reached_repeat_rate = true;
+                    last_trigger_timestamp = current_time;
                 }
 
                 if (!reached_trigger_delay and !reached_repeat_rate) {
-                    if (std.time.milliTimestamp() - last_trigger_timestamp < trigger_delay) break :blk;
+                    if (current_time - last_trigger_timestamp < trigger_delay) break :blk;
                     reached_trigger_delay = true;
-                    last_trigger_timestamp = std.time.milliTimestamp();
-                } else {
-                    if (reached_trigger_delay and !reached_repeat_rate) {
-                        if (std.time.milliTimestamp() - last_trigger_timestamp < trigger_delay) break :blk;
-                        reached_repeat_rate = true;
-                        last_trigger_timestamp = std.time.milliTimestamp();
-                    }
+                    last_trigger_timestamp = current_time;
                 }
 
                 switch (trigger) {
