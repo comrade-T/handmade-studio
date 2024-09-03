@@ -169,6 +169,26 @@ test "single down mapping goes straight to up map due to previous combo mapping"
     try eq(null, v.downs.editor.get(hash(&[_]Key{.a})));
 }
 
+test "map" {
+    var v = try MappingVault.init(testing_allocator);
+    defer v.deinit();
+
+    try v.emap(&[_]Key{.l});
+    try eq(true, v.downs.editor.get(hash(&[_]Key{.l})));
+
+    try v.emap(&[_]Key{ .l, .z });
+    try eq(null, v.downs.editor.get(hash(&[_]Key{.l})));
+    try eq(true, v.ups.editor.get(hash(&[_]Key{.l})));
+    try eq(true, v.downs.editor.get(hash(&[_]Key{ .l, .z })));
+
+    try v.emap(&[_]Key{ .l, .z, .c });
+    try eq(null, v.downs.editor.get(hash(&[_]Key{.l})));
+    try eq(null, v.downs.editor.get(hash(&[_]Key{ .l, .z })));
+    try eq(true, v.ups.editor.get(hash(&[_]Key{.l})));
+    try eq(true, v.ups.editor.get(hash(&[_]Key{ .l, .z })));
+    try eq(true, v.downs.editor.get(hash(&[_]Key{ .l, .z, .c })));
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub const InputFrame = struct {
@@ -352,19 +372,16 @@ fn produceDefaultTrigger(
     up_ck: MappingChecker,
     cx: *anyopaque,
 ) ?u128 {
-    if (up_ck(cx, mode, r.down)) return null;
-    if (frame.latest_event_type == .down and down_ck(cx, mode, r.down)) {
+    if (frame.latest_event_type == .down) {
         frame.emitted = true;
-        return r.down;
+        if (down_ck(cx, mode, r.down)) return r.down;
+        if (up_ck(cx, mode, r.down)) frame.emitted = false;
+        return null;
     }
     if (!frame.emitted and frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
         frame.emitted = true;
-        defer {
-            if (frame.downs.items.len == 0) {
-                frame.emitted = false;
-                frame.previous_down_candidate = null;
-            }
-        }
+        frame.previous_down_candidate = null;
+        if (frame.downs.items.len == 0) frame.emitted = false;
         return r.prev_down;
     }
     return null;
@@ -379,6 +396,7 @@ const Mock = struct {
                     0x12000000000000000000000000000000 => true, // a
                     0x1d120000000000000000000000000000 => true, // l a
                     0x1d130000000000000000000000000000 => true, // l b
+                    0x1d2b1400000000000000000000000000 => true, // l z c
                     else => false,
                 };
             },
@@ -401,6 +419,7 @@ const Mock = struct {
             .editor => {
                 return switch (trigger.?) {
                     0x1d000000000000000000000000000000 => true, // l
+                    0x1d2b0000000000000000000000000000 => true, // l z
                     else => false,
                 };
             },
@@ -526,7 +545,7 @@ test "editor mode" {
         try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.l);
-        try testTrigger(0x1d000000000000000000000000000000, .editor, &frame);
+        try testTrigger(null, .editor, &frame);
     }
 
     //       l f12    ->       l a
@@ -573,6 +592,51 @@ test "editor mode" {
         try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.a);
+        try testTrigger(null, .editor, &frame);
+    }
+
+    // three keys
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.z, .{ .testing = 200 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.c, .{ .testing = 500 });
+        try testTrigger(0x1d2b1400000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.c);
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyUp(.z);
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testTrigger(null, .editor, &frame);
+    }
+
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.z, .{ .testing = 200 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyUp(.z);
+        try testTrigger(0x1d2b0000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.l);
         try testTrigger(null, .editor, &frame);
     }
 }
