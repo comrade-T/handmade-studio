@@ -375,7 +375,10 @@ fn produceDefaultTrigger(
     if (frame.latest_event_type == .down) {
         frame.emitted = true;
         if (down_ck(cx, mode, r.down)) return r.down;
-        if (up_ck(cx, mode, r.down)) frame.emitted = false;
+        if (up_ck(cx, mode, r.down)) {
+            frame.emitted = false;
+            frame.previous_down_candidate = r.down;
+        }
         return null;
     }
     if (!frame.emitted and frame.latest_event_type == .up and up_ck(cx, mode, r.prev_down)) {
@@ -631,6 +634,31 @@ test "editor mode" {
         try testTrigger(null, .editor, &frame);
 
         try frame.keyDown(.z, .{ .testing = 200 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyUp(.z);
+        try testTrigger(0x1d2b0000000000000000000000000000, .editor, &frame);
+
+        try frame.keyUp(.l);
+        try testTrigger(null, .editor, &frame);
+    }
+
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyDown(.z, .{ .testing = 200 });
+        try testTrigger(null, .editor, &frame);
+
+        try frame.keyUp(.z);
+        try testTrigger(0x1d2b0000000000000000000000000000, .editor, &frame);
+
+        try frame.keyDown(.z, .{ .testing = 1000 });
         try testTrigger(null, .editor, &frame);
 
         try frame.keyUp(.z);
