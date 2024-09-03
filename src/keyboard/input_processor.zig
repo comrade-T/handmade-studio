@@ -66,28 +66,48 @@ pub const MappingVault = struct {
 
     const MapError = error{OutOfMemory};
 
-    pub fn emap(self: *@This(), keys: []const Key) MapError!void {
+    fn map(_: *@This(), down_map: *TriggerMap, up_map: *TriggerMap, keys: []const Key) MapError!void {
         if (keys.len == 1) {
             const key_hash = hash(keys);
-            if (self.ups.editor.get(key_hash) != null) {
-                return self.ups.editor.put(key_hash, true);
+            if (up_map.get(key_hash) != null) {
+                return up_map.put(key_hash, true);
             }
-            return self.downs.editor.put(key_hash, true);
+            return down_map.put(key_hash, true);
         }
 
         for (0..keys.len - 1) |i| {
             const key_chunk = keys[0 .. i + 1];
             const chunk_hash = hash(key_chunk);
-            if (self.downs.editor.get(chunk_hash) != null) {
-                _ = self.downs.editor.remove(chunk_hash);
-                try self.ups.editor.put(chunk_hash, true);
+            if (down_map.get(chunk_hash) != null) {
+                _ = down_map.remove(chunk_hash);
+                try up_map.put(chunk_hash, true);
                 continue;
             }
-            if (self.ups.editor.get(chunk_hash) == null) {
-                try self.ups.editor.put(chunk_hash, false);
+            if (up_map.get(chunk_hash) == null) {
+                try up_map.put(chunk_hash, false);
             }
         }
-        try self.downs.editor.put(hash(keys), true);
+        try down_map.put(hash(keys), true);
+    }
+
+    pub fn emap(self: *@This(), keys: []const Key) MapError!void {
+        try self.map(&self.downs.editor, &self.ups.editor, keys);
+    }
+
+    pub fn nmap(self: *@This(), keys: []const Key) MapError!void {
+        try self.map(&self.downs.normal, &self.ups.normal, keys);
+    }
+
+    pub fn vmap(self: *@This(), keys: []const Key) MapError!void {
+        try self.map(&self.downs.visual, &self.ups.visual, keys);
+    }
+
+    pub fn imap(self: *@This(), keys: []const Key) MapError!void {
+        try self.map(&self.downs.insert, &self.ups.insert, keys);
+    }
+
+    pub fn smap(self: *@This(), keys: []const Key) MapError!void {
+        try self.map(&self.downs.select, &self.ups.select, keys);
     }
 
     ///////////////////////////// Checkers
