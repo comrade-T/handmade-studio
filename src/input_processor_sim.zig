@@ -2,6 +2,9 @@ const std = @import("std");
 const rl = @import("raylib");
 const _input_processor = @import("input_processor");
 
+const KeyHasher = _input_processor.KeyHasher;
+const Key = _input_processor.Key;
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -27,6 +30,15 @@ pub fn main() !void {
 
     ///////////////////////////// Model
 
+    var vault = try _input_processor.MappingVault.init(a);
+    defer vault.deinit();
+
+    {
+        try vault.emap(KeyHasher.fromSlice(&[_]Key{.j}).value);
+        try vault.emap(KeyHasher.fromSlice(&[_]Key{.k}).value);
+        try vault.emap(KeyHasher.fromSlice(&[_]Key{.a}).value);
+    }
+
     var frame = try _input_processor.InputFrame.init(a);
     defer frame.deinit();
 
@@ -42,7 +54,10 @@ pub fn main() !void {
                 i -= 1;
                 const code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
                 const key: rl.KeyboardKey = @enumFromInt(code);
-                if (rl.isKeyUp(key)) try frame.keyUp(frame.downs.items[i].key);
+                if (rl.isKeyUp(key)) {
+                    std.debug.print("up it!\n", .{});
+                    try frame.keyUp(frame.downs.items[i].key);
+                }
             }
         }
 
@@ -56,11 +71,24 @@ pub fn main() !void {
             }
         }
 
+        {
+            if (_input_processor.produceTrigger(
+                .editor,
+                &frame,
+                _input_processor.MappingVault.down_checker,
+                _input_processor.MappingVault.up_checker,
+                vault,
+            )) |trigger| {
+                std.debug.print("trigger: 0x{x}\n", .{trigger});
+            }
+        }
+
         ///////////////////////////// Draw
 
-        rl.beginDrawing();
-        defer rl.endDrawing();
         {
+            rl.beginDrawing();
+            defer rl.endDrawing();
+
             rl.clearBackground(rl.Color.blank);
 
             rl.drawText("kekw", 100, 100, 30, rl.Color.ray_white);

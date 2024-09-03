@@ -84,7 +84,7 @@ pub const MappingVault = struct {
             .select => cx.downs.select,
         };
 
-        if (target_map.get(trigger)) return true;
+        if (target_map.get(trigger.?)) |_| return true;
         return false;
     }
 
@@ -100,7 +100,7 @@ pub const MappingVault = struct {
             .select => cx.ups.select,
         };
 
-        if (target_map.get(trigger)) return true;
+        if (target_map.get(trigger.?)) |_| return true;
         return false;
     }
 };
@@ -561,7 +561,7 @@ pub const KeyHasher = struct {
     value: u128 = 0,
     bits_to_shift: u7 = 128 - 8,
 
-    fn fromSlice(keys: []const Key) KeyHasher {
+    pub fn fromSlice(keys: []const Key) KeyHasher {
         var self = KeyHasher{};
         for (keys) |key| self.update(key);
         return self;
@@ -571,7 +571,7 @@ pub const KeyHasher = struct {
         try eq(0x12130000000000000000000000000000, hasher.value);
     }
 
-    fn update(self: *@This(), key: Key) void {
+    pub fn update(self: *@This(), key: Key) void {
         const new_part: u128 = @intCast(Key.indexOf[@intFromEnum(key)]);
         self.value |= new_part << self.bits_to_shift;
         self.bits_to_shift -= 8;
