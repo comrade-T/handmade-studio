@@ -117,17 +117,6 @@ pub fn build(b: *std.Build) void {
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
-        const path = "src/demos/input_processor_sim.zig";
-        const exe = b.addExecutable(.{
-            .name = "input_processor_sim",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
-        exe.root_module.addImport("input_processor", input_processor.module);
-        addRunnableRaylibFile(b, exe, raylib, path);
-    }
-    {
         const path = "src/demos/camera3d_example.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "camera3d_example",

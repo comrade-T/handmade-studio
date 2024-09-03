@@ -159,6 +159,27 @@ pub const Window = struct {
     ///////////////////////////// Code Point Iterator
 
     const CodePointIterator = struct {
+        const Screen = struct {
+            start_x: f32,
+            start_y: f32,
+            end_x: f32,
+            end_y: f32,
+        };
+
+        const IterResult = union(enum) {
+            code_point: CodePoint,
+            skip_to_new_line,
+            skip_this_char,
+        };
+
+        const CodePoint = struct {
+            value: i32,
+            color: u32,
+            x: f32,
+            y: f32,
+            font_size: i32,
+        };
+
         win: *const Window,
         font_data: FontData,
         index_map: FontDataIndexMap,
@@ -256,10 +277,12 @@ pub const Window = struct {
         }
     };
 
-    pub fn codePointIter(self: *@This(), font_data: FontData, index_map: FontDataIndexMap, screen: Screen) CodePointIterator {
+    pub fn codePointIter(self: *@This(), font_data: FontData, index_map: FontDataIndexMap, screen: CodePointIterator.Screen) CodePointIterator {
         return CodePointIterator.create(self, font_data, index_map, screen);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// Window Display
 
 test "unbound window fully on screen" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
@@ -679,31 +702,8 @@ pub fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexM
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const IterResult = union(enum) {
-    code_point: CodePoint,
-    skip_to_new_line,
-    skip_this_char,
-};
-
-const CodePoint = struct {
-    value: i32,
-    color: u32,
-    x: f32,
-    y: f32,
-    font_size: i32,
-};
-
-const Screen = struct {
-    start_x: f32,
-    start_y: f32,
-    end_x: f32,
-    end_y: f32,
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-// These structs exist so that this module doeesn't have to import Raylib.
-// These structs are trimmed down versions of Raylib equivalents.
+// Trimmed down versions of Raylib equivalents.
+// Critical to calculate text positions.
 
 pub const GlyphData = struct {
     advanceX: i32,

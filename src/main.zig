@@ -19,6 +19,15 @@ const hash = _input_processor.hash;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+// TODO: emap(trigger, cmd_id) --> switch statement on the cmd_id.
+// --> that would require setting up APIs in a way that is re-mappable.
+
+// TODO: RIGHT NOW:
+// - Window controls (window position, window bounds)
+// - Vim editting
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const screen_width = 1920;
 const screen_height = 1080;
 
