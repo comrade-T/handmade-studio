@@ -233,6 +233,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+        spawn_text.root_module.addImport("input_processor", input_processor.module);
         spawn_text.root_module.addImport("neo_buffer", neo_buffer.module);
         spawn_text.root_module.addImport("virtuous_window", virtuous_window.module);
         spawn_text.root_module.addImport("ztracy", ztracy.module("root"));

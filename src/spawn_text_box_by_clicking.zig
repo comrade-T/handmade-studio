@@ -2,8 +2,6 @@ const std = @import("std");
 const rl = @import("raylib");
 const ztracy = @import("ztracy");
 
-const kbs = @import("keyboard/state.zig");
-const exp = @import("keyboard/experimental_mappings.zig");
 const FileNavigator = @import("components/FileNavigator.zig");
 
 const _neo_buffer = @import("neo_buffer");
@@ -15,14 +13,17 @@ const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
+const _input_processor = @import("input_processor");
+const Key = _input_processor.Key;
+const hash = _input_processor.hash;
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
 const screen_height = 1080;
 
-// TODO: drag the camera around
-
 pub fn main() anyerror!void {
+
     ///////////////////////////// Window Initialization
 
     rl.setConfigFlags(.{ .window_transparent = true });
@@ -51,25 +52,6 @@ pub fn main() anyerror!void {
     var font_data_index_map = try _vw.createFontDataIndexMap(gpa, font_data);
     defer font_data_index_map.deinit();
 
-    ///////////////////////////// Controller
-
-    var kem = try kbs.KeyboardEventsManager.init(gpa);
-    defer kem.deinit();
-
-    var trigger_map = try exp.createTriggerMap(gpa);
-    defer trigger_map.deinit();
-
-    var prefix_map = try exp.createPrefixMap(gpa);
-    defer prefix_map.deinit();
-
-    const TriggerCandidateComposer = kbs.GenericTriggerCandidateComposer(exp.TriggerMap, exp.PrefixMap);
-    var composer = try TriggerCandidateComposer.init(gpa, &trigger_map, &prefix_map);
-    defer composer.deinit();
-
-    const TriggerPicker = kbs.GenericTriggerPicker(exp.TriggerMap);
-    var picker = try TriggerPicker.init(gpa, &trigger_map);
-    defer picker.deinit();
-
     ///////////////////////////// Camera
 
     var camera = rl.Camera2D{
@@ -83,6 +65,34 @@ pub fn main() anyerror!void {
     var view_end = rl.Vector2{ .x = screen_width, .y = screen_height };
     var view_width: f32 = screen_width;
     var view_height: f32 = screen_height;
+
+    ///////////////////////////// New Input
+
+    var vault = try _input_processor.MappingVault.init(gpa);
+    defer vault.deinit();
+
+    // TODO:
+
+    { // editor mode tests
+        try vault.emap(&[_]Key{.j});
+        try vault.emap(&[_]Key{.k});
+        try vault.emap(&[_]Key{.l});
+
+        try vault.emap(&[_]Key{.a});
+        try vault.emap(&[_]Key{ .l, .a });
+        try vault.emap(&[_]Key{ .l, .z });
+        try vault.emap(&[_]Key{ .l, .z, .c });
+
+        try vault.emap(&[_]Key{.b});
+
+        try vault.emap(&[_]Key{ .left_control, .h });
+        try vault.emap(&[_]Key{ .left_control, .j });
+        try vault.emap(&[_]Key{ .left_control, .k });
+        try vault.emap(&[_]Key{ .left_control, .l });
+    }
+
+    var frame = try _input_processor.InputFrame.init(gpa);
+    defer frame.deinit();
 
     ///////////////////////////// Models
 
@@ -142,69 +152,57 @@ pub fn main() anyerror!void {
 
         ///////////////////////////// Keyboard
 
-        try kem.startHandlingInputs();
         {
-            const input_steps = try kem.inputSteps();
-            defer input_steps.deinit();
-
-            for (input_steps.items) |step| {
-                const insert_mode_active = true;
-                var trigger: []const u8 = "";
-
-                const candidate = try composer.getTriggerCandidate(step.old, step.new);
-                if (!insert_mode_active) {
-                    if (candidate) |c| trigger = c;
+            var i: usize = frame.downs.items.len;
+            while (i > 0) {
+                i -= 1;
+                const code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
+                const key: rl.KeyboardKey = @enumFromInt(code);
+                if (rl.isKeyUp(key)) {
+                    std.debug.print("up it!\n", .{});
+                    try frame.keyUp(frame.downs.items[i].key);
                 }
-                if (insert_mode_active) {
-                    const may_final_trigger = try picker.getFinalTrigger(step.old, step.new, step.time, candidate);
-                    if (may_final_trigger) |t| trigger = t;
+            }
+
+            for (_input_processor.Key.values) |value| {
+                const code: c_int = @intCast(value);
+                if (rl.isKeyDown(@enumFromInt(code))) {
+                    const enum_value: _input_processor.Key = @enumFromInt(value);
+                    try frame.keyDown(enum_value, .now);
                 }
+            }
 
-                if (!eql(u8, trigger, "")) {
-                    std.debug.print("trigger: {s}\n", .{trigger});
+            if (_input_processor.produceTrigger(
+                .editor,
+                &frame,
+                _input_processor.MappingVault.down_checker,
+                _input_processor.MappingVault.up_checker,
+                vault,
+            )) |trigger| {
+                std.debug.print("trigger: 0x{x}\n", .{trigger});
 
-                    { // navigator stuffs
-                        if (eql(u8, trigger, "lctrl j")) navigator.moveDown();
-                        if (eql(u8, trigger, "lctrl k")) navigator.moveUp();
-                        if (eql(u8, trigger, "lctrl l")) {
-                            if (try navigator.forward()) |path| {
-                                defer path.deinit();
+                switch (trigger) {
+                    hash(&[_]Key{.a}) => {
+                        std.debug.print("Alice in Wonderland\n", .{});
+                    },
+                    hash(&[_]Key{.b}) => {
+                        std.debug.print("Big Bang raise the roof\n", .{});
+                    },
 
-                                buf.destroy();
-                                window.destroy();
-
-                                buf = try Buffer.create(gpa, .file, path.items);
-                                try buf.initiateTreeSitter(zig_langsuite);
-                                window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
-                                // window = try Window.spawn(gpa, buf, font_size, 400, 100, .{
-                                //     .width = 500,
-                                //     .height = 500,
-                                // });
-                            }
+                    hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
+                    hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
+                    hash(&[_]Key{ .left_control, .j }) => navigator.moveDown(),
+                    hash(&[_]Key{ .left_control, .l }) => {
+                        if (try navigator.forward()) |path| {
+                            defer path.deinit();
+                            std.debug.print("path is: {s}\n", .{path.items});
                         }
-                        if (eql(u8, trigger, "lctrl h")) try navigator.backwards();
-                    }
+                    },
 
-                    { // Buffer actions
-                        if (eql(u8, trigger, "z")) {
-                            var delta = rl.getMouseDelta();
-                            delta = delta.scale(-1 / camera.zoom);
-                            window.moveBy(delta.x, delta.y);
-                        }
-                        // if (trigger_map.get(trigger)) |a| {
-                        //     switch (a) {
-                        //         .insert => |chars| {
-                        //             _ = chars;
-                        //             // window.insertChars(chars);
-                        //         },
-                        //         .custom => {},
-                        //     }
-                        // }
-                    }
+                    else => {},
                 }
             }
         }
-        try kem.finishHandlingInputs();
 
         ///////////////////////////// Draw
 

@@ -409,6 +409,8 @@ const Mock = struct {
                     0x13000000000000000000000000000000 => true, // b
                     0x14000000000000000000000000000000 => true, // c
                     0x15000000000000000000000000000000 => true, // d
+                    0x1d000000000000000000000000000000 => true, // l
+                    0x1d120000000000000000000000000000 => true, // l a
                     else => false,
                 };
             },
@@ -705,6 +707,45 @@ test "insert mode" {
         try frame.keyUp(.a);
         try testTrigger(null, .insert, &frame);
     }
+
+    // mapped combo, below thresholld
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testTrigger(0x1d000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 100 });
+        try testTrigger(0x12000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyUp(.l);
+        try testTrigger(null, .insert, &frame);
+
+        try frame.keyUp(.a);
+        try testTrigger(null, .insert, &frame);
+    }
+
+    // mapped combo, above thresholld
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try testTrigger(0x1d000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 500 });
+        try testTrigger(0x1d120000000000000000000000000000, .insert, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 550 });
+        try testTrigger(0x1d120000000000000000000000000000, .insert, &frame);
+
+        try frame.keyUp(.a);
+        try testTrigger(null, .insert, &frame);
+
+        try frame.keyUp(.l);
+        try testTrigger(null, .insert, &frame);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -738,7 +779,7 @@ pub const KeyHasher = struct {
     }
 };
 
-fn hash(keys: []const Key) u128 {
+pub fn hash(keys: []const Key) u128 {
     return KeyHasher.fromSlice(keys).value;
 }
 
