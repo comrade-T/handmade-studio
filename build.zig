@@ -55,10 +55,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "s2s", .module = s2s },
     }, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/keyboard/state.zig", &.{
-        .{ .name = "raylib", .module = raylib.module("raylib") },
-    }, zig_build_test_step);
-
     const rope = addTestableModule(&bops, "src/buffer/rope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
