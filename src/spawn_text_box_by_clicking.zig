@@ -68,6 +68,8 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// New Input
 
+    const _keyboard_setup_zone = ztracy.ZoneNC(@src(), "input setup zone", 0x00AA00);
+
     var vault = try _input_processor.MappingVault.init(gpa);
     defer vault.deinit();
 
@@ -93,6 +95,16 @@ pub fn main() anyerror!void {
 
     var frame = try _input_processor.InputFrame.init(gpa);
     defer frame.deinit();
+
+    var last_trigger_timestamp: i64 = 0;
+
+    var reached_trigger_delay = false;
+    var reached_repeat_rate = false;
+
+    const trigger_delay = 150;
+    const repeat_rate = 1000 / 62;
+
+    _keyboard_setup_zone.End();
 
     ///////////////////////////// Models
 
@@ -152,15 +164,21 @@ pub fn main() anyerror!void {
 
         ///////////////////////////// Keyboard
 
-        {
+        blk: {
+            const zone = ztracy.ZoneNC(@src(), "Keyboard loop zone", 0x00AAFF);
+            defer zone.End();
+
             var i: usize = frame.downs.items.len;
             while (i > 0) {
                 i -= 1;
                 const code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
                 const key: rl.KeyboardKey = @enumFromInt(code);
                 if (rl.isKeyUp(key)) {
-                    std.debug.print("up it!\n", .{});
                     try frame.keyUp(frame.downs.items[i].key);
+
+                    std.debug.print("up it!\n", .{});
+                    reached_trigger_delay = false;
+                    reached_repeat_rate = false;
                 }
             }
 
@@ -179,7 +197,24 @@ pub fn main() anyerror!void {
                 _input_processor.MappingVault.up_checker,
                 vault,
             )) |trigger| {
-                std.debug.print("trigger: 0x{x}\n", .{trigger});
+                // std.debug.print("trigger: 0x{x}\n", .{trigger});
+
+                if (reached_repeat_rate) {
+                    if (std.time.milliTimestamp() - last_trigger_timestamp < repeat_rate) break :blk;
+                    last_trigger_timestamp = std.time.milliTimestamp();
+                }
+
+                if (!reached_trigger_delay and !reached_repeat_rate) {
+                    if (std.time.milliTimestamp() - last_trigger_timestamp < trigger_delay) break :blk;
+                    reached_trigger_delay = true;
+                    last_trigger_timestamp = std.time.milliTimestamp();
+                } else {
+                    if (reached_trigger_delay and !reached_repeat_rate) {
+                        if (std.time.milliTimestamp() - last_trigger_timestamp < trigger_delay) break :blk;
+                        reached_repeat_rate = true;
+                        last_trigger_timestamp = std.time.milliTimestamp();
+                    }
+                }
 
                 switch (trigger) {
                     hash(&[_]Key{.a}) => {
@@ -223,7 +258,7 @@ pub fn main() anyerror!void {
             }
 
             var chars_rendered: u64 = 0;
-            defer ztracy.PlotU("chars_rendered", chars_rendered);
+            // defer ztracy.PlotU("chars_rendered", chars_rendered);
 
             { // window content
                 rl.beginMode2D(camera);
