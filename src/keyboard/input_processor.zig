@@ -69,14 +69,48 @@ pub const MappingVault = struct {
     pub fn emap(self: *@This(), trigger: u128) MapError!void {
         try self.downs.editor.put(trigger, true);
     }
+
+    ///////////////////////////// Checkers
+
+    pub fn down_checker(ctx_: *anyopaque, mode: EditorMode, trigger: ?u128) bool {
+        if (trigger == null) return false;
+        const cx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+
+        const target_map = switch (mode) {
+            .editor => cx.downs.editor,
+            .normal => cx.downs.normal,
+            .visual => cx.downs.visual,
+            .insert => cx.downs.insert,
+            .select => cx.downs.select,
+        };
+
+        if (target_map.get(trigger)) return true;
+        return false;
+    }
+
+    pub fn up_checker(ctx_: *anyopaque, mode: EditorMode, trigger: ?u128) bool {
+        if (trigger == null) return false;
+        const cx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+
+        const target_map = switch (mode) {
+            .editor => cx.ups.editor,
+            .normal => cx.ups.normal,
+            .visual => cx.ups.visual,
+            .insert => cx.ups.insert,
+            .select => cx.ups.select,
+        };
+
+        if (target_map.get(trigger)) return true;
+        return false;
+    }
 };
 
 test MappingVault {
-    var vault = try MappingVault.init(testing_allocator);
-    defer vault.deinit();
+    var v = try MappingVault.init(testing_allocator);
+    defer v.deinit();
 
-    try vault.emap(0x12000000000000000000000000000000);
-    try eq(true, vault.downs.editor.get(0x12000000000000000000000000000000));
+    try v.emap(0x12000000000000000000000000000000);
+    try eq(true, v.downs.editor.get(0x12000000000000000000000000000000));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

@@ -37,21 +37,12 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         {
-            var previously_down_keys = try std.ArrayList(rl.KeyboardKey).initCapacity(a, frame.downs.items.len);
-            defer previously_down_keys.deinit();
-
-            for (frame.downs.items) |e| {
-                const code: c_int = @intCast(@intFromEnum(e.key));
+            var i: usize = frame.downs.items.len;
+            while (i > 0) {
+                i -= 1;
+                const code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
                 const key: rl.KeyboardKey = @enumFromInt(code);
-                try previously_down_keys.append(key);
-            }
-
-            for (previously_down_keys.items) |rl_key| {
-                if (rl.isKeyUp(rl_key)) {
-                    const code: u16 = @intCast(@intFromEnum(rl_key));
-                    const key: _input_processor.Key = @enumFromInt(code);
-                    try frame.keyUp(key);
-                }
+                if (rl.isKeyUp(key)) try frame.keyUp(frame.downs.items[i].key);
             }
         }
 
