@@ -51,16 +51,11 @@ pub fn build(b: *std.Build) void {
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/buffer/write_struct_to_file.zig", &.{
+    _ = addTestableModule(&bops, "src/demos/write_struct_to_file.zig", &.{
         .{ .name = "s2s", .module = s2s },
     }, zig_build_test_step);
 
     const rope = addTestableModule(&bops, "src/buffer/rope.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
-
-    _ = addTestableModule(&bops, "src/window/ugly_textbox.zig", &.{
-        .{ .name = "rope", .module = rope.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
@@ -91,7 +86,7 @@ pub fn build(b: *std.Build) void {
     ///////////////////////////// Raylib
 
     {
-        const path = "src/spawn_rec_by_clicking.zig";
+        const path = "src/demos/spawn_rec_by_clicking.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "spawn_rec_by_clicking",
             .root_source_file = b.path(path),
@@ -102,7 +97,7 @@ pub fn build(b: *std.Build) void {
     }
 
     {
-        const path = "src/camera2d_example.zig";
+        const path = "src/demos/camera2d_example.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "camera2d_example",
             .root_source_file = b.path(path),
@@ -112,7 +107,7 @@ pub fn build(b: *std.Build) void {
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
-        const path = "src/drag_camera_example.zig";
+        const path = "src/demos/drag_camera_example.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "drag_camera_example",
             .root_source_file = b.path(path),
@@ -122,7 +117,7 @@ pub fn build(b: *std.Build) void {
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
-        const path = "src/input_processor_sim.zig";
+        const path = "src/demos/input_processor_sim.zig";
         const exe = b.addExecutable(.{
             .name = "input_processor_sim",
             .root_source_file = b.path(path),
@@ -133,7 +128,7 @@ pub fn build(b: *std.Build) void {
         addRunnableRaylibFile(b, exe, raylib, path);
     }
     {
-        const path = "src/camera3d_example.zig";
+        const path = "src/demos/camera3d_example.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "camera3d_example",
             .root_source_file = b.path(path),
@@ -143,7 +138,7 @@ pub fn build(b: *std.Build) void {
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
-        const path = "src/bunnymark.zig";
+        const path = "src/demos/bunnymark.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{
             .name = "bunnymark",
             .root_source_file = b.path(path),
@@ -154,40 +149,27 @@ pub fn build(b: *std.Build) void {
     }
 
     {
-        const path = "src/spawn_text_box_by_clicking.zig";
-        const spawn_text = b.addExecutable(.{
-            .name = "spawn_text_box_by_clicking",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
-        spawn_text.root_module.addImport("input_processor", input_processor.module);
-        spawn_text.root_module.addImport("neo_buffer", neo_buffer.module);
-        spawn_text.root_module.addImport("virtuous_window", virtuous_window.module);
-        spawn_text.root_module.addImport("ztracy", ztracy.module("root"));
-        spawn_text.linkLibrary(tree_sitter);
-        spawn_text.linkLibrary(ztracy.artifact("tracy"));
-        addRunnableRaylibFile(b, spawn_text, raylib, path);
-    }
-
-    {
         const exe = b.addExecutable(.{
-            .name = "application",
+            .name = "main",
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
         });
 
+        exe.root_module.addImport("input_processor", input_processor.module);
+        exe.root_module.addImport("neo_buffer", neo_buffer.module);
+        exe.root_module.addImport("virtuous_window", virtuous_window.module);
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.linkLibrary(tree_sitter);
+        exe.linkLibrary(ztracy.artifact("tracy"));
+
         exe.linkLibrary(raylib.artifact("raylib"));
         exe.root_module.addImport("raylib", raylib.module("raylib"));
 
-        exe.linkLibrary(tree_sitter);
-
         const run_cmd = b.addRunArtifact(exe);
         run_cmd.step.dependOn(b.getInstallStep());
-        if (b.args) |args| {
-            run_cmd.addArgs(args);
-        }
+        if (b.args) |args| run_cmd.addArgs(args);
+
         const run_step = b.step("run", "Run Application");
         run_step.dependOn(&run_cmd.step);
     }
