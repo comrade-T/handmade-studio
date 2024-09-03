@@ -65,12 +65,6 @@ pub fn main() !void {
             }
         }
 
-        {
-            if (_input_processor.produceTrigger(.editor, &frame, down_ck, up_ck, &cx)) {
-                // TODO:
-            }
-        }
-
         ///////////////////////////// Draw
 
         rl.beginDrawing();

@@ -9,6 +9,78 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const TriggerMap = std.AutoHashMap(u128, bool);
+
+pub const MappingVault = struct {
+    a: Allocator,
+    downs: struct {
+        editor: TriggerMap,
+        visual: TriggerMap,
+        normal: TriggerMap,
+        insert: TriggerMap,
+        select: TriggerMap,
+    },
+    ups: struct {
+        editor: TriggerMap,
+        visual: TriggerMap,
+        normal: TriggerMap,
+        insert: TriggerMap,
+        select: TriggerMap,
+    },
+
+    pub fn init(a: Allocator) !*MappingVault {
+        const self = try a.create(MappingVault);
+        self.* = MappingVault{
+            .a = a,
+            .downs = .{
+                .editor = TriggerMap.init(a),
+                .normal = TriggerMap.init(a),
+                .visual = TriggerMap.init(a),
+                .insert = TriggerMap.init(a),
+                .select = TriggerMap.init(a),
+            },
+            .ups = .{
+                .editor = TriggerMap.init(a),
+                .normal = TriggerMap.init(a),
+                .visual = TriggerMap.init(a),
+                .insert = TriggerMap.init(a),
+                .select = TriggerMap.init(a),
+            },
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.downs.editor.deinit();
+        self.downs.normal.deinit();
+        self.downs.visual.deinit();
+        self.downs.insert.deinit();
+        self.downs.select.deinit();
+        self.ups.editor.deinit();
+        self.ups.normal.deinit();
+        self.ups.visual.deinit();
+        self.ups.insert.deinit();
+        self.ups.select.deinit();
+        self.a.destroy(self);
+    }
+
+    const MapError = error{OutOfMemory};
+
+    pub fn emap(self: *@This(), trigger: u128) MapError!void {
+        try self.downs.editor.put(trigger, true);
+    }
+};
+
+test MappingVault {
+    var vault = try MappingVault.init(testing_allocator);
+    defer vault.deinit();
+
+    try vault.emap(0x12000000000000000000000000000000);
+    try eq(true, vault.downs.editor.get(0x12000000000000000000000000000000));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 pub const InputFrame = struct {
     const KeyDownEvent = struct { key: Key = .null, timestamp: i64 = 0 };
     const trigger_capacity = 10;
