@@ -2,7 +2,6 @@ const std = @import("std");
 const rl = @import("raylib");
 const _input_processor = @import("input_processor");
 
-const KeyHasher = _input_processor.KeyHasher;
 const Key = _input_processor.Key;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -34,9 +33,9 @@ pub fn main() !void {
     defer vault.deinit();
 
     {
-        try vault.emap(KeyHasher.fromSlice(&[_]Key{.j}).value);
-        try vault.emap(KeyHasher.fromSlice(&[_]Key{.k}).value);
-        try vault.emap(KeyHasher.fromSlice(&[_]Key{.a}).value);
+        try vault.emap(&[_]Key{.j});
+        try vault.emap(&[_]Key{.k});
+        try vault.emap(&[_]Key{.a});
     }
 
     var frame = try _input_processor.InputFrame.init(a);

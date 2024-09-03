@@ -66,8 +66,28 @@ pub const MappingVault = struct {
 
     const MapError = error{OutOfMemory};
 
-    pub fn emap(self: *@This(), trigger: u128) MapError!void {
-        try self.downs.editor.put(trigger, true);
+    pub fn emap(self: *@This(), keys: []const Key) MapError!void {
+        if (keys.len == 1) {
+            const key_hash = hash(keys);
+            if (self.ups.editor.get(key_hash) != null) {
+                return self.ups.editor.put(key_hash, true);
+            }
+            return self.downs.editor.put(key_hash, true);
+        }
+
+        for (0..keys.len - 1) |i| {
+            const key_chunk = keys[0 .. i + 1];
+            const chunk_hash = hash(key_chunk);
+            if (self.downs.editor.get(chunk_hash) != null) {
+                _ = self.downs.editor.remove(chunk_hash);
+                try self.ups.editor.put(chunk_hash, true);
+                continue;
+            }
+            if (self.ups.editor.get(chunk_hash) == null) {
+                try self.ups.editor.put(chunk_hash, false);
+            }
+        }
+        try self.downs.editor.put(hash(keys), true);
     }
 
     ///////////////////////////// Checkers
@@ -105,12 +125,28 @@ pub const MappingVault = struct {
     }
 };
 
-test MappingVault {
+test "single down mapping gets moved to up map due to later combo mapping" {
     var v = try MappingVault.init(testing_allocator);
     defer v.deinit();
 
-    try v.emap(0x12000000000000000000000000000000);
-    try eq(true, v.downs.editor.get(0x12000000000000000000000000000000));
+    try v.emap(&[_]Key{.a});
+    try eq(true, v.downs.editor.get(hash(&[_]Key{.a})));
+
+    try v.emap(&[_]Key{ .a, .b });
+    try eq(null, v.downs.editor.get(hash(&[_]Key{.a})));
+    try eq(true, v.ups.editor.get(hash(&[_]Key{.a})));
+    try eq(true, v.downs.editor.get(hash(&[_]Key{ .a, .b })));
+}
+
+test "single down mapping goes straight to up map due to previous combo mapping" {
+    var v = try MappingVault.init(testing_allocator);
+    defer v.deinit();
+
+    try v.emap(&[_]Key{ .a, .b });
+    try eq(true, v.downs.editor.get(hash(&[_]Key{ .a, .b })));
+
+    try v.emap(&[_]Key{.a});
+    try eq(null, v.downs.editor.get(hash(&[_]Key{.a})));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -585,6 +621,10 @@ pub const KeyHasher = struct {
         try eq(0x12130000000000000000000000000000, hasher.value);
     }
 };
+
+fn hash(keys: []const Key) u128 {
+    return KeyHasher.fromSlice(keys).value;
+}
 
 const KeyEnumType = u16;
 pub const Key = enum(KeyEnumType) {
