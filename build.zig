@@ -21,8 +21,6 @@ pub fn build(b: *std.Build) void {
 
     const regex = b.addModule("regex", .{ .root_source_file = b.path("submodules/regex/src/regex.zig") });
 
-    const logz = b.dependency("logz", .{ .target = target, .optimize = optimize });
-
     const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
 
     const ztracy = b.dependency("ztracy", .{
@@ -61,10 +59,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "raylib", .module = raylib.module("raylib") },
     }, zig_build_test_step);
 
-    const buffer = addTestableModule(&bops, "src/buffer/buffer.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
-
     const rope = addTestableModule(&bops, "src/buffer/rope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
@@ -73,8 +67,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "rope", .module = rope.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
-
-    const cursor = addTestableModule(&bops, "src/window/cursor.zig", &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);
 
@@ -92,73 +84,13 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     neo_buffer.compile.linkLibrary(tree_sitter);
 
-    const neo_cell = addTestableModule(&bops, "src/window/neo_cell.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
-
-    const content_vendor = addTestableModule(&bops, "src/window/content_vendor.zig", &.{
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-        .{ .name = "neo_cell", .module = neo_cell.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-    content_vendor.compile.linkLibrary(tree_sitter);
-    content_vendor.compile.linkLibrary(ztracy.artifact("tracy"));
-
     const virtuous_window = addTestableModule(&bops, "src/window/virtuous_window.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     virtuous_window.compile.linkLibrary(tree_sitter);
 
-    const neo_window = addTestableModule(&bops, "src/window/neo_window.zig", &.{
-        .{ .name = "cursor", .module = cursor.module },
-        .{ .name = "content_vendor", .module = content_vendor.module },
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-    neo_window.compile.linkLibrary(tree_sitter);
-
-    const ugly_window = addTestableModule(&bops, "src/window/ugly_window.zig", &.{
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-    ugly_window.compile.linkLibrary(tree_sitter);
-
-    const window_backend = addTestableModule(&bops, "src/window/backend.zig", &.{
-        .{ .name = "buffer", .module = buffer.module },
-        .{ .name = "ts", .module = ts.module },
-        .{ .name = "raylib", .module = raylib.module("raylib") },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-    window_backend.compile.linkLibrary(tree_sitter);
-
     ////////////////////////////////////////////////////////////////////////////// Executable
-
-    {
-        const exe = b.addExecutable(.{
-            .name = "profile_content_vendor",
-            .root_source_file = b.path("src/window/content_vendor_profiling.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.linkLibrary(ztracy.artifact("tracy"));
-
-        ///////////////////////////// Local Modules
-
-        exe.root_module.addImport("neo_buffer", neo_buffer.module);
-        exe.root_module.addImport("content_vendor", content_vendor.module);
-        exe.root_module.addImport("neo_window", neo_window.module);
-        exe.linkLibrary(tree_sitter);
-
-        const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(b.getInstallStep());
-
-        const run_step = b.step("profile", "profile_content_vendor");
-        run_step.dependOn(&run_cmd.step);
-    }
 
     ///////////////////////////// Raylib
 
@@ -244,7 +176,7 @@ pub fn build(b: *std.Build) void {
 
     {
         const exe = b.addExecutable(.{
-            .name = "communism",
+            .name = "application",
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
@@ -252,9 +184,6 @@ pub fn build(b: *std.Build) void {
 
         exe.linkLibrary(raylib.artifact("raylib"));
         exe.root_module.addImport("raylib", raylib.module("raylib"));
-        exe.root_module.addImport("window_backend", window_backend.module);
-
-        exe.root_module.addImport("logz", logz.module("logz"));
 
         exe.linkLibrary(tree_sitter);
 
@@ -263,7 +192,7 @@ pub fn build(b: *std.Build) void {
         if (b.args) |args| {
             run_cmd.addArgs(args);
         }
-        const run_step = b.step("run", "Run Communism Studio");
+        const run_step = b.step("run", "Run Application");
         run_step.dependOn(&run_cmd.step);
     }
 }

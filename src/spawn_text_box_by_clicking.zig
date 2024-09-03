@@ -233,7 +233,13 @@ pub fn main() anyerror!void {
                     hash(&[_]Key{ .left_control, .l }) => {
                         if (try navigator.forward()) |path| {
                             defer path.deinit();
-                            std.debug.print("path is: {s}\n", .{path.items});
+
+                            buf.destroy();
+                            window.destroy();
+
+                            buf = try Buffer.create(gpa, .file, path.items);
+                            try buf.initiateTreeSitter(zig_langsuite);
+                            window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
                         }
                     },
 
