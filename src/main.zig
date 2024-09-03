@@ -266,14 +266,12 @@ pub fn main() anyerror!void {
             }
         }
 
-        // window handle checking
-
-        const mouse = rl.getMousePosition();
+        // window handle
+        const mouse = rl.getScreenToWorld2D(rl.getMousePosition(), camera);
         const collides = rl.checkCollisionPointCircle(mouse, .{ .x = window.x, .y = window.y + window_dragger_y_offset }, 30);
         if (collides and rl.isMouseButtonDown(.mouse_button_left)) {
             move_window = true;
         }
-
         if (move_window) {
             window.x = mouse.x;
             window.y = mouse.y - window_dragger_y_offset;
