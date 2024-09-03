@@ -22,7 +22,8 @@ pub const Window = struct {
 
     x: f32,
     y: f32,
-    bounded: ?Bounded,
+    bounds: Bounds,
+    bounded: bool,
 
     font_size: i32,
     line_spacing: i32 = 2,
@@ -37,9 +38,9 @@ pub const Window = struct {
         }
     };
 
-    const Bounded = struct {
-        width: f32,
-        height: f32,
+    const Bounds = struct {
+        width: f32 = 400,
+        height: f32 = 400,
         offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
     };
 
@@ -125,7 +126,7 @@ pub const Window = struct {
         }
     };
 
-    pub fn spawn(exa: Allocator, buf: *Buffer, font_size: i32, x: f32, y: f32, bounded: ?Bounded) !*@This() {
+    pub fn spawn(exa: Allocator, buf: *Buffer, font_size: i32, x: f32, y: f32, bounds: ?Bounds) !*@This() {
         const self = try exa.create(@This());
         self.* = .{
             .exa = exa,
@@ -133,7 +134,8 @@ pub const Window = struct {
             .cursor = Cursor{},
             .x = x,
             .y = y,
-            .bounded = bounded,
+            .bounded = if (bounds != null) true else false,
+            .bounds = if (bounds) |b| b else Bounds{},
             .font_size = font_size,
         };
 
@@ -151,12 +153,23 @@ pub const Window = struct {
         self.exa.destroy(self);
     }
 
+    ///////////////////////////// Window Position & Bounds
+
     pub fn moveBy(self: *@This(), x: f32, y: f32) void {
         self.x += x;
         self.y += y;
     }
 
-    ///////////////////////////// Code Point Iterator
+    pub fn toggleBounds(self: *@This()) !void {
+        self.bounded = !self.bounded;
+    }
+
+    pub fn resizeBoundsBy(self: *@This(), deltaWidth: f32, deltaHeight: f32) void {
+        self.bounds.width += deltaWidth;
+        self.bounds.height += deltaHeight;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Code Point Iterator
 
     const CodePointIterator = struct {
         const Screen = struct {
@@ -199,9 +212,9 @@ pub const Window = struct {
                 .current_x = win.x,
                 .current_y = win.y,
             };
-            if (self.win.bounded) |b| {
-                self.current_x -= b.offset.x;
-                self.current_y -= b.offset.y;
+            if (self.win.bounded) {
+                self.current_x -= self.win.bounds.offset.x;
+                self.current_y -= self.win.bounds.offset.y;
             }
             return self;
         }
@@ -218,10 +231,10 @@ pub const Window = struct {
             }
 
             // bounded check
-            if (self.win.bounded) |b| {
+            if (self.win.bounded) {
                 // over boundary check
-                if (self.current_x >= b.width + self.win.x) return self.advanceToNextLine();
-                if (self.current_y >= b.height + self.win.y) return null;
+                if (self.current_x >= self.win.bounds.width + self.win.x) return self.advanceToNextLine();
+                if (self.current_y >= self.win.bounds.height + self.win.y) return null;
 
                 // offset check
                 if (self.current_y + self.lineHeight() < self.win.y) return self.advanceToNextLine();
@@ -267,7 +280,7 @@ pub const Window = struct {
             self.current_line += 1;
             self.current_col = 0;
             self.current_x = self.win.x;
-            if (self.win.bounded) |b| self.current_x -= b.offset.x;
+            if (self.win.bounded) self.current_x -= self.win.bounds.offset.x;
             self.current_y += self.lineHeight();
             return .skip_to_new_line;
         }
@@ -282,7 +295,7 @@ pub const Window = struct {
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Window Display
+////////////////////////////////////////////////////////////////////////////////////////////// CodePointIterator - Window Display
 
 test "unbound window fully on screen" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
@@ -612,6 +625,8 @@ test "bounded window partially on screen" {
     }
 }
 
+///////////////////////////// Test Helpers
+
 fn testVisibility(iter: *Window.CodePointIterator, expected_str: []const u8) !void {
     var str = ArrayList(u8).init(testing_allocator);
     defer str.deinit();
@@ -674,33 +689,18 @@ fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.
     return langsuite;
 }
 
-fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, x: f32, y: f32, bounded: ?Window.Bounded) !*Window {
+fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, x: f32, y: f32, bounded: ?Window.Bounds) !*Window {
     var buf = try Buffer.create(a, .string, source);
     try buf.initiateTreeSitter(langsuite);
     return try Window.spawn(a, buf, font_size, x, y, bounded);
 }
+
 fn teardownWindow(win: *Window) void {
     win.buf.destroy();
     win.destroy();
 }
 
-fn setupFontDataAndIndexMap() !struct { FontData, FontDataIndexMap } {
-    const a = idc_if_it_leaks;
-    var file = try std.fs.cwd().openFile("src/window/font_data.json", .{});
-    const json_str = try file.readToEndAlloc(a, 1024 * 1024 * 10);
-    const font_data = try std.json.parseFromSlice(FontData, a, json_str, .{});
-    const index_map = try createFontDataIndexMap(a, font_data.value);
-    return .{ font_data.value, index_map };
-}
-
-pub const FontDataIndexMap = std.AutoHashMap(i32, usize);
-pub fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
-    var map = FontDataIndexMap.init(a);
-    for (0..font_data.glyphs.len) |i| try map.put(font_data.glyphs[i].value, i);
-    return map;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// For caller to provide font data
 
 // Trimmed down versions of Raylib equivalents.
 // Critical to calculate text positions.
@@ -724,6 +724,22 @@ pub const FontData = struct {
     recs: []Rectangle,
     glyphs: []GlyphData,
 };
+
+fn setupFontDataAndIndexMap() !struct { FontData, FontDataIndexMap } {
+    const a = idc_if_it_leaks;
+    var file = try std.fs.cwd().openFile("src/window/font_data.json", .{});
+    const json_str = try file.readToEndAlloc(a, 1024 * 1024 * 10);
+    const font_data = try std.json.parseFromSlice(FontData, a, json_str, .{});
+    const index_map = try createFontDataIndexMap(a, font_data.value);
+    return .{ font_data.value, index_map };
+}
+
+pub const FontDataIndexMap = std.AutoHashMap(i32, usize);
+pub fn createFontDataIndexMap(a: Allocator, font_data: FontData) !FontDataIndexMap {
+    var map = FontDataIndexMap.init(a);
+    for (0..font_data.glyphs.len) |i| try map.put(font_data.glyphs[i].value, i);
+    return map;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
