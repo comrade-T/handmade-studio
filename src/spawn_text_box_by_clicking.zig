@@ -200,18 +200,20 @@ pub fn main() anyerror!void {
                 // std.debug.print("trigger: 0x{x}\n", .{trigger});
                 const current_time = std.time.milliTimestamp();
 
-                if (reached_repeat_rate) {
-                    if (current_time - last_trigger_timestamp < repeat_rate) break :blk;
-                    last_trigger_timestamp = current_time;
-                }
+                trigger: {
+                    if (reached_repeat_rate) {
+                        if (current_time - last_trigger_timestamp < repeat_rate) break :blk;
+                        last_trigger_timestamp = current_time;
+                        break :trigger;
+                    }
 
-                if (reached_trigger_delay and !reached_repeat_rate) {
-                    if (current_time - last_trigger_timestamp < trigger_delay) break :blk;
-                    reached_repeat_rate = true;
-                    last_trigger_timestamp = current_time;
-                }
+                    if (reached_trigger_delay) {
+                        if (current_time - last_trigger_timestamp < trigger_delay) break :blk;
+                        reached_repeat_rate = true;
+                        last_trigger_timestamp = current_time;
+                        break :trigger;
+                    }
 
-                if (!reached_trigger_delay and !reached_repeat_rate) {
                     if (current_time - last_trigger_timestamp < trigger_delay) break :blk;
                     reached_trigger_delay = true;
                     last_trigger_timestamp = current_time;
