@@ -136,7 +136,7 @@ pub fn main() anyerror!void {
     defer zig_langsuite.destroy();
     try zig_langsuite.initializeQuery();
     try zig_langsuite.initializeFilter(gpa);
-    try zig_langsuite.initializeHighlightMap(gpa);
+    try zig_langsuite.initializeNightflyColorscheme(gpa);
 
     var buf = try Buffer.create(gpa, .file, "build.zig");
     try buf.initiateTreeSitter(zig_langsuite);
@@ -147,10 +147,11 @@ pub fn main() anyerror!void {
     const win_height = screen_height - win_padding / 2;
     const win_x = screen_width - win_width;
 
-    var window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
-        .width = win_width,
-        .height = win_height,
-    });
+    // var window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
+    //     .width = win_width,
+    //     .height = win_height,
+    // });
+    var window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
     defer window.destroy();
 
     const window_dragger_y_offset = -40;
