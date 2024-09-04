@@ -57,7 +57,7 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Font
 
-    const font_size = 150;
+    const font_size = 40;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
     const font_data = try generateFontData(gpa, font);
@@ -138,15 +138,22 @@ pub fn main() anyerror!void {
     try zig_langsuite.initializeFilter(gpa);
     try zig_langsuite.initializeHighlightMap(gpa);
 
-    var buf = try Buffer.create(gpa, .string, "");
+    var buf = try Buffer.create(gpa, .file, "build.zig");
     try buf.initiateTreeSitter(zig_langsuite);
     defer buf.destroy();
 
-    var window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
+    const win_padding = 20;
+    const win_width = @as(f32, @floatFromInt(screen_width)) / 1.3;
+    const win_height = screen_height - win_padding / 2;
+    const win_x = screen_width - win_width;
+
+    var window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
+        .width = win_width,
+        .height = win_height,
+    });
     defer window.destroy();
 
     const window_dragger_y_offset = -40;
-
     var move_window_with_mouse = false;
 
     var move_window_with_keyboard = false;
@@ -260,7 +267,10 @@ pub fn main() anyerror!void {
 
                             buf = try Buffer.create(gpa, .file, path.items);
                             try buf.initiateTreeSitter(zig_langsuite);
-                            window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
+                            window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
+                                .width = win_width,
+                                .height = win_height,
+                            });
                         }
                     },
 
@@ -305,7 +315,7 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
         {
-            rl.drawFPS(10, 10);
+            // rl.drawFPS(10, 10);
 
             rl.clearBackground(rl.Color.blank);
             { // navigator
@@ -314,7 +324,7 @@ pub fn main() anyerror!void {
                     defer gpa.free(text);
                     const idx: i32 = @intCast(i);
                     const color = if (i == navigator.index) rl.Color.sky_blue else rl.Color.ray_white;
-                    rl.drawText(text, 100, 100 + idx * 40, 30, color);
+                    rl.drawText(text, 70, 100 + idx * 40, 30, color);
                 }
             }
 
@@ -342,34 +352,35 @@ pub fn main() anyerror!void {
                     }
                 }
 
-                { // Window dragger
-                    const radius: f32 = if (collides) 40 else 30;
-                    rl.drawCircle(
-                        @intFromFloat(window.x),
-                        @intFromFloat(window.y + window_dragger_y_offset),
-                        radius,
-                        rl.Color.sky_blue,
-                    );
-                }
-                { // Window bounded bottom indicator
-                    if (window.bounded) {
-                        const radius = 30;
-                        rl.drawCircle(
-                            @intFromFloat(window.x + window.bounds.width + radius / 2),
-                            @intFromFloat(window.y + window.bounds.height + radius / 2),
-                            radius,
-                            rl.Color.yellow,
-                        );
-                    }
-                }
+                // { // Window dragger
+                //     const radius: f32 = if (collides) 40 else 30;
+                //     rl.drawCircle(
+                //         @intFromFloat(window.x),
+                //         @intFromFloat(window.y + window_dragger_y_offset),
+                //         radius,
+                //         rl.Color.sky_blue,
+                //     );
+                // }
+
+                // { // Window bounded bottom indicator
+                //     if (window.bounded) {
+                //         const radius = 30;
+                //         rl.drawCircle(
+                //             @intFromFloat(window.x + window.bounds.width + radius / 2),
+                //             @intFromFloat(window.y + window.bounds.height + radius / 2),
+                //             radius,
+                //             rl.Color.yellow,
+                //         );
+                //     }
+                // }
             }
 
-            try drawTextAtBottomRight(
-                "chars rendered: {d}",
-                .{chars_rendered},
-                30,
-                .{ .x = 40, .y = 40 },
-            );
+            // try drawTextAtBottomRight(
+            //     "chars rendered: {d}",
+            //     .{chars_rendered},
+            //     30,
+            //     .{ .x = 40, .y = 40 },
+            // );
 
             // try drawTextAtBottomRight(
             //     "[{d}, {d}]",
