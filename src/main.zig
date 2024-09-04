@@ -106,6 +106,8 @@ pub fn main() anyerror!void {
         try vault.emap(&[_]Key{ .left_control, .j });
         try vault.emap(&[_]Key{ .left_control, .k });
         try vault.emap(&[_]Key{ .left_control, .l });
+
+        try vault.emap(&[_]Key{.z});
     }
 
     var frame = try _input_processor.InputFrame.init(gpa);
@@ -144,7 +146,8 @@ pub fn main() anyerror!void {
     defer window.destroy();
 
     const window_dragger_y_offset = -40;
-    var move_window = false;
+    var move_window_with_mouse = false;
+    var move_window_with_keyboard = false;
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -261,8 +264,12 @@ pub fn main() anyerror!void {
                         }
                     },
 
+                    hash(&[_]Key{.z}) => move_window_with_keyboard = true,
+
                     else => {},
                 }
+            } else {
+                move_window_with_keyboard = false;
             }
         }
 
@@ -270,14 +277,19 @@ pub fn main() anyerror!void {
         const mouse = rl.getScreenToWorld2D(rl.getMousePosition(), camera);
         const collides = rl.checkCollisionPointCircle(mouse, .{ .x = window.x, .y = window.y + window_dragger_y_offset }, 30);
         if (collides and rl.isMouseButtonDown(.mouse_button_left)) {
-            move_window = true;
+            move_window_with_mouse = true;
         }
-        if (move_window) {
+        if (move_window_with_mouse) {
             window.x = mouse.x;
             window.y = mouse.y - window_dragger_y_offset;
             if (rl.isMouseButtonReleased(.mouse_button_left)) {
-                move_window = false;
+                move_window_with_mouse = false;
             }
+        }
+        if (move_window_with_keyboard) {
+            const mouse_delta = rl.getMouseDelta().scale(1 / camera.zoom);
+            window.x += mouse_delta.x;
+            window.y += mouse_delta.y;
         }
 
         ///////////////////////////// Draw
