@@ -90,6 +90,8 @@ pub fn main() anyerror!void {
 
     // TODO:
 
+    var editor_mode = _input_processor.EditorMode.editor;
+
     { // editor mode tests
         try vault.emap(&[_]Key{.j});
         try vault.emap(&[_]Key{.k});
@@ -108,6 +110,14 @@ pub fn main() anyerror!void {
         try vault.emap(&[_]Key{.z});
         try vault.emap(&[_]Key{.b});
         try vault.emap(&[_]Key{.r});
+
+        try vault.emap(&[_]Key{.m});
+
+        try vault.nmap(&[_]Key{.h});
+        try vault.nmap(&[_]Key{.j});
+        try vault.nmap(&[_]Key{.k});
+        try vault.nmap(&[_]Key{.l});
+        try vault.nmap(&[_]Key{.m});
     }
 
     var frame = try _input_processor.InputFrame.init(gpa);
@@ -223,7 +233,7 @@ pub fn main() anyerror!void {
             }
 
             if (_input_processor.produceTrigger(
-                .editor,
+                editor_mode,
                 &frame,
                 _input_processor.MappingVault.down_checker,
                 _input_processor.MappingVault.up_checker,
@@ -251,34 +261,52 @@ pub fn main() anyerror!void {
                     last_trigger_timestamp = current_time;
                 }
 
-                switch (trigger) {
-                    hash(&[_]Key{.a}) => {
-                        std.debug.print("Alice in Wonderland\n", .{});
-                    },
+                switch (editor_mode) {
+                    .editor => {
+                        switch (trigger) {
+                            hash(&[_]Key{.a}) => {
+                                std.debug.print("Alice in Wonderland\n", .{});
+                            },
 
-                    hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
-                    hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
-                    hash(&[_]Key{ .left_control, .j }) => navigator.moveDown(),
-                    hash(&[_]Key{ .left_control, .l }) => {
-                        if (try navigator.forward()) |path| {
-                            defer path.deinit();
+                            hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
+                            hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
+                            hash(&[_]Key{ .left_control, .j }) => navigator.moveDown(),
+                            hash(&[_]Key{ .left_control, .l }) => {
+                                if (try navigator.forward()) |path| {
+                                    defer path.deinit();
 
-                            buf.destroy();
-                            window.destroy();
+                                    buf.destroy();
+                                    window.destroy();
 
-                            buf = try Buffer.create(gpa, .file, path.items);
-                            try buf.initiateTreeSitter(zig_langsuite);
-                            window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
-                                .width = win_width,
-                                .height = win_height,
-                            });
+                                    buf = try Buffer.create(gpa, .file, path.items);
+                                    try buf.initiateTreeSitter(zig_langsuite);
+                                    window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
+                                        .width = win_width,
+                                        .height = win_height,
+                                    });
+                                }
+                            },
+
+                            hash(&[_]Key{.z}) => move_window_with_keyboard = true,
+                            hash(&[_]Key{.b}) => window.toggleBounds(),
+                            hash(&[_]Key{.r}) => resize_window_bounds_with_keyboard = true,
+
+                            hash(&[_]Key{.m}) => editor_mode = .normal,
+
+                            else => {},
                         }
                     },
+                    .normal => {
+                        switch (trigger) {
+                            hash(&[_]Key{.h}) => window.moveCursorLeft(),
+                            hash(&[_]Key{.j}) => window.moveCursorDown(),
+                            hash(&[_]Key{.k}) => window.moveCursorUp(),
+                            hash(&[_]Key{.l}) => window.moveCursorRight(),
 
-                    hash(&[_]Key{.z}) => move_window_with_keyboard = true,
-                    hash(&[_]Key{.b}) => window.toggleBounds(),
-                    hash(&[_]Key{.r}) => resize_window_bounds_with_keyboard = true,
-
+                            hash(&[_]Key{.m}) => editor_mode = .editor,
+                            else => {},
+                        }
+                    },
                     else => {},
                 }
             } else {
@@ -329,6 +357,10 @@ pub fn main() anyerror!void {
                 }
             }
 
+            { // mode indicator
+                rl.drawText(@tagName(editor_mode), 40, screen_height - 30 * 2, 30, rl.Color.ray_white);
+            }
+
             var chars_rendered: u64 = 0;
             // defer ztracy.PlotU("chars_rendered", chars_rendered);
 
@@ -348,6 +380,11 @@ pub fn main() anyerror!void {
                         .code_point => |char| {
                             rl.drawTextCodepoint(font, char.value, .{ .x = char.x, .y = char.y }, font_size, rl.Color.fromInt(char.color));
                             chars_rendered += 1;
+                            if (iter.current_line + window.contents.start_line == window.cursor.line and
+                                iter.current_col -| 1 == window.cursor.col)
+                            {
+                                rl.drawRectangle(@intFromFloat(char.x), @intFromFloat(char.y), 15, font_size, rl.Color.ray_white);
+                            }
                         },
                         else => continue,
                     }
@@ -383,12 +420,12 @@ pub fn main() anyerror!void {
             //     .{ .x = 40, .y = 40 },
             // );
 
-            // try drawTextAtBottomRight(
-            //     "[{d}, {d}]",
-            //     .{ window.cursor.line, window.cursor.col },
-            //     30,
-            //     .{ .x = 40, .y = 120 },
-            // );
+            try drawTextAtBottomRight(
+                "[{d}, {d}]",
+                .{ window.cursor.line, window.cursor.col },
+                30,
+                .{ .x = 40, .y = 120 },
+            );
         }
     }
 }

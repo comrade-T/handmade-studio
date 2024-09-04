@@ -155,18 +155,38 @@ pub const Window = struct {
 
     ///////////////////////////// Window Position & Bounds
 
-    pub fn moveBy(self: *@This(), x: f32, y: f32) void {
-        self.x += x;
-        self.y += y;
-    }
-
     pub fn toggleBounds(self: *@This()) void {
         self.bounded = !self.bounded;
     }
 
-    pub fn resizeBoundsBy(self: *@This(), deltaWidth: f32, deltaHeight: f32) void {
-        self.bounds.width += deltaWidth;
-        self.bounds.height += deltaHeight;
+    pub fn moveCursorLeft(self: *@This()) void {
+        self.cursor.col -|= 1;
+    }
+
+    pub fn moveCursorRight(self: *@This()) void {
+        if (self.cursor.line < self.contents.start_line or self.cursor.line > self.contents.end_line) {
+            @panic("cursor line outside content range");
+        }
+        const current_line_index = self.cursor.line - self.contents.start_line;
+        const current_line = self.contents.lines[current_line_index];
+        const target_col = self.cursor.col + 1;
+        if (target_col < current_line.len) self.cursor.col = target_col;
+    }
+
+    pub fn moveCursorUp(self: *@This()) void {
+        self.cursor.line -|= 1;
+    }
+
+    pub fn moveCursorDown(self: *@This()) void {
+        if (self.cursor.line < self.contents.start_line or self.cursor.line > self.contents.end_line) {
+            @panic("cursor line outside content range");
+        }
+        const target_line = self.cursor.line + 1;
+        if (target_line <= self.contents.end_line) {
+            self.cursor.line = target_line;
+            return;
+        }
+        @panic("vertical scrolling not implemented");
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Code Point Iterator

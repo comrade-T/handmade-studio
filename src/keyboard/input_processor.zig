@@ -344,7 +344,7 @@ pub const InputFrame = struct {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const EditorMode = enum { editor, normal, visual, insert, select };
+pub const EditorMode = enum { editor, normal, visual, insert, select };
 
 const MappingChecker = *const fn (ctx: *anyopaque, mode: EditorMode, trigger: ?u128) bool;
 pub fn produceTrigger(
