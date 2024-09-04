@@ -160,7 +160,7 @@ pub const Window = struct {
         self.y += y;
     }
 
-    pub fn toggleBounds(self: *@This()) !void {
+    pub fn toggleBounds(self: *@This()) void {
         self.bounded = !self.bounded;
     }
 

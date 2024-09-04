@@ -100,14 +100,14 @@ pub fn main() anyerror!void {
         try vault.emap(&[_]Key{ .l, .z });
         try vault.emap(&[_]Key{ .l, .z, .c });
 
-        try vault.emap(&[_]Key{.b});
-
         try vault.emap(&[_]Key{ .left_control, .h });
         try vault.emap(&[_]Key{ .left_control, .j });
         try vault.emap(&[_]Key{ .left_control, .k });
         try vault.emap(&[_]Key{ .left_control, .l });
 
         try vault.emap(&[_]Key{.z});
+        try vault.emap(&[_]Key{.b});
+        try vault.emap(&[_]Key{.r});
     }
 
     var frame = try _input_processor.InputFrame.init(gpa);
@@ -146,8 +146,11 @@ pub fn main() anyerror!void {
     defer window.destroy();
 
     const window_dragger_y_offset = -40;
+
     var move_window_with_mouse = false;
+
     var move_window_with_keyboard = false;
+    var resize_window_bounds_with_keyboard = false;
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -244,9 +247,6 @@ pub fn main() anyerror!void {
                     hash(&[_]Key{.a}) => {
                         std.debug.print("Alice in Wonderland\n", .{});
                     },
-                    hash(&[_]Key{.b}) => {
-                        std.debug.print("Big Bang raise the roof\n", .{});
-                    },
 
                     hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
                     hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
@@ -265,11 +265,14 @@ pub fn main() anyerror!void {
                     },
 
                     hash(&[_]Key{.z}) => move_window_with_keyboard = true,
+                    hash(&[_]Key{.b}) => window.toggleBounds(),
+                    hash(&[_]Key{.r}) => resize_window_bounds_with_keyboard = true,
 
                     else => {},
                 }
             } else {
                 move_window_with_keyboard = false;
+                resize_window_bounds_with_keyboard = false;
             }
         }
 
@@ -290,6 +293,11 @@ pub fn main() anyerror!void {
             const mouse_delta = rl.getMouseDelta().scale(1 / camera.zoom);
             window.x += mouse_delta.x;
             window.y += mouse_delta.y;
+        }
+        if (resize_window_bounds_with_keyboard and window.bounded) {
+            const mouse_delta = rl.getMouseDelta().scale(1 / camera.zoom);
+            window.bounds.width += mouse_delta.x;
+            window.bounds.height += mouse_delta.y;
         }
 
         ///////////////////////////// Draw
@@ -336,7 +344,23 @@ pub fn main() anyerror!void {
 
                 { // Window dragger
                     const radius: f32 = if (collides) 40 else 30;
-                    rl.drawCircle(@intFromFloat(window.x), @intFromFloat(window.y - 40), radius, rl.Color.sky_blue);
+                    rl.drawCircle(
+                        @intFromFloat(window.x),
+                        @intFromFloat(window.y + window_dragger_y_offset),
+                        radius,
+                        rl.Color.sky_blue,
+                    );
+                }
+                { // Window bounded bottom indicator
+                    if (window.bounded) {
+                        const radius = 30;
+                        rl.drawCircle(
+                            @intFromFloat(window.x + window.bounds.width + radius / 2),
+                            @intFromFloat(window.y + window.bounds.height + radius / 2),
+                            radius,
+                            rl.Color.yellow,
+                        );
+                    }
                 }
             }
 
