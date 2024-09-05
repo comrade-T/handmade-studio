@@ -746,6 +746,21 @@ test "insert mode" {
         try frame.keyUp(.l);
         try testTrigger(null, .insert, &frame);
     }
+
+    // consecutive below threshold
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try testTrigger(0x12000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyDown(.a, .{ .testing = 20 });
+        try testTrigger(0x12000000000000000000000000000000, .insert, &frame);
+
+        try frame.keyUp(.a);
+        try testTrigger(null, .insert, &frame);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

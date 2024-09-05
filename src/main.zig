@@ -159,6 +159,7 @@ pub fn main() anyerror!void {
     defer frame.deinit();
 
     var last_trigger_timestamp: i64 = 0;
+    var last_trigger: u128 = 0;
 
     var reached_trigger_delay = false;
     var reached_repeat_rate = false;
@@ -276,6 +277,13 @@ pub fn main() anyerror!void {
             )) |trigger| {
                 // std.debug.print("trigger: 0x{x}\n", .{trigger});
                 const current_time = std.time.milliTimestamp();
+                defer last_trigger = trigger;
+
+                if (trigger != last_trigger) {
+                    reached_trigger_delay = false;
+                    reached_repeat_rate = false;
+                    last_trigger_timestamp = 0;
+                }
 
                 trigger: {
                     if (reached_repeat_rate) {
