@@ -298,10 +298,10 @@ pub fn main() anyerror!void {
                     },
                     .normal => {
                         switch (trigger) {
-                            hash(&[_]Key{.h}) => window.moveCursorLeft(),
-                            hash(&[_]Key{.j}) => window.moveCursorDown(),
-                            hash(&[_]Key{.k}) => window.moveCursorUp(),
-                            hash(&[_]Key{.l}) => window.moveCursorRight(),
+                            hash(&[_]Key{.h}) => window.moveCursorLeft(&window.cursor),
+                            hash(&[_]Key{.j}) => window.moveCursorDown(&window.cursor),
+                            hash(&[_]Key{.k}) => window.moveCursorUp(&window.cursor),
+                            hash(&[_]Key{.l}) => window.moveCursorRight(&window.cursor),
 
                             hash(&[_]Key{.m}) => editor_mode = .editor,
                             else => {},

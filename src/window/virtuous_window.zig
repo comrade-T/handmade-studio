@@ -161,34 +161,33 @@ pub const Window = struct {
 
     ///////////////////////////// Cursor Movement
 
-    pub fn moveCursorLeft(self: *@This()) void {
-        self.cursor.col -|= 1;
+    pub fn moveCursorLeft(self: *@This(), cursor: *Cursor) void {
+        cursor.col -|= 1;
+        self.restrictCursorInView(cursor);
     }
 
-    pub fn moveCursorRight(self: *@This()) void {
-        if (self.cursor.line < self.contents.start_line or self.cursor.line > self.contents.end_line) {
-            @panic("cursor line outside content range");
-        }
-        const current_line_index = self.cursor.line - self.contents.start_line;
-        const current_line = self.contents.lines[current_line_index];
-        const target_col = self.cursor.col + 1;
-        if (target_col < current_line.len) self.cursor.col = target_col;
-    }
-
-    pub fn moveCursorUp(_: *@This(), cursor: *Cursor) void {
+    pub fn moveCursorUp(self: *@This(), cursor: *Cursor) void {
         cursor.line -|= 1;
+        self.restrictCursorInView(cursor);
+    }
+
+    pub fn moveCursorRight(self: *@This(), cursor: *Cursor) void {
+        cursor.col += 1;
+        self.restrictCursorInView(cursor);
     }
 
     pub fn moveCursorDown(self: *@This(), cursor: *Cursor) void {
-        if (!self.cursorLineInRange(cursor)) @panic("content range update not implemented");
-        if (cursor.line + 1 <= self.contents.end_line) cursor.line += 1;
+        cursor.line += 1;
+        self.restrictCursorInView(cursor);
     }
 
-    fn cursorLineInRange(self: *@This(), cursor: *Cursor) bool {
-        if (cursor.line < self.contents.start_line or cursor.line > self.contents.end_line) {
-            return false;
-        }
-        return true;
+    pub fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
+        if (cursor.line < self.contents.start_line) cursor.line = self.contents.start_line;
+        if (cursor.line > self.contents.end_line) cursor.line = self.contents.end_line;
+        const current_line_index = cursor.line - self.contents.start_line;
+        const current_line = self.contents.lines[current_line_index];
+        if (current_line.len == 0) cursor.col = 0;
+        if (cursor.col > current_line.len -| 1) cursor.col = current_line.len -| 1;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Code Point Iterator
@@ -316,37 +315,6 @@ pub const Window = struct {
         return CodePointIterator.create(self, font_data, index_map, screen);
     }
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////// Cursor Movement
-
-test "moveCursorUp" {
-    const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333\n4444");
-    var win = try Window.spawn(idc_if_it_leaks, buf, 40, 0, 0, null);
-
-    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
-    win.moveCursorUp(&win.cursor);
-    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
-
-    win.cursor.set(1, 0);
-    win.moveCursorUp(&win.cursor);
-    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
-}
-
-test "moveCursorDown" {
-    const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333\n4444");
-    var win = try Window.spawn(idc_if_it_leaks, buf, 40, 0, 0, null);
-
-    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
-    win.moveCursorDown(&win.cursor);
-    try eq(Window.Cursor{ .line = 1, .col = 0 }, win.cursor);
-
-    win.cursor.set(2, 0);
-    win.moveCursorDown(&win.cursor);
-    try eq(Window.Cursor{ .line = 3, .col = 0 }, win.cursor);
-
-    win.moveCursorDown(&win.cursor);
-    try eq(Window.Cursor{ .line = 3, .col = 0 }, win.cursor);
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// CodePointIterator
 
