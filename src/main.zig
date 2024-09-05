@@ -154,7 +154,6 @@ pub fn main() anyerror!void {
         try vault.imap(&[_]Key{.x});
         try vault.imap(&[_]Key{.y});
         try vault.imap(&[_]Key{.z});
-        try vault.imap(&[_]Key{.space});
         try vault.imap(&[_]Key{ .left_shift, .a });
         try vault.imap(&[_]Key{ .left_shift, .b });
         try vault.imap(&[_]Key{ .left_shift, .c });
@@ -181,6 +180,99 @@ pub fn main() anyerror!void {
         try vault.imap(&[_]Key{ .left_shift, .x });
         try vault.imap(&[_]Key{ .left_shift, .y });
         try vault.imap(&[_]Key{ .left_shift, .z });
+        try vault.imap(&[_]Key{ .right_shift, .a });
+        try vault.imap(&[_]Key{ .right_shift, .b });
+        try vault.imap(&[_]Key{ .right_shift, .c });
+        try vault.imap(&[_]Key{ .right_shift, .d });
+        try vault.imap(&[_]Key{ .right_shift, .e });
+        try vault.imap(&[_]Key{ .right_shift, .f });
+        try vault.imap(&[_]Key{ .right_shift, .g });
+        try vault.imap(&[_]Key{ .right_shift, .h });
+        try vault.imap(&[_]Key{ .right_shift, .i });
+        try vault.imap(&[_]Key{ .right_shift, .j });
+        try vault.imap(&[_]Key{ .right_shift, .k });
+        try vault.imap(&[_]Key{ .right_shift, .l });
+        try vault.imap(&[_]Key{ .right_shift, .m });
+        try vault.imap(&[_]Key{ .right_shift, .n });
+        try vault.imap(&[_]Key{ .right_shift, .o });
+        try vault.imap(&[_]Key{ .right_shift, .p });
+        try vault.imap(&[_]Key{ .right_shift, .q });
+        try vault.imap(&[_]Key{ .right_shift, .r });
+        try vault.imap(&[_]Key{ .right_shift, .s });
+        try vault.imap(&[_]Key{ .right_shift, .t });
+        try vault.imap(&[_]Key{ .right_shift, .u });
+        try vault.imap(&[_]Key{ .right_shift, .v });
+        try vault.imap(&[_]Key{ .right_shift, .w });
+        try vault.imap(&[_]Key{ .right_shift, .x });
+        try vault.imap(&[_]Key{ .right_shift, .y });
+        try vault.imap(&[_]Key{ .right_shift, .z });
+
+        try vault.imap(&[_]Key{.space});
+
+        try vault.imap(&[_]Key{.one});
+        try vault.imap(&[_]Key{.two});
+        try vault.imap(&[_]Key{.three});
+        try vault.imap(&[_]Key{.four});
+        try vault.imap(&[_]Key{.five});
+        try vault.imap(&[_]Key{.six});
+        try vault.imap(&[_]Key{.seven});
+        try vault.imap(&[_]Key{.eight});
+        try vault.imap(&[_]Key{.nine});
+        try vault.imap(&[_]Key{.zero});
+        try vault.imap(&[_]Key{ .left_shift, .one });
+        try vault.imap(&[_]Key{ .left_shift, .two });
+        try vault.imap(&[_]Key{ .left_shift, .three });
+        try vault.imap(&[_]Key{ .left_shift, .four });
+        try vault.imap(&[_]Key{ .left_shift, .five });
+        try vault.imap(&[_]Key{ .left_shift, .six });
+        try vault.imap(&[_]Key{ .left_shift, .seven });
+        try vault.imap(&[_]Key{ .left_shift, .eight });
+        try vault.imap(&[_]Key{ .left_shift, .nine });
+        try vault.imap(&[_]Key{ .left_shift, .zero });
+        try vault.imap(&[_]Key{ .right_shift, .one });
+        try vault.imap(&[_]Key{ .right_shift, .two });
+        try vault.imap(&[_]Key{ .right_shift, .three });
+        try vault.imap(&[_]Key{ .right_shift, .four });
+        try vault.imap(&[_]Key{ .right_shift, .five });
+        try vault.imap(&[_]Key{ .right_shift, .six });
+        try vault.imap(&[_]Key{ .right_shift, .seven });
+        try vault.imap(&[_]Key{ .right_shift, .eight });
+        try vault.imap(&[_]Key{ .right_shift, .nine });
+        try vault.imap(&[_]Key{ .right_shift, .zero });
+
+        try vault.imap(&[_]Key{.grave});
+        try vault.imap(&[_]Key{.minus});
+        try vault.imap(&[_]Key{.equal});
+        try vault.imap(&[_]Key{.left_bracket});
+        try vault.imap(&[_]Key{.right_bracket});
+        try vault.imap(&[_]Key{.backslash});
+        try vault.imap(&[_]Key{.semicolon});
+        try vault.imap(&[_]Key{.apostrophe});
+        try vault.imap(&[_]Key{.comma});
+        try vault.imap(&[_]Key{.period});
+        try vault.imap(&[_]Key{.slash});
+        try vault.imap(&[_]Key{ .left_shift, .grave });
+        try vault.imap(&[_]Key{ .left_shift, .minus });
+        try vault.imap(&[_]Key{ .left_shift, .equal });
+        try vault.imap(&[_]Key{ .left_shift, .left_bracket });
+        try vault.imap(&[_]Key{ .left_shift, .right_bracket });
+        try vault.imap(&[_]Key{ .left_shift, .backslash });
+        try vault.imap(&[_]Key{ .left_shift, .semicolon });
+        try vault.imap(&[_]Key{ .left_shift, .apostrophe });
+        try vault.imap(&[_]Key{ .left_shift, .comma });
+        try vault.imap(&[_]Key{ .left_shift, .period });
+        try vault.imap(&[_]Key{ .left_shift, .slash });
+        try vault.imap(&[_]Key{ .right_shift, .grave });
+        try vault.imap(&[_]Key{ .right_shift, .minus });
+        try vault.imap(&[_]Key{ .right_shift, .equal });
+        try vault.imap(&[_]Key{ .right_shift, .left_bracket });
+        try vault.imap(&[_]Key{ .right_shift, .right_bracket });
+        try vault.imap(&[_]Key{ .right_shift, .backslash });
+        try vault.imap(&[_]Key{ .right_shift, .semicolon });
+        try vault.imap(&[_]Key{ .right_shift, .apostrophe });
+        try vault.imap(&[_]Key{ .right_shift, .comma });
+        try vault.imap(&[_]Key{ .right_shift, .period });
+        try vault.imap(&[_]Key{ .right_shift, .slash });
     }
 
     var frame = try _input_processor.InputFrame.init(gpa);
@@ -418,7 +510,6 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{.x}) => try window.insertChars("x"),
                             hash(&[_]Key{.y}) => try window.insertChars("y"),
                             hash(&[_]Key{.z}) => try window.insertChars("z"),
-                            hash(&[_]Key{.space}) => try window.insertChars(" "),
                             hash(&[_]Key{ .left_shift, .a }) => try window.insertChars("A"),
                             hash(&[_]Key{ .left_shift, .b }) => try window.insertChars("B"),
                             hash(&[_]Key{ .left_shift, .c }) => try window.insertChars("C"),
@@ -445,6 +536,99 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{ .left_shift, .x }) => try window.insertChars("X"),
                             hash(&[_]Key{ .left_shift, .y }) => try window.insertChars("Y"),
                             hash(&[_]Key{ .left_shift, .z }) => try window.insertChars("Z"),
+                            hash(&[_]Key{ .right_shift, .a }) => try window.insertChars("A"),
+                            hash(&[_]Key{ .right_shift, .b }) => try window.insertChars("B"),
+                            hash(&[_]Key{ .right_shift, .c }) => try window.insertChars("C"),
+                            hash(&[_]Key{ .right_shift, .d }) => try window.insertChars("D"),
+                            hash(&[_]Key{ .right_shift, .e }) => try window.insertChars("E"),
+                            hash(&[_]Key{ .right_shift, .f }) => try window.insertChars("F"),
+                            hash(&[_]Key{ .right_shift, .g }) => try window.insertChars("G"),
+                            hash(&[_]Key{ .right_shift, .h }) => try window.insertChars("H"),
+                            hash(&[_]Key{ .right_shift, .i }) => try window.insertChars("I"),
+                            hash(&[_]Key{ .right_shift, .j }) => try window.insertChars("J"),
+                            hash(&[_]Key{ .right_shift, .k }) => try window.insertChars("K"),
+                            hash(&[_]Key{ .right_shift, .l }) => try window.insertChars("L"),
+                            hash(&[_]Key{ .right_shift, .m }) => try window.insertChars("M"),
+                            hash(&[_]Key{ .right_shift, .n }) => try window.insertChars("N"),
+                            hash(&[_]Key{ .right_shift, .o }) => try window.insertChars("O"),
+                            hash(&[_]Key{ .right_shift, .p }) => try window.insertChars("P"),
+                            hash(&[_]Key{ .right_shift, .q }) => try window.insertChars("Q"),
+                            hash(&[_]Key{ .right_shift, .r }) => try window.insertChars("R"),
+                            hash(&[_]Key{ .right_shift, .s }) => try window.insertChars("S"),
+                            hash(&[_]Key{ .right_shift, .t }) => try window.insertChars("T"),
+                            hash(&[_]Key{ .right_shift, .u }) => try window.insertChars("U"),
+                            hash(&[_]Key{ .right_shift, .v }) => try window.insertChars("V"),
+                            hash(&[_]Key{ .right_shift, .w }) => try window.insertChars("W"),
+                            hash(&[_]Key{ .right_shift, .x }) => try window.insertChars("X"),
+                            hash(&[_]Key{ .right_shift, .y }) => try window.insertChars("Y"),
+                            hash(&[_]Key{ .right_shift, .z }) => try window.insertChars("Z"),
+
+                            hash(&[_]Key{.space}) => try window.insertChars(" "),
+
+                            hash(&[_]Key{.one}) => try window.insertChars("1"),
+                            hash(&[_]Key{.two}) => try window.insertChars("2"),
+                            hash(&[_]Key{.three}) => try window.insertChars("3"),
+                            hash(&[_]Key{.four}) => try window.insertChars("4"),
+                            hash(&[_]Key{.five}) => try window.insertChars("5"),
+                            hash(&[_]Key{.six}) => try window.insertChars("6"),
+                            hash(&[_]Key{.seven}) => try window.insertChars("7"),
+                            hash(&[_]Key{.eight}) => try window.insertChars("8"),
+                            hash(&[_]Key{.nine}) => try window.insertChars("9"),
+                            hash(&[_]Key{.zero}) => try window.insertChars("0"),
+                            hash(&[_]Key{ .left_shift, .one }) => try window.insertChars("!"),
+                            hash(&[_]Key{ .left_shift, .two }) => try window.insertChars("@"),
+                            hash(&[_]Key{ .left_shift, .three }) => try window.insertChars("#"),
+                            hash(&[_]Key{ .left_shift, .four }) => try window.insertChars("$"),
+                            hash(&[_]Key{ .left_shift, .five }) => try window.insertChars("%"),
+                            hash(&[_]Key{ .left_shift, .six }) => try window.insertChars("^"),
+                            hash(&[_]Key{ .left_shift, .seven }) => try window.insertChars("&"),
+                            hash(&[_]Key{ .left_shift, .eight }) => try window.insertChars("*"),
+                            hash(&[_]Key{ .left_shift, .nine }) => try window.insertChars("("),
+                            hash(&[_]Key{ .left_shift, .zero }) => try window.insertChars(")"),
+                            hash(&[_]Key{ .right_shift, .one }) => try window.insertChars("!"),
+                            hash(&[_]Key{ .right_shift, .two }) => try window.insertChars("@"),
+                            hash(&[_]Key{ .right_shift, .three }) => try window.insertChars("#"),
+                            hash(&[_]Key{ .right_shift, .four }) => try window.insertChars("$"),
+                            hash(&[_]Key{ .right_shift, .five }) => try window.insertChars("%"),
+                            hash(&[_]Key{ .right_shift, .six }) => try window.insertChars("^"),
+                            hash(&[_]Key{ .right_shift, .seven }) => try window.insertChars("&"),
+                            hash(&[_]Key{ .right_shift, .eight }) => try window.insertChars("*"),
+                            hash(&[_]Key{ .right_shift, .nine }) => try window.insertChars("("),
+                            hash(&[_]Key{ .right_shift, .zero }) => try window.insertChars(")"),
+
+                            hash(&[_]Key{.grave}) => try window.insertChars("`"),
+                            hash(&[_]Key{.minus}) => try window.insertChars("-"),
+                            hash(&[_]Key{.equal}) => try window.insertChars("="),
+                            hash(&[_]Key{.left_bracket}) => try window.insertChars("["),
+                            hash(&[_]Key{.right_bracket}) => try window.insertChars("]"),
+                            hash(&[_]Key{.backslash}) => try window.insertChars("\\"),
+                            hash(&[_]Key{.semicolon}) => try window.insertChars(";"),
+                            hash(&[_]Key{.apostrophe}) => try window.insertChars("'"),
+                            hash(&[_]Key{.comma}) => try window.insertChars(","),
+                            hash(&[_]Key{.period}) => try window.insertChars("."),
+                            hash(&[_]Key{.slash}) => try window.insertChars("/"),
+                            hash(&[_]Key{ .left_shift, .grave }) => try window.insertChars("~"),
+                            hash(&[_]Key{ .left_shift, .minus }) => try window.insertChars("_"),
+                            hash(&[_]Key{ .left_shift, .equal }) => try window.insertChars("+"),
+                            hash(&[_]Key{ .left_shift, .left_bracket }) => try window.insertChars("{"),
+                            hash(&[_]Key{ .left_shift, .right_bracket }) => try window.insertChars("}"),
+                            hash(&[_]Key{ .left_shift, .backslash }) => try window.insertChars("|"),
+                            hash(&[_]Key{ .left_shift, .semicolon }) => try window.insertChars(":"),
+                            hash(&[_]Key{ .left_shift, .apostrophe }) => try window.insertChars("\""),
+                            hash(&[_]Key{ .left_shift, .comma }) => try window.insertChars("<"),
+                            hash(&[_]Key{ .left_shift, .period }) => try window.insertChars(">"),
+                            hash(&[_]Key{ .left_shift, .slash }) => try window.insertChars("?"),
+                            hash(&[_]Key{ .right_shift, .grave }) => try window.insertChars("~"),
+                            hash(&[_]Key{ .right_shift, .minus }) => try window.insertChars("_"),
+                            hash(&[_]Key{ .right_shift, .equal }) => try window.insertChars("+"),
+                            hash(&[_]Key{ .right_shift, .left_bracket }) => try window.insertChars("{"),
+                            hash(&[_]Key{ .right_shift, .right_bracket }) => try window.insertChars("}"),
+                            hash(&[_]Key{ .right_shift, .backslash }) => try window.insertChars("|"),
+                            hash(&[_]Key{ .right_shift, .semicolon }) => try window.insertChars(":"),
+                            hash(&[_]Key{ .right_shift, .apostrophe }) => try window.insertChars("\""),
+                            hash(&[_]Key{ .right_shift, .comma }) => try window.insertChars("<"),
+                            hash(&[_]Key{ .right_shift, .period }) => try window.insertChars(">"),
+                            hash(&[_]Key{ .right_shift, .slash }) => try window.insertChars("?"),
 
                             hash(&[_]Key{.escape}) => {
                                 window.is_in_AFTER_insert_mode = false;
