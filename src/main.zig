@@ -121,6 +121,38 @@ pub fn main() anyerror!void {
         try vault.nmap(&[_]Key{.b});
         try vault.nmap(&[_]Key{.w});
         try vault.nmap(&[_]Key{.e});
+        try vault.nmap(&[_]Key{.zero});
+
+        try vault.nmap(&[_]Key{.i});
+
+        try vault.imap(&[_]Key{.escape});
+
+        try vault.imap(&[_]Key{.a});
+        try vault.imap(&[_]Key{.b});
+        try vault.imap(&[_]Key{.c});
+        try vault.imap(&[_]Key{.d});
+        try vault.imap(&[_]Key{.e});
+        try vault.imap(&[_]Key{.f});
+        try vault.imap(&[_]Key{.g});
+        try vault.imap(&[_]Key{.h});
+        try vault.imap(&[_]Key{.i});
+        try vault.imap(&[_]Key{.j});
+        try vault.imap(&[_]Key{.k});
+        try vault.imap(&[_]Key{.l});
+        try vault.imap(&[_]Key{.m});
+        try vault.imap(&[_]Key{.n});
+        try vault.imap(&[_]Key{.o});
+        try vault.imap(&[_]Key{.p});
+        try vault.imap(&[_]Key{.q});
+        try vault.imap(&[_]Key{.r});
+        try vault.imap(&[_]Key{.s});
+        try vault.imap(&[_]Key{.t});
+        try vault.imap(&[_]Key{.u});
+        try vault.imap(&[_]Key{.v});
+        try vault.imap(&[_]Key{.w});
+        try vault.imap(&[_]Key{.x});
+        try vault.imap(&[_]Key{.y});
+        try vault.imap(&[_]Key{.z});
     }
 
     var frame = try _input_processor.InputFrame.init(gpa);
@@ -310,7 +342,46 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{.w}) => window.vimForward(.start, &window.cursor),
                             hash(&[_]Key{.e}) => window.vimForward(.end, &window.cursor),
 
+                            hash(&[_]Key{.zero}) => window.cursor.set(window.cursor.line, 0),
+
+                            hash(&[_]Key{.i}) => editor_mode = .insert,
                             hash(&[_]Key{.m}) => editor_mode = .editor,
+                            else => {},
+                        }
+                    },
+                    .insert => {
+                        switch (trigger) {
+                            hash(&[_]Key{.a}) => try window.insertChars("a"),
+                            hash(&[_]Key{.b}) => try window.insertChars("b"),
+                            hash(&[_]Key{.c}) => try window.insertChars("c"),
+                            hash(&[_]Key{.d}) => try window.insertChars("d"),
+                            hash(&[_]Key{.e}) => try window.insertChars("e"),
+                            hash(&[_]Key{.f}) => try window.insertChars("f"),
+                            hash(&[_]Key{.g}) => try window.insertChars("g"),
+                            hash(&[_]Key{.h}) => try window.insertChars("h"),
+                            hash(&[_]Key{.i}) => try window.insertChars("i"),
+                            hash(&[_]Key{.j}) => try window.insertChars("j"),
+                            hash(&[_]Key{.k}) => try window.insertChars("k"),
+                            hash(&[_]Key{.l}) => try window.insertChars("l"),
+                            hash(&[_]Key{.m}) => try window.insertChars("m"),
+                            hash(&[_]Key{.n}) => try window.insertChars("n"),
+                            hash(&[_]Key{.o}) => try window.insertChars("o"),
+                            hash(&[_]Key{.p}) => try window.insertChars("p"),
+                            hash(&[_]Key{.q}) => try window.insertChars("q"),
+                            hash(&[_]Key{.r}) => try window.insertChars("r"),
+                            hash(&[_]Key{.s}) => try window.insertChars("s"),
+                            hash(&[_]Key{.t}) => try window.insertChars("t"),
+                            hash(&[_]Key{.u}) => try window.insertChars("u"),
+                            hash(&[_]Key{.v}) => try window.insertChars("v"),
+                            hash(&[_]Key{.w}) => try window.insertChars("w"),
+                            hash(&[_]Key{.x}) => try window.insertChars("x"),
+                            hash(&[_]Key{.y}) => try window.insertChars("y"),
+                            hash(&[_]Key{.z}) => try window.insertChars("z"),
+
+                            hash(&[_]Key{.escape}) => {
+                                std.debug.print("hello???\n", .{});
+                                editor_mode = .normal;
+                            },
                             else => {},
                         }
                     },

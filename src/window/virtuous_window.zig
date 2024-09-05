@@ -160,6 +160,13 @@ pub const Window = struct {
         self.bounded = !self.bounded;
     }
 
+    ///////////////////////////// Insert Chars
+
+    pub fn insertChars(self: *@This(), chars: []const u8) !void {
+        const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+        self.cursor.set(line, col);
+    }
+
     ///////////////////////////// Directional Cursor Movement
 
     pub fn moveCursorLeft(self: *@This(), cursor: *Cursor) void {
