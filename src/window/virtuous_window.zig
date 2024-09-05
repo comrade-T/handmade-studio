@@ -165,6 +165,12 @@ pub const Window = struct {
     pub fn insertChars(self: *@This(), chars: []const u8) !void {
         const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
         self.cursor.set(line, col);
+
+        self.contents.destroy();
+
+        const start_line = 0;
+        const num_of_lines = self.buf.roperoot.weights().bols;
+        self.contents = try Contents.createWithCapacity(self, start_line, num_of_lines);
     }
 
     ///////////////////////////// Directional Cursor Movement
