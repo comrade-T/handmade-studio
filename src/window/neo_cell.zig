@@ -20,7 +20,7 @@ pub fn backwardsByWord(destination: WordBoundaryType, lines: []Line, input_linen
             if (linenr == 0) return .{ 0, 0 };
             if (input_colnr > 0 and foundTargetBoundary(lines[linenr], colnr, destination)) return .{ linenr, colnr };
             linenr -= 1;
-            colnr = lines[linenr].len - 1;
+            colnr = lines[linenr].len -| 1;
         }
         if (foundTargetBoundary(lines[linenr], colnr, destination)) return .{ linenr, colnr };
     }
@@ -68,6 +68,17 @@ test backwardsByWord {
         try testBackwardsByWord(.{ 0, 10 }, .start, lines, 1, 0, 0);
         try testBackwardsByWord(.{ 0, 5 }, .start, lines, 0, 6, 10);
         try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 5);
+    }
+    {
+        const lines = try createLinesFromSource(testing_allocator, "hello world\n\nand mars");
+        //                                                          0     6      0 0   4  7
+        defer freeLines(testing_allocator, lines);
+        try testBackwardsByWord(.{ 2, 4 }, .start, lines, 2, 5, 7);
+        try testBackwardsByWord(.{ 2, 0 }, .start, lines, 2, 1, 4);
+        try testBackwardsByWord(.{ 1, 0 }, .start, lines, 2, 0, 0);
+        try testBackwardsByWord(.{ 0, 6 }, .start, lines, 1, 0, 0);
+        try testBackwardsByWord(.{ 0, 6 }, .start, lines, 0, 7, 10);
+        try testBackwardsByWord(.{ 0, 0 }, .start, lines, 0, 0, 6);
     }
     // .end
     {
@@ -263,6 +274,16 @@ test forwardByWord {
             try testForwardByWord(.{ 1, 10 }, .start, lines, 1, 6, 9);
             try testForwardByWord(.{ 1, 13 }, .start, lines, 1, 10, 13);
         }
+        { // empty line check
+            const lines = try createLinesFromSource(testing_allocator, "hello world\n\nand mars");
+            //                                                          0     6      0 0   4  7
+            defer freeLines(testing_allocator, lines);
+            try testForwardByWord(.{ 0, 6 }, .start, lines, 0, 0, 5);
+            try testForwardByWord(.{ 1, 0 }, .start, lines, 0, 6, 10);
+            try testForwardByWord(.{ 2, 0 }, .start, lines, 1, 0, 0);
+            try testForwardByWord(.{ 2, 4 }, .start, lines, 2, 0, 3);
+            try testForwardByWord(.{ 2, 7 }, .start, lines, 2, 4, 7);
+        }
     }
 }
 
@@ -293,8 +314,8 @@ fn createLinesFromSource(a: Allocator, source: []const u8) ![]Line {
     var line_start: usize = 0;
     for (source, 0..) |byte, i| {
         if (byte == '\n') {
-            const new_line = try createLine(a, source[line_start .. i + 1]);
-            try lines.append(new_line); // '\n' included at end of line
+            const new_line = try createLine(a, source[line_start..i]);
+            try lines.append(new_line); // '\n' NOT INCLUDED at end of line
             defer line_start = i + 1;
         }
     }
@@ -395,6 +416,7 @@ test getCharBoundaryType {
 }
 
 fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType) bool {
+    if (line.len == 0) return true;
     const prev_char = if (colnr == 0) null else line[colnr - 1];
     const curr_char = line[colnr];
     const next_char = if (colnr + 1 >= line.len) null else line[colnr + 1];
