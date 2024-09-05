@@ -208,6 +208,10 @@ pub fn main() anyerror!void {
         try vault.imap(&[_]Key{ .right_shift, .z });
 
         try vault.imap(&[_]Key{.space});
+        try vault.imap(&[_]Key{ .left_shift, .space });
+        try vault.imap(&[_]Key{ .right_shift, .space });
+
+        try vault.imap(&[_]Key{.enter});
 
         try vault.imap(&[_]Key{.one});
         try vault.imap(&[_]Key{.two});
@@ -564,6 +568,12 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{ .right_shift, .z }) => try window.insertChars("Z"),
 
                             hash(&[_]Key{.space}) => try window.insertChars(" "),
+                            hash(&[_]Key{ .left_shift, .space }) => try window.insertChars(" "),
+                            hash(&[_]Key{ .right_shift, .space }) => try window.insertChars(" "),
+
+                            // TODO: investigate the buggy behavior when inserting \n
+
+                            hash(&[_]Key{.enter}) => try window.insertChars("\n"),
 
                             hash(&[_]Key{.one}) => try window.insertChars("1"),
                             hash(&[_]Key{.two}) => try window.insertChars("2"),
@@ -731,8 +741,8 @@ pub fn main() anyerror!void {
                                 iter.current_col == 0)
                             {
                                 rl.drawRectangle(@intFromFloat(window.x), @intFromFloat(last_y + font_size), 15, font_size, rl.Color.ray_white);
-                                last_y += font_size;
                             }
+                            defer last_y += font_size;
                         },
                         else => continue,
                     }
