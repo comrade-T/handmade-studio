@@ -1,7 +1,8 @@
 const std = @import("std");
-const __buf_mod = @import("neo_buffer");
-const Buffer = __buf_mod.Buffer;
-const sitter = __buf_mod.sitter;
+const _nc = @import("neo_cell.zig");
+const _buf_mod = @import("neo_buffer");
+const Buffer = _buf_mod.Buffer;
+const sitter = _buf_mod.sitter;
 const ts = sitter.b;
 
 const Allocator = std.mem.Allocator;
@@ -159,7 +160,7 @@ pub const Window = struct {
         self.bounded = !self.bounded;
     }
 
-    ///////////////////////////// Cursor Movement
+    ///////////////////////////// Directional Cursor Movement
 
     pub fn moveCursorLeft(self: *@This(), cursor: *Cursor) void {
         cursor.col -|= 1;
@@ -190,6 +191,18 @@ pub const Window = struct {
         if (cursor.col > current_line.len -| 1) cursor.col = current_line.len -| 1;
     }
 
+    ///////////////////////////// Vim Cursor Movement
+
+    pub fn vimBackwards(self: *@This(), boundary_type: _nc.WordBoundaryType, cursor: *Cursor) void {
+        const line, const col = _nc.backwardsByWord(boundary_type, self.contents.lines, cursor.line, cursor.col);
+        cursor.set(line, col);
+    }
+
+    pub fn vimForward(self: *@This(), boundary_type: _nc.WordBoundaryType, cursor: *Cursor) void {
+        const line, const col = _nc.forwardByWord(boundary_type, self.contents.lines, cursor.line, cursor.col);
+        cursor.set(line, col);
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Code Point Iterator
 
     const CodePointIterator = struct {
@@ -211,6 +224,7 @@ pub const Window = struct {
             color: u32,
             x: f32,
             y: f32,
+            char_width: f32,
             font_size: i32,
         };
 
@@ -266,7 +280,7 @@ pub const Window = struct {
 
             // get code point
             const char = self.win.contents.lines[self.current_line][self.current_col];
-            var cp_iter = __buf_mod.code_point.Iterator{ .bytes = char };
+            var cp_iter = _buf_mod.code_point.Iterator{ .bytes = char };
             const cp_i32: i32 = @intCast(cp_iter.next().?.code);
 
             // char width
@@ -285,6 +299,7 @@ pub const Window = struct {
                 .color = self.win.contents.line_colors[self.current_line][self.current_col],
                 .x = self.current_x,
                 .y = self.current_y,
+                .char_width = char_width,
                 .font_size = self.win.font_size,
             } };
         }
@@ -678,7 +693,7 @@ fn testIterNull(iter: *Window.CodePointIterator) !void {
 }
 
 fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group: []const u8, start_x: f32, y: f32, x_inc: f32) !void {
-    var cp_iter = __buf_mod.code_point.Iterator{ .bytes = sequence };
+    var cp_iter = _buf_mod.code_point.Iterator{ .bytes = sequence };
     var got_result = false;
     while (iter.next()) |result| {
         switch (result) {

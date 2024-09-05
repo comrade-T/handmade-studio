@@ -359,7 +359,7 @@ const CharType = enum {
     }
 };
 
-const WordBoundaryType = enum {
+pub const WordBoundaryType = enum {
     start,
     end,
     both,

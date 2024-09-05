@@ -118,6 +118,9 @@ pub fn main() anyerror!void {
         try vault.nmap(&[_]Key{.k});
         try vault.nmap(&[_]Key{.l});
         try vault.nmap(&[_]Key{.m});
+        try vault.nmap(&[_]Key{.b});
+        try vault.nmap(&[_]Key{.w});
+        try vault.nmap(&[_]Key{.e});
     }
 
     var frame = try _input_processor.InputFrame.init(gpa);
@@ -303,6 +306,10 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{.k}) => window.moveCursorUp(&window.cursor),
                             hash(&[_]Key{.l}) => window.moveCursorRight(&window.cursor),
 
+                            hash(&[_]Key{.b}) => window.vimBackwards(.start, &window.cursor),
+                            hash(&[_]Key{.w}) => window.vimForward(.start, &window.cursor),
+                            hash(&[_]Key{.e}) => window.vimForward(.end, &window.cursor),
+
                             hash(&[_]Key{.m}) => editor_mode = .editor,
                             else => {},
                         }
@@ -368,6 +375,8 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
+                var last_y: f32 = undefined;
+
                 var iter = window.codePointIter(font_data, font_data_index_map, .{
                     .start_x = view_start.x,
                     .start_y = view_start.y,
@@ -380,10 +389,22 @@ pub fn main() anyerror!void {
                         .code_point => |char| {
                             rl.drawTextCodepoint(font, char.value, .{ .x = char.x, .y = char.y }, font_size, rl.Color.fromInt(char.color));
                             chars_rendered += 1;
+
                             if (iter.current_line + window.contents.start_line == window.cursor.line and
                                 iter.current_col -| 1 == window.cursor.col)
                             {
-                                rl.drawRectangle(@intFromFloat(char.x), @intFromFloat(char.y), 15, font_size, rl.Color.ray_white);
+                                rl.drawRectangle(@intFromFloat(char.x), @intFromFloat(char.y), @intFromFloat(char.char_width), font_size, rl.Color.ray_white);
+                            }
+
+                            last_y = char.y;
+                        },
+                        .skip_to_new_line => {
+                            if (iter.current_line + window.contents.start_line == window.cursor.line and
+                                window.contents.lines[iter.current_line].len == 0 and
+                                iter.current_col == 0)
+                            {
+                                rl.drawRectangle(@intFromFloat(window.x), @intFromFloat(last_y + font_size), 15, font_size, rl.Color.ray_white);
+                                last_y += font_size;
                             }
                         },
                         else => continue,
