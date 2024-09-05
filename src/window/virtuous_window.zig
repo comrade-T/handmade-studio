@@ -64,7 +64,7 @@ pub const Window = struct {
         end_line: usize,
 
         fn createWithCapacity(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
-            const end_line = start_line + num_of_lines;
+            const end_line = start_line + num_of_lines -| 1;
 
             // add lines
             var lines = try win.exa.alloc(Line, num_of_lines);
@@ -159,6 +159,8 @@ pub const Window = struct {
         self.bounded = !self.bounded;
     }
 
+    ///////////////////////////// Cursor Movement
+
     pub fn moveCursorLeft(self: *@This()) void {
         self.cursor.col -|= 1;
     }
@@ -173,20 +175,20 @@ pub const Window = struct {
         if (target_col < current_line.len) self.cursor.col = target_col;
     }
 
-    pub fn moveCursorUp(self: *@This()) void {
-        self.cursor.line -|= 1;
+    pub fn moveCursorUp(_: *@This(), cursor: *Cursor) void {
+        cursor.line -|= 1;
     }
 
-    pub fn moveCursorDown(self: *@This()) void {
-        if (self.cursor.line < self.contents.start_line or self.cursor.line > self.contents.end_line) {
-            @panic("cursor line outside content range");
+    pub fn moveCursorDown(self: *@This(), cursor: *Cursor) void {
+        if (!self.cursorLineInRange(cursor)) @panic("content range update not implemented");
+        if (cursor.line + 1 <= self.contents.end_line) cursor.line += 1;
+    }
+
+    fn cursorLineInRange(self: *@This(), cursor: *Cursor) bool {
+        if (cursor.line < self.contents.start_line or cursor.line > self.contents.end_line) {
+            return false;
         }
-        const target_line = self.cursor.line + 1;
-        if (target_line <= self.contents.end_line) {
-            self.cursor.line = target_line;
-            return;
-        }
-        @panic("vertical scrolling not implemented");
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Code Point Iterator
@@ -315,7 +317,38 @@ pub const Window = struct {
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// CodePointIterator - Window Display
+////////////////////////////////////////////////////////////////////////////////////////////// Cursor Movement
+
+test "moveCursorUp" {
+    const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333\n4444");
+    var win = try Window.spawn(idc_if_it_leaks, buf, 40, 0, 0, null);
+
+    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
+    win.moveCursorUp(&win.cursor);
+    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
+
+    win.cursor.set(1, 0);
+    win.moveCursorUp(&win.cursor);
+    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
+}
+
+test "moveCursorDown" {
+    const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333\n4444");
+    var win = try Window.spawn(idc_if_it_leaks, buf, 40, 0, 0, null);
+
+    try eq(Window.Cursor{ .line = 0, .col = 0 }, win.cursor);
+    win.moveCursorDown(&win.cursor);
+    try eq(Window.Cursor{ .line = 1, .col = 0 }, win.cursor);
+
+    win.cursor.set(2, 0);
+    win.moveCursorDown(&win.cursor);
+    try eq(Window.Cursor{ .line = 3, .col = 0 }, win.cursor);
+
+    win.moveCursorDown(&win.cursor);
+    try eq(Window.Cursor{ .line = 3, .col = 0 }, win.cursor);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// CodePointIterator
 
 test "unbound window fully on screen" {
     const langsuite = try setupLangSuite(idc_if_it_leaks, .zig);
