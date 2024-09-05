@@ -124,6 +124,7 @@ pub fn main() anyerror!void {
         try vault.nmap(&[_]Key{.zero});
 
         try vault.nmap(&[_]Key{.i});
+        try vault.nmap(&[_]Key{.a});
 
         try vault.imap(&[_]Key{.escape});
 
@@ -353,6 +354,11 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{.zero}) => window.cursor.set(window.cursor.line, 0),
 
                             hash(&[_]Key{.i}) => editor_mode = .insert,
+                            hash(&[_]Key{.a}) => {
+                                window.is_in_AFTER_insert_mode = true;
+                                window.moveCursorRight(&window.cursor);
+                                editor_mode = .insert;
+                            },
                             hash(&[_]Key{.m}) => editor_mode = .editor,
                             else => {},
                         }
@@ -387,7 +393,8 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{.z}) => try window.insertChars("z"),
 
                             hash(&[_]Key{.escape}) => {
-                                std.debug.print("hello???\n", .{});
+                                window.is_in_AFTER_insert_mode = false;
+                                window.moveCursorLeft(&window.cursor);
                                 editor_mode = .normal;
                             },
                             else => {},
@@ -469,10 +476,13 @@ pub fn main() anyerror!void {
                             rl.drawTextCodepoint(font, char.value, .{ .x = char.x, .y = char.y }, font_size, rl.Color.fromInt(char.color));
                             chars_rendered += 1;
 
-                            if (iter.current_line + window.contents.start_line == window.cursor.line and
-                                iter.current_col -| 1 == window.cursor.col)
-                            {
-                                rl.drawRectangle(@intFromFloat(char.x), @intFromFloat(char.y), @intFromFloat(char.char_width), font_size, rl.Color.ray_white);
+                            if (iter.current_line + window.contents.start_line == window.cursor.line) {
+                                if (iter.current_col -| 1 == window.cursor.col) {
+                                    rl.drawRectangle(@intFromFloat(char.x), @intFromFloat(char.y), @intFromFloat(char.char_width), font_size, rl.Color.ray_white);
+                                }
+                                if (iter.current_col == window.cursor.col) {
+                                    rl.drawRectangle(@intFromFloat(char.x + char.char_width), @intFromFloat(char.y), @intFromFloat(char.char_width), font_size, rl.Color.ray_white);
+                                }
                             }
 
                             last_y = char.y;

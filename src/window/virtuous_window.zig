@@ -29,6 +29,9 @@ pub const Window = struct {
     font_size: i32,
     line_spacing: i32 = 2,
 
+    // TODO: find a better name for this field.
+    is_in_AFTER_insert_mode: bool = false,
+
     const Cursor = struct {
         line: usize = 0,
         col: usize = 0,
@@ -201,7 +204,9 @@ pub const Window = struct {
         const current_line_index = cursor.line - self.contents.start_line;
         const current_line = self.contents.lines[current_line_index];
         if (current_line.len == 0) cursor.col = 0;
-        if (cursor.col > current_line.len -| 1) cursor.col = current_line.len -| 1;
+
+        const offset: usize = if (self.is_in_AFTER_insert_mode) 0 else 1;
+        if (cursor.col > current_line.len -| offset) cursor.col = current_line.len -| 1;
     }
 
     ///////////////////////////// Vim Cursor Movement
