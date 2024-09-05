@@ -356,11 +356,18 @@ pub fn produceTrigger(
 ) ?u128 {
     const r = frame.produceCandidateReport();
     if (mode == .insert or mode == .select) {
+        if (frame.downs.items.len == 2 and
+            (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
+        {
+            return produceDefaultTrigger(r, mode, frame, down_ck, up_ck, cx);
+        }
+
         if (frame.latest_event_type == .down and !r.over_threshold and down_ck(cx, mode, r.quick)) {
             frame.emitted = true;
             return r.quick;
         }
     }
+
     return produceDefaultTrigger(r, mode, frame, down_ck, up_ck, cx);
 }
 
