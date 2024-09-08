@@ -17,6 +17,8 @@ const _input_processor = @import("input_processor");
 const Key = _input_processor.Key;
 const hash = _input_processor.hash;
 
+const exp = _neo_buffer.sitter.exp;
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -284,18 +286,24 @@ pub fn main() anyerror!void {
     var navigator = try FileNavigator.new(gpa);
     defer navigator.deinit();
 
-    // Buffer & Tree Sitter & Window
-
+    // LangSuite
     var zig_langsuite = try _neo_buffer.sitter.LangSuite.create(.zig);
     defer zig_langsuite.destroy();
     try zig_langsuite.initializeQuery();
     try zig_langsuite.initializeFilter(gpa);
     try zig_langsuite.initializeNightflyColorscheme(gpa);
 
+    // Buffer
     var buf = try Buffer.create(gpa, .file, "build.zig");
     try buf.initiateTreeSitter(zig_langsuite);
     defer buf.destroy();
 
+    // Experimental Syntax Tree Inspector
+    var custom_node_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer custom_node_arena.deinit();
+    const custom_node = try exp.CustomNode.new(custom_node_arena.allocator(), buf.tstree.?.getRootNode());
+
+    // Window
     const win_padding = 20;
     const win_width = @as(f32, @floatFromInt(screen_width)) / 1.3;
     const win_height = screen_height - win_padding / 2;
@@ -695,6 +703,24 @@ pub fn main() anyerror!void {
             { // window content
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
+
+                { // Experimental Syntax Tree Inspector
+                    rl.drawCircle(100, 100, 30, rl.Color.sky_blue); // root
+
+                    var x: i32 = 100;
+                    const y: i32 = 200;
+
+                    for (custom_node.branch.children) |child| {
+                        switch (child.*) {
+                            .branch => |branch| {
+                                const weights: i32 = @intCast(branch.weights);
+                                rl.drawCircle(x, y, 30, rl.Color.yellow);
+                                x += 80 * weights;
+                            },
+                            else => {},
+                        }
+                    }
+                }
 
                 var last_y: f32 = undefined;
 

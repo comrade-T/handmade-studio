@@ -8,39 +8,42 @@ pub const CustomNode = union(enum) {
     branch: Branch,
     leaf: Leaf,
 
-    pub fn new(aa: Allocator, tsnode: ts.b.Node) !CustomNode {
-        return try Branch.new(aa, tsnode);
+    pub fn new(aa: Allocator, tsnode: ts.b.Node) !*CustomNode {
+        return try Branch.new(aa, null, tsnode);
     }
 
     const Branch = struct {
         tsnode: ts.b.Node,
-        children: []CustomNode = undefined,
+        parent: ?*CustomNode,
+        children: []*CustomNode = undefined,
         weights: u16 = 0,
         expanded: bool = false,
 
-        fn new(aa: Allocator, tsnode: ts.b.Node) !CustomNode {
-            var branch = Branch{ .tsnode = tsnode };
+        fn new(aa: Allocator, parent: ?*CustomNode, tsnode: ts.b.Node) !*CustomNode {
+            const node = try aa.create(CustomNode);
+            var branch = Branch{ .tsnode = tsnode, .parent = parent };
 
-            var list = ArrayList(CustomNode).init(aa);
+            var list = ArrayList(*CustomNode).init(aa);
             var iter = tsnode.childIterator();
             while (iter.next()) |ts_child| {
                 const child = if (ts_child.getChildCount() == 0)
-                    try Leaf.new(ts_child)
+                    try Leaf.new(aa, ts_child)
                 else
-                    try Branch.new(aa, ts_child);
+                    try Branch.new(aa, node, ts_child);
                 try list.append(child);
             }
             branch.children = try list.toOwnedSlice();
 
             branch.calculateWeights();
 
-            return CustomNode{ .branch = branch };
+            node.* = .{ .branch = branch };
+            return node;
         }
 
         fn calculateWeights(self: *@This()) void {
             self.weights = 0;
             for (self.children) |child| {
-                switch (child) {
+                switch (child.*) {
                     .branch => |branch| {
                         if (branch.expanded) {
                             self.weights += branch.weights;
@@ -61,8 +64,10 @@ pub const CustomNode = union(enum) {
     const Leaf = struct {
         tsnode: ts.b.Node,
 
-        fn new(tsnode: ts.b.Node) !CustomNode {
-            return CustomNode{ .leaf = Leaf{ .tsnode = tsnode } };
+        fn new(aa: Allocator, tsnode: ts.b.Node) !*CustomNode {
+            const node = try aa.create(CustomNode);
+            node.* = .{ .leaf = Leaf{ .tsnode = tsnode } };
+            return node;
         }
     };
 };

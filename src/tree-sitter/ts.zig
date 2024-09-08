@@ -3,7 +3,7 @@ const ztracy = @import("ztracy");
 pub const b = @import("bindings.zig");
 pub const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
 
-const exp = @import("experiment.zig");
+pub const exp = @import("experiment.zig");
 
 const Language = b.Language;
 const Query = b.Query;
@@ -193,7 +193,7 @@ test "experiment" {
 
         for (structure.branch.children) |child| {
             std.debug.print("===================================\n", .{});
-            switch (child) {
+            switch (child.*) {
                 .branch => |branch| {
                     std.debug.print("branch weights: {d}\n", .{branch.weights});
                     std.debug.print("branch tsnode type: {s}\n", .{branch.tsnode.getType()});
