@@ -679,7 +679,7 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
         {
-            // rl.drawFPS(10, 10);
+            rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
 
             // navigator
@@ -705,21 +705,10 @@ pub fn main() anyerror!void {
                 defer rl.endMode2D();
 
                 { // Experimental Syntax Tree Inspector
-                    rl.drawCircle(100, 100, 30, rl.Color.sky_blue); // root
+                    // var collision_boxes = try ArrayList(Box).initCapacity(gpa, custom_node.branch.weights);
+                    // defer collision_boxes.deinit();
 
-                    var x: i32 = 100;
-                    const y: i32 = 200;
-
-                    for (custom_node.branch.children) |child| {
-                        switch (child.*) {
-                            .branch => |branch| {
-                                const weights: i32 = @intCast(branch.weights);
-                                rl.drawCircle(x, y, 30, rl.Color.yellow);
-                                x += 80 * weights;
-                            },
-                            else => {},
-                        }
-                    }
+                    renderInspector(custom_node, 100, 100, 80, 120, 30, rl.getMouseX(), rl.getMouseY());
                 }
 
                 var last_y: f32 = undefined;
@@ -801,14 +790,7 @@ pub fn main() anyerror!void {
     }
 }
 
-fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32, offset: rl.Vector2) !void {
-    var buf: [1024]u8 = undefined;
-    const text = try std.fmt.bufPrintZ(&buf, fmt, args);
-    const measure = rl.measureText(text, font_size);
-    const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
-    const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
-    rl.drawText(text, x, y, font_size, rl.Color.ray_white);
-}
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 fn generateFontData(a: Allocator, font: rl.Font) !_vw.FontData {
     var recs = try a.alloc(_vw.Rectangle, @intCast(font.glyphCount));
@@ -835,4 +817,75 @@ fn generateFontData(a: Allocator, font: rl.Font) !_vw.FontData {
         .recs = recs,
         .glyphs = glyphs,
     };
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32, offset: rl.Vector2) !void {
+    var buf: [1024]u8 = undefined;
+    const text = try std.fmt.bufPrintZ(&buf, fmt, args);
+    const measure = rl.measureText(text, font_size);
+    const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
+    const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
+    rl.drawText(text, x, y, font_size, rl.Color.ray_white);
+}
+
+const Box = struct {
+    start_x: i32,
+    start_y: i32,
+    end_x: i32,
+    end_y: i32,
+
+    fn collidesWithMouse(self: *const @This(), mouseX: i32, mouseY: i32) bool {
+        const mouse_in_x_range = (self.start_x <= mouseX) and (mouseX <= self.end_x);
+        const mouse_in_y_range = (self.start_y <= mouseY) and (mouseY <= self.end_y);
+        if (mouse_in_x_range and mouse_in_y_range) return true;
+        return false;
+    }
+};
+
+fn renderInspector(
+    node: *exp.CustomNode,
+    x: i32,
+    y: i32,
+    x_distance: i32,
+    y_distance: i32,
+    radius: i32,
+    mouseX: i32,
+    mouseY: i32,
+) void {
+    const half_radius = @divTrunc(radius, 2);
+    const box = Box{
+        .start_x = x - half_radius,
+        .start_y = y - half_radius,
+        .end_x = x + half_radius,
+        .end_y = y + half_radius,
+    };
+
+    switch (node.*) {
+        .branch => |branch| {
+            if (box.collidesWithMouse(mouseX, mouseY)) {
+                rl.drawCircle(x, y, @floatFromInt(radius + 10), rl.Color.orange);
+                if (rl.isMouseButtonPressed(.mouse_button_left)) {
+                    node.branch.toggle();
+                }
+            } else {
+                rl.drawCircle(x, y, @floatFromInt(radius), rl.Color.blue);
+            }
+
+            if (branch.expanded) {
+                const width = @as(i32, @intCast(branch.weights)) * x_distance;
+                var child_x: i32 = x - @divTrunc(width, 2);
+                const child_y = y_distance + y;
+
+                for (branch.children) |child| {
+                    defer child_x += x_distance;
+                    renderInspector(child, child_x, child_y, x_distance, y_distance, radius, mouseX, mouseY);
+                }
+            }
+        },
+        .leaf => |_| {
+            rl.drawCircle(x, y, @floatFromInt(radius), rl.Color.yellow);
+        },
+    }
 }
