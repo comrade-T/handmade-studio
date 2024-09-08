@@ -128,3 +128,17 @@ pub fn main() anyerror!void {
         }
     }
 }
+
+// const Box = struct {
+//     start_x: i32,
+//     start_y: i32,
+//     end_x: i32,
+//     end_y: i32,
+//
+//     fn collidesWithMouse(self: *const @This(), mouseX: i32, mouseY: i32) bool {
+//         const mouse_in_x_range = (self.start_x <= mouseX) and (mouseX <= self.end_x);
+//         const mouse_in_y_range = (self.start_y <= mouseY) and (mouseY <= self.end_y);
+//         if (mouse_in_x_range and mouse_in_y_range) return true;
+//         return false;
+//     }
+// };

@@ -651,14 +651,14 @@ pub fn main() anyerror!void {
         }
 
         // window handle
-        const mouse = rl.getScreenToWorld2D(rl.getMousePosition(), camera);
-        const collides = rl.checkCollisionPointCircle(mouse, .{ .x = window.x, .y = window.y + window_dragger_y_offset }, 30);
+        const screen_mouse = rl.getScreenToWorld2D(rl.getMousePosition(), camera);
+        const collides = rl.checkCollisionPointCircle(screen_mouse, .{ .x = window.x, .y = window.y + window_dragger_y_offset }, 30);
         if (collides and rl.isMouseButtonDown(.mouse_button_left)) {
             move_window_with_mouse = true;
         }
         if (move_window_with_mouse) {
-            window.x = mouse.x;
-            window.y = mouse.y - window_dragger_y_offset;
+            window.x = screen_mouse.x;
+            window.y = screen_mouse.y - window_dragger_y_offset;
             if (rl.isMouseButtonReleased(.mouse_button_left)) {
                 move_window_with_mouse = false;
             }
@@ -707,8 +707,7 @@ pub fn main() anyerror!void {
                 { // Experimental Syntax Tree Inspector
                     // var collision_boxes = try ArrayList(Box).initCapacity(gpa, custom_node.branch.weights);
                     // defer collision_boxes.deinit();
-
-                    renderInspector(custom_node, 100, 100, 80, 120, 30, rl.getMouseX(), rl.getMouseY());
+                    renderInspector(custom_node, 100, 100, 80, 120, 30, screen_mouse);
                 }
 
                 var last_y: f32 = undefined;
@@ -830,20 +829,6 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
     rl.drawText(text, x, y, font_size, rl.Color.ray_white);
 }
 
-const Box = struct {
-    start_x: i32,
-    start_y: i32,
-    end_x: i32,
-    end_y: i32,
-
-    fn collidesWithMouse(self: *const @This(), mouseX: i32, mouseY: i32) bool {
-        const mouse_in_x_range = (self.start_x <= mouseX) and (mouseX <= self.end_x);
-        const mouse_in_y_range = (self.start_y <= mouseY) and (mouseY <= self.end_y);
-        if (mouse_in_x_range and mouse_in_y_range) return true;
-        return false;
-    }
-};
-
 fn renderInspector(
     node: *exp.CustomNode,
     x: i32,
@@ -851,24 +836,13 @@ fn renderInspector(
     x_distance: i32,
     y_distance: i32,
     radius: i32,
-    mouseX: i32,
-    mouseY: i32,
+    mouse: rl.Vector2,
 ) void {
-    const half_radius = @divTrunc(radius, 2);
-    const box = Box{
-        .start_x = x - half_radius,
-        .start_y = y - half_radius,
-        .end_x = x + half_radius,
-        .end_y = y + half_radius,
-    };
-
     switch (node.*) {
         .branch => |branch| {
-            if (box.collidesWithMouse(mouseX, mouseY)) {
-                rl.drawCircle(x, y, @floatFromInt(radius + 10), rl.Color.orange);
-                if (rl.isMouseButtonPressed(.mouse_button_left)) {
-                    node.branch.toggle();
-                }
+            if (rl.checkCollisionPointCircle(mouse, .{ .x = @floatFromInt(x), .y = @floatFromInt(y) }, @floatFromInt(radius))) {
+                if (rl.isMouseButtonPressed(.mouse_button_left)) node.branch.toggle();
+                rl.drawCircle(x, y, @floatFromInt(radius + 5), rl.Color.orange);
             } else {
                 rl.drawCircle(x, y, @floatFromInt(radius), rl.Color.blue);
             }
@@ -880,7 +854,7 @@ fn renderInspector(
 
                 for (branch.children) |child| {
                     defer child_x += x_distance;
-                    renderInspector(child, child_x, child_y, x_distance, y_distance, radius, mouseX, mouseY);
+                    renderInspector(child, child_x, child_y, x_distance, y_distance, radius, mouse);
                 }
             }
         },
