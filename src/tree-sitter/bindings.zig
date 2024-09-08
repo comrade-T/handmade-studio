@@ -382,7 +382,7 @@ pub const Node = extern struct {
         node: Node,
         index: u32 = 0,
 
-        pub fn next(iterator: ChildIterator) ?Node {
+        pub fn next(iterator: *ChildIterator) ?Node {
             defer iterator.index += 1;
 
             var maybe_child = iterator.node.getChild(iterator.index);
@@ -397,7 +397,7 @@ pub const Node = extern struct {
         node: Node,
         index: u32 = 0,
 
-        pub fn next(iterator: NamedChildIterator) ?Node {
+        pub fn next(iterator: *NamedChildIterator) ?Node {
             defer iterator.index += 1;
 
             var maybe_child = iterator.node.getNamedChild(iterator.index);
