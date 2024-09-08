@@ -5,46 +5,53 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
 pub const CustomNode = union(enum) {
-    branch: *Branch,
+    branch: Branch,
     leaf: Leaf,
 
-    pub fn new(a: Allocator, tsnode: ts.b.Node) !*CustomNode {
-        return try Branch.new(a, tsnode);
+    pub fn new(aa: Allocator, tsnode: ts.b.Node) !CustomNode {
+        return try Branch.new(aa, tsnode);
     }
 
     const Branch = struct {
-        a: Allocator,
         tsnode: ts.b.Node,
-        children: ArrayList(*CustomNode),
+        children: []CustomNode = undefined,
+        weights: u16 = 0,
 
-        fn new(a: Allocator, tsnode: ts.b.Node) !*CustomNode {
-            const branch = try a.create(Branch);
-            branch.* = .{
-                .a = a,
-                .tsnode = tsnode,
-                .children = ArrayList(*CustomNode).init(a),
-            };
+        fn new(aa: Allocator, tsnode: ts.b.Node) !CustomNode {
+            var branch = Branch{ .tsnode = tsnode };
+
+            var list = ArrayList(CustomNode).init(aa);
             var iter = tsnode.childIterator();
             while (iter.next()) |ts_child| {
                 const child = if (ts_child.getChildCount() == 0)
-                    try Leaf.new(a, ts_child)
+                    try Leaf.new(ts_child)
                 else
-                    try @This().new(a, ts_child);
-                try branch.children.append(child);
+                    try Branch.new(aa, ts_child);
+                try list.append(child);
             }
-            const node = try a.create(CustomNode);
-            node.* = .{ .branch = branch };
-            return node;
+            branch.children = try list.toOwnedSlice();
+
+            branch.calculateWeights();
+
+            return CustomNode{ .branch = branch };
+        }
+
+        fn calculateWeights(self: *@This()) void {
+            self.weights = 0;
+            for (self.children) |child| {
+                switch (child) {
+                    .branch => |branch| self.weights += branch.weights,
+                    .leaf => self.weights += 1,
+                }
+            }
         }
     };
 
     const Leaf = struct {
         tsnode: ts.b.Node,
 
-        fn new(a: Allocator, tsnode: ts.b.Node) !*CustomNode {
-            const node = try a.create(CustomNode);
-            node.* = .{ .leaf = Leaf{ .tsnode = tsnode } };
-            return node;
+        fn new(tsnode: ts.b.Node) !CustomNode {
+            return CustomNode{ .leaf = Leaf{ .tsnode = tsnode } };
         }
     };
 };

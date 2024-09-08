@@ -188,13 +188,14 @@ test "experiment" {
     {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
-        const a = arena.allocator();
 
-        const structure = try exp.CustomNode.new(a, tree.getRootNode());
+        const structure = try exp.CustomNode.new(arena.allocator(), tree.getRootNode());
 
-        for (structure.branch.children.items) |child| {
-            switch (child.*) {
+        for (structure.branch.children) |child| {
+            std.debug.print("===================================\n", .{});
+            switch (child) {
                 .branch => |branch| {
+                    std.debug.print("branch weights: {d}\n", .{branch.weights});
                     std.debug.print("branch tsnode type: {s}\n", .{branch.tsnode.getType()});
                 },
                 .leaf => |leaf| {
