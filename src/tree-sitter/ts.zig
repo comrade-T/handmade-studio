@@ -190,10 +190,17 @@ test "experiment" {
         defer arena.deinit();
         const a = arena.allocator();
 
-        const structure = try exp.CustomStructure.new(a, tree.getRootNode());
+        const structure = try exp.CustomNode.new(a, tree.getRootNode());
 
-        for (structure.children.items) |child| {
-            std.debug.print("child type; {s}\n", .{child.node.getType()});
+        for (structure.branch.children.items) |child| {
+            switch (child.*) {
+                .branch => |branch| {
+                    std.debug.print("branch tsnode type: {s}\n", .{branch.tsnode.getType()});
+                },
+                .leaf => |leaf| {
+                    std.debug.print("leaf tsnode type: {s}\n", .{leaf.tsnode.getType()});
+                },
+            }
         }
     }
 }
