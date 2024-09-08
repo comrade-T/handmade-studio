@@ -19,21 +19,6 @@ const hash = _input_processor.hash;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-// TODO: emap(trigger, cmd_id) --> switch statement on the cmd_id.
-// --> that would require setting up APIs in a way that is re-mappable.
-
-// TODO: RIGHT NOW:
-
-// Window controls (window position, window bounds)
-// - I don't know how to integrate mouse movement / mouse drag with keyboard events yet
-// --> Start with having draggable handles on the window. Integrate with keyboard events comes later.
-//
-// Start with displaying a box / circle on top of the window
-
-// Vim editting
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 const screen_width = 1920;
 const screen_height = 1080;
 
@@ -88,14 +73,13 @@ pub fn main() anyerror!void {
     var vault = try _input_processor.MappingVault.init(gpa);
     defer vault.deinit();
 
-    // TODO:
-
-    var editor_mode = _input_processor.EditorMode.editor;
+    var editor_mode = _input_processor.EditorMode.normal;
 
     { // editor mode tests
         try vault.emap(&[_]Key{.j});
         try vault.emap(&[_]Key{.k});
         try vault.emap(&[_]Key{.l});
+        try vault.emap(&[_]Key{.n});
 
         try vault.emap(&[_]Key{.a});
         try vault.emap(&[_]Key{ .l, .a });
@@ -435,6 +419,8 @@ pub fn main() anyerror!void {
                                 std.debug.print("Alice in Wonderland\n", .{});
                             },
 
+                            hash(&[_]Key{.n}) => navigator.toggle(),
+
                             hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
                             hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
                             hash(&[_]Key{ .left_control, .j }) => navigator.moveDown(),
@@ -686,9 +672,10 @@ pub fn main() anyerror!void {
         defer rl.endDrawing();
         {
             // rl.drawFPS(10, 10);
-
             rl.clearBackground(rl.Color.blank);
-            { // navigator
+
+            // navigator
+            if (navigator.is_visible) {
                 for (navigator.short_paths, 0..) |path, i| {
                     const text = try std.fmt.allocPrintZ(gpa, "{s}", .{path});
                     defer gpa.free(text);

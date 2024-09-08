@@ -6,6 +6,8 @@ const ArrayList = std.ArrayList;
 exa: Allocator,
 arena: std.heap.ArenaAllocator,
 
+is_visible: bool = false,
+
 short_paths: [][]const u8,
 history: ArrayList(ArrayList(u8)),
 index: usize,
@@ -25,6 +27,10 @@ pub fn deinit(self: *@This()) void {
     for (self.history.items) |path| path.deinit();
     self.history.deinit();
     self.exa.destroy(self);
+}
+
+pub fn toggle(self: *@This()) void {
+    self.is_visible = !self.is_visible;
 }
 
 pub fn getCurrentRelativePath(self: *@This()) !ArrayList(u8) {
