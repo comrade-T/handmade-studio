@@ -16,6 +16,7 @@ pub const CustomNode = union(enum) {
         tsnode: ts.b.Node,
         children: []CustomNode = undefined,
         weights: u16 = 0,
+        expanded: bool = false,
 
         fn new(aa: Allocator, tsnode: ts.b.Node) !CustomNode {
             var branch = Branch{ .tsnode = tsnode };
@@ -40,10 +41,20 @@ pub const CustomNode = union(enum) {
             self.weights = 0;
             for (self.children) |child| {
                 switch (child) {
-                    .branch => |branch| self.weights += branch.weights,
+                    .branch => |branch| {
+                        if (branch.expanded) {
+                            self.weights += branch.weights;
+                        } else {
+                            self.weights += 1;
+                        }
+                    },
                     .leaf => self.weights += 1,
                 }
             }
+        }
+
+        pub fn toggle(self: *@This()) void {
+            self.expanded = !self.expanded;
         }
     };
 
