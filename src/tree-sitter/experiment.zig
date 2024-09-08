@@ -56,8 +56,14 @@ pub const CustomNode = union(enum) {
             }
         }
 
+        fn calculateWeightsRecursivelyUpwards(self: *@This()) void {
+            self.calculateWeights();
+            if (self.parent) |parent| parent.branch.calculateWeightsRecursivelyUpwards();
+        }
+
         pub fn toggle(self: *@This()) void {
             self.expanded = !self.expanded;
+            self.calculateWeightsRecursivelyUpwards();
         }
     };
 
