@@ -17,6 +17,7 @@ pub const CustomNode = union(enum) {
         parent: ?*CustomNode,
         children: []*CustomNode = undefined,
         weights: u16 = 0,
+        depth: u16 = 1,
         expanded: bool = false,
 
         fn new(aa: Allocator, parent: ?*CustomNode, tsnode: ts.b.Node) !*CustomNode {
@@ -50,10 +51,12 @@ pub const CustomNode = union(enum) {
                         } else {
                             self.weights += 1;
                         }
+                        self.depth = @max(self.depth, branch.depth);
                     },
                     .leaf => self.weights += 1,
                 }
             }
+            self.depth += 1;
         }
 
         fn calculateWeightsRecursivelyUpwards(self: *@This()) void {
