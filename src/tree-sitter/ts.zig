@@ -159,49 +159,36 @@ const Nightfly = enum(u32) {
     plant_green = 0x2a4e57ff,
 };
 
+const source_10 =
+    \\fn add(a: i32, b: i32) i32 { return a + b; }
+    \\const x = 10;
+    \\const MyStruct = struct { a: i32, b: i32 };
+    \\fn subtract(a: i32, b: i32) i32 { return a - b; }
+    \\const y = 20;
+    \\const AnotherStruct = struct { x: i32, y: i32 };
+    \\fn multiply(a: i32, b: i32) i32 { return a * b; }
+    \\const z = 30;
+    \\const YetAnotherStruct = struct { m: i32, n: i32 };
+    \\fn divide(a: i32, b: i32) i32 { return a / b; }
+    \\const w = 40;
+    \\const FinalStruct = struct { p: i32, q: i32 };
+    \\fn modulus(a: i32, b: i32) i32 { return a % b; }
+;
+
 test "experiment" {
     var langsuite = try LangSuite.create(.zig);
-    defer langsuite.destroy();
-
-    const source =
-        \\fn add(a: i32, b: i32) i32 { return a + b; }
-        \\const x = 10;
-        \\const MyStruct = struct { a: i32, b: i32 };
-        \\fn subtract(a: i32, b: i32) i32 { return a - b; }
-        \\const y = 20;
-        \\const AnotherStruct = struct { x: i32, y: i32 };
-        \\fn multiply(a: i32, b: i32) i32 { return a * b; }
-        \\const z = 30;
-        \\const YetAnotherStruct = struct { m: i32, n: i32 };
-        \\fn divide(a: i32, b: i32) i32 { return a / b; }
-        \\const w = 40;
-        \\const FinalStruct = struct { p: i32, q: i32 };
-        \\fn modulus(a: i32, b: i32) i32 { return a % b; }
-    ;
-
-    const parser = try langsuite.newParser();
-    defer parser.destroy();
-
-    const tree = try parser.parseString(null, source);
-    defer tree.destroy();
-
     {
+        const source =
+            \\fn add(a: i32, b: i32) i32 { return a + b; }
+            \\const x = 10;
+        ;
+        const parser = try langsuite.newParser();
+        const tree = try parser.parseString(null, source);
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
 
         const structure = try exp.CustomNode.new(arena.allocator(), tree.getRootNode());
 
-        for (structure.branch.children) |child| {
-            std.debug.print("===================================\n", .{});
-            switch (child.*) {
-                .branch => |branch| {
-                    std.debug.print("branch weights: {d}\n", .{branch.weights});
-                    std.debug.print("branch tsnode type: {s}\n", .{branch.tsnode.getType()});
-                },
-                .leaf => |leaf| {
-                    std.debug.print("leaf tsnode type: {s}\n", .{leaf.tsnode.getType()});
-                },
-            }
-        }
+        try exp.sugondeese(testing_allocator, structure, 0);
     }
 }
