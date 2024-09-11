@@ -9,26 +9,106 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const ContextMap = std.StringHashMap(TriggerMap);
+const ContextMap = std.StringHashMap(*CallbackMap);
 const CallbackMap = std.AutoHashMap(u128, Callback);
 const Callback = struct {
-    F: *const fn (ctx: *anyopaque) anyerror!void,
+    f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
 };
 
 const MappingCouncil = struct {
-    context_map: ContextMap,
+    a: Allocator,
+    downs: *ContextMap,
+    ups: *ContextMap,
+    current_context_id: []const u8 = "",
 
-    pub fn init(a: Allocator) @This() {
-        return MappingCouncil{ .context_map = ContextMap.init(a) };
+    pub fn init(a: Allocator) !*@This() {
+        const downs = try a.create(ContextMap);
+        downs.* = ContextMap.init(a);
+
+        const ups = try a.create(ContextMap);
+        ups.* = ContextMap.init(a);
+
+        const self = try a.create(@This());
+        self.* = .{ .a = a, .downs = downs, .ups = ups };
+        return self;
     }
 
     pub fn deinit(self: *@This()) void {
-        var iter = self.context_map.valueIterator();
-        while (iter.next()) |map| map.deinit();
-        self.context_map.deinit();
+        var down_iter = self.downs.valueIterator();
+        while (down_iter.next()) |cb_map| {
+            cb_map.*.deinit();
+            self.a.destroy(cb_map.*);
+        }
+
+        var up_iter = self.ups.valueIterator();
+        while (up_iter.next()) |cb_map| {
+            cb_map.*.deinit();
+            self.a.destroy(cb_map.*);
+        }
+
+        self.downs.deinit();
+        self.ups.deinit();
+
+        self.a.destroy(self.downs);
+        self.a.destroy(self.ups);
+        self.a.destroy(self);
+    }
+
+    pub fn map(self: *@This(), context_id: []const u8, keys: []const Key, callback: Callback) !void {
+        if (self.downs.get(context_id) == null) {
+            const cb_map = try self.a.create(CallbackMap);
+            cb_map.* = CallbackMap.init(self.a);
+            try self.downs.put(context_id, cb_map);
+        }
+        if (self.ups.get(context_id) == null) {
+            const cb_map = try self.a.create(CallbackMap);
+            cb_map.* = CallbackMap.init(self.a);
+            try self.ups.put(context_id, cb_map);
+        }
+
+        var down_map = self.downs.get(context_id) orelse unreachable;
+        var up_map = self.ups.get(context_id) orelse unreachable;
+
+        if (keys.len == 1) {
+            const key_hash = hash(keys);
+            if (up_map.get(key_hash) != null) {
+                return up_map.put(key_hash, callback);
+            }
+            return down_map.put(key_hash, callback);
+        }
+
+        for (0..keys.len - 1) |i| {
+            const key_chunk = keys[0 .. i + 1];
+            const chunk_hash = hash(key_chunk);
+            if (down_map.get(chunk_hash) != null) {
+                _ = down_map.remove(chunk_hash);
+                try up_map.put(chunk_hash, callback);
+                continue;
+            }
+            if (up_map.get(chunk_hash) == null) {
+                try up_map.put(chunk_hash, callback);
+            }
+        }
+        try down_map.put(hash(keys), callback);
     }
 };
+
+test MappingCouncil {
+    var council = try MappingCouncil.init(testing_allocator);
+    defer council.deinit();
+
+    const TestCtx = struct {
+        value: u16 = 1,
+        fn f(ctx_: *anyopaque) !void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            std.debug.print("ctx value: {d}\n", .{ctx.value});
+        }
+    };
+    var ctx = TestCtx{};
+
+    try council.map("buffer_normal", &[_]Key{.j}, .{ .f = TestCtx.f, .ctx = &ctx });
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
