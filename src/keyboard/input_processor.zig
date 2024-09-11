@@ -9,6 +9,29 @@ const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const ContextMap = std.StringHashMap(TriggerMap);
+const CallbackMap = std.AutoHashMap(u128, Callback);
+const Callback = struct {
+    F: *const fn (ctx: *anyopaque) anyerror!void,
+    ctx: *anyopaque,
+};
+
+const MappingCouncil = struct {
+    context_map: ContextMap,
+
+    pub fn init(a: Allocator) @This() {
+        return MappingCouncil{ .context_map = ContextMap.init(a) };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        var iter = self.context_map.valueIterator();
+        while (iter.next()) |map| map.deinit();
+        self.context_map.deinit();
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const TriggerMap = std.AutoHashMap(u128, bool);
 
 pub const MappingVault = struct {

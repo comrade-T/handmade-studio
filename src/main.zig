@@ -427,10 +427,7 @@ pub fn main() anyerror!void {
                 switch (editor_mode) {
                     .editor => {
                         switch (trigger) {
-                            hash(&[_]Key{.a}) => {
-                                std.debug.print("Alice in Wonderland\n", .{});
-                            },
-
+                            hash(&[_]Key{.a}) => std.debug.print("Alice in Wonderland\n", .{}),
                             hash(&[_]Key{.x}) => navigator.toggle(),
 
                             hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
