@@ -83,8 +83,8 @@ const MappingCouncil = struct {
             const key_chunk = keys[0 .. i + 1];
             const chunk_hash = hash(key_chunk);
             if (down_map.get(chunk_hash) != null) {
-                _ = down_map.remove(chunk_hash);
-                try up_map.put(chunk_hash, callback);
+                const fetched = down_map.fetchRemove(chunk_hash);
+                try up_map.put(chunk_hash, fetched.?.value);
                 continue;
             }
             if (up_map.get(chunk_hash) == null) {
@@ -109,18 +109,35 @@ const MappingCouncil = struct {
     }
 
     pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) ?u128 {
+        const downs = self.downs.get(self.current_context_id) orelse return null;
+        const ups = self.ups.get(self.current_context_id) orelse return null;
+
         const r = frame.produceCandidateReport();
 
-        if (frame.downs.items.len == 2 and
-            (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
-        {
-            return self.produceDefaultTrigger(r, frame);
-        }
+        if (frame.latest_event_type == .down) {
+            if (frame.downs.items.len == 2 and
+                (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
+            {
+                return self.produceDefaultTrigger(r, frame);
+            }
 
-        if (frame.latest_event_type == .down and !r.over_threshold and self.check(.down, r.quick)) {
-            if (self.downs.get(self.current_context_id).?.get(r.quick.?).?.quick) {
+            if (frame.downs.items.len >= 2 and self.check(.down, r.down)) {
                 frame.emitted = true;
-                return r.quick;
+                return r.down;
+            }
+
+            if (!r.over_threshold and r.quick != null) {
+                var proceed = false;
+                if (downs.get(r.quick.?)) |result| {
+                    if (result.quick) proceed = true;
+                }
+                if (ups.get(r.quick.?)) |result| {
+                    if (result.quick) proceed = true;
+                }
+                if (proceed) {
+                    frame.emitted = true;
+                    return r.quick;
+                }
             }
         }
 
@@ -189,10 +206,93 @@ test "MappingCouncil.map / MappingCouncil.activate" {
     try eq(12, ctx.value);
 }
 
-test "MappingCouncil.produceTrigger" {
-    const DummyCtx = struct {
-        fn dummy(_: *anyopaque) !void {}
-    };
+const DummyCtx = struct {
+    fn dummy(_: *anyopaque) !void {}
+};
+
+test "MappingCouncil.produceTrigger - quick" {
+    var ctx = DummyCtx{};
+    const quick_cb = Callback{ .f = DummyCtx.dummy, .ctx = &ctx, .quick = true };
+    const dummy_cb = Callback{ .f = DummyCtx.dummy, .ctx = &ctx };
+
+    var council = try MappingCouncil.init(testing_allocator);
+    defer council.deinit();
+
+    try council.map("insert", &[_]Key{.a}, quick_cb);
+    try council.map("insert", &[_]Key{.b}, quick_cb);
+    try council.map("insert", &[_]Key{.z}, dummy_cb);
+    try council.map("insert", &[_]Key{ .z, .a }, dummy_cb);
+
+    council.setContextID("insert");
+
+    // a down -> b down -> a up -> b up
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try eq(hash(&[_]Key{.a}), council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.b, .{ .testing = 100 });
+        try eq(hash(&[_]Key{.b}), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.a);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.b);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // a down -> b down -> b up -> a up
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try eq(hash(&[_]Key{.a}), council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.b, .{ .testing = 100 });
+        try eq(hash(&[_]Key{.b}), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.b);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.a);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // z, mapped, is prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.z, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(hash(&[_]Key{.z}), council.produceFinalTrigger(&frame));
+    }
+
+    // z a, mapped combo
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.z, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.a, .{ .testing = 100 });
+        try eq(hash(&[_]Key{ .z, .a }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.a);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+}
+
+test "MappingCouncil.produceTrigger - non-quick" {
     var ctx = DummyCtx{};
     const dummy_cb = Callback{ .f = DummyCtx.dummy, .ctx = &ctx };
 
