@@ -194,23 +194,227 @@ test "MappingCouncil.produceTrigger" {
         fn dummy(_: *anyopaque) !void {}
     };
     var ctx = DummyCtx{};
+    const dummy_cb = Callback{ .f = DummyCtx.dummy, .ctx = &ctx };
 
     var council = try MappingCouncil.init(testing_allocator);
     defer council.deinit();
 
-    try council.map("normal", &[_]Key{.a}, .{ .f = DummyCtx.dummy, .ctx = &ctx });
+    try council.map("normal", &[_]Key{.a}, dummy_cb);
+    try council.map("normal", &[_]Key{.l}, dummy_cb);
+    try council.map("normal", &[_]Key{ .l, .z }, dummy_cb);
+    try council.map("normal", &[_]Key{ .l, .c }, dummy_cb);
+    try council.map("normal", &[_]Key{ .l, .x }, dummy_cb);
+    try council.map("normal", &[_]Key{ .l, .x, .c }, dummy_cb);
 
     council.setContextID("normal");
+
+    // f12, unmapped, not prefix
     {
         var frame = try InputFrame.init(testing_allocator);
         defer frame.deinit();
 
         try eq(null, council.produceFinalTrigger(&frame));
 
+        try frame.keyDown(.f12, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.a);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // a, mapped, not prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
         try frame.keyDown(.a, .{ .testing = 0 });
         try eq(hash(&[_]Key{.a}), council.produceFinalTrigger(&frame));
 
         try frame.keyUp(.a);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // l, mapped, is prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(hash(&[_]Key{.l}), council.produceFinalTrigger(&frame));
+    }
+
+    // l z, mapped, not prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.z, .{ .testing = 100 });
+        try eq(hash(&[_]Key{ .l, .z }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // l z -> l c, both mapped, both not prefix | l mapped, is prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.z, .{ .testing = 100 });
+        try eq(hash(&[_]Key{ .l, .z }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.c, .{ .testing = 200 });
+        try eq(hash(&[_]Key{ .l, .c }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.c);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // l f12, unmapped, not prefix | l mapped, is prefix
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.f12, .{ .testing = 100 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.f12);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    //       l f12    ->       l z
+    // combo unmapped -> combo mapped
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.f12, .{ .testing = 100 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.f12);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.z, .{ .testing = 200 });
+        try eq(hash(&[_]Key{ .l, .z }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // key up order doesn't matter if down trigger registered
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.z, .{ .testing = 100 });
+        try eq(hash(&[_]Key{ .l, .z }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // 3 keys combo, key up order doesn't matter
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.x, .{ .testing = 100 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.c, .{ .testing = 200 });
+        try eq(hash(&[_]Key{ .l, .x, .c }), council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.c, .{ .testing = 300 });
+        try eq(hash(&[_]Key{ .l, .x, .c }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.z);
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.c);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // 2 keys combo, trigger on key up of 2nd key
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.x, .{ .testing = 100 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.x);
+        try eq(hash(&[_]Key{ .l, .x }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
+
+    // consecutive 2 keys combo, trigger on key up of 2nd key
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try frame.keyDown(.l, .{ .testing = 0 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.x, .{ .testing = 100 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.x);
+        try eq(hash(&[_]Key{ .l, .x }), council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.x, .{ .testing = 300 });
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.x);
+        try eq(hash(&[_]Key{ .l, .x }), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.l);
         try eq(null, council.produceFinalTrigger(&frame));
     }
 }
