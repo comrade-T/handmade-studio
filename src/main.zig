@@ -18,8 +18,6 @@ const _input_processor = @import("input_processor");
 const Key = _input_processor.Key;
 const hash = _input_processor.hash;
 
-const exp = _neo_buffer.sitter.exp;
-
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -76,13 +74,13 @@ pub fn main() anyerror!void {
     var vault = try _input_processor.MappingVault.init(gpa);
     defer vault.deinit();
 
-    var editor_mode = _input_processor.EditorMode.normal;
+    var editor_mode = _input_processor.EditorMode.editor;
 
     { // editor mode tests
         try vault.emap(&[_]Key{.j});
         try vault.emap(&[_]Key{.k});
         try vault.emap(&[_]Key{.l});
-        try vault.emap(&[_]Key{.n});
+        try vault.emap(&[_]Key{.x});
 
         try vault.emap(&[_]Key{.a});
         try vault.emap(&[_]Key{ .l, .a });
@@ -99,6 +97,9 @@ pub fn main() anyerror!void {
         try vault.emap(&[_]Key{.r});
 
         try vault.emap(&[_]Key{.m});
+
+        try vault.emap(&[_]Key{.u});
+        try vault.emap(&[_]Key{.o});
 
         try vault.nmap(&[_]Key{.h});
         try vault.nmap(&[_]Key{.j});
@@ -299,11 +300,6 @@ pub fn main() anyerror!void {
     try buf.initiateTreeSitter(zig_langsuite);
     defer buf.destroy();
 
-    // Experimental Syntax Tree Inspector
-    var custom_node_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer custom_node_arena.deinit();
-    const custom_node = try exp.CustomNode.new(custom_node_arena.allocator(), buf.tstree.?.getRootNode());
-
     // Window
     const win_padding = 20;
     const win_width = @as(f32, @floatFromInt(screen_width)) / 1.3;
@@ -328,7 +324,7 @@ pub fn main() anyerror!void {
     var list_items = [_][]const u8{
         "hello", "world", "venus", "mars",
     };
-    const the_list = TheList{ .items = &list_items, .visible = true, .line_height = 20 };
+    var the_list = TheList{ .items = &list_items, .visible = true, .line_height = 20 };
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -435,7 +431,7 @@ pub fn main() anyerror!void {
                                 std.debug.print("Alice in Wonderland\n", .{});
                             },
 
-                            hash(&[_]Key{.n}) => navigator.toggle(),
+                            hash(&[_]Key{.x}) => navigator.toggle(),
 
                             hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
                             hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
@@ -461,6 +457,9 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{.r}) => resize_window_bounds_with_keyboard = true,
 
                             hash(&[_]Key{.m}) => editor_mode = .normal,
+
+                            hash(&[_]Key{.u}) => the_list.prevItem(),
+                            hash(&[_]Key{.o}) => the_list.nextItem(),
 
                             else => {},
                         }
@@ -707,7 +706,8 @@ pub fn main() anyerror!void {
                 while (iter.next()) |result| {
                     const text = try std.fmt.allocPrintZ(gpa, "{s}", .{result.text});
                     defer gpa.free(text);
-                    rl.drawText(text, result.x, result.y, the_list.font_size, rl.Color.ray_white);
+                    const color = if (result.active) rl.Color.sky_blue else rl.Color.ray_white;
+                    rl.drawText(text, result.x, result.y, the_list.font_size, color);
                 }
             }
 
@@ -721,12 +721,6 @@ pub fn main() anyerror!void {
             { // window content
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
-
-                { // Experimental Syntax Tree Inspector
-                    // var collision_boxes = try ArrayList(Box).initCapacity(gpa, custom_node.branch.weights);
-                    // defer collision_boxes.deinit();
-                    renderInspector(custom_node, 100, 100, 80, 120, 30, screen_mouse);
-                }
 
                 var last_y: f32 = undefined;
 
@@ -845,39 +839,4 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
     const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
     const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
     rl.drawText(text, x, y, font_size, rl.Color.ray_white);
-}
-
-fn renderInspector(
-    node: *exp.CustomNode,
-    x: i32,
-    y: i32,
-    x_distance: i32,
-    y_distance: i32,
-    radius: i32,
-    mouse: rl.Vector2,
-) void {
-    switch (node.*) {
-        .branch => |branch| {
-            if (rl.checkCollisionPointCircle(mouse, .{ .x = @floatFromInt(x), .y = @floatFromInt(y) }, @floatFromInt(radius))) {
-                if (rl.isMouseButtonPressed(.mouse_button_left)) node.branch.toggle();
-                rl.drawCircle(x, y, @floatFromInt(radius + 5), rl.Color.orange);
-            } else {
-                rl.drawCircle(x, y, @floatFromInt(radius), rl.Color.blue);
-            }
-
-            if (branch.expanded) {
-                const width = @as(i32, @intCast(branch.weights)) * x_distance;
-                var child_x: i32 = x - @divTrunc(width, 2);
-                const child_y = y_distance + y;
-
-                for (branch.children) |child| {
-                    defer child_x += x_distance;
-                    renderInspector(child, child_x, child_y, x_distance, y_distance, radius, mouse);
-                }
-            }
-        },
-        .leaf => |_| {
-            rl.drawCircle(x, y, @floatFromInt(radius), rl.Color.yellow);
-        },
-    }
 }
