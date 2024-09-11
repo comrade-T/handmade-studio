@@ -92,6 +92,16 @@ const MappingCouncil = struct {
         }
         try down_map.put(hash(keys), callback);
     }
+
+    pub fn activate(self: *@This(), context_id: []const u8, trigger: u128) !void {
+        if (self.downs.get(context_id)) |trigger_map| {
+            if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+        }
+        if (self.ups.get(context_id)) |trigger_map| {
+            if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+        }
+        std.debug.print("trigger '0x{x}' not found for context_id '{s}\n", .{ trigger, context_id });
+    }
 };
 
 test MappingCouncil {
@@ -99,15 +109,30 @@ test MappingCouncil {
     defer council.deinit();
 
     const TestCtx = struct {
-        value: u16 = 1,
-        fn f(ctx_: *anyopaque) !void {
-            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-            std.debug.print("ctx value: {d}\n", .{ctx.value});
+        value: u16 = 0,
+        fn addOne(ctx_: *anyopaque) !void {
+            var ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            ctx.value += 1;
+        }
+        fn addTen(ctx_: *anyopaque) !void {
+            var ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            ctx.value += 10;
         }
     };
     var ctx = TestCtx{};
+    try eq(0, ctx.value);
 
-    try council.map("buffer_normal", &[_]Key{.j}, .{ .f = TestCtx.f, .ctx = &ctx });
+    try council.map("buffer_normal", &[_]Key{.a}, .{ .f = TestCtx.addOne, .ctx = &ctx });
+    try council.map("buffer_normal", &[_]Key{.b}, .{ .f = TestCtx.addTen, .ctx = &ctx });
+
+    try council.activate("buffer_normal", hash(&[_]Key{.a}));
+    try eq(1, ctx.value);
+
+    try council.activate("buffer_normal", hash(&[_]Key{.a}));
+    try eq(2, ctx.value);
+
+    try council.activate("buffer_normal", hash(&[_]Key{.b}));
+    try eq(12, ctx.value);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
