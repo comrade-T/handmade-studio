@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const ztracy = @import("ztracy");
 
 const FileNavigator = @import("components/FileNavigator.zig");
+const TheList = @import("components/TheList.zig");
 
 const _neo_buffer = @import("neo_buffer");
 const _vw = @import("virtuous_window");
@@ -321,6 +322,13 @@ pub fn main() anyerror!void {
 
     var move_window_with_keyboard = false;
     var resize_window_bounds_with_keyboard = false;
+
+    ///////////////////////////// TheList
+
+    var list_items = [_][]const u8{
+        "hello", "world", "venus", "mars",
+    };
+    const the_list = TheList{ .items = &list_items, .visible = true, .line_height = 20 };
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -690,6 +698,16 @@ pub fn main() anyerror!void {
                     const idx: i32 = @intCast(i);
                     const color = if (i == navigator.index) rl.Color.sky_blue else rl.Color.ray_white;
                     rl.drawText(text, 70, 100 + idx * 40, 30, color);
+                }
+            }
+
+            // TheList
+            if (the_list.visible) {
+                var iter = the_list.iter();
+                while (iter.next()) |result| {
+                    const text = try std.fmt.allocPrintZ(gpa, "{s}", .{result.text});
+                    defer gpa.free(text);
+                    rl.drawText(text, result.x, result.y, the_list.font_size, rl.Color.ray_white);
                 }
             }
 

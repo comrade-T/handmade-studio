@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) void {
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/components/LensQueryPicker.zig", &.{}, zig_build_test_step);
+    _ = addTestableModule(&bops, "src/components/TheList.zig", &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/demos/write_struct_to_file.zig", &.{
         .{ .name = "s2s", .module = s2s },
