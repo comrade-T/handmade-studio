@@ -14,6 +14,7 @@ const CallbackMap = std.AutoHashMap(u128, Callback);
 const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
+    quick: bool = false,
 };
 
 const MappingCouncil = struct {
@@ -102,9 +103,62 @@ const MappingCouncil = struct {
         }
         std.debug.print("trigger '0x{x}' not found for context_id '{s}\n", .{ trigger, context_id });
     }
+
+    pub fn setContextID(self: *@This(), new_context_id: []const u8) void {
+        self.current_context_id = new_context_id;
+    }
+
+    pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) ?u128 {
+        const r = frame.produceCandidateReport();
+
+        if (frame.downs.items.len == 2 and
+            (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
+        {
+            return self.produceDefaultTrigger(r, frame);
+        }
+
+        if (frame.latest_event_type == .down and !r.over_threshold and self.check(.down, r.quick)) {
+            if (self.downs.get(self.current_context_id).?.get(r.quick.?).?.quick) {
+                frame.emitted = true;
+                return r.quick;
+            }
+        }
+
+        return self.produceDefaultTrigger(r, frame);
+    }
+
+    fn produceDefaultTrigger(self: *@This(), r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
+        if (frame.latest_event_type == .down) {
+            frame.emitted = true;
+            if (self.check(.down, r.down)) return r.down;
+            if (self.check(.up, r.down)) {
+                frame.emitted = false;
+                frame.previous_down_candidate = r.down;
+            }
+            return null;
+        }
+
+        if (!frame.emitted and frame.latest_event_type == .up and self.check(.up, r.prev_down)) {
+            frame.emitted = true;
+            frame.previous_down_candidate = null;
+            if (frame.downs.items.len == 0) frame.emitted = false;
+            return r.prev_down;
+        }
+
+        return null;
+    }
+
+    fn check(self: *@This(), kind: enum { up, down }, trigger: ?u128) bool {
+        if (trigger == null) return false;
+        const context_map = if (kind == .up) self.ups else self.downs;
+        if (context_map.get(self.current_context_id)) |trigger_map| {
+            if (trigger_map.get(trigger.?)) |_| return true;
+        }
+        return false;
+    }
 };
 
-test MappingCouncil {
+test "MappingCouncil.map / MappingCouncil.activate" {
     var council = try MappingCouncil.init(testing_allocator);
     defer council.deinit();
 
@@ -122,17 +176,43 @@ test MappingCouncil {
     var ctx = TestCtx{};
     try eq(0, ctx.value);
 
-    try council.map("buffer_normal", &[_]Key{.a}, .{ .f = TestCtx.addOne, .ctx = &ctx });
-    try council.map("buffer_normal", &[_]Key{.b}, .{ .f = TestCtx.addTen, .ctx = &ctx });
+    try council.map("normal", &[_]Key{.a}, .{ .f = TestCtx.addOne, .ctx = &ctx });
+    try council.map("normal", &[_]Key{.b}, .{ .f = TestCtx.addTen, .ctx = &ctx });
 
-    try council.activate("buffer_normal", hash(&[_]Key{.a}));
+    try council.activate("normal", hash(&[_]Key{.a}));
     try eq(1, ctx.value);
 
-    try council.activate("buffer_normal", hash(&[_]Key{.a}));
+    try council.activate("normal", hash(&[_]Key{.a}));
     try eq(2, ctx.value);
 
-    try council.activate("buffer_normal", hash(&[_]Key{.b}));
+    try council.activate("normal", hash(&[_]Key{.b}));
     try eq(12, ctx.value);
+}
+
+test "MappingCouncil.produceTrigger" {
+    const DummyCtx = struct {
+        fn dummy(_: *anyopaque) !void {}
+    };
+    var ctx = DummyCtx{};
+
+    var council = try MappingCouncil.init(testing_allocator);
+    defer council.deinit();
+
+    try council.map("normal", &[_]Key{.a}, .{ .f = DummyCtx.dummy, .ctx = &ctx });
+
+    council.setContextID("normal");
+    {
+        var frame = try InputFrame.init(testing_allocator);
+        defer frame.deinit();
+
+        try eq(null, council.produceFinalTrigger(&frame));
+
+        try frame.keyDown(.a, .{ .testing = 0 });
+        try eq(hash(&[_]Key{.a}), council.produceFinalTrigger(&frame));
+
+        try frame.keyUp(.a);
+        try eq(null, council.produceFinalTrigger(&frame));
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
