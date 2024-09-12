@@ -11,13 +11,13 @@ const eqStr = std.testing.expectEqualStrings;
 
 const ContextMap = std.StringHashMap(*CallbackMap);
 const CallbackMap = std.AutoHashMap(u128, Callback);
-const Callback = struct {
+pub const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
     quick: bool = false,
 };
 
-const MappingCouncil = struct {
+pub const MappingCouncil = struct {
     a: Allocator,
     downs: *ContextMap,
     ups: *ContextMap,

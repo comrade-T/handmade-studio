@@ -1,7 +1,11 @@
 const std = @import("std");
 const fs = @import("../fs.zig");
+const ip = @import("input_processor");
+const Key = ip.Key;
+
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Self = @This();
 
 exa: Allocator,
 arena: std.heap.ArenaAllocator,
@@ -27,6 +31,27 @@ pub fn deinit(self: *@This()) void {
     for (self.history.items) |path| path.deinit();
     self.history.deinit();
     self.exa.destroy(self);
+}
+
+pub fn registerKeyMaps(self: *@This(), council: *ip.MappingCouncil) !void {
+    const Cb = struct {
+        fn toggle(target_: *anyopaque) !void {
+            const target = @as(*Self, @ptrCast(@alignCast(target_)));
+            target.toggle();
+        }
+        fn moveUp(target_: *anyopaque) !void {
+            const target = @as(*Self, @ptrCast(@alignCast(target_)));
+            target.moveUp();
+        }
+        fn moveDown(target_: *anyopaque) !void {
+            const target = @as(*Self, @ptrCast(@alignCast(target_)));
+            target.moveDown();
+        }
+    };
+
+    try council.map("file_navigator", &[_]Key{.q}, .{ .f = Cb.toggle, .ctx = self });
+    try council.map("file_navigator", &[_]Key{.k}, .{ .f = Cb.moveUp, .ctx = self });
+    try council.map("file_navigator", &[_]Key{.j}, .{ .f = Cb.moveDown, .ctx = self });
 }
 
 pub fn toggle(self: *@This()) void {
