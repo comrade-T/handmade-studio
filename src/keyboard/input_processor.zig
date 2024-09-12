@@ -175,6 +175,50 @@ const MappingCouncil = struct {
     }
 };
 
+test "MappingCouncil.map with different flavor of *anyopaque ctx" {
+    var council = try MappingCouncil.init(testing_allocator);
+    defer council.deinit();
+
+    const Target = struct {
+        value: u16 = 0,
+        fn add(self: *@This(), add_by: u16) void {
+            self.value += add_by;
+        }
+    };
+    const Cb = struct {
+        add_by: u16 = 0,
+        target: *Target,
+        fn f(self_: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(self_)));
+            self.target.add(self.add_by);
+        }
+        fn init(allocator: Allocator, target: *Target, add_by: u16) !Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .add_by = add_by, .target = target };
+            return Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    var target = Target{};
+    try eq(0, target.value);
+
+    var cb_arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer cb_arena.deinit();
+    const a = cb_arena.allocator();
+
+    try council.map("normal", &[_]Key{.a}, try Cb.init(a, &target, 1));
+    try council.map("normal", &[_]Key{.b}, try Cb.init(a, &target, 10));
+
+    try council.activate("normal", hash(&[_]Key{.a}));
+    try eq(1, target.value);
+
+    try council.activate("normal", hash(&[_]Key{.a}));
+    try eq(2, target.value);
+
+    try council.activate("normal", hash(&[_]Key{.b}));
+    try eq(12, target.value);
+}
+
 test "MappingCouncil.map / MappingCouncil.activate" {
     var council = try MappingCouncil.init(testing_allocator);
     defer council.deinit();
