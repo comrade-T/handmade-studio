@@ -1,7 +1,7 @@
 const std = @import("std");
 const _nc = @import("neo_cell.zig");
 const _buf_mod = @import("neo_buffer");
-const Buffer = _buf_mod.Buffer;
+pub const Buffer = _buf_mod.Buffer;
 const sitter = _buf_mod.sitter;
 const ts = sitter.b;
 
@@ -42,7 +42,7 @@ pub const Window = struct {
         }
     };
 
-    const Bounds = struct {
+    pub const Bounds = struct {
         width: f32 = 400,
         height: f32 = 400,
         offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
@@ -130,17 +130,24 @@ pub const Window = struct {
         }
     };
 
-    pub fn spawn(exa: Allocator, buf: *Buffer, font_size: i32, x: f32, y: f32, bounds: ?Bounds) !*@This() {
+    pub const SpawnOptions = struct {
+        font_size: i32,
+        x: f32,
+        y: f32,
+        bounds: ?Bounds,
+    };
+
+    pub fn spawn(exa: Allocator, buf: *Buffer, opts: SpawnOptions) !*@This() {
         const self = try exa.create(@This());
         self.* = .{
             .exa = exa,
             .buf = buf,
             .cursor = Cursor{},
-            .x = x,
-            .y = y,
-            .bounded = if (bounds != null) true else false,
-            .bounds = if (bounds) |b| b else Bounds{},
-            .font_size = font_size,
+            .x = opts.x,
+            .y = opts.y,
+            .bounded = if (opts.bounds != null) true else false,
+            .bounds = if (opts.bounds) |b| b else Bounds{},
+            .font_size = opts.font_size,
         };
 
         // store the content of the entire buffer for now,
@@ -743,10 +750,10 @@ fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.
     return langsuite;
 }
 
-fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, x: f32, y: f32, bounded: ?Window.Bounds) !*Window {
+fn setupBufAndWin(a: Allocator, langsuite: sitter.LangSuite, source: []const u8, font_size: i32, x: f32, y: f32, bounds: ?Window.Bounds) !*Window {
     var buf = try Buffer.create(a, .string, source);
     try buf.initiateTreeSitter(langsuite);
-    return try Window.spawn(a, buf, font_size, x, y, bounded);
+    return try Window.spawn(a, buf, Window.SpawnOptions{ .font_size = font_size, .x = x, .y = y, .bounds = bounds });
 }
 
 fn teardownWindow(win: *Window) void {

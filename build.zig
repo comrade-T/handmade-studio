@@ -82,10 +82,17 @@ pub fn build(b: *std.Build) void {
     neo_buffer.compile.linkLibrary(tree_sitter);
 
     const virtuous_window = addTestableModule(&bops, "src/window/virtuous_window.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     virtuous_window.compile.linkLibrary(tree_sitter);
+
+    const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
+        .{ .name = "virtuous_window", .module = virtuous_window.module },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    window_manager.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 

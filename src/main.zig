@@ -434,6 +434,8 @@ pub fn main() anyerror!void {
                             hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
                             hash(&[_]Key{ .left_control, .j }) => navigator.moveDown(),
                             hash(&[_]Key{ .left_control, .l }) => {
+                                // this should be a callback
+
                                 if (try navigator.forward()) |path| {
                                     defer path.deinit();
 
