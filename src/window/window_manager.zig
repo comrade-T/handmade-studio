@@ -8,8 +8,10 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
 const _vw = @import("virtuous_window");
-const Window = _vw.Window;
 const Buffer = _vw.Buffer;
+const Window = _vw.Window;
+const FontData = _vw.FontData;
+const FontDataIndexMap = _vw.FontDataIndexMap;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

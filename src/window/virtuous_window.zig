@@ -164,6 +164,33 @@ pub const Window = struct {
         self.exa.destroy(self);
     }
 
+    ///////////////////////////// Get Window Width & Height
+
+    pub fn getWidth(self: *const @This(), font_data: FontData, index_map: FontDataIndexMap) f32 {
+        var win_width: f32 = 0;
+        for (self.contents.lines) |line| {
+            var line_width: f32 = 0;
+            for (line) |char| {
+                var cp_iter = _buf_mod.code_point.Iterator{ .bytes = char };
+                const cp_i32: i32 = @intCast(cp_iter.next().?.code);
+                const glyph_index = index_map.get(cp_i32) orelse @panic("CodePoint doesn't exist in Font!");
+                var char_width: f32 = @floatFromInt(font_data.glyphs[glyph_index].advanceX);
+                if (char_width == 0) char_width = font_data.recs[glyph_index].width + @as(f32, @floatFromInt(font_data.glyphs[glyph_index].offsetX));
+                line_width += char_width;
+            }
+            win_width = @max(win_width, line_width);
+        }
+        return win_width;
+    }
+
+    pub fn getHeight(self: *const @This()) f32 {
+        return @as(f32, @floatFromInt(self.contents.lines.len)) * self.getLineHeight();
+    }
+
+    fn getLineHeight(self: *const @This()) f32 {
+        return @floatFromInt(self.font_size + self.line_spacing);
+    }
+
     ///////////////////////////// Window Position & Bounds
 
     pub fn toggleBounds(self: *@This()) void {
@@ -283,7 +310,7 @@ pub const Window = struct {
             if (self.currentLineOutOfBounds()) return null;
 
             // screen.start_y check
-            if (self.current_y + self.lineHeight() <= self.screen.start_y) return self.advanceToNextLine();
+            if (self.current_y + self.win.getLineHeight() <= self.screen.start_y) return self.advanceToNextLine();
 
             { // screen end check
                 if (self.current_x >= self.screen.end_x) return self.advanceToNextLine();
@@ -297,7 +324,7 @@ pub const Window = struct {
                 if (self.current_y >= self.win.bounds.height + self.win.y) return null;
 
                 // offset check
-                if (self.current_y + self.lineHeight() < self.win.y) return self.advanceToNextLine();
+                if (self.current_y + self.win.getLineHeight() < self.win.y) return self.advanceToNextLine();
             }
 
             // col check
@@ -342,12 +369,8 @@ pub const Window = struct {
             self.current_col = 0;
             self.current_x = self.win.x;
             if (self.win.bounded) self.current_x -= self.win.bounds.offset.x;
-            self.current_y += self.lineHeight();
+            self.current_y += self.win.getLineHeight();
             return .skip_to_new_line;
-        }
-
-        fn lineHeight(self: *@This()) f32 {
-            return @floatFromInt(self.win.font_size + self.win.line_spacing);
         }
     };
 
