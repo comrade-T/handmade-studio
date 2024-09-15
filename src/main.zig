@@ -310,7 +310,8 @@ pub fn main() anyerror!void {
     //     .width = win_width,
     //     .height = win_height,
     // });
-    var window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
+    // var window = try Window.spawn(gpa, buf, font_size, 400, 100, null);
+    var window = try Window.spawn(gpa, buf, .{ .font_size = font_size, .x = 400, .y = 100 });
     defer window.destroy();
 
     const window_dragger_y_offset = -40;
@@ -370,21 +371,27 @@ pub fn main() anyerror!void {
             while (i > 0) {
                 i -= 1;
                 const code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
-                const key: rl.KeyboardKey = @enumFromInt(code);
-                if (rl.isKeyUp(key)) {
-                    try frame.keyUp(frame.downs.items[i].key);
-
-                    // std.debug.print("up it!\n", .{});
-                    reached_trigger_delay = false;
-                    reached_repeat_rate = false;
+                if (code < Key.mouse_code_start) {
+                    const key: rl.KeyboardKey = @enumFromInt(code);
+                    if (rl.isKeyUp(key)) {
+                        try frame.keyUp(frame.downs.items[i].key);
+                        reached_trigger_delay = false;
+                        reached_repeat_rate = false;
+                    }
+                } else {
+                    // TODO:
                 }
             }
 
             for (_input_processor.Key.values) |value| {
                 const code: c_int = @intCast(value);
-                if (rl.isKeyDown(@enumFromInt(code))) {
-                    const enum_value: _input_processor.Key = @enumFromInt(value);
-                    try frame.keyDown(enum_value, .now);
+                if (code < Key.mouse_code_start) {
+                    if (rl.isKeyDown(@enumFromInt(code))) {
+                        const enum_value: _input_processor.Key = @enumFromInt(value);
+                        try frame.keyDown(enum_value, .now);
+                    }
+                } else {
+                    // TODO:
                 }
             }
 
@@ -444,9 +451,14 @@ pub fn main() anyerror!void {
 
                                     buf = try Buffer.create(gpa, .file, path.items);
                                     try buf.initiateTreeSitter(zig_langsuite);
-                                    window = try Window.spawn(gpa, buf, font_size, win_x, win_padding, .{
-                                        .width = win_width,
-                                        .height = win_height,
+                                    window = try Window.spawn(gpa, buf, .{
+                                        .font_size = font_size,
+                                        .x = win_x,
+                                        .y = win_padding,
+                                        .bounds = .{
+                                            .width = win_width,
+                                            .height = win_height,
+                                        },
                                     });
                                 }
                             },
