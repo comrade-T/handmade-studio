@@ -101,6 +101,8 @@ pub fn main() anyerror!void {
         try vault.emap(&[_]Key{.u});
         try vault.emap(&[_]Key{.o});
 
+        try vault.emap(&[_]Key{.mouse_button_left});
+
         try vault.nmap(&[_]Key{.h});
         try vault.nmap(&[_]Key{.j});
         try vault.nmap(&[_]Key{.k});
@@ -370,8 +372,8 @@ pub fn main() anyerror!void {
             var i: usize = frame.downs.items.len;
             while (i > 0) {
                 i -= 1;
-                const code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
-                if (code < Key.mouse_code_start) {
+                var code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
+                if (code < Key.mouse_code_offset) {
                     const key: rl.KeyboardKey = @enumFromInt(code);
                     if (rl.isKeyUp(key)) {
                         try frame.keyUp(frame.downs.items[i].key);
@@ -379,19 +381,28 @@ pub fn main() anyerror!void {
                         reached_repeat_rate = false;
                     }
                 } else {
-                    // TODO:
+                    code -= Key.mouse_code_offset;
+                    if (rl.isMouseButtonUp(@enumFromInt(code))) {
+                        try frame.keyUp(frame.downs.items[i].key);
+                        reached_trigger_delay = false;
+                        reached_repeat_rate = false;
+                    }
                 }
             }
 
-            for (_input_processor.Key.values) |value| {
-                const code: c_int = @intCast(value);
-                if (code < Key.mouse_code_start) {
+            for (Key.values) |value| {
+                var code: c_int = @intCast(value);
+                if (code < Key.mouse_code_offset) {
                     if (rl.isKeyDown(@enumFromInt(code))) {
-                        const enum_value: _input_processor.Key = @enumFromInt(value);
+                        const enum_value: Key = @enumFromInt(value);
                         try frame.keyDown(enum_value, .now);
                     }
                 } else {
-                    // TODO:
+                    code -= Key.mouse_code_offset;
+                    if (rl.isMouseButtonDown(@enumFromInt(code))) {
+                        const enum_value: Key = @enumFromInt(value);
+                        try frame.keyDown(enum_value, .now);
+                    }
                 }
             }
 
@@ -436,6 +447,8 @@ pub fn main() anyerror!void {
                         switch (trigger) {
                             hash(&[_]Key{.a}) => std.debug.print("Alice in Wonderland\n", .{}),
                             hash(&[_]Key{.x}) => navigator.toggle(),
+
+                            hash(&[_]Key{.mouse_button_left}) => std.debug.print("aya\n", .{}),
 
                             hash(&[_]Key{ .left_control, .h }) => try navigator.backwards(),
                             hash(&[_]Key{ .left_control, .k }) => navigator.moveUp(),
