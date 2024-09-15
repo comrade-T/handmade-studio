@@ -30,8 +30,10 @@ pub const MappingCouncil = struct {
     a: Allocator,
     downs: *ContextMap,
     ups: *ContextMap,
-    ups_n_downs: *UpNDownContextMap,
     current_context_id: []const u8 = "",
+
+    ups_n_downs: *UpNDownContextMap,
+    pending_ups_n_downs: *ArrayList(UpNDownCallback),
 
     pub fn init(a: Allocator) !*@This() {
         const downs = try a.create(ContextMap);
@@ -43,8 +45,17 @@ pub const MappingCouncil = struct {
         const ups_n_downs = try a.create(UpNDownContextMap);
         ups_n_downs.* = UpNDownContextMap.init(a);
 
+        const pending_ups_n_downs = try a.create(ArrayList(UpNDownCallback));
+        pending_ups_n_downs.* = ArrayList(UpNDownCallback).init(a);
+
         const self = try a.create(@This());
-        self.* = .{ .a = a, .downs = downs, .ups = ups, .ups_n_downs = ups_n_downs };
+        self.* = .{
+            .a = a,
+            .downs = downs,
+            .ups = ups,
+            .ups_n_downs = ups_n_downs,
+            .pending_ups_n_downs = pending_ups_n_downs,
+        };
         return self;
     }
 
@@ -70,10 +81,12 @@ pub const MappingCouncil = struct {
         self.downs.deinit();
         self.ups.deinit();
         self.ups_n_downs.deinit();
+        self.pending_ups_n_downs.deinit();
 
         self.a.destroy(self.downs);
         self.a.destroy(self.ups);
         self.a.destroy(self.ups_n_downs);
+        self.a.destroy(self.pending_ups_n_downs);
         self.a.destroy(self);
     }
 
@@ -125,14 +138,44 @@ pub const MappingCouncil = struct {
         try down_map.put(hash(keys), callback);
     }
 
-    pub fn activate(self: *@This(), trigger: u128) !void {
-        if (self.downs.get(self.current_context_id)) |trigger_map| {
-            if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+    pub fn execute(self: *@This(), frame: *InputFrame) !void {
+        const report = frame.produceCandidateReport();
+        const may_trigger = self.produceFinalTrigger(frame);
+
+        if (frame.latest_event_type == .down) {
+            // ups_n_downs
+            if (self.ups_n_downs.get(self.current_context_id)) |trigger_map| {
+                if (trigger_map.get(report.down.?)) |cb| {
+                    try self.pending_ups_n_downs.append(cb);
+                    try cb.down_f(cb.down_ctx);
+                }
+            }
+
+            // regular
+            if (self.downs.get(self.current_context_id)) |trigger_map| {
+                if (may_trigger) |trigger| {
+                    if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                }
+            }
         }
-        if (self.ups.get(self.current_context_id)) |trigger_map| {
-            if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+
+        if (frame.latest_event_type == .up) {
+            // ups_n_downs
+            if (frame.downs.items.len == 0) try self.cleanUpUpNDowns();
+
+            // regular
+            if (self.ups.get(self.current_context_id)) |trigger_map| {
+                if (may_trigger) |trigger| {
+                    if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                }
+            }
         }
-        std.debug.print("trigger '0x{x}' not found for context_id '{s}\n", .{ trigger, self.current_context_id });
+    }
+
+    fn cleanUpUpNDowns(self: *@This()) !void {
+        for (self.pending_ups_n_downs.items) |cb| try cb.up_f(cb.up_ctx);
+        self.pending_ups_n_downs.deinit();
+        self.pending_ups_n_downs.* = ArrayList(UpNDownCallback).init(self.a);
     }
 
     pub fn setContextID(self: *@This(), new_context_id: []const u8) void {
@@ -211,110 +254,106 @@ test "MappingCouncil.mapUpNDown()" {
     defer council.deinit();
 
     const TestCtx = struct {
-        value: enum { one, two, three } = .one,
-        fn setToOne(self_: *anyopaque) !void {
+        value: enum { negative, neutral, positive } = .neutral,
+        fn makeNeutral(self_: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(self_)));
-            self.value = .one;
+            self.value = .neutral;
         }
-        fn setToTwo(self_: *anyopaque) !void {
+        fn makePositive(self_: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(self_)));
-            self.value = .two;
+            self.value = .positive;
         }
-        fn setToThree(self_: *anyopaque) !void {
+        fn makeNegative(self_: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(self_)));
-            self.value = .three;
+            self.value = .negative;
         }
     };
     var ctx = TestCtx{};
-    try eq(.one, ctx.value);
+    var frame = try InputFrame.init(testing_allocator);
+    defer frame.deinit();
 
-    try council.map("normal", &[_]Key{.a}, .{ .f = TestCtx.setToThree, .ctx = &ctx });
+    try council.map("normal", &[_]Key{.n}, .{ .f = TestCtx.makeNegative, .ctx = &ctx });
     try council.mapUpNDown("normal", &[_]Key{.z}, .{
-        .up_f = TestCtx.setToOne,
-        .up_ctx = &ctx,
-        .down_f = TestCtx.setToTwo,
+        .down_f = TestCtx.makePositive,
         .down_ctx = &ctx,
+        .up_f = TestCtx.makeNeutral,
+        .up_ctx = &ctx,
     });
-}
-
-test "MappingCouncil.map with different flavor of *anyopaque ctx" {
-    var council = try MappingCouncil.init(testing_allocator);
-    defer council.deinit();
-
-    const Target = struct {
-        value: u16 = 0,
-        fn add(self: *@This(), add_by: u16) void {
-            self.value += add_by;
-        }
-    };
-    const Cb = struct {
-        add_by: u16 = 0,
-        target: *Target,
-        fn f(self_: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(self_)));
-            self.target.add(self.add_by);
-        }
-        fn init(allocator: Allocator, target: *Target, add_by: u16) !Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .add_by = add_by, .target = target };
-            return Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-
-    var target = Target{};
-    try eq(0, target.value);
-
-    var cb_arena = std.heap.ArenaAllocator.init(testing_allocator);
-    defer cb_arena.deinit();
-    const a = cb_arena.allocator();
-
-    try council.map("normal", &[_]Key{.a}, try Cb.init(a, &target, 1));
-    try council.map("normal", &[_]Key{.b}, try Cb.init(a, &target, 10));
 
     council.setContextID("normal");
+    {
+        try eq(.neutral, ctx.value);
 
-    try council.activate(hash(&[_]Key{.a}));
-    try eq(1, target.value);
+        try frame.keyDown(.n, .{ .testing = 0 });
+        try council.execute(&frame);
+        try eq(.negative, ctx.value);
 
-    try council.activate(hash(&[_]Key{.a}));
-    try eq(2, target.value);
+        try frame.keyUp(.n);
+        try council.execute(&frame);
+        try eq(.negative, ctx.value);
+    }
+    {
+        try eq(.negative, ctx.value);
 
-    try council.activate(hash(&[_]Key{.b}));
-    try eq(12, target.value);
+        var timestamp: i64 = 200;
+        for (0..10) |_| {
+            timestamp += 10;
+            try frame.keyDown(.z, .{ .testing = timestamp });
+            try council.execute(&frame);
+            try eq(.positive, ctx.value);
+        }
+
+        try frame.keyUp(.z);
+        try council.execute(&frame);
+        try eq(.neutral, ctx.value);
+    }
 }
 
-test "MappingCouncil.map / MappingCouncil.activate" {
-    var council = try MappingCouncil.init(testing_allocator);
-    defer council.deinit();
-
-    const TestCtx = struct {
-        value: u16 = 0,
-        fn addOne(ctx_: *anyopaque) !void {
-            var ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-            ctx.value += 1;
-        }
-        fn addTen(ctx_: *anyopaque) !void {
-            var ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-            ctx.value += 10;
-        }
-    };
-    var ctx = TestCtx{};
-    try eq(0, ctx.value);
-
-    try council.map("normal", &[_]Key{.a}, .{ .f = TestCtx.addOne, .ctx = &ctx });
-    try council.map("normal", &[_]Key{.b}, .{ .f = TestCtx.addTen, .ctx = &ctx });
-
-    council.setContextID("normal");
-
-    try council.activate(hash(&[_]Key{.a}));
-    try eq(1, ctx.value);
-
-    try council.activate(hash(&[_]Key{.a}));
-    try eq(2, ctx.value);
-
-    try council.activate(hash(&[_]Key{.b}));
-    try eq(12, ctx.value);
-}
+// test "MappingCouncil.map with different flavor of *anyopaque ctx" {
+//     var council = try MappingCouncil.init(testing_allocator);
+//     defer council.deinit();
+//
+//     const Target = struct {
+//         value: u16 = 0,
+//         fn add(self: *@This(), add_by: u16) void {
+//             self.value += add_by;
+//         }
+//     };
+//     const Cb = struct {
+//         add_by: u16 = 0,
+//         target: *Target,
+//         fn f(self_: *anyopaque) !void {
+//             const self = @as(*@This(), @ptrCast(@alignCast(self_)));
+//             self.target.add(self.add_by);
+//         }
+//         fn init(allocator: Allocator, target: *Target, add_by: u16) !Callback {
+//             const self = try allocator.create(@This());
+//             self.* = .{ .add_by = add_by, .target = target };
+//             return Callback{ .f = @This().f, .ctx = self };
+//         }
+//     };
+//
+//     var target = Target{};
+//     try eq(0, target.value);
+//
+//     var cb_arena = std.heap.ArenaAllocator.init(testing_allocator);
+//     defer cb_arena.deinit();
+//     const a = cb_arena.allocator();
+//
+//     try council.map("normal", &[_]Key{.a}, try Cb.init(a, &target, 1));
+//     try council.map("normal", &[_]Key{.b}, try Cb.init(a, &target, 10));
+//
+//     council.setContextID("normal");
+//
+//     try council.activate(hash(&[_]Key{.a}));
+//     try eq(1, target.value);
+//
+//     try council.activate(hash(&[_]Key{.a}));
+//     try eq(2, target.value);
+//
+//     try council.activate(hash(&[_]Key{.b}));
+//     try eq(12, target.value);
+// }
 
 const DummyCtx = struct {
     fn dummy(_: *anyopaque) !void {}
