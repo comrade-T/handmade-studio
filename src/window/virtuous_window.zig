@@ -134,7 +134,7 @@ pub const Window = struct {
         font_size: i32,
         x: f32,
         y: f32,
-        bounds: ?Bounds,
+        bounds: ?Bounds = null,
     };
 
     pub fn spawn(exa: Allocator, buf: *Buffer, opts: SpawnOptions) !*@This() {

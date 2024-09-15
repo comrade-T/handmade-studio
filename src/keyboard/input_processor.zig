@@ -1578,6 +1578,15 @@ pub const Key = enum(KeyEnumType) {
     volume_up = 24,
     key_volume_down = 25,
 
+    mouse_button_left = mouse_code_start + 0,
+    mouse_button_right = mouse_code_start + 1,
+    mouse_button_middle = mouse_code_start + 2,
+    mouse_button_side = mouse_code_start + 3,
+    mouse_button_extra = mouse_code_start + 4,
+    mouse_button_forward = mouse_code_start + 5,
+    mouse_button_back = mouse_code_start + 6,
+    pub const mouse_code_start = 360;
+
     const num_of_fields = std.meta.fields(Key).len;
     const index_array_len = 400;
     const indexOf = generateIndexArray();
