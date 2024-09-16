@@ -1,17 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-
-const testing_allocator = std.testing.allocator;
-const eql = std.mem.eql;
-const eq = std.testing.expectEqual;
-const eqStr = std.testing.expectEqualStrings;
-
 const TheList = @This();
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-visible: bool = false,
+is_visible: bool = false,
 
 items: [][:0]const u8,
 index: usize = 0,
@@ -59,14 +53,25 @@ pub fn iter(self: *const @This()) ListItemIterator {
 }
 
 pub fn toggle(self: *@This()) void {
-    self.visible = !self.visible;
+    self.is_visible = !self.is_visible;
 }
 
-pub fn prevItem(self: *@This()) void {
+pub fn show(self: *@This()) void {
+    self.is_visible = true;
+}
+
+pub fn hide(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.is_visible = false;
+}
+
+pub fn prevItem(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.index = self.index -| 1;
 }
 
-pub fn nextItem(self: *@This()) void {
+pub fn nextItem(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.index += 1;
     if (self.index > self.items.len -| 1) self.index = self.items.len -| 1;
 }

@@ -23,7 +23,10 @@ repeat_rate: i64 = 1000 / 62,
 pub fn updateInputState(self: *@This()) !void {
     try self.updateKeyUps();
     try self.updateKeyDowns();
+    try self.executeTriggerIfExists();
+}
 
+fn executeTriggerIfExists(self: *@This()) !void {
     if (self.council.produceFinalTrigger(self.frame)) |trigger| {
         const current_time = std.time.milliTimestamp();
         defer self.last_trigger = trigger;

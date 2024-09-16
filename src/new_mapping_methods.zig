@@ -42,38 +42,52 @@ pub fn main() !void {
 
     var council = try MappingCouncil.init(gpa);
     defer council.deinit();
-    council.setContextID("dummy");
 
     var input_frame = try InputFrame.init(gpa);
     defer input_frame.deinit();
 
     var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
 
-    ///////////////////////////// Mappings
+    ///////////////////////////// Trying out TheList interaction with MappingCouncil
+
+    var list_items = [_][:0]const u8{ "hello", "from", "the", "other", "side" };
+    var the_list = TheList{
+        .items = &list_items,
+        .x = 400,
+        .y = 200,
+        .line_height = 45,
+    };
+
+    try council.map("dummy_in_the_list", &[_]Key{.j}, .{ .f = TheList.nextItem, .ctx = &the_list });
+    try council.map("dummy_in_the_list", &[_]Key{.k}, .{ .f = TheList.prevItem, .ctx = &the_list });
+    try council.map("dummy_in_the_list", &[_]Key{.q}, .{ .f = TheList.hide, .ctx = &the_list });
+
+    // TODO: consider adding a field to `Callback` struct that pops the context
+
+    ///////////////////////////// Experimental Dummy Mappings
+
+    council.setContextID("dummy");
 
     const DummyCtx = struct {
+        council: *MappingCouncil,
+        the_list: *TheList,
         fn invu(_: *anyopaque) !void {
             std.debug.print("INVU\n", .{});
         }
         fn in_the_morning(_: *anyopaque) !void {
             std.debug.print("In The Morning\n", .{});
         }
+        fn showList(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.the_list.show();
+            self.council.setContextID("dummy_in_the_list");
+        }
     };
-    var dummy_ctx = DummyCtx{};
+    var dummy_ctx = DummyCtx{ .council = council, .the_list = &the_list };
 
     try council.map("dummy", &[_]Key{.i}, .{ .f = DummyCtx.invu, .ctx = &dummy_ctx });
     try council.map("dummy", &[_]Key{.m}, .{ .f = DummyCtx.in_the_morning, .ctx = &dummy_ctx });
-
-    ///////////////////////////// WIP TheList interaction with MappingCouncil
-
-    var list_items = [_][:0]const u8{ "hello", "from", "the", "other", "side" };
-    const the_list = TheList{
-        .visible = true,
-        .items = &list_items,
-        .x = 400,
-        .y = 200,
-        .line_height = 45,
-    };
+    try council.map("dummy", &[_]Key{.l}, .{ .f = DummyCtx.showList, .ctx = &dummy_ctx });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -102,7 +116,7 @@ pub fn main() !void {
                 rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
 
                 // TheList
-                {
+                if (the_list.is_visible) {
                     var iter = the_list.iter();
                     while (iter.next()) |r| {
                         const color = if (r.active) rl.Color.sky_blue else rl.Color.ray_white;

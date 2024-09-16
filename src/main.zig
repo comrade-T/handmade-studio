@@ -327,7 +327,7 @@ pub fn main() anyerror!void {
     var list_items = [_][]const u8{
         "hello", "world", "venus", "mars",
     };
-    var the_list = TheList{ .items = &list_items, .visible = true, .line_height = 20 };
+    var the_list = TheList{ .items = &list_items, .is_visible = true, .line_height = 20 };
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -725,7 +725,7 @@ pub fn main() anyerror!void {
             }
 
             // TheList
-            if (the_list.visible) {
+            if (the_list.is_visible) {
                 var iter = the_list.iter();
                 while (iter.next()) |result| {
                     const text = try std.fmt.allocPrintZ(gpa, "{s}", .{result.text});
