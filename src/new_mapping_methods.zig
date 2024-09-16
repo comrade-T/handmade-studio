@@ -60,13 +60,18 @@ pub fn main() !void {
 
     try council.map("dummy_in_the_list", &[_]Key{.j}, .{ .f = TheList.nextItem, .ctx = &the_list });
     try council.map("dummy_in_the_list", &[_]Key{.k}, .{ .f = TheList.prevItem, .ctx = &the_list });
-    try council.map("dummy_in_the_list", &[_]Key{.q}, .{ .f = TheList.hide, .ctx = &the_list });
-
-    // TODO: consider adding a field to `Callback` struct that pops the context
+    try council.map("dummy_in_the_list", &[_]Key{.q}, .{
+        .f = TheList.hide,
+        .ctx = &the_list,
+        .after_trigger = .{
+            .contexts_to_remove = &.{"dummy_in_the_list"},
+            .contexts_to_add = &.{"dummy"},
+        },
+    });
 
     ///////////////////////////// Experimental Dummy Mappings
 
-    council.setContextID("dummy");
+    try council.setActiveContext("dummy");
 
     const DummyCtx = struct {
         council: *MappingCouncil,
@@ -80,7 +85,7 @@ pub fn main() !void {
         fn showList(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             self.the_list.show();
-            self.council.setContextID("dummy_in_the_list");
+            try self.council.setActiveContext("dummy_in_the_list");
         }
     };
     var dummy_ctx = DummyCtx{ .council = council, .the_list = &the_list };

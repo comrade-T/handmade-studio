@@ -24,13 +24,10 @@ pub const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
     quick: bool = false,
-
-    // // TODO: this is only possible if multiple context ids is implemented
-    // exit_strategy: union(enum) {
-    //     none,
-    //     current,
-    //     change: []const u8,
-    // },
+    after_trigger: struct {
+        contexts_to_add: []const []const u8 = &.{},
+        contexts_to_remove: []const []const u8 = &.{},
+    } = .{},
 };
 
 pub const MappingCouncil = struct {
@@ -172,7 +169,11 @@ pub const MappingCouncil = struct {
                 // regular
                 if (self.downs.get(context_id)) |trigger_map| {
                     if (may_trigger) |trigger| {
-                        if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                        if (trigger_map.get(trigger)) |cb| {
+                            try cb.f(cb.ctx);
+                            try self.resolveContextsAfterCallback(cb);
+                            return;
+                        }
                     }
                 }
             }
@@ -184,11 +185,20 @@ pub const MappingCouncil = struct {
                 // regular
                 if (self.ups.get(context_id)) |trigger_map| {
                     if (may_trigger) |trigger| {
-                        if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                        if (trigger_map.get(trigger)) |cb| {
+                            try cb.f(cb.ctx);
+                            try self.resolveContextsAfterCallback(cb);
+                            return;
+                        }
                     }
                 }
             }
         }
+    }
+
+    fn resolveContextsAfterCallback(self: *@This(), cb: Callback) !void {
+        for (cb.after_trigger.contexts_to_remove) |id| try self.removeActiveContext(id);
+        for (cb.after_trigger.contexts_to_add) |id| try self.addActiveContext(id);
     }
 
     fn cleanUpUpNDowns(self: *@This()) !void {
