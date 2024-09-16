@@ -99,7 +99,7 @@ pub fn build(b: *std.Build) void {
     ///////////////////////////// Raylib
 
     {
-        const path = "src/demos/new_mapping_methods.zig";
+        const path = "src/new_mapping_methods.zig";
         const exe = b.addExecutable(.{
             .name = "new_mapping_methods",
             .root_source_file = b.path(path),
