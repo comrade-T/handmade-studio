@@ -149,19 +149,30 @@ pub const Window = struct {
             .bounds = if (opts.bounds) |b| b else Bounds{},
             .font_size = opts.font_size,
         };
-
-        // store the content of the entire buffer for now,
-        // we'll explore more delicate solutions after we deal with scissor mode.
-        const start_line = 0;
-        const num_of_lines = buf.roperoot.weights().bols;
-        self.contents = try Contents.createWithCapacity(self, start_line, num_of_lines);
-
+        self.updateContents(buf);
         return self;
+    }
+
+    pub fn changeBuffer(self: *@This(), new_buf: *Buffer) !void {
+        // TODO: maybe have a `hidden buffers` feature like Vim in the future.
+        self.buf.destroy();
+
+        self.contents.destroy();
+        self.buf = new_buf;
+        self.updateContents(new_buf);
     }
 
     pub fn destroy(self: *@This()) void {
         self.contents.destroy();
         self.exa.destroy(self);
+    }
+
+    fn updateContents(self: *@This(), buf: *Buffer) !void {
+        // store the content of the entire buffer for now,
+        // we'll explore more delicate solutions after we deal with scissor mode.
+        const start_line = 0;
+        const num_of_lines = buf.roperoot.weights().bols;
+        self.contents = try Contents.createWithCapacity(self, start_line, num_of_lines);
     }
 
     ///////////////////////////// Get Window Width & Height

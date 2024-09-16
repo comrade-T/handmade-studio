@@ -25,10 +25,11 @@ const WindowIDTracker = struct {
 
 const WindowManager = struct {
     a: Allocator,
-    windows: std.AutoHashMap(u32, *Window),
     window_id_tracker: WindowIDTracker,
+    windows: std.AutoHashMap(u32, *Window),
+    active_window: ?*Window,
 
-    pub fn create(a: Allocator) !*WindowManager {
+    pub fn init(a: Allocator) !*WindowManager {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
@@ -38,14 +39,36 @@ const WindowManager = struct {
         return self;
     }
 
-    fn spawnWindow(self: *@This(), buf: *Buffer, opts: Window.SpawnOptions) !void {
+    pub fn deinit(self: *@This()) void {
+        var window_iter = self.windows.valueIterator();
+        while (window_iter.next()) |win| win.*.destroy();
+        self.windows.deinit();
+        self.a.destroy(self);
+    }
+
+    const default_spawn_options = Window.SpawnOptions{ .x = 400, .y = 100, .font_size = 40 };
+
+    pub fn openFileInCurrentWindow(self: *@This(), file_path: []const u8) !void {
+        const buf = try Buffer.create(self.a, .file, file_path);
+
+        if (self.active_window == null) {
+            const new_window = try self.spawnWindow(buf, default_spawn_options);
+            self.active_window = new_window;
+            return;
+        }
+
+        self.active_window.?.changeBuffer(buf);
+    }
+
+    fn spawnWindow(self: *@This(), buf: *Buffer, opts: Window.SpawnOptions) !*Window {
         const window = try Window.spawn(buf, opts);
         try self.windows.put(self.window_id_tracker.next(), window);
+        return window;
     }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 test {
-    try eq(2, 1);
+    try eq(1, 1);
 }

@@ -28,12 +28,15 @@ pub const Callback = struct {
 
 pub const MappingCouncil = struct {
     a: Allocator,
+
     downs: *ContextMap,
     ups: *ContextMap,
-    current_context_id: []const u8 = "",
 
     ups_n_downs: *UpNDownContextMap,
     pending_ups_n_downs: *ArrayList(UpNDownCallback),
+
+    current_context_id: []const u8 = "",
+    // TODO: multiple context ids, this'll be an ArrayList
 
     pub fn init(a: Allocator) !*@This() {
         const downs = try a.create(ContextMap);
