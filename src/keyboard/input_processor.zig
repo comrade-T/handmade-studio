@@ -156,7 +156,12 @@ pub const MappingCouncil = struct {
         const report = frame.produceCandidateReport();
         const may_trigger = self.produceFinalTrigger(frame);
 
-        for (self.active_contexts.keys()) |context_id| {
+        const keys = self.active_contexts.keys();
+        var i: usize = keys.len;
+        while (true) {
+            i -|= 1; // prioritize latest context_id
+
+            const context_id = keys[i];
             if (frame.latest_event_type == .down) {
                 // ups_n_downs
                 if (self.ups_n_downs.get(context_id)) |trigger_map| {
@@ -193,6 +198,8 @@ pub const MappingCouncil = struct {
                     }
                 }
             }
+
+            if (i == 0) break;
         }
     }
 
