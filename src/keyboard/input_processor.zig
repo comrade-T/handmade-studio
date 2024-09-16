@@ -298,7 +298,124 @@ pub const MappingCouncil = struct {
 };
 
 test "multiple contexts at same time" {
-    // TODO:
+    var council = try MappingCouncil.init(testing_allocator);
+    defer council.deinit();
+    var frame = try InputFrame.init(testing_allocator);
+    defer frame.deinit();
+
+    const A = struct {
+        value: *i32,
+        fn addOne(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.value.* += 1;
+        }
+        fn minusOne(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.value.* -= 1;
+        }
+    };
+
+    const B = struct {
+        value: *i32,
+        fn addTen(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.value.* += 10;
+        }
+        fn minusTen(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.value.* -= 10;
+        }
+    };
+
+    const C = struct {
+        value: *i32,
+        fn set100(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.value.* = 100;
+        }
+    };
+
+    var value: i32 = 0;
+    var a = A{ .value = &value };
+    var b = B{ .value = &value };
+    var c = C{ .value = &value };
+
+    try council.map("mode_A", &[_]Key{.j}, .{ .f = A.minusOne, .ctx = &a });
+    try council.map("mode_A", &[_]Key{.k}, .{ .f = A.addOne, .ctx = &a });
+    try council.map("mode_B", &[_]Key{ .left_shift, .j }, .{ .f = B.minusTen, .ctx = &b });
+    try council.map("mode_B", &[_]Key{ .left_shift, .k }, .{ .f = B.addTen, .ctx = &b });
+    try council.map("mode_C", &[_]Key{.zero}, .{ .f = C.set100, .ctx = &c });
+
+    try council.setActiveContext("mode_A");
+    {
+        try eq(0, value);
+
+        try frame.keyDown(.k, .{ .testing = 0 });
+        try council.execute(&frame);
+        try eq(1, value);
+
+        try frame.keyUp(.k);
+
+        try frame.keyDown(.j, .{ .testing = 100 });
+        try council.execute(&frame);
+        try eq(0, value);
+
+        try frame.keyUp(.j);
+    }
+
+    // still "mode_A"
+    {
+        try frame.keyDown(.left_shift, .{ .testing = 200 });
+        try frame.keyDown(.k, .{ .testing = 300 });
+        try council.execute(&frame);
+        try eq(0, value);
+
+        try frame.keyUp(.k);
+        try frame.keyUp(.left_shift);
+
+        try frame.keyDown(.left_shift, .{ .testing = 400 });
+        try frame.keyDown(.j, .{ .testing = 500 });
+        try council.execute(&frame);
+        try eq(0, value);
+
+        try frame.keyUp(.j);
+        try frame.keyUp(.left_shift);
+    }
+
+    try council.addActiveContext("mode_B");
+    {
+        try eq(2, council.active_contexts.values().len);
+
+        try frame.keyDown(.left_shift, .{ .testing = 1000 });
+        try frame.keyDown(.k, .{ .testing = 1100 });
+        try council.execute(&frame);
+        try eq(10, value);
+
+        try frame.keyUp(.k);
+        try frame.keyUp(.left_shift);
+
+        try frame.keyDown(.left_shift, .{ .testing = 1200 });
+        try frame.keyDown(.j, .{ .testing = 1300 });
+        try council.execute(&frame);
+        try eq(0, value);
+
+        try frame.keyUp(.j);
+        try frame.keyUp(.left_shift);
+
+        /////////////////////////////
+
+        try frame.keyDown(.k, .{ .testing = 2000 });
+        try council.execute(&frame);
+        try eq(1, value);
+
+        try frame.keyUp(.k);
+
+        try frame.keyDown(.j, .{ .testing = 2100 });
+        try council.execute(&frame);
+        try eq(0, value);
+
+        try frame.keyUp(.j);
+    }
 }
 
 test "MappingCouncil.mapUpNDown()" {
