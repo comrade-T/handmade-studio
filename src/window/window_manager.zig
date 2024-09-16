@@ -50,14 +50,18 @@ const WindowManager = struct {
 
     pub fn openFileInCurrentWindow(self: *@This(), file_path: []const u8) !void {
         const buf = try Buffer.create(self.a, .file, file_path);
-
         if (self.active_window == null) {
             const new_window = try self.spawnWindow(buf, default_spawn_options);
             self.active_window = new_window;
             return;
         }
-
         self.active_window.?.changeBuffer(buf);
+    }
+
+    pub fn openFileInNewWindow(self: *@This(), file_path: []const u8, opts: Window.SpawnOptions) !void {
+        const buf = try Buffer.create(self.a, .file, file_path);
+        const new_window = try self.spawnWindow(buf, opts);
+        self.active_window = new_window;
     }
 
     fn spawnWindow(self: *@This(), buf: *Buffer, opts: Window.SpawnOptions) !*Window {
