@@ -29,10 +29,19 @@ const ListItemIterator = struct {
     list: *const TheList,
     index: usize = 0,
 
-    const Result = struct { x: i32, y: i32, text: [:0]const u8, font_size: i32, active: bool };
+    const Result = struct {
+        active: bool,
+        text: [:0]const u8,
+        font_size: i32,
+        x: i32,
+        y: i32,
+    };
+
     pub fn next(self: *@This()) ?Result {
         defer self.index += 1;
+
         if (self.index >= self.list.items.len) return null;
+
         return Result{
             .active = self.index == self.list.index,
             .text = self.list.items[self.index],

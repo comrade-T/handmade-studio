@@ -2,6 +2,8 @@ const std = @import("std");
 const rl = @import("raylib");
 
 const _input_processor = @import("input_processor");
+const InputFrame = _input_processor.InputFrame;
+const Key = _input_processor.Key;
 const MappingCouncil = _input_processor.MappingCouncil;
 
 const TheList = @import("TheList");
@@ -25,17 +27,7 @@ pub fn main() !void {
 
     ///////////////////////////// Camera2D
 
-    var camera = rl.Camera2D{
-        .offset = .{ .x = 0, .y = 0 },
-        .target = .{ .x = 0, .y = 0 },
-        .rotation = 0,
-        .zoom = 1,
-    };
-
-    var cam_zoom_target = camera.zoom;
-    var current_velocity: f32 = 0;
-    const smooth_time = 0.1;
-    const max_speed = 40;
+    var smooth_camera = Smooth2DCamera{};
 
     ///////////////////////////// General Purpose Allocator
 
@@ -47,6 +39,21 @@ pub fn main() !void {
 
     var council = try MappingCouncil.init(gpa);
     defer council.deinit();
+
+    ///////////////////////////// InputFrame
+
+    var frame = try InputFrame.init(gpa);
+    defer frame.deinit();
+
+    ///////////////////////////// InputRepeatManager
+
+    // var last_trigger_timestamp: i64 = 0;
+    // var last_trigger: u128 = 0;
+
+    var irm = InputRepeatManager{};
+
+    // const trigger_delay = 150;
+    // const repeat_rate = 1000 / 62;
 
     ///////////////////////////// FileNavigator
 
@@ -65,28 +72,12 @@ pub fn main() !void {
 
         ///////////////////////////// Update
 
-        if (rl.isMouseButtonDown(.mouse_button_right)) {
-            var delta = rl.getMouseDelta();
-            delta = delta.scale(-1 / camera.zoom);
-            camera.target = delta.add(camera.target);
+        { // Inputs
+            try updateInputState(&frame, &irm);
         }
 
-        {
-            const wheel = rl.getMouseWheelMove();
-            if (wheel != 0) {
-                const mouse_pos = rl.getMousePosition();
-                const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, camera);
-                camera.offset = mouse_pos;
-                camera.target = mouse_world_pos;
-
-                var scale_factor = 1 + (0.25 * @abs(wheel));
-                if (wheel < 0) scale_factor = 1 / scale_factor;
-
-                cam_zoom_target = rl.math.clamp(cam_zoom_target * scale_factor, 0.125, 64);
-            }
-
-            // camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
-            camera.zoom = smoothDamp(camera.zoom, cam_zoom_target, &current_velocity, smooth_time, max_speed, rl.getFrameTime());
+        { // Camera
+            smooth_camera.update();
         }
 
         ///////////////////////////// Draw
@@ -98,7 +89,7 @@ pub fn main() !void {
             rl.drawFPS(10, 10);
 
             {
-                rl.beginMode2D(camera);
+                rl.beginMode2D(smooth_camera.camera);
                 defer rl.endMode2D();
 
                 rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
@@ -117,6 +108,97 @@ pub fn main() !void {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+const InputRepeatManager = struct {
+    reached_trigger_delay: bool = false,
+    reached_repeat_rate: bool = false,
+};
+
+fn updateInputState(frame: *InputFrame, irm: *InputRepeatManager) !void {
+    var i: usize = frame.downs.items.len;
+    while (i > 0) {
+        i -= 1;
+        var code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
+        if (code < Key.mouse_code_offset) {
+            const key: rl.KeyboardKey = @enumFromInt(code);
+            if (rl.isKeyUp(key)) {
+                try frame.keyUp(frame.downs.items[i].key);
+                irm.reached_trigger_delay = false;
+                irm.reached_repeat_rate = false;
+            }
+        } else {
+            code -= Key.mouse_code_offset;
+            if (rl.isMouseButtonUp(@enumFromInt(code))) {
+                try frame.keyUp(frame.downs.items[i].key);
+                irm.reached_trigger_delay = false;
+                irm.reached_repeat_rate = false;
+            }
+        }
+    }
+
+    for (Key.values) |value| {
+        var code: c_int = @intCast(value);
+        if (code < Key.mouse_code_offset) {
+            if (rl.isKeyDown(@enumFromInt(code))) {
+                const enum_value: Key = @enumFromInt(value);
+                try frame.keyDown(enum_value, .now);
+            }
+        } else {
+            code -= Key.mouse_code_offset;
+            if (rl.isMouseButtonDown(@enumFromInt(code))) {
+                const enum_value: Key = @enumFromInt(value);
+                try frame.keyDown(enum_value, .now);
+            }
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const Smooth2DCamera = struct {
+    camera: rl.Camera2D = .{
+        .offset = .{ .x = 0, .y = 0 },
+        .target = .{ .x = 0, .y = 0 },
+        .rotation = 0,
+        .zoom = 1,
+    },
+
+    zoom_target: f32 = 1,
+    current_velocity: f32 = 0,
+    smooth_time: f32 = 0.1,
+    max_speed: f32 = 40,
+
+    fn update(self: *@This()) void {
+        self.updateTarget();
+        self.updateZoom();
+    }
+
+    fn updateTarget(self: *@This()) void {
+        if (rl.isMouseButtonDown(.mouse_button_right)) {
+            var delta = rl.getMouseDelta();
+            delta = delta.scale(-1 / self.camera.zoom);
+            self.camera.target = delta.add(self.camera.target);
+        }
+    }
+
+    fn updateZoom(self: *@This()) void {
+        const wheel = rl.getMouseWheelMove();
+        if (wheel != 0) {
+            const mouse_pos = rl.getMousePosition();
+            const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, self.camera);
+            self.camera.offset = mouse_pos;
+            self.camera.target = mouse_world_pos;
+
+            var scale_factor = 1 + (0.25 * @abs(wheel));
+            if (wheel < 0) scale_factor = 1 / scale_factor;
+
+            self.zoom_target = rl.math.clamp(self.zoom_target * scale_factor, 0.125, 64);
+        }
+
+        // camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
+        self.camera.zoom = smoothDamp(self.camera.zoom, self.zoom_target, &self.current_velocity, self.smooth_time, self.max_speed, rl.getFrameTime());
+    }
+};
 
 // https://stackoverflow.com/questions/61372498/how-does-mathf-smoothdamp-work-what-is-it-algorithm
 fn smoothDamp(current: f32, target_: f32, current_velocity: *f32, smooth_time_: f32, max_speed: f32, delta_time: f32) f32 {
