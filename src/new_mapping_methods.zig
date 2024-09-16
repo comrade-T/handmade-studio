@@ -2,10 +2,10 @@ const std = @import("std");
 
 const rl = @import("raylib");
 const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
+const InputRepeatManager = @import("raylib-related/InputRepeatManager.zig");
 
 const _input_processor = @import("input_processor");
 const InputFrame = _input_processor.InputFrame;
-const Key = _input_processor.Key;
 const MappingCouncil = _input_processor.MappingCouncil;
 
 const TheList = @import("TheList");
@@ -74,7 +74,10 @@ pub fn main() !void {
 
         ///////////////////////////// Update
 
-        try updateInputState(&input_frame, &input_repeat_manager);
+        // Inputs
+        try input_repeat_manager.updateInputState(&input_frame);
+
+        // Smooth Camera
         smooth_cam.update();
 
         ///////////////////////////// Draw
@@ -99,52 +102,6 @@ pub fn main() !void {
                         rl.drawText(r.text, r.x, r.y, r.font_size, color);
                     }
                 }
-            }
-        }
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const InputRepeatManager = struct {
-    reached_trigger_delay: bool = false,
-    reached_repeat_rate: bool = false,
-};
-
-fn updateInputState(frame: *InputFrame, irm: *InputRepeatManager) !void {
-    var i: usize = frame.downs.items.len;
-    while (i > 0) {
-        i -= 1;
-        var code: c_int = @intCast(@intFromEnum(frame.downs.items[i].key));
-        if (code < Key.mouse_code_offset) {
-            const key: rl.KeyboardKey = @enumFromInt(code);
-            if (rl.isKeyUp(key)) {
-                try frame.keyUp(frame.downs.items[i].key);
-                irm.reached_trigger_delay = false;
-                irm.reached_repeat_rate = false;
-            }
-        } else {
-            code -= Key.mouse_code_offset;
-            if (rl.isMouseButtonUp(@enumFromInt(code))) {
-                try frame.keyUp(frame.downs.items[i].key);
-                irm.reached_trigger_delay = false;
-                irm.reached_repeat_rate = false;
-            }
-        }
-    }
-
-    for (Key.values) |value| {
-        var code: c_int = @intCast(value);
-        if (code < Key.mouse_code_offset) {
-            if (rl.isKeyDown(@enumFromInt(code))) {
-                const enum_value: Key = @enumFromInt(value);
-                try frame.keyDown(enum_value, .now);
-            }
-        } else {
-            code -= Key.mouse_code_offset;
-            if (rl.isMouseButtonDown(@enumFromInt(code))) {
-                const enum_value: Key = @enumFromInt(value);
-                try frame.keyDown(enum_value, .now);
             }
         }
     }
