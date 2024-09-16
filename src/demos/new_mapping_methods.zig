@@ -1,6 +1,11 @@
 const std = @import("std");
 const rl = @import("raylib");
 
+const _input_processor = @import("input_processor");
+const MappingCouncil = _input_processor.MappingCouncil;
+
+const TheList = @import("TheList");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -8,7 +13,7 @@ const screen_height = 1080;
 
 pub fn main() !void {
 
-    ///////////////////////////// Window Initialization
+    ///////////////////////////// OpenGL Window Initialization
 
     rl.setConfigFlags(.{ .window_transparent = true, .vsync_hint = true });
 
@@ -18,7 +23,7 @@ pub fn main() !void {
     rl.setTargetFPS(60);
     rl.setExitKey(rl.KeyboardKey.key_null);
 
-    ///////////////////////////// Model
+    ///////////////////////////// Camera2D
 
     var camera = rl.Camera2D{
         .offset = .{ .x = 0, .y = 0 },
@@ -31,6 +36,28 @@ pub fn main() !void {
     var current_velocity: f32 = 0;
     const smooth_time = 0.1;
     const max_speed = 40;
+
+    ///////////////////////////// General Purpose Allocator
+
+    var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa_.deinit();
+    const gpa = gpa_.allocator();
+
+    ///////////////////////////// MappingCouncil
+
+    var council = try MappingCouncil.init(gpa);
+    defer council.deinit();
+
+    ///////////////////////////// FileNavigator
+
+    var list_items = [_][:0]const u8{ "hello", "from", "the", "other", "side" };
+    const the_list = TheList{
+        .visible = true,
+        .items = &list_items,
+        .x = 400,
+        .y = 200,
+        .line_height = 45,
+    };
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -75,6 +102,15 @@ pub fn main() !void {
                 defer rl.endMode2D();
 
                 rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
+
+                // TheList
+                {
+                    var iter = the_list.iter();
+                    while (iter.next()) |r| {
+                        const color = if (r.active) rl.Color.sky_blue else rl.Color.ray_white;
+                        rl.drawText(r.text, r.x, r.y, r.font_size, color);
+                    }
+                }
             }
         }
     }

@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) void {
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/components/TheList.zig", &.{}, zig_build_test_step);
+    const the_list = addTestableModule(&bops, "src/components/TheList.zig", &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/demos/write_struct_to_file.zig", &.{
         .{ .name = "s2s", .module = s2s },
@@ -108,6 +108,7 @@ pub fn build(b: *std.Build) void {
         });
         exe.root_module.addImport("input_processor", input_processor.module);
         exe.root_module.addImport("window_manager", window_manager.module);
+        exe.root_module.addImport("TheList", the_list.module);
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(tree_sitter);
         exe.linkLibrary(ztracy.artifact("tracy"));
