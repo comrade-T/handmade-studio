@@ -24,6 +24,13 @@ pub const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
     quick: bool = false,
+
+    // // TODO: this is only possible if multiple context ids is implemented
+    // exit_strategy: union(enum) {
+    //     none,
+    //     current,
+    //     change: []const u8,
+    // },
 };
 
 pub const MappingCouncil = struct {
@@ -35,8 +42,9 @@ pub const MappingCouncil = struct {
     ups_n_downs: *UpNDownContextMap,
     pending_ups_n_downs: *ArrayList(UpNDownCallback),
 
-    current_context_id: []const u8 = "",
-    // TODO: multiple context ids, this'll be an ArrayList
+    active_contexts: *ActiveContexts,
+
+    const ActiveContexts = std.StringArrayHashMap(bool);
 
     pub fn init(a: Allocator) !*@This() {
         const downs = try a.create(ContextMap);
@@ -51,6 +59,9 @@ pub const MappingCouncil = struct {
         const pending_ups_n_downs = try a.create(ArrayList(UpNDownCallback));
         pending_ups_n_downs.* = ArrayList(UpNDownCallback).init(a);
 
+        const active_contexts = try a.create(ActiveContexts);
+        active_contexts.* = ActiveContexts.init(a);
+
         const self = try a.create(@This());
         self.* = .{
             .a = a,
@@ -58,6 +69,7 @@ pub const MappingCouncil = struct {
             .ups = ups,
             .ups_n_downs = ups_n_downs,
             .pending_ups_n_downs = pending_ups_n_downs,
+            .active_contexts = active_contexts,
         };
         return self;
     }
@@ -85,11 +97,13 @@ pub const MappingCouncil = struct {
         self.ups.deinit();
         self.ups_n_downs.deinit();
         self.pending_ups_n_downs.deinit();
+        self.active_contexts.deinit();
 
         self.a.destroy(self.downs);
         self.a.destroy(self.ups);
         self.a.destroy(self.ups_n_downs);
         self.a.destroy(self.pending_ups_n_downs);
+        self.a.destroy(self.active_contexts);
         self.a.destroy(self);
     }
 
@@ -145,31 +159,33 @@ pub const MappingCouncil = struct {
         const report = frame.produceCandidateReport();
         const may_trigger = self.produceFinalTrigger(frame);
 
-        if (frame.latest_event_type == .down) {
-            // ups_n_downs
-            if (self.ups_n_downs.get(self.current_context_id)) |trigger_map| {
-                if (trigger_map.get(report.down.?)) |cb| {
-                    try self.pending_ups_n_downs.append(cb);
-                    try cb.down_f(cb.down_ctx);
+        for (self.active_contexts.keys()) |context_id| {
+            if (frame.latest_event_type == .down) {
+                // ups_n_downs
+                if (self.ups_n_downs.get(context_id)) |trigger_map| {
+                    if (trigger_map.get(report.down.?)) |cb| {
+                        try self.pending_ups_n_downs.append(cb);
+                        try cb.down_f(cb.down_ctx);
+                    }
+                }
+
+                // regular
+                if (self.downs.get(context_id)) |trigger_map| {
+                    if (may_trigger) |trigger| {
+                        if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                    }
                 }
             }
 
-            // regular
-            if (self.downs.get(self.current_context_id)) |trigger_map| {
-                if (may_trigger) |trigger| {
-                    if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
-                }
-            }
-        }
+            if (frame.latest_event_type == .up) {
+                // ups_n_downs
+                if (frame.downs.items.len == 0) try self.cleanUpUpNDowns();
 
-        if (frame.latest_event_type == .up) {
-            // ups_n_downs
-            if (frame.downs.items.len == 0) try self.cleanUpUpNDowns();
-
-            // regular
-            if (self.ups.get(self.current_context_id)) |trigger_map| {
-                if (may_trigger) |trigger| {
-                    if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                // regular
+                if (self.ups.get(context_id)) |trigger_map| {
+                    if (may_trigger) |trigger| {
+                        if (trigger_map.get(trigger)) |cb| return cb.f(cb.ctx);
+                    }
                 }
             }
         }
@@ -181,13 +197,32 @@ pub const MappingCouncil = struct {
         self.pending_ups_n_downs.* = ArrayList(UpNDownCallback).init(self.a);
     }
 
-    pub fn setContextID(self: *@This(), new_context_id: []const u8) void {
-        self.current_context_id = new_context_id;
+    pub fn setActiveContext(self: *@This(), context_id: []const u8) !void {
+        self.active_contexts.deinit();
+        self.active_contexts.* = ActiveContexts.init(self.a);
+        try self.active_contexts.put(context_id, true);
+    }
+
+    pub fn addActiveContext(self: *@This(), context_id: []const u8) !void {
+        try self.active_contexts.put(context_id, true);
+    }
+
+    pub fn removeActiveContext(self: *@This(), context_id: []const u8) !void {
+        _ = self.active_contexts.orderedRemove(context_id);
     }
 
     pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) ?u128 {
-        const downs = self.downs.get(self.current_context_id) orelse return null;
-        const ups = self.ups.get(self.current_context_id) orelse return null;
+        for (self.active_contexts.keys()) |context_id| {
+            if (self.produceFinalTriggerComponent(context_id, frame)) |trigger| {
+                return trigger;
+            }
+        }
+        return null;
+    }
+
+    pub fn produceFinalTriggerComponent(self: *@This(), context_id: []const u8, frame: *InputFrame) ?u128 {
+        const downs = self.downs.get(context_id) orelse return null;
+        const ups = self.ups.get(context_id) orelse return null;
 
         const r = frame.produceCandidateReport();
 
@@ -195,10 +230,10 @@ pub const MappingCouncil = struct {
             if (frame.downs.items.len == 2 and
                 (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
             {
-                return self.produceDefaultTrigger(r, frame);
+                return self.produceDefaultTriggerComponent(context_id, r, frame);
             }
 
-            if (frame.downs.items.len >= 2 and self.check(.down, r.down)) {
+            if (frame.downs.items.len >= 2 and self.check(context_id, .down, r.down)) {
                 frame.emitted = true;
                 return r.down;
             }
@@ -218,21 +253,21 @@ pub const MappingCouncil = struct {
             }
         }
 
-        return self.produceDefaultTrigger(r, frame);
+        return self.produceDefaultTriggerComponent(context_id, r, frame);
     }
 
-    fn produceDefaultTrigger(self: *@This(), r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
+    fn produceDefaultTriggerComponent(self: *@This(), context_id: []const u8, r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
         if (frame.latest_event_type == .down) {
             frame.emitted = true;
-            if (self.check(.down, r.down)) return r.down;
-            if (self.check(.up, r.down)) {
+            if (self.check(context_id, .down, r.down)) return r.down;
+            if (self.check(context_id, .up, r.down)) {
                 frame.emitted = false;
                 frame.previous_down_candidate = r.down;
             }
             return null;
         }
 
-        if (!frame.emitted and frame.latest_event_type == .up and self.check(.up, r.prev_down)) {
+        if (!frame.emitted and frame.latest_event_type == .up and self.check(context_id, .up, r.prev_down)) {
             frame.emitted = true;
             frame.previous_down_candidate = null;
             if (frame.downs.items.len == 0) frame.emitted = false;
@@ -242,10 +277,10 @@ pub const MappingCouncil = struct {
         return null;
     }
 
-    fn check(self: *@This(), kind: enum { up, down }, trigger: ?u128) bool {
+    fn check(self: *@This(), context_id: []const u8, kind: enum { up, down }, trigger: ?u128) bool {
         if (trigger == null) return false;
         const context_map = if (kind == .up) self.ups else self.downs;
-        if (context_map.get(self.current_context_id)) |trigger_map| {
+        if (context_map.get(context_id)) |trigger_map| {
             if (trigger_map.get(trigger.?)) |_| return true;
         }
         return false;
@@ -283,7 +318,7 @@ test "MappingCouncil.mapUpNDown()" {
         .up_ctx = &ctx,
     });
 
-    council.setContextID("normal");
+    try council.setActiveContext("normal");
     {
         try eq(.neutral, ctx.value);
 
@@ -375,7 +410,7 @@ test "MappingCouncil.produceTrigger - quick" {
     try council.map("insert", &[_]Key{.z}, dummy_cb);
     try council.map("insert", &[_]Key{ .z, .a }, dummy_cb);
 
-    council.setContextID("insert");
+    try council.setActiveContext("insert");
 
     // a down -> b down -> a up -> b up
     {
@@ -458,7 +493,7 @@ test "MappingCouncil.produceTrigger - non-quick" {
     try council.map("normal", &[_]Key{ .l, .x }, dummy_cb);
     try council.map("normal", &[_]Key{ .l, .x, .c }, dummy_cb);
 
-    council.setContextID("normal");
+    try council.setActiveContext("normal");
 
     // f12, unmapped, not prefix
     {
