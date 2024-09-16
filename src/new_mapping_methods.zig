@@ -5,6 +5,7 @@ const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 const InputRepeatManager = @import("raylib-related/InputRepeatManager.zig");
 
 const _input_processor = @import("input_processor");
+const Key = _input_processor.Key;
 const InputFrame = _input_processor.InputFrame;
 const MappingCouncil = _input_processor.MappingCouncil;
 
@@ -31,33 +32,39 @@ pub fn main() !void {
 
     var smooth_cam = Smooth2DCamera{};
 
-    ///////////////////////////// General Purpose Allocator
+    ///////////////////////////// Allocator
 
     var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa_.deinit();
     const gpa = gpa_.allocator();
 
-    ///////////////////////////// MappingCouncil
+    ///////////////////////////// Inputs
 
     var council = try MappingCouncil.init(gpa);
     defer council.deinit();
-
-    ///////////////////////////// InputFrame
+    council.setContextID("dummy");
 
     var input_frame = try InputFrame.init(gpa);
     defer input_frame.deinit();
 
-    ///////////////////////////// InputRepeatManager
+    var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
 
-    // var last_trigger_timestamp: i64 = 0;
-    // var last_trigger: u128 = 0;
+    ///////////////////////////// Mappings
 
-    var input_repeat_manager = InputRepeatManager{};
+    const DummyCtx = struct {
+        fn invu(_: *anyopaque) !void {
+            std.debug.print("INVU\n", .{});
+        }
+        fn in_the_morning(_: *anyopaque) !void {
+            std.debug.print("In The Morning\n", .{});
+        }
+    };
+    var dummy_ctx = DummyCtx{};
 
-    // const trigger_delay = 150;
-    // const repeat_rate = 1000 / 62;
+    try council.map("dummy", &[_]Key{.i}, .{ .f = DummyCtx.invu, .ctx = &dummy_ctx });
+    try council.map("dummy", &[_]Key{.m}, .{ .f = DummyCtx.in_the_morning, .ctx = &dummy_ctx });
 
-    ///////////////////////////// FileNavigator
+    ///////////////////////////// WIP TheList interaction with MappingCouncil
 
     var list_items = [_][:0]const u8{ "hello", "from", "the", "other", "side" };
     const the_list = TheList{
@@ -75,7 +82,7 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         // Inputs
-        try input_repeat_manager.updateInputState(&input_frame);
+        try input_repeat_manager.updateInputState();
 
         // Smooth Camera
         smooth_cam.update();
