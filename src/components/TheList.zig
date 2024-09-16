@@ -7,7 +7,7 @@ const TheList = @This();
 
 is_visible: bool = false,
 
-items: [][:0]const u8,
+items: [][]const u8,
 index: usize = 0,
 
 x: i32 = 0,
@@ -25,7 +25,7 @@ const ListItemIterator = struct {
 
     const Result = struct {
         active: bool,
-        text: [:0]const u8,
+        text: []const u8,
         font_size: i32,
         x: i32,
         y: i32,

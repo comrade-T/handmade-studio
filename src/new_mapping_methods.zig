@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const rl = @import("raylib");
+const dtu = @import("raylib-related/draw_text_utils.zig");
 const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 const InputRepeatManager = @import("raylib-related/InputRepeatManager.zig");
 
@@ -125,7 +126,7 @@ pub fn main() !void {
                     var iter = the_list.iter();
                     while (iter.next()) |r| {
                         const color = if (r.active) rl.Color.sky_blue else rl.Color.ray_white;
-                        rl.drawText(r.text, r.x, r.y, r.font_size, color);
+                        try dtu.drawTextAlloc(gpa, "{s}", .{r.text}, r.x, r.y, r.font_size, color);
                     }
                 }
             }
