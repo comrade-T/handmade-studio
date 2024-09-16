@@ -51,19 +51,19 @@ pub fn main() !void {
 
     ///////////////////////////// Trying out TheList interaction with MappingCouncil
 
-    var list_items = [_][:0]const u8{ "hello", "from", "the", "other", "side" };
-    var the_list = TheList{
-        .items = &list_items,
+    var the_list = try TheList.fromHardCodedStrings(gpa, .{
         .x = 400,
         .y = 200,
         .line_height = 45,
-    };
+    }, &.{ "hello", "from", "the", "other", "side" });
+    defer the_list.destroy();
 
-    try council.map("dummy_in_the_list", &[_]Key{.j}, .{ .f = TheList.nextItem, .ctx = &the_list });
-    try council.map("dummy_in_the_list", &[_]Key{.k}, .{ .f = TheList.prevItem, .ctx = &the_list });
+    try council.map("dummy_in_the_list", &[_]Key{.j}, .{ .f = TheList.nextItem, .ctx = the_list });
+    try council.map("dummy_in_the_list", &[_]Key{.k}, .{ .f = TheList.prevItem, .ctx = the_list });
+    try council.map("dummy_in_the_list", &[_]Key{.r}, .{ .f = TheList.dummyReplace, .ctx = the_list });
     try council.map("dummy_in_the_list", &[_]Key{.q}, .{
         .f = TheList.hide,
-        .ctx = &the_list,
+        .ctx = the_list,
         .after_trigger = .{
             .contexts_to_remove = &.{"dummy_in_the_list"},
             .contexts_to_add = &.{"dummy"},
@@ -89,7 +89,7 @@ pub fn main() !void {
             try self.council.setActiveContext("dummy_in_the_list");
         }
     };
-    var dummy_ctx = DummyCtx{ .council = council, .the_list = &the_list };
+    var dummy_ctx = DummyCtx{ .council = council, .the_list = the_list };
 
     try council.map("dummy", &[_]Key{.i}, .{ .f = DummyCtx.invu, .ctx = &dummy_ctx });
     try council.map("dummy", &[_]Key{.m}, .{ .f = DummyCtx.in_the_morning, .ctx = &dummy_ctx });
