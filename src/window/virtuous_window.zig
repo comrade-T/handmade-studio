@@ -360,6 +360,21 @@ pub const Window = struct {
         cursor.set(line, col);
     }
 
+    pub fn vimForwardStart(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.vimForward(.start, &self.cursor);
+    }
+
+    pub fn vimForwardEnd(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.vimForward(.end, &self.cursor);
+    }
+
+    pub fn vimBackwardsStart(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.vimBackwards(.start, &self.cursor);
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Code Point Iterator
 
     const CodePointIterator = struct {

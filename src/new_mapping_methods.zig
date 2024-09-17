@@ -155,6 +155,10 @@ pub fn main() !void {
         .contexts_to_add = &.{"dummy"},
     } });
 
+    try council.map("normal", &[_]Key{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
+    try council.map("normal", &[_]Key{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
+    try council.map("normal", &[_]Key{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
+
     // Part 2
     try council.map("normal", &[_]Key{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
         .contexts_to_add = &.{"insert"},
