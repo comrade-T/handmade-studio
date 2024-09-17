@@ -288,12 +288,27 @@ pub const Window = struct {
         .{ &.{.left_bracket}, "[" },  .{ &.{ .left_shift, .left_bracket }, "{" },  .{ &.{ .right_shift, .left_bracket }, "{" },
         .{ &.{.right_bracket}, "]" }, .{ &.{ .left_shift, .right_bracket }, "}" }, .{ &.{ .right_shift, .right_bracket }, "}" },
         .{ &.{.grave}, "`" },         .{ &.{ .left_shift, .grave }, "~" },         .{ &.{ .right_shift, .grave }, "~" },
+        .{ &.{.space}, " " },         .{ &.{ .left_shift, .space }, " " },         .{ &.{ .right_shift, .space }, " " },
     };
     pub fn mapInsertModeCharacters(self: *@This(), council: *_ip.MappingCouncil) !void {
         for (0..pairs.len) |i| {
             const keys, const chars = pairs[i];
             try council.map("insert", keys, try InsertCharsCb.init(council.arena.allocator(), self, chars));
         }
+    }
+
+    ///////////////////////////// Escape Insert Mode
+
+    pub fn enterAFTERInsertMode(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.is_in_AFTER_insert_mode = true;
+        try moveCursorRight(self);
+    }
+
+    pub fn escapeInsertMode(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.is_in_AFTER_insert_mode = false;
+        try moveCursorLeft(self);
     }
 
     ///////////////////////////// Directional Cursor Movement

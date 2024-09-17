@@ -156,12 +156,21 @@ pub fn main() !void {
     } });
 
     // Part 2
-    try council.map("normal", &[_]Key{.i}, .{ .f = DummyCtx.nop, .ctx = window, .after_trigger = .{
+    try council.map("normal", &[_]Key{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
+        .contexts_to_add = &.{"insert"},
+        .contexts_to_remove = &.{"normal"},
+    } });
+    try council.map("normal", &[_]Key{.a}, .{ .f = Window.enterAFTERInsertMode, .ctx = window, .after_trigger = .{
         .contexts_to_add = &.{"insert"},
         .contexts_to_remove = &.{"normal"},
     } });
 
     try window.mapInsertModeCharacters(council);
+
+    try council.map("insert", &[_]Key{.escape}, .{ .f = Window.escapeInsertMode, .ctx = window, .after_trigger = .{
+        .contexts_to_add = &.{"normal"},
+        .contexts_to_remove = &.{"insert"},
+    } });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
