@@ -103,7 +103,7 @@ pub fn main() !void {
         }
         fn activateWindowMode(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.council.setActiveContext("window");
+            try self.council.setActiveContext("normal");
         }
         fn nop(_: *anyopaque) !void {}
     };
@@ -146,14 +146,28 @@ pub fn main() !void {
 
     ///////////////////////////// Mappings
 
-    try council.map("window", &[_]Key{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
-    try council.map("window", &[_]Key{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
-    try council.map("window", &[_]Key{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
-    try council.map("window", &[_]Key{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
-    try council.map("window", &[_]Key{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
-        .contexts_to_remove = &.{"window"},
+    try council.map("normal", &[_]Key{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
+    try council.map("normal", &[_]Key{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
+    try council.map("normal", &[_]Key{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
+    try council.map("normal", &[_]Key{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+    try council.map("normal", &[_]Key{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
+        .contexts_to_remove = &.{"normal"},
         .contexts_to_add = &.{"dummy"},
     } });
+
+    // Part 2
+    try council.map("normal", &[_]Key{.i}, .{ .f = DummyCtx.nop, .ctx = window, .after_trigger = .{
+        .contexts_to_add = &.{"insert"},
+        .contexts_to_remove = &.{"normal"},
+    } });
+
+    {
+        const a = council.arena.allocator();
+
+        try council.map("insert", &[_]Key{.a}, try Window.InsertCharsCb.init(a, window, "a"));
+        try council.map("insert", &[_]Key{.b}, try Window.InsertCharsCb.init(a, window, "b"));
+        try council.map("insert", &[_]Key{.c}, try Window.InsertCharsCb.init(a, window, "c"));
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

@@ -32,6 +32,7 @@ pub const Callback = struct {
 
 pub const MappingCouncil = struct {
     a: Allocator,
+    arena: std.heap.ArenaAllocator,
 
     downs: *ContextMap,
     ups: *ContextMap,
@@ -62,6 +63,7 @@ pub const MappingCouncil = struct {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
+            .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
             .downs = downs,
             .ups = ups,
             .ups_n_downs = ups_n_downs,
@@ -95,6 +97,7 @@ pub const MappingCouncil = struct {
         self.ups_n_downs.deinit();
         self.pending_ups_n_downs.deinit();
         self.active_contexts.deinit();
+        self.arena.deinit();
 
         self.a.destroy(self.downs);
         self.a.destroy(self.ups);

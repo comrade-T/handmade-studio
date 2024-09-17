@@ -5,6 +5,9 @@ pub const Buffer = _buf_mod.Buffer;
 pub const sitter = _buf_mod.sitter;
 const ts = sitter.b;
 
+const _ip = @import("input_processor");
+const Callback = _ip.Callback;
+
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const idc_if_it_leaks = std.heap.page_allocator;
@@ -220,6 +223,20 @@ pub const Window = struct {
         const num_of_lines = self.buf.roperoot.weights().bols;
         self.contents = try Contents.createWithCapacity(self, start_line, num_of_lines);
     }
+
+    pub const InsertCharsCb = struct {
+        chars: []const u8,
+        target: *Window,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.target.insertChars(self.chars);
+        }
+        pub fn init(allocator: Allocator, target: *Window, chars: []const u8) !Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .chars = chars, .target = target };
+            return Callback{ .f = @This().f, .ctx = self };
+        }
+    };
 
     ///////////////////////////// Directional Cursor Movement
 

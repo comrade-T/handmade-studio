@@ -84,6 +84,7 @@ pub fn build(b: *std.Build) void {
     const virtuous_window = addTestableModule(&bops, "src/window/virtuous_window.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "neo_buffer", .module = neo_buffer.module },
+        .{ .name = "input_processor", .module = input_processor.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     virtuous_window.compile.linkLibrary(tree_sitter);
