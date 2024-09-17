@@ -14,6 +14,7 @@ const MappingCouncil = _input_processor.MappingCouncil;
 const _vw = @import("virtuous_window");
 const Buffer = _vw.Buffer;
 const Window = _vw.Window;
+const vwr = @import("raylib-related/virtuous_window_related.zig");
 
 const TheList = @import("TheList");
 
@@ -38,10 +39,12 @@ pub fn main() !void {
 
     var smooth_cam = Smooth2DCamera{};
 
-    var view_start = rl.Vector2{ .x = 0, .y = 0 };
-    var view_end = rl.Vector2{ .x = screen_width, .y = screen_height };
-    var view_width: f32 = screen_width;
-    var view_height: f32 = screen_height;
+    var screen_view = vwr.ScreenView{
+        .width = screen_width,
+        .height = screen_height,
+        .screen_width = screen_width,
+        .screen_height = screen_height,
+    };
 
     ///////////////////////////// Allocator
 
@@ -124,7 +127,7 @@ pub fn main() !void {
     const font_size = 40;
     const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
 
-    const font_data = try generateFontData(gpa, font);
+    const font_data = try vwr.generateFontData(gpa, font);
     defer gpa.free(font_data.recs);
     defer gpa.free(font_data.glyphs);
 
@@ -146,13 +149,7 @@ pub fn main() !void {
 
         // Smooth Camera
         smooth_cam.update();
-
-        { // update screen bounding box variables
-            view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, smooth_cam.camera);
-            view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, smooth_cam.camera);
-            view_width = view_end.x - view_start.x;
-            view_height = view_end.y - view_start.y;
-        }
+        screen_view.update(smooth_cam.camera);
 
         ///////////////////////////// Draw
 
@@ -168,45 +165,7 @@ pub fn main() !void {
 
                 // rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
 
-                {
-                    var last_y: f32 = undefined;
-
-                    var iter = window.codePointIter(font_data, font_data_index_map, .{
-                        .start_x = view_start.x,
-                        .start_y = view_start.y,
-                        .end_x = view_end.x,
-                        .end_y = view_end.y,
-                    });
-
-                    while (iter.next()) |result| {
-                        switch (result) {
-                            .code_point => |char| {
-                                rl.drawTextCodepoint(font, char.value, .{ .x = char.x, .y = char.y }, font_size, rl.Color.fromInt(char.color));
-
-                                if (iter.current_line + window.contents.start_line == window.cursor.line) {
-                                    if (iter.current_col -| 1 == window.cursor.col) {
-                                        rl.drawRectangle(@intFromFloat(char.x), @intFromFloat(char.y), @intFromFloat(char.char_width), font_size, rl.Color.ray_white);
-                                    }
-                                    if (iter.current_col == window.cursor.col) {
-                                        rl.drawRectangle(@intFromFloat(char.x + char.char_width), @intFromFloat(char.y), @intFromFloat(char.char_width), font_size, rl.Color.ray_white);
-                                    }
-                                }
-
-                                last_y = char.y;
-                            },
-                            .skip_to_new_line => {
-                                if (iter.current_line + window.contents.start_line == window.cursor.line and
-                                    window.contents.lines[iter.current_line].len == 0 and
-                                    iter.current_col == 0)
-                                {
-                                    rl.drawRectangle(@intFromFloat(window.x), @intFromFloat(last_y + font_size), 15, font_size, rl.Color.ray_white);
-                                }
-                                defer last_y += font_size;
-                            },
-                            else => continue,
-                        }
-                    }
-                }
+                vwr.renderVirtuousWindow(window, font, font_size, font_data, font_data_index_map, screen_view);
             }
 
             // TheList
@@ -219,33 +178,4 @@ pub fn main() !void {
             }
         }
     }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-fn generateFontData(a: Allocator, font: rl.Font) !_vw.FontData {
-    var recs = try a.alloc(_vw.Rectangle, @intCast(font.glyphCount));
-    var glyphs = try a.alloc(_vw.GlyphData, @intCast(font.glyphCount));
-
-    for (0..@intCast(font.glyphCount)) |i| {
-        recs[i] = _vw.Rectangle{
-            .x = font.recs[i].x,
-            .y = font.recs[i].y,
-            .width = font.recs[i].width,
-            .height = font.recs[i].height,
-        };
-
-        glyphs[i] = _vw.GlyphData{
-            .advanceX = font.glyphs[i].advanceX,
-            .offsetX = @intCast(font.glyphs[i].offsetX),
-            .value = font.glyphs[i].value,
-        };
-    }
-
-    return .{
-        .base_size = font.baseSize,
-        .glyph_padding = font.glyphPadding,
-        .recs = recs,
-        .glyphs = glyphs,
-    };
 }
