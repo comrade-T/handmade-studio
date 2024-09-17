@@ -90,6 +90,10 @@ pub fn main() !void {
     const DummyCtx = struct {
         council: *MappingCouncil,
         the_list: *TheList,
+
+        camera: *rl.Camera2D,
+        screen_view: *vwr.ScreenView,
+
         fn invu(_: *anyopaque) !void {
             std.debug.print("INVU\n", .{});
         }
@@ -105,9 +109,22 @@ pub fn main() !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             try self.council.setActiveContext("normal");
         }
+        fn moveCameraDown(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.camera.target.y += self.screen_view.height / 2;
+        }
+        fn moveCameraUp(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.camera.target.y -= self.screen_view.height / 2;
+        }
         fn nop(_: *anyopaque) !void {}
     };
-    var dummy_ctx = DummyCtx{ .council = council, .the_list = the_list };
+    var dummy_ctx = DummyCtx{
+        .council = council,
+        .the_list = the_list,
+        .camera = &smooth_cam.camera,
+        .screen_view = &screen_view,
+    };
 
     try council.map("dummy", &[_]Key{.i}, .{ .f = DummyCtx.invu, .ctx = &dummy_ctx });
     try council.map("dummy", &[_]Key{.m}, .{ .f = DummyCtx.in_the_morning, .ctx = &dummy_ctx });
@@ -158,6 +175,9 @@ pub fn main() !void {
     try council.map("normal", &[_]Key{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
     try council.map("normal", &[_]Key{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
     try council.map("normal", &[_]Key{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
+
+    try council.map("normal", &[_]Key{ .left_control, .u }, .{ .f = DummyCtx.moveCameraUp, .ctx = &dummy_ctx });
+    try council.map("normal", &[_]Key{ .left_control, .d }, .{ .f = DummyCtx.moveCameraDown, .ctx = &dummy_ctx });
 
     // Part 2
     try council.map("normal", &[_]Key{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
