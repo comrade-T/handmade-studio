@@ -18,6 +18,8 @@ const vwr = @import("raylib-related/virtuous_window_related.zig");
 
 const TheList = @import("TheList");
 
+const SmoothDamper = @import("raylib-related/SmoothDamper.zig");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -91,7 +93,9 @@ pub fn main() !void {
         council: *MappingCouncil,
         the_list: *TheList,
 
-        camera: *rl.Camera2D,
+        smooth_cam: *Smooth2DCamera,
+        damper: SmoothDamper = .{},
+
         screen_view: *vwr.ScreenView,
 
         fn invu(_: *anyopaque) !void {
@@ -109,20 +113,34 @@ pub fn main() !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             try self.council.setActiveContext("normal");
         }
+
         fn moveCameraDown(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.camera.target.y += self.screen_view.height / 2;
+            self.smooth_cam.target_camera.target.y += self.screen_view.height / 2;
         }
         fn moveCameraUp(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.camera.target.y -= self.screen_view.height / 2;
+            self.smooth_cam.target_camera.target.y -= self.screen_view.height / 2;
         }
+        fn updateCamY(self: *@This()) void {
+            if (self.smooth_cam.camera.target.y == self.smooth_cam.target_camera.target.y) return;
+            self.smooth_cam.camera.target.y = self.damper.damp(
+                self.smooth_cam.camera.target.y,
+                self.smooth_cam.target_camera.target.y,
+                rl.getFrameTime(),
+            );
+        }
+
         fn nop(_: *anyopaque) !void {}
     };
     var dummy_ctx = DummyCtx{
         .council = council,
         .the_list = the_list,
-        .camera = &smooth_cam.camera,
+
+        .smooth_cam = &smooth_cam,
+        // .damper = .{ .smooth_time = 0.1, .max_speed = 5000 },
+        .damper = .{ .smooth_time = 0.1, .max_speed = 8000 },
+
         .screen_view = &screen_view,
     };
 
@@ -208,6 +226,7 @@ pub fn main() !void {
         // Smooth Camera
         smooth_cam.update();
         screen_view.update(smooth_cam.camera);
+        dummy_ctx.updateCamY();
 
         ///////////////////////////// Draw
 
