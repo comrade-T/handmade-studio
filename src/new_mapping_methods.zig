@@ -161,13 +161,7 @@ pub fn main() !void {
         .contexts_to_remove = &.{"normal"},
     } });
 
-    {
-        const a = council.arena.allocator();
-
-        try council.map("insert", &[_]Key{.a}, try Window.InsertCharsCb.init(a, window, "a"));
-        try council.map("insert", &[_]Key{.b}, try Window.InsertCharsCb.init(a, window, "b"));
-        try council.map("insert", &[_]Key{.c}, try Window.InsertCharsCb.init(a, window, "c"));
-    }
+    try window.mapInsertModeCharacters(council);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
