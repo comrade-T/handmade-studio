@@ -101,12 +101,18 @@ pub fn main() !void {
             self.the_list.show();
             try self.council.setActiveContext("dummy_in_the_list");
         }
+        fn activateWindowMode(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.council.setActiveContext("window");
+        }
+        fn nop(_: *anyopaque) !void {}
     };
     var dummy_ctx = DummyCtx{ .council = council, .the_list = the_list };
 
     try council.map("dummy", &[_]Key{.i}, .{ .f = DummyCtx.invu, .ctx = &dummy_ctx });
     try council.map("dummy", &[_]Key{.m}, .{ .f = DummyCtx.in_the_morning, .ctx = &dummy_ctx });
     try council.map("dummy", &[_]Key{.l}, .{ .f = DummyCtx.showList, .ctx = &dummy_ctx });
+    try council.map("dummy", &[_]Key{.w}, .{ .f = DummyCtx.activateWindowMode, .ctx = &dummy_ctx });
 
     ///////////////////////////// Experimental - Trying out Window interactions with MappingCouncil
 
@@ -137,6 +143,17 @@ pub fn main() !void {
     // Window
     var window = try Window.spawn(gpa, buf, .{ .font_size = font_size, .x = 400, .y = 100 });
     defer window.destroy();
+
+    ///////////////////////////// Mappings
+
+    try council.map("window", &[_]Key{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
+    try council.map("window", &[_]Key{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
+    try council.map("window", &[_]Key{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
+    try council.map("window", &[_]Key{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+    try council.map("window", &[_]Key{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
+        .contexts_to_remove = &.{"window"},
+        .contexts_to_add = &.{"dummy"},
+    } });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

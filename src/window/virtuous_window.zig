@@ -223,27 +223,31 @@ pub const Window = struct {
 
     ///////////////////////////// Directional Cursor Movement
 
-    pub fn moveCursorLeft(self: *@This(), cursor: *Cursor) void {
-        cursor.col -|= 1;
-        self.restrictCursorInView(cursor);
+    pub fn moveCursorLeft(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.col -|= 1;
+        self.restrictCursorInView(&self.cursor);
     }
 
-    pub fn moveCursorUp(self: *@This(), cursor: *Cursor) void {
-        cursor.line -|= 1;
-        self.restrictCursorInView(cursor);
+    pub fn moveCursorUp(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.line -|= 1;
+        self.restrictCursorInView(&self.cursor);
     }
 
-    pub fn moveCursorRight(self: *@This(), cursor: *Cursor) void {
-        cursor.col += 1;
-        self.restrictCursorInView(cursor);
+    pub fn moveCursorRight(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.col += 1;
+        self.restrictCursorInView(&self.cursor);
     }
 
-    pub fn moveCursorDown(self: *@This(), cursor: *Cursor) void {
-        cursor.line += 1;
-        self.restrictCursorInView(cursor);
+    pub fn moveCursorDown(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.line += 1;
+        self.restrictCursorInView(&self.cursor);
     }
 
-    pub fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
+    fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
         if (cursor.line < self.contents.start_line) cursor.line = self.contents.start_line;
         if (cursor.line > self.contents.end_line) cursor.line = self.contents.end_line;
         const current_line_index = cursor.line - self.contents.start_line;
