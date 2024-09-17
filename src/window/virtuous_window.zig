@@ -2,7 +2,7 @@ const std = @import("std");
 const _nc = @import("neo_cell.zig");
 const _buf_mod = @import("neo_buffer");
 pub const Buffer = _buf_mod.Buffer;
-const sitter = _buf_mod.sitter;
+pub const sitter = _buf_mod.sitter;
 const ts = sitter.b;
 
 const Allocator = std.mem.Allocator;
@@ -149,7 +149,7 @@ pub const Window = struct {
             .bounds = if (opts.bounds) |b| b else Bounds{},
             .font_size = opts.font_size,
         };
-        self.updateContents(buf);
+        try self.updateContents(buf);
         return self;
     }
 

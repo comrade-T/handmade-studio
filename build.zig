@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("input_processor", input_processor.module);
         exe.root_module.addImport("window_manager", window_manager.module);
         exe.root_module.addImport("TheList", the_list.module);
+        exe.root_module.addImport("virtuous_window", virtuous_window.module);
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(tree_sitter);
         exe.linkLibrary(ztracy.artifact("tracy"));
