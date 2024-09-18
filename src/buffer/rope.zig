@@ -634,17 +634,17 @@ pub const Node = union(enum) {
 
     ///////////////////////////// getLineEx
 
-    pub fn getLineEx(self: *const Node, a: Allocator, line: usize) ![][]const u8 {
+    pub fn getLineEx(self: *const Node, a: Allocator, line: usize) ![]u21 {
         const zone = ztracy.ZoneNC(@src(), "Rope.getLineEx()", 0x00AA00);
         defer zone.End();
 
         const GetLineExCtx = struct {
-            list: ArrayList([]const u8),
+            list: ArrayList(u21),
             fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkResult {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
                 var iter = code_point.Iterator{ .bytes = leaf.buf };
                 while (iter.next()) |cp| {
-                    ctx.list.append(leaf.buf[cp.offset .. cp.offset + cp.len]) catch |err| return .{ .err = err };
+                    ctx.list.append(cp.code) catch |err| return .{ .err = err };
                 }
                 if (leaf.eol) return WalkResult.stop;
                 return WalkResult.keep_walking;
@@ -653,7 +653,7 @@ pub const Node = union(enum) {
 
         if (line > self.weights().bols) return error.LineOutOfBounds;
 
-        var list = try ArrayList([]const u8).initCapacity(a, 1024);
+        var list = try ArrayList(u21).initCapacity(a, 1024);
         errdefer list.deinit();
 
         var ctx = GetLineExCtx{ .list = list };

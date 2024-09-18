@@ -56,7 +56,7 @@ pub const Window = struct {
 
     /// A slice of `[]const u8` values. Each `[]const u8` represents a single character,
     /// regardless of its byte length.
-    const Line = [][]const u8;
+    const Line = []u21;
 
     /// A slice of `u32` values. Each `u32` represents an RGBA color.
     const LineColors = []u32;
@@ -216,8 +216,7 @@ pub const Window = struct {
         for (self.contents.lines.items) |line| {
             var line_width: f32 = 0;
             for (line) |char| {
-                var cp_iter = _buf_mod.code_point.Iterator{ .bytes = char };
-                const cp_i32: i32 = @intCast(cp_iter.next().?.code);
+                const cp_i32: i32 = @intCast(char);
                 const glyph_index = index_map.get(cp_i32) orelse @panic("CodePoint doesn't exist in Font!");
                 var char_width: f32 = @floatFromInt(font_data.glyphs[glyph_index].advanceX);
                 if (char_width == 0) char_width = font_data.recs[glyph_index].width + @as(f32, @floatFromInt(font_data.glyphs[glyph_index].offsetX));
@@ -487,8 +486,7 @@ pub const Window = struct {
 
             // get code point
             const char = self.win.contents.lines.items[self.current_line][self.current_col];
-            var cp_iter = _buf_mod.code_point.Iterator{ .bytes = char };
-            const cp_i32: i32 = @intCast(cp_iter.next().?.code);
+            const cp_i32: i32 = @intCast(char);
 
             // char width
             const glyph_index = self.index_map.get(cp_i32) orelse @panic("CodePoint doesn't exist in Font!");

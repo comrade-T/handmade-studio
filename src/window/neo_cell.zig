@@ -9,7 +9,7 @@ const testing_allocator = std.testing.allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const Line = [][]const u8;
+pub const Line = []u21;
 
 pub fn backwardsByWord(destination: WordBoundaryType, lines: []Line, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
     var linenr, var colnr = bringPositionInBound(lines, input_linenr, input_colnr);
@@ -332,9 +332,9 @@ pub fn freeLines(a: Allocator, lines: []Line) void {
 }
 
 pub fn createLine(a: Allocator, source: []const u8) !Line {
-    var cells = try std.ArrayList([]const u8).initCapacity(a, source.len);
+    var cells = try std.ArrayList(u21).initCapacity(a, source.len);
     var iter = code_point.Iterator{ .bytes = source };
-    while (iter.next()) |cp| try cells.append(source[cp.offset .. cp.offset + cp.len]);
+    while (iter.next()) |cp| try cells.append(cp.code);
     return try cells.toOwnedSlice();
 }
 
@@ -342,23 +342,23 @@ test createLine {
     {
         const line = try createLine(testing_allocator, "Hello");
         defer testing_allocator.free(line);
-        try eqStr("H", line[0]);
-        try eqStr("e", line[1]);
-        try eqStr("l", line[2]);
-        try eqStr("l", line[3]);
-        try eqStr("o", line[4]);
+        try eq('H', line[0]);
+        try eq('e', line[1]);
+        try eq('l', line[2]);
+        try eq('l', line[3]);
+        try eq('o', line[4]);
     }
     {
         const line = try createLine(testing_allocator, "안녕하세요! Hello there 👋!");
         defer testing_allocator.free(line);
-        try eqStr("안", line[0]);
-        try eqStr("녕", line[1]);
-        try eqStr("하", line[2]);
-        try eqStr("세", line[3]);
-        try eqStr("요", line[4]);
-        try eqStr("!", line[5]);
-        try eqStr("👋", line[line.len - 2]);
-        try eqStr("!", line[line.len - 1]);
+        try eq('안', line[0]);
+        try eq('녕', line[1]);
+        try eq('하', line[2]);
+        try eq('세', line[3]);
+        try eq('요', line[4]);
+        try eq('!', line[5]);
+        try eq('👋', line[line.len - 2]);
+        try eq('!', line[line.len - 1]);
     }
 }
 
@@ -370,7 +370,7 @@ const CharType = enum {
     symbol,
     null,
 
-    fn fromChar(may_char: ?[]const u8) CharType {
+    fn fromChar(may_char: ?u21) CharType {
         if (may_char) |char| {
             if (isSpace(char)) return .space;
             if (isSymbol(char)) return .symbol;
@@ -387,7 +387,7 @@ pub const WordBoundaryType = enum {
     not_a_boundary,
 };
 
-fn getCharBoundaryType(prev: ?[]const u8, curr: []const u8, next: ?[]const u8) WordBoundaryType {
+fn getCharBoundaryType(prev: ?u21, curr: u21, next: ?u21) WordBoundaryType {
     const curr_type = CharType.fromChar(curr);
     if (curr_type == .space) return .not_a_boundary;
     const prev_type = CharType.fromChar(prev);
@@ -404,15 +404,15 @@ fn getCharBoundaryType(prev: ?[]const u8, curr: []const u8, next: ?[]const u8) W
 }
 
 test getCharBoundaryType {
-    try eq(.not_a_boundary, getCharBoundaryType("a", "b", "c"));
-    try eq(.not_a_boundary, getCharBoundaryType("a", " ", "c"));
-    try eq(.start, getCharBoundaryType(" ", "a", "c"));
-    try eq(.start, getCharBoundaryType(";", "a", "c"));
-    try eq(.end, getCharBoundaryType("a", "b", " "));
-    try eq(.end, getCharBoundaryType("a", "b", ";"));
-    try eq(.both, getCharBoundaryType(" ", "a", " "));
-    try eq(.both, getCharBoundaryType(" ", "a", ";"));
-    try eq(.both, getCharBoundaryType("h", ";", null));
+    try eq(.not_a_boundary, getCharBoundaryType('a', 'b', 'c'));
+    try eq(.not_a_boundary, getCharBoundaryType('a', ' ', 'c'));
+    try eq(.start, getCharBoundaryType(' ', 'a', 'c'));
+    try eq(.start, getCharBoundaryType(';', 'a', 'c'));
+    try eq(.end, getCharBoundaryType('a', 'b', ' '));
+    try eq(.end, getCharBoundaryType('a', 'b', ';'));
+    try eq(.both, getCharBoundaryType(' ', 'a', ' '));
+    try eq(.both, getCharBoundaryType(' ', 'a', ';'));
+    try eq(.both, getCharBoundaryType('h', ';', null));
 }
 
 fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType) bool {
@@ -427,9 +427,8 @@ fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn isSpace(c: []const u8) bool {
-    if (c.len == 0) return true;
-    return switch (c[0]) {
+fn isSpace(c: u21) bool {
+    return switch (c) {
         ' ' => true,
         '\t' => true,
         '\n' => true,
@@ -437,9 +436,8 @@ fn isSpace(c: []const u8) bool {
     };
 }
 
-fn isSymbol(c: []const u8) bool {
-    if (c.len == 0) return true;
-    return switch (c[0]) {
+fn isSymbol(c: u21) bool {
+    return switch (c) {
         '=' => true,
         '"' => true,
         '\'' => true,
