@@ -350,6 +350,29 @@ pub const Window = struct {
         try enterAFTERInsertMode(ctx);
     }
 
+    ///////////////////////////// Baclspace & Delete
+
+    pub fn backspace(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        if (self.cursor.line == 0 and self.cursor.col == 0) return;
+
+        var start_line: usize = self.cursor.line;
+        var start_col: usize = self.cursor.col -| 1;
+        var end_line: usize = self.cursor.line;
+        var end_col: usize = self.cursor.col;
+
+        if (self.cursor.col == 0 and self.cursor.line > 0) {
+            start_line = self.cursor.line - 1;
+            start_col = self.cursor.col;
+            end_line = self.cursor.line;
+            end_col = self.contents.lines.items[end_line].len;
+        }
+
+        try self.buf.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
+        self.cursor.set(start_line, start_col);
+        try self.contents.updateLines(start_line, start_line, end_line, end_line);
+    }
+
     ///////////////////////////// Directional Cursor Movement
 
     pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {

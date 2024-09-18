@@ -237,6 +237,7 @@ pub fn main() !void {
         .contexts_to_add = &.{"normal"},
         .contexts_to_remove = &.{"insert"},
     } });
+    try council.map("insert", &[_]Key{.backspace}, .{ .f = Window.backspace, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
