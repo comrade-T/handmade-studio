@@ -1,6 +1,7 @@
 const std = @import("std");
 const _nc = @import("neo_cell.zig");
 const _buf_mod = @import("neo_buffer");
+const ztracy = @import("ztracy");
 pub const Buffer = _buf_mod.Buffer;
 pub const sitter = _buf_mod.sitter;
 const ts = sitter.b;
@@ -73,20 +74,27 @@ pub const Window = struct {
         end_line: usize,
 
         fn createWithCapacity(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
+            const block_zone = ztracy.ZoneNC(@src(), "Window.Contents.createWithCapacity()", 0xFFAAFF);
+            defer block_zone.End();
+
             const end_line = start_line + num_of_lines -| 1;
 
             // add lines
+            const add_lines_zone = ztracy.ZoneNC(@src(), "add lines", 0x00FFFF);
             var lines = try win.exa.alloc(Line, num_of_lines);
             for (start_line..start_line + num_of_lines, 0..) |linenr, i| {
                 lines[i] = try win.buf.roperoot.getLineEx(win.exa, linenr);
             }
+            add_lines_zone.End();
 
             // add default color
+            const add_default_color_zone = ztracy.ZoneNC(@src(), "add default color", 0x00FFAA);
             var line_colors = try win.exa.alloc(LineColors, num_of_lines);
             for (lines, 0..) |line, i| {
                 line_colors[i] = try win.exa.alloc(u32, line.len);
                 @memset(line_colors[i], 0xF5F5F5F5);
             }
+            add_default_color_zone.End();
 
             // add TS highlights
             if (win.buf.langsuite) |langsuite| {
@@ -216,10 +224,21 @@ pub const Window = struct {
     ///////////////////////////// Insert Chars
 
     pub fn insertChars(self: *@This(), chars: []const u8) !void {
-        const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
-        self.cursor.set(line, col);
+        const zone = ztracy.ZoneNC(@src(), "insertChars()", 0xAAAAFF);
+        defer zone.End();
 
-        self.contents.destroy();
+        {
+            const zone2 = ztracy.ZoneNC(@src(), "self.buf.insertChars & set cursor()", 0xFFAAFF);
+            defer zone2.End();
+            const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+            self.cursor.set(line, col);
+        }
+
+        {
+            const zone3 = ztracy.ZoneNC(@src(), "self.contents.destroy()", 0x00AAFF);
+            defer zone3.End();
+            self.contents.destroy();
+        }
 
         const start_line = 0;
         const num_of_lines = self.buf.roperoot.weights().bols;

@@ -63,6 +63,7 @@ pub fn build(b: *std.Build) void {
 
     const rope = addTestableModule(&bops, "src/buffer/rope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);
@@ -78,6 +79,7 @@ pub fn build(b: *std.Build) void {
     const neo_buffer = addTestableModule(&bops, "src/buffer/neo_buffer.zig", &.{
         .{ .name = "rope", .module = rope.module },
         .{ .name = "ts", .module = ts.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
     neo_buffer.compile.linkLibrary(tree_sitter);
 
@@ -85,6 +87,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         .{ .name = "input_processor", .module = input_processor.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     virtuous_window.compile.linkLibrary(tree_sitter);

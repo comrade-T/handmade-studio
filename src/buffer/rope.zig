@@ -1,5 +1,6 @@
 const std = @import("std");
 pub const code_point = @import("code_point");
+const ztracy = @import("ztracy");
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -304,6 +305,9 @@ pub const Node = union(enum) {
     /// Walk to Leaf at `start_byte`, write Leaf contents from `start_byte` to `end_byte`
     /// to given []u8 buffer or until it's full.
     pub fn getRange(self: *const Node, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) ![]u8 {
+        const zone = ztracy.ZoneNC(@src(), "Rope.getRange()", 0xFF00FF);
+        defer zone.End();
+
         const GetRangeCtx = struct {
             start_byte: usize,
             end_byte: usize,
@@ -631,6 +635,9 @@ pub const Node = union(enum) {
     ///////////////////////////// getLineEx
 
     pub fn getLineEx(self: *const Node, a: Allocator, line: usize) ![][]const u8 {
+        const zone = ztracy.ZoneNC(@src(), "Rope.getLineEx()", 0x00AA00);
+        defer zone.End();
+
         const GetLineExCtx = struct {
             list: ArrayList([]const u8),
             fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkResult {

@@ -181,6 +181,8 @@ pub const PredicatesFilter = struct {
         }
 
         fn eval(self: *const EqPredicate, source: []const u8) bool {
+            const zone = ztracy.ZoneNC(@src(), "EqPredicate", 0xAAAAAA);
+            defer zone.End();
             return switch (self.variant) {
                 .eq => eql(u8, source, self.target),
                 .not_eq => !eql(u8, source, self.target),
@@ -221,6 +223,8 @@ pub const PredicatesFilter = struct {
         }
 
         fn eval(self: *const AnyOfPredicate, source: []const u8) bool {
+            const zone = ztracy.ZoneNC(@src(), "AnyOfPredicate", 0x00AA00);
+            defer zone.End();
             for (self.targets) |target| if (eql(u8, source, target)) return true;
             return false;
         }
@@ -256,6 +260,9 @@ pub const PredicatesFilter = struct {
         }
 
         fn eval(self: *const MatchPredicate, a: Allocator, source: []const u8) bool {
+            const zone = ztracy.ZoneNC(@src(), "MatchPredicate", 0xFF000F);
+            defer zone.End();
+
             var re = Regex.compile(a, self.regex_pattern) catch return false;
             defer re.deinit();
             const result = re.match(source) catch return false;
@@ -294,6 +301,9 @@ pub const PredicatesFilter = struct {
         }
 
         fn eval(self: *const Predicate, a: Allocator, source: []const u8) bool {
+            const zone = ztracy.ZoneNC(@src(), "Predicate.eval()", 0x00AA00);
+            defer zone.End();
+
             return switch (self.*) {
                 .eq => self.eq.eval(source),
                 .any_of => self.any_of.eval(source),

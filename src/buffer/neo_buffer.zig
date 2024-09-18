@@ -1,5 +1,6 @@
 const std = @import("std");
 pub const code_point = rope.code_point;
+const ztracy = @import("ztracy");
 
 const rope = @import("rope");
 pub const sitter = @import("ts");
@@ -53,6 +54,9 @@ pub const Buffer = struct {
     ///////////////////////////// Insert
 
     pub fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { usize, usize } {
+        const zone = ztracy.ZoneNC(@src(), "Buffer.insertChars()", 0xFFFFFF);
+        defer zone.End();
+
         const start_point = ts.Point{ .row = @intCast(line), .column = @intCast(col) };
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
 
