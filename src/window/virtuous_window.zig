@@ -74,19 +74,43 @@ pub const Window = struct {
         end_line: usize,
 
         fn createWithCapacity(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
-            const block_zone = ztracy.ZoneNC(@src(), "Window.Contents.createWithCapacity()", 0xFFAAFF);
-            defer block_zone.End();
+            const lines, const line_colors = try createLines(win, start_line, num_of_lines);
+            return .{
+                .window = win,
+                .start_line = start_line,
+                .end_line = start_line + num_of_lines -| 1,
+                .lines = lines,
+                .line_colors = line_colors,
+            };
+        }
+
+        fn updateLines(self: *@This(), old_start_line: usize, old_end_line: usize, new_start_line: usize, new_end_line: usize) !void {
+            var new_lines, var new_line_colors = try createLines(self.window, new_start_line, new_end_line -| new_start_line + 1);
+            defer new_lines.deinit();
+            defer new_line_colors.deinit();
+
+            for (old_start_line..old_end_line + 1) |i| {
+                self.window.exa.free(self.lines.items[i]);
+                self.window.exa.free(self.line_colors.items[i]);
+            }
+
+            try self.lines.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_lines.items);
+            try self.line_colors.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_line_colors.items);
+        }
+
+        fn createLines(win: *Window, start_line: usize, num_of_lines: usize) !struct { ArrayList(Line), ArrayList(LineColors) } {
+            const method_zone = ztracy.ZoneNC(@src(), "Contents.createLines()", 0x0999FF);
+            defer method_zone.End();
+            method_zone.Value(@intCast(num_of_lines));
 
             const end_line = start_line + num_of_lines -| 1;
 
             // add lines
-            const add_lines_zone = ztracy.ZoneNC(@src(), "add lines", 0x00FFFF);
             var lines = try ArrayList(Line).initCapacity(win.exa, num_of_lines);
             for (start_line..start_line + num_of_lines) |linenr| {
                 const line = try win.buf.roperoot.getLineEx(win.exa, linenr);
                 try lines.append(line);
             }
-            add_lines_zone.End();
 
             // add default color
             const add_default_color_zone = ztracy.ZoneNC(@src(), "add default color", 0x00FFAA);
@@ -120,6 +144,7 @@ pub const Window = struct {
                         const node_end = match.cap_node.?.getEndPoint();
                         for (node_start.row..node_end.row + 1) |linenr| {
                             const line_index = linenr - start_line;
+                            if (line_index >= lines.items.len) continue;
                             const start_col = if (linenr == node_start.row) node_start.column else 0;
                             const end_col = if (linenr == node_end.row) node_end.column else lines.items[line_index].len;
                             @memset(line_colors.items[line_index][start_col..end_col], color);
@@ -128,13 +153,7 @@ pub const Window = struct {
                 }
             }
 
-            return .{
-                .window = win,
-                .start_line = start_line,
-                .end_line = end_line,
-                .lines = lines,
-                .line_colors = line_colors,
-            };
+            return .{ lines, line_colors };
         }
 
         fn destroy(self: *@This()) void {
@@ -229,22 +248,17 @@ pub const Window = struct {
         const zone = ztracy.ZoneNC(@src(), "insertChars()", 0xAAAAFF);
         defer zone.End();
 
-        {
-            const zone2 = ztracy.ZoneNC(@src(), "self.buf.insertChars & set cursor()", 0xFFAAFF);
-            defer zone2.End();
-            const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
-            self.cursor.set(line, col);
-        }
+        const old_start_line = self.cursor.line;
+        const old_end_line = self.cursor.line;
 
-        {
-            const zone3 = ztracy.ZoneNC(@src(), "self.contents.destroy()", 0x00AAFF);
-            defer zone3.End();
-            self.contents.destroy();
-        }
+        const zone2 = ztracy.ZoneNC(@src(), "self.buf.insertChars & set cursor()", 0xFFAAFF);
+        const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+        self.cursor.set(line, col);
+        const new_start_line = line;
+        const new_end_line = line;
+        zone2.End();
 
-        const start_line = 0;
-        const num_of_lines = self.buf.roperoot.weights().bols;
-        self.contents = try Contents.createWithCapacity(self, start_line, num_of_lines);
+        try self.contents.updateLines(old_start_line, old_end_line, new_start_line, new_end_line);
     }
 
     pub const InsertCharsCb = struct {
