@@ -96,6 +96,8 @@ pub const Window = struct {
 
             try self.lines.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_lines.items);
             try self.line_colors.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_line_colors.items);
+
+            self.end_line = self.start_line + self.lines.items.len -| 1;
         }
 
         fn createLines(win: *Window, start_line: usize, num_of_lines: usize) !struct { ArrayList(Line), ArrayList(LineColors) } {
@@ -358,19 +360,17 @@ pub const Window = struct {
 
         var start_line: usize = self.cursor.line;
         var start_col: usize = self.cursor.col -| 1;
-        var end_line: usize = self.cursor.line;
-        var end_col: usize = self.cursor.col;
+        const end_line: usize = self.cursor.line;
+        const end_col: usize = self.cursor.col;
 
         if (self.cursor.col == 0 and self.cursor.line > 0) {
             start_line = self.cursor.line - 1;
-            start_col = self.cursor.col;
-            end_line = self.cursor.line;
-            end_col = self.contents.lines.items[end_line].len;
+            start_col = self.contents.lines.items[start_line].len;
         }
 
         try self.buf.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
         self.cursor.set(start_line, start_col);
-        try self.contents.updateLines(start_line, start_line, end_line, end_line);
+        try self.contents.updateLines(start_line, end_line, start_line, start_line);
     }
 
     ///////////////////////////// Directional Cursor Movement
