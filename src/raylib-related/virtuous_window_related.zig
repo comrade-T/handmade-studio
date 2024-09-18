@@ -108,7 +108,7 @@ pub fn renderVirtuousWindow(
 
                 .skip_to_new_line => {
                     if (iter.current_line + window.contents.start_line == window.cursor.line and
-                        window.contents.lines[iter.current_line].len == 0 and
+                        window.contents.lines.items[iter.current_line].len == 0 and
                         iter.current_col == 0)
                     {
                         rl.drawRectangle(

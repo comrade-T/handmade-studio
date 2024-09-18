@@ -68,8 +68,8 @@ pub const Window = struct {
     /// The number of lines a Window should hold is still being worked on.
     const Contents = struct {
         window: *Window,
-        lines: []Line,
-        line_colors: []LineColors,
+        lines: ArrayList(Line),
+        line_colors: ArrayList(LineColors),
         start_line: usize,
         end_line: usize,
 
@@ -81,18 +81,20 @@ pub const Window = struct {
 
             // add lines
             const add_lines_zone = ztracy.ZoneNC(@src(), "add lines", 0x00FFFF);
-            var lines = try win.exa.alloc(Line, num_of_lines);
-            for (start_line..start_line + num_of_lines, 0..) |linenr, i| {
-                lines[i] = try win.buf.roperoot.getLineEx(win.exa, linenr);
+            var lines = try ArrayList(Line).initCapacity(win.exa, num_of_lines);
+            for (start_line..start_line + num_of_lines) |linenr| {
+                const line = try win.buf.roperoot.getLineEx(win.exa, linenr);
+                try lines.append(line);
             }
             add_lines_zone.End();
 
             // add default color
             const add_default_color_zone = ztracy.ZoneNC(@src(), "add default color", 0x00FFAA);
-            var line_colors = try win.exa.alloc(LineColors, num_of_lines);
-            for (lines, 0..) |line, i| {
-                line_colors[i] = try win.exa.alloc(u32, line.len);
-                @memset(line_colors[i], 0xF5F5F5F5);
+            var line_colors = try ArrayList(LineColors).initCapacity(win.exa, num_of_lines);
+            for (lines.items) |line| {
+                const colors = try win.exa.alloc(u32, line.len);
+                @memset(colors, 0xF5F5F5F5);
+                try line_colors.append(colors);
             }
             add_default_color_zone.End();
 
@@ -119,8 +121,8 @@ pub const Window = struct {
                         for (node_start.row..node_end.row + 1) |linenr| {
                             const line_index = linenr - start_line;
                             const start_col = if (linenr == node_start.row) node_start.column else 0;
-                            const end_col = if (linenr == node_end.row) node_end.column else lines[line_index].len;
-                            @memset(line_colors[line_index][start_col..end_col], color);
+                            const end_col = if (linenr == node_end.row) node_end.column else lines.items[line_index].len;
+                            @memset(line_colors.items[line_index][start_col..end_col], color);
                         }
                     }
                 }
@@ -136,10 +138,10 @@ pub const Window = struct {
         }
 
         fn destroy(self: *@This()) void {
-            for (self.lines) |line| self.window.exa.free(line);
-            for (self.line_colors) |lc| self.window.exa.free(lc);
-            self.window.exa.free(self.lines);
-            self.window.exa.free(self.line_colors);
+            for (self.lines.items) |line| self.window.exa.free(line);
+            for (self.line_colors.items) |lc| self.window.exa.free(lc);
+            self.lines.deinit();
+            self.line_colors.deinit();
         }
     };
 
@@ -192,7 +194,7 @@ pub const Window = struct {
 
     pub fn getWidth(self: *const @This(), font_data: FontData, index_map: FontDataIndexMap) f32 {
         var win_width: f32 = 0;
-        for (self.contents.lines) |line| {
+        for (self.contents.lines.items) |line| {
             var line_width: f32 = 0;
             for (line) |char| {
                 var cp_iter = _buf_mod.code_point.Iterator{ .bytes = char };
@@ -208,7 +210,7 @@ pub const Window = struct {
     }
 
     pub fn getHeight(self: *const @This()) f32 {
-        return @as(f32, @floatFromInt(self.contents.lines.len)) * self.getLineHeight();
+        return @as(f32, @floatFromInt(self.contents.lines.items.len)) * self.getLineHeight();
     }
 
     fn getLineHeight(self: *const @This()) f32 {
@@ -360,7 +362,7 @@ pub const Window = struct {
         if (cursor.line < self.contents.start_line) cursor.line = self.contents.start_line;
         if (cursor.line > self.contents.end_line) cursor.line = self.contents.end_line;
         const current_line_index = cursor.line - self.contents.start_line;
-        const current_line = self.contents.lines[current_line_index];
+        const current_line = self.contents.lines.items[current_line_index];
         if (current_line.len == 0) cursor.col = 0;
 
         const offset: usize = if (self.is_in_AFTER_insert_mode) 0 else 1;
@@ -370,12 +372,12 @@ pub const Window = struct {
     ///////////////////////////// Vim Cursor Movement
 
     pub fn vimBackwards(self: *@This(), boundary_type: _nc.WordBoundaryType, cursor: *Cursor) void {
-        const line, const col = _nc.backwardsByWord(boundary_type, self.contents.lines, cursor.line, cursor.col);
+        const line, const col = _nc.backwardsByWord(boundary_type, self.contents.lines.items, cursor.line, cursor.col);
         cursor.set(line, col);
     }
 
     pub fn vimForward(self: *@This(), boundary_type: _nc.WordBoundaryType, cursor: *Cursor) void {
-        const line, const col = _nc.forwardByWord(boundary_type, self.contents.lines, cursor.line, cursor.col);
+        const line, const col = _nc.forwardByWord(boundary_type, self.contents.lines.items, cursor.line, cursor.col);
         cursor.set(line, col);
     }
 
@@ -470,7 +472,7 @@ pub const Window = struct {
             if (self.currentColOutOfBounds()) return self.advanceToNextLine();
 
             // get code point
-            const char = self.win.contents.lines[self.current_line][self.current_col];
+            const char = self.win.contents.lines.items[self.current_line][self.current_col];
             var cp_iter = _buf_mod.code_point.Iterator{ .bytes = char };
             const cp_i32: i32 = @intCast(cp_iter.next().?.code);
 
@@ -487,7 +489,7 @@ pub const Window = struct {
 
             return .{ .code_point = CodePoint{
                 .value = cp_i32,
-                .color = self.win.contents.line_colors[self.current_line][self.current_col],
+                .color = self.win.contents.line_colors.items[self.current_line][self.current_col],
                 .x = self.current_x,
                 .y = self.current_y,
                 .char_width = char_width,
@@ -496,11 +498,11 @@ pub const Window = struct {
         }
 
         fn currentColOutOfBounds(self: *@This()) bool {
-            return self.current_col >= self.win.contents.lines[self.current_line].len;
+            return self.current_col >= self.win.contents.lines.items[self.current_line].len;
         }
 
         fn currentLineOutOfBounds(self: *@This()) bool {
-            return self.current_line >= self.win.contents.lines.len;
+            return self.current_line >= self.win.contents.lines.items.len;
         }
 
         fn advanceToNextLine(self: *@This()) IterResult {
