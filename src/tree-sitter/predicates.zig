@@ -125,7 +125,7 @@ pub const PredicatesFilter = struct {
             const node_contents = content_callback(ctx, node.getStartByte(), node.getEndByte(), &buf, buf_size);
 
             const predicates = self.patterns[match.pattern_index];
-            for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
+            for (predicates) |predicate| if (!predicate.eval(node_contents)) return false;
         }
         return true;
     }
@@ -144,7 +144,7 @@ pub const PredicatesFilter = struct {
             const node = cap.node;
             const node_contents = source[node.getStartByte()..node.getEndByte()];
             const predicates = self.patterns[match.pattern_index];
-            for (predicates) |predicate| if (!predicate.eval(self.a, node_contents)) return false;
+            for (predicates) |predicate| if (!predicate.eval(node_contents)) return false;
         }
         return true;
     }
@@ -232,12 +232,12 @@ pub const PredicatesFilter = struct {
 
     const MatchPredicate = struct {
         capture: []const u8,
-        regex_pattern: []const u8,
+        regex: *Regex,
         variant: MatchPredicateVariant,
 
         const MatchPredicateVariant = enum { match, not_match };
 
-        fn create(query: *const Query, steps: []const PredicateStep, variant: MatchPredicateVariant) PredicateError!Predicate {
+        fn create(a: Allocator, query: *const Query, steps: []const PredicateStep, variant: MatchPredicateVariant) PredicateError!Predicate {
             if (steps.len != 4) {
                 std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
                 return PredicateError.InvalidAmountOfSteps;
@@ -250,22 +250,24 @@ pub const PredicatesFilter = struct {
                 std.log.err("Second argument of #match? predicate must be type .string, got {any}", .{steps[2].type});
                 return PredicateError.InvalidArgument;
             }
+
+            const regex = try a.create(Regex);
+            regex.* = Regex.compile(a, query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)))) catch return PredicateError.RegexCompileError;
+
             return Predicate{
                 .match = MatchPredicate{
                     .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
-                    .regex_pattern = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                    .regex = regex,
                     .variant = variant,
                 },
             };
         }
 
-        fn eval(self: *const MatchPredicate, a: Allocator, source: []const u8) bool {
+        fn eval(self: *const MatchPredicate, source: []const u8) bool {
             const zone = ztracy.ZoneNC(@src(), "MatchPredicate", 0xFF000F);
             defer zone.End();
 
-            var re = Regex.compile(a, self.regex_pattern) catch return false;
-            defer re.deinit();
-            const result = re.match(source) catch return false;
+            const result = self.regex.match(source) catch return false;
             return switch (self.variant) {
                 .match => result,
                 .not_match => !result,
@@ -273,7 +275,7 @@ pub const PredicatesFilter = struct {
         }
     };
 
-    const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown };
+    const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError };
     const Predicate = union(enum) {
         eq: EqPredicate,
         any_of: AnyOfPredicate,
@@ -295,19 +297,19 @@ pub const PredicatesFilter = struct {
             if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps, .eq);
             if (eql(u8, name, "not-eq?")) return EqPredicate.create(query, steps, .not_eq);
             if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
-            if (eql(u8, name, "match?")) return MatchPredicate.create(query, steps, .match);
-            if (eql(u8, name, "not-match?")) return MatchPredicate.create(query, steps, .not_match);
+            if (eql(u8, name, "match?")) return MatchPredicate.create(a, query, steps, .match);
+            if (eql(u8, name, "not-match?")) return MatchPredicate.create(a, query, steps, .not_match);
             return Predicate{ .unsupported = .unsupported };
         }
 
-        fn eval(self: *const Predicate, a: Allocator, source: []const u8) bool {
+        fn eval(self: *const Predicate, source: []const u8) bool {
             const zone = ztracy.ZoneNC(@src(), "Predicate.eval()", 0x00AA00);
             defer zone.End();
 
             return switch (self.*) {
                 .eq => self.eq.eval(source),
                 .any_of => self.any_of.eval(source),
-                .match => self.match.eval(a, source),
+                .match => self.match.eval(source),
                 .unsupported => true,
             };
         }
