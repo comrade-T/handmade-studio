@@ -214,9 +214,26 @@ pub fn main() !void {
         .contexts_to_remove = &.{"normal"},
     } });
 
+    try council.map("normal", &[_]Key{ .left_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .after_trigger = .{
+        .contexts_to_add = &.{"insert"},
+        .contexts_to_remove = &.{"normal"},
+    } });
+    try council.map("normal", &[_]Key{ .left_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .after_trigger = .{
+        .contexts_to_add = &.{"insert"},
+        .contexts_to_remove = &.{"normal"},
+    } });
+    try council.map("normal", &[_]Key{ .right_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .after_trigger = .{
+        .contexts_to_add = &.{"insert"},
+        .contexts_to_remove = &.{"normal"},
+    } });
+    try council.map("normal", &[_]Key{ .right_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .after_trigger = .{
+        .contexts_to_add = &.{"insert"},
+        .contexts_to_remove = &.{"normal"},
+    } });
+
     try window.mapInsertModeCharacters(council);
 
-    try council.map("insert", &[_]Key{.escape}, .{ .f = Window.escapeInsertMode, .ctx = window, .after_trigger = .{
+    try council.map("insert", &[_]Key{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .after_trigger = .{
         .contexts_to_add = &.{"normal"},
         .contexts_to_remove = &.{"insert"},
     } });

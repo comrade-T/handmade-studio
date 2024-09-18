@@ -331,7 +331,7 @@ pub const Window = struct {
         }
     }
 
-    ///////////////////////////// Escape Insert Mode
+    ///////////////////////////// Enter / Exit Insert Mode
 
     pub fn enterAFTERInsertMode(ctx: *anyopaque) !void {
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -339,10 +339,15 @@ pub const Window = struct {
         try moveCursorRight(self);
     }
 
-    pub fn escapeInsertMode(ctx: *anyopaque) !void {
+    pub fn exitInsertMode(ctx: *anyopaque) !void {
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
         self.is_in_AFTER_insert_mode = false;
         try moveCursorLeft(self);
+    }
+
+    pub fn capitalA(ctx: *anyopaque) !void {
+        try moveCursorToEndOfLine(ctx);
+        try enterAFTERInsertMode(ctx);
     }
 
     ///////////////////////////// Directional Cursor Movement
