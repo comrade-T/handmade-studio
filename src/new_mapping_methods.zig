@@ -185,6 +185,13 @@ pub fn main() !void {
     try council.map("normal", &[_]Key{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
     try council.map("normal", &[_]Key{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
     try council.map("normal", &[_]Key{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+
+    try council.map("normal", &[_]Key{.zero}, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window });
+    try council.map("normal", &[_]Key{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
+    try council.map("normal", &[_]Key{ .right_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
+    try council.map("normal", &[_]Key{ .left_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &[_]Key{ .right_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+
     try council.map("normal", &[_]Key{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
         .contexts_to_remove = &.{"normal"},
         .contexts_to_add = &.{"dummy"},

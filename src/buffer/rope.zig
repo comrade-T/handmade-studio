@@ -383,6 +383,9 @@ pub const Node = union(enum) {
         var ctx = GetRangeCtx{ .start_byte = start_byte, .end_byte = end_byte, .buf = buf, .buf_size = buf_size };
         const walk_result = ctx.walk(self);
         if (walk_result.err) |err| return err;
+
+        zone.Text(ctx.buf[0..ctx.bytes_written]);
+
         return ctx.buf[0..ctx.bytes_written];
     }
     test getRange {
@@ -434,6 +437,9 @@ pub const Node = union(enum) {
 
     /// Walk to Leaf at `start_byte`, write Leaf contents until reaches `eol` to given []u8 buffer or until it's full.
     pub fn getRestOfLine(self: *const Node, start_byte: usize, buf: []u8, buf_size: usize) struct { []u8, bool } {
+        const zone = ztracy.ZoneNC(@src(), "Rope.getRestOfLine()", 0x33AA33);
+        defer zone.End();
+
         const GetRestOfLineCtx = struct {
             start_byte: usize,
             buf: []u8,
@@ -503,6 +509,9 @@ pub const Node = union(enum) {
         var ctx = GetRestOfLineCtx{ .start_byte = start_byte, .buf = buf, .buf_size = buf_size };
         const walk_result = ctx.walk(self);
         if (walk_result.err) |_| @panic("Node.getRestOfLine() shouldn't return any errors!");
+
+        zone.Text(ctx.buf[0..ctx.bytes_written]);
+
         return .{ ctx.buf[0..ctx.bytes_written], ctx.found_eol and !ctx.buffer_overflowed };
     }
     test getRestOfLine {

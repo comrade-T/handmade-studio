@@ -427,7 +427,7 @@ fn foundTargetBoundary(line: Line, colnr: usize, boundary_type: WordBoundaryType
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn isSpace(c: u21) bool {
+pub fn isSpace(c: u21) bool {
     return switch (c) {
         ' ' => true,
         '\t' => true,

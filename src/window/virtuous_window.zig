@@ -347,6 +347,26 @@ pub const Window = struct {
 
     ///////////////////////////// Directional Cursor Movement
 
+    pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.col = 0;
+    }
+
+    pub fn moveCursorToFirstNonBlankChar(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.col = 0;
+        if (self.contents.lines.items[self.cursor.line].len == 0) return;
+        const first_char = self.contents.lines.items[self.cursor.line][0];
+        if (!_nc.isSpace(first_char)) return;
+        try vimForwardStart(self);
+    }
+
+    pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.cursor.col = self.contents.lines.items[self.cursor.line].len;
+        self.restrictCursorInView(&self.cursor);
+    }
+
     pub fn moveCursorLeft(ctx: *anyopaque) !void {
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
         self.cursor.col -|= 1;

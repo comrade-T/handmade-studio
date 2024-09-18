@@ -26,6 +26,9 @@ pub const Buffer = struct {
     tstree: ?*ts.Tree = null,
 
     pub fn create(external_allocator: Allocator, from: enum { string, file }, source: []const u8) !*@This() {
+        const zone = ztracy.ZoneNC(@src(), "Buffer.create()", 0xFFAAFF);
+        defer zone.End();
+
         var self = try external_allocator.create(@This());
         self.* = .{
             .exa = external_allocator,
@@ -284,6 +287,9 @@ pub const Buffer = struct {
     const PARSE_BUFFER_SIZE = 1024;
 
     fn parse(self: *@This()) !void {
+        const zone = ztracy.ZoneNC(@src(), "Buffer.parse()", 0xFFFFFF);
+        defer zone.End();
+
         if (self.tsparser == null) @panic("parse() is called on a Buffer with no parser!");
 
         const may_old_tree = self.tstree;
