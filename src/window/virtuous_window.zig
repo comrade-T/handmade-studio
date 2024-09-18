@@ -84,6 +84,29 @@ pub const Window = struct {
             };
         }
 
+        fn updateLinesTS(self: *@This(), ranges: []const ts.Range) !void {
+            for (ranges) |range| {
+                const old_start_line: usize = @intCast(range.start_point.row);
+                const old_end_line: usize = @intCast(range.end_point.row);
+                const new_start_line: usize = @intCast(range.start_point.row);
+                const num_of_lines: usize = @intCast(range.end_point.row - range.start_point.row + 1);
+
+                var new_lines, var new_line_colors = try createLines(self.window, new_start_line, num_of_lines);
+                defer new_lines.deinit();
+                defer new_line_colors.deinit();
+
+                for (old_start_line..old_end_line + 1) |i| {
+                    self.window.exa.free(self.lines.items[i]);
+                    self.window.exa.free(self.line_colors.items[i]);
+                }
+
+                try self.lines.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_lines.items);
+                try self.line_colors.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_line_colors.items);
+            }
+
+            self.end_line = self.start_line + self.lines.items.len -| 1;
+        }
+
         fn updateLines(self: *@This(), old_start_line: usize, old_end_line: usize, new_start_line: usize, new_end_line: usize) !void {
             var new_lines, var new_line_colors = try createLines(self.window, new_start_line, new_end_line -| new_start_line + 1);
             defer new_lines.deinit();
@@ -149,6 +172,7 @@ pub const Window = struct {
                             if (line_index >= lines.items.len) continue;
                             const start_col = if (linenr == node_start.row) node_start.column else 0;
                             const end_col = if (linenr == node_end.row) node_end.column else lines.items[line_index].len;
+                            if (start_col >= line_colors.items[line_index].len or end_col >= line_colors.items[line_index].len) continue;
                             @memset(line_colors.items[line_index][start_col..end_col], color);
                         }
                     }
@@ -253,13 +277,16 @@ pub const Window = struct {
         const old_end_line = self.cursor.line;
 
         const zone2 = ztracy.ZoneNC(@src(), "self.buf.insertChars & set cursor()", 0xFFAAFF);
-        const line, const col = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
-        self.cursor.set(line, col);
-        const new_start_line = line;
-        const new_end_line = line;
+        const new_pos, const may_ranges = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+        self.cursor.set(new_pos.line, new_pos.col);
         zone2.End();
 
-        try self.contents.updateLines(old_start_line, old_end_line, new_start_line, new_end_line);
+        if (may_ranges) |ranges| {
+            try self.contents.updateLinesTS(ranges);
+            return;
+        }
+
+        try self.contents.updateLines(old_start_line, old_end_line, old_start_line, new_pos.line);
     }
 
     pub const InsertCharsCb = struct {
@@ -368,8 +395,14 @@ pub const Window = struct {
             start_col = self.contents.lines.items[start_line].len;
         }
 
-        try self.buf.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
+        const may_ranges = try self.buf.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
         self.cursor.set(start_line, start_col);
+
+        if (may_ranges) |ranges| {
+            try self.contents.updateLinesTS(ranges);
+            return;
+        }
+
         try self.contents.updateLines(start_line, end_line, start_line, start_line);
     }
 

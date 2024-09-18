@@ -56,7 +56,8 @@ pub const Buffer = struct {
 
     ///////////////////////////// Insert
 
-    pub fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { usize, usize } {
+    const NewCursorPosition = struct { line: usize, col: usize };
+    pub fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { NewCursorPosition, ?[]const ts.Range } {
         const zone = ztracy.ZoneNC(@src(), "Buffer.insertChars()", 0xFFFFFF);
         defer zone.End();
 
@@ -70,7 +71,7 @@ pub const Buffer = struct {
         var new_col = last_new_leaf_noc;
         if (num_of_new_lines == 0) new_col = col + last_new_leaf_noc;
 
-        if (self.tstree == null) return .{ line + num_of_new_lines, new_col };
+        if (self.tstree == null) return .{ NewCursorPosition{ .line = line + num_of_new_lines, .col = new_col }, null };
 
         const old_end_byte = start_byte; // since it's insert operation, not delete or replace.
         const old_end_point = start_point;
@@ -87,9 +88,8 @@ pub const Buffer = struct {
             .new_end_point = new_end_point,
         };
         self.tstree.?.edit(&edit);
-        try self.parse();
-
-        return .{ line + num_of_new_lines, new_col };
+        const ranges = try self.parse();
+        return .{ NewCursorPosition{ .line = line + num_of_new_lines, .col = new_col }, ranges };
     }
     test insertChars {
         // Insert only
@@ -98,9 +98,9 @@ pub const Buffer = struct {
                 const buf = try Buffer.create(testing_allocator, .string, "const str =;");
                 defer buf.destroy();
                 {
-                    const new_line, const new_col = try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
-                    try eq(3, new_line);
-                    try eq(0, new_col);
+                    const new_pos, _ = try buf.insertChars("\n    \\\\hello\n    \\\\world\n", 0, 11);
+                    try eq(3, new_pos.line);
+                    try eq(0, new_pos.col);
                     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                     try eqStr(
                         \\const str =
@@ -110,9 +110,9 @@ pub const Buffer = struct {
                     , content.items);
                 }
                 {
-                    const new_line, const new_col = try buf.insertChars(" my", 1, 11);
-                    try eq(1, new_line);
-                    try eq(14, new_col);
+                    const new_pos, _ = try buf.insertChars(" my", 1, 11);
+                    try eq(1, new_pos.line);
+                    try eq(14, new_pos.col);
                     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                     try eqStr(
                         \\const str =
@@ -122,10 +122,10 @@ pub const Buffer = struct {
                     , content.items);
                 }
                 {
-                    const new_line, const new_col = try buf.insertChars("!", 2, 11);
+                    const new_pos, _ = try buf.insertChars("!", 2, 11);
                     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
-                    try eq(2, new_line);
-                    try eq(12, new_col);
+                    try eq(2, new_pos.line);
+                    try eq(12, new_pos.col);
                     try eqStr(
                         \\const str =
                         \\    \\hello my
@@ -144,9 +144,9 @@ pub const Buffer = struct {
                 defer buf.destroy();
                 try buf.initiateTreeSitter(langsuite);
                 {
-                    const new_line, const new_col = try buf.insertChars(" std", 0, 5);
-                    try eq(0, new_line);
-                    try eq(9, new_col);
+                    const new_pos, _ = try buf.insertChars(" std", 0, 5);
+                    try eq(0, new_pos.line);
+                    try eq(9, new_pos.col);
                     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                     try eqStr("const std", content.items);
                     try eqStr(
@@ -164,9 +164,9 @@ pub const Buffer = struct {
                 defer buf.destroy();
                 try buf.initiateTreeSitter(langsuite);
                 {
-                    const new_line, const new_col = try buf.insertChars("\n", 0, 5);
-                    try eq(1, new_line);
-                    try eq(0, new_col);
+                    const new_pos, _ = try buf.insertChars("\n", 0, 5);
+                    try eq(1, new_pos.line);
+                    try eq(0, new_pos.col);
                     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                     try eqStr(
                         \\const
@@ -174,9 +174,9 @@ pub const Buffer = struct {
                     , content.items);
                 }
                 {
-                    const new_line, const new_col = try buf.insertChars("\n", 1, 0);
-                    try eq(2, new_line);
-                    try eq(0, new_col);
+                    const new_pos, _ = try buf.insertChars("\n", 1, 0);
+                    try eq(2, new_pos.line);
+                    try eq(0, new_pos.col);
                     const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                     try eqStr(
                         \\const
@@ -190,8 +190,8 @@ pub const Buffer = struct {
 
     ///////////////////////////// Delete
 
-    pub fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
-        if (a[0] == b[0] and a[1] == b[1]) return;
+    pub fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !?[]const ts.Range {
+        if (a[0] == b[0] and a[1] == b[1]) return null;
 
         const offset_a = try self.roperoot.getByteOffsetOfPosition(a[0], a[1]);
         const offset_b = try self.roperoot.getByteOffsetOfPosition(b[0], b[1]);
@@ -205,7 +205,7 @@ pub const Buffer = struct {
 
         self.roperoot = try self.roperoot.deleteBytes(self.rope_arena.allocator(), start_byte, old_end_byte - start_byte);
 
-        if (self.tstree == null) return;
+        if (self.tstree == null) return null;
         {
             var start_point = ts.Point{ .row = @intCast(a[0]), .column = @intCast(a[1]) };
             var old_end_point = ts.Point{ .row = @intCast(b[0]), .column = @intCast(b[1]) };
@@ -226,8 +226,10 @@ pub const Buffer = struct {
                 .new_end_point = new_end_point,
             };
             self.tstree.?.edit(&edit);
-            try self.parse();
+            return try self.parse();
         }
+
+        return null;
     }
     test deleteRange {
         const langsuite = try sitter.LangSuite.create(.zig);
@@ -235,14 +237,14 @@ pub const Buffer = struct {
             {
                 var buf = try Buffer.create(testing_allocator, .string, "const");
                 defer buf.destroy();
-                try buf.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+                _ = try buf.deleteRange(.{ 0, 0 }, .{ 0, 1 });
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr("onst", content.items);
             }
             {
                 var buf = try Buffer.create(testing_allocator, .string, "var\nc");
                 defer buf.destroy();
-                try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
+                _ = try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr("var\n", content.items);
             }
@@ -261,7 +263,7 @@ pub const Buffer = struct {
                     \\      ";"
                 , try buf.tstree.?.getRootNode().debugPrint());
 
-                try buf.deleteRange(.{ 0, 5 }, .{ 0, 9 });
+                _ = try buf.deleteRange(.{ 0, 5 }, .{ 0, 9 });
 
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr("const", content.items);
@@ -275,7 +277,7 @@ pub const Buffer = struct {
                 var buf = try Buffer.create(testing_allocator, .string, "var\nc");
                 defer buf.destroy();
                 try buf.initiateTreeSitter(langsuite);
-                try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
+                _ = try buf.deleteRange(.{ 1, 0 }, .{ 1, 1 });
                 const content = try buf.roperoot.getContent(buf.rope_arena.allocator());
                 try eqStr("var\n", content.items);
             }
@@ -286,7 +288,7 @@ pub const Buffer = struct {
 
     const PARSE_BUFFER_SIZE = 1024;
 
-    fn parse(self: *@This()) !void {
+    fn parse(self: *@This()) !?[]const ts.Range {
         const zone = ztracy.ZoneNC(@src(), "Buffer.parse()", 0xFFFFFF);
         defer zone.End();
 
@@ -313,6 +315,9 @@ pub const Buffer = struct {
             .encoding = .utf_8,
         };
         self.tstree = try self.tsparser.?.parse(self.tstree, input);
+
+        if (may_old_tree) |old_tree| return old_tree.getChangedRanges(self.tstree.?);
+        return null;
     }
     test parse {
         const langsuite = try sitter.LangSuite.create(.zig);
@@ -348,7 +353,7 @@ pub const Buffer = struct {
     pub fn initiateTreeSitter(self: *@This(), langsuite: sitter.LangSuite) !void {
         self.langsuite = langsuite;
         self.tsparser = try self.langsuite.?.newParser();
-        try self.parse();
+        _ = try self.parse();
     }
 
     ///////////////////////////// Content Callback for PredicatesFilter
