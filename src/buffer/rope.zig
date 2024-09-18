@@ -999,6 +999,8 @@ pub const Node = union(enum) {
 
             leaves_encountered: usize = 0,
             first_leaf_bol: ?bool = null,
+            last_node: ?*const Node = null,
+            last_node_with_new_line_removed: ?*const Node = null,
 
             start_byte: usize,
             num_of_bytes_to_delete: usize,
@@ -1024,12 +1026,13 @@ pub const Node = union(enum) {
 
                         return WalkMutResult.merge(allocator, branch, left_result, right_result);
                     },
-                    .leaf => |leaf| return cx.walker(&leaf) catch |err| return .{ .err = err },
+                    .leaf => |leaf| return cx.walker(&leaf, node) catch |err| return .{ .err = err },
                 }
             }
 
-            fn walker(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
+            fn walker(cx: *@This(), leaf: *const Leaf, node: ?*const Node) !WalkMutResult {
                 defer cx.leaves_encountered += 1;
+                defer cx.last_node = node;
 
                 const leaf_outside_delete_range = cx.current_index.* >= cx.end_byte;
                 if (leaf_outside_delete_range) return try _amendBol(cx, leaf);
@@ -1044,13 +1047,17 @@ pub const Node = union(enum) {
                 const leaf_covers_delete = start_in_leaf and end_in_leaf;
 
                 if (leaf_covers_delete) return try _trimmedLeftAndTrimmedRight(cx, leaf);
-                if (start_in_leaf) return try _leftSide(cx, leaf);
+                if (start_in_leaf) return try _leftSide(cx, leaf, node.?);
                 if (end_in_leaf) return try _rightSide(cx, leaf);
 
                 unreachable;
             }
 
             fn _amendBol(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
+                if (cx.last_node == cx.last_node_with_new_line_removed) {
+                    const replace = try Leaf.new(cx.a, leaf.buf, false, leaf.eol);
+                    return WalkMutResult{ .replace = replace };
+                }
                 if (cx.first_leaf_bol) |bol| {
                     const replace = try Leaf.new(cx.a, leaf.buf, bol, leaf.eol);
                     return WalkMutResult{ .replace = replace };
@@ -1091,20 +1098,25 @@ pub const Node = union(enum) {
                 return WalkMutResult{ .replace = replace };
             }
 
-            fn _leftSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
+            fn _leftSide(cx: *@This(), leaf: *const Leaf, node: *const Node) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index.*;
                 const left_side_content = leaf.buf[0..split_index];
                 const left_eol = if (left_side_content.len == leaf.buf.len) false else leaf.eol;
                 const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, left_eol);
                 cx.bytes_deleted += leaf.buf.len - left_side_content.len;
-                if (left_side_content.len == leaf.buf.len) cx.bytes_deleted += 1;
+                if (left_side_content.len == leaf.buf.len and leaf.eol) {
+                    cx.bytes_deleted += 1;
+                    cx.last_node = node;
+                    cx.last_node_with_new_line_removed = node;
+                }
                 return WalkMutResult{ .replace = left_side };
             }
 
             fn _rightSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
+                const bol = if (cx.last_node_with_new_line_removed != null) false else leaf.bol;
                 const bytes_left_to_delete = cx.num_of_bytes_to_delete - cx.bytes_deleted;
                 const right_side_content = leaf.buf[bytes_left_to_delete..];
-                const right_side = try Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol);
+                const right_side = try Leaf.new(cx.a, right_side_content, bol, leaf.eol);
                 return WalkMutResult{ .replace = right_side };
             }
         };
@@ -1270,11 +1282,12 @@ pub const Node = union(enum) {
                 \\  1 B| `World!`
             ;
             try eqStr(root_debug_str, try root.debugPrint());
+
             const new_root = try root.deleteBytes(a, 5, 1);
             const new_root_debug_str =
-                \\2 2/11/11
+                \\2 1/11/11
                 \\  1 B| `Hello`
-                \\  1 B| `World!`
+                \\  1 `World!`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
@@ -1291,10 +1304,10 @@ pub const Node = union(enum) {
             {
                 const new_root = try root.deleteBytes(a, 5, 1);
                 const new_root_debug_str =
-                    \\3 3/15/14
+                    \\3 2/15/14
                     \\  1 B| `Hello`
-                    \\  2 2/10/9
-                    \\    1 B| `from` |E
+                    \\  2 1/10/9
+                    \\    1 `from` |E
                     \\    1 B| `Earth`
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
@@ -1302,10 +1315,10 @@ pub const Node = union(enum) {
             {
                 const new_root = try root.deleteBytes(a, 5, 2);
                 const new_root_debug_str =
-                    \\3 3/14/13
+                    \\3 2/14/13
                     \\  1 B| `Hello`
-                    \\  2 2/9/8
-                    \\    1 B| `rom` |E
+                    \\  2 1/9/8
+                    \\    1 `rom` |E
                     \\    1 B| `Earth`
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
@@ -1313,10 +1326,10 @@ pub const Node = union(enum) {
             {
                 const new_root = try root.deleteBytes(a, 5, 3);
                 const new_root_debug_str =
-                    \\3 3/13/12
+                    \\3 2/13/12
                     \\  1 B| `Hello`
-                    \\  2 2/8/7
-                    \\    1 B| `om` |E
+                    \\  2 1/8/7
+                    \\    1 `om` |E
                     \\    1 B| `Earth`
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
@@ -1324,10 +1337,10 @@ pub const Node = union(enum) {
             {
                 const new_root = try root.deleteBytes(a, 5, 4);
                 const new_root_debug_str =
-                    \\3 3/12/11
+                    \\3 2/12/11
                     \\  1 B| `Hello`
-                    \\  2 2/7/6
-                    \\    1 B| `m` |E
+                    \\  2 1/7/6
+                    \\    1 `m` |E
                     \\    1 B| `Earth`
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
