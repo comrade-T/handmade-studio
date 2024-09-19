@@ -167,7 +167,7 @@ pub const Window = struct {
 
     ///////////////////////////// VisibleRegion
 
-    const VisibleRegion = struct {
+    pub const VisibleRegion = struct {
         const CodePointLine = struct {
             code_points: ArrayList(CodePointIterator.CodePoint),
             y: f32,
@@ -185,7 +185,7 @@ pub const Window = struct {
                 .lines = ArrayList(CodePointLine).init(a),
             };
             var iter = self.win.codePointIter(font_data, index_map, screen);
-            self.process(&iter);
+            try self.process(&iter);
             return self;
         }
 
@@ -201,7 +201,7 @@ pub const Window = struct {
                             });
                             reached_first_char = true;
                         }
-                        self.lines.items[self.lines.items.len - 1].code_points.append(cp);
+                        try self.lines.items[self.lines.items.len - 1].code_points.append(cp);
                     },
                     .skip_to_new_line => |line_y| {
                         reached_first_char = true;
@@ -658,7 +658,7 @@ pub const Window = struct {
         }
     };
 
-    pub fn codePointIter(self: *@This(), font_data: FontData, index_map: FontDataIndexMap, screen: CodePointIterator.Screen) CodePointIterator {
+    pub fn codePointIter(self: *const @This(), font_data: FontData, index_map: FontDataIndexMap, screen: CodePointIterator.Screen) CodePointIterator {
         return CodePointIterator.create(self, font_data, index_map, screen);
     }
 };

@@ -281,6 +281,7 @@ pub fn main() !void {
 
                 // rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
 
+                // try vwr.renderVirtuousWindow2(gpa, window, font, font_size, font_data, font_data_index_map, screen_view);
                 vwr.renderVirtuousWindow(window, font, font_size, font_data, font_data_index_map, screen_view);
             }
 

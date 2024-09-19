@@ -53,6 +53,38 @@ pub const ScreenView = struct {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub fn renderVirtuousWindow2(
+    a: Allocator,
+    window: *_vw.Window,
+    font: rl.Font,
+    font_size: i32,
+    font_data: _vw.FontData,
+    font_data_index_map: _vw.FontDataIndexMap,
+    view: ScreenView,
+) !void {
+    {
+        var the_thing = try _vw.Window.VisibleRegion.init(a, window, font_data, font_data_index_map, .{
+            .start_x = view.start.x,
+            .start_y = view.start.y,
+            .end_x = view.end.x,
+            .end_y = view.end.y,
+        });
+        defer the_thing.deinit();
+
+        for (the_thing.lines.items) |line| {
+            for (line.code_points.items) |char| {
+                rl.drawTextCodepoint(
+                    font,
+                    char.value,
+                    .{ .x = char.x, .y = char.y },
+                    @floatFromInt(font_size),
+                    rl.Color.fromInt(char.color),
+                );
+            }
+        }
+    }
+}
+
 pub fn renderVirtuousWindow(
     window: *_vw.Window,
     font: rl.Font,
