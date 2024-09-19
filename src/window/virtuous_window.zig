@@ -56,8 +56,6 @@ pub const Window = struct {
         offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
     };
 
-    /// A slice of `[]const u8` values. Each `[]const u8` represents a single character,
-    /// regardless of its byte length.
     const Line = []u21;
 
     /// A slice of `u32` values. Each `u32` represents an RGBA color.
@@ -166,6 +164,65 @@ pub const Window = struct {
             self.line_colors.deinit();
         }
     };
+
+    ///////////////////////////// VisibleRegion
+
+    const VisibleRegion = struct {
+        const CodePointLine = struct {
+            code_points: ArrayList(CodePointIterator.CodePoint),
+            y: f32,
+        };
+
+        a: Allocator,
+        win: *const Window,
+        lines: ArrayList(CodePointLine),
+
+        pub fn init(a: Allocator, win: *const Window, font_data: FontData, index_map: FontDataIndexMap, screen: CodePointIterator.Screen) !*@This() {
+            const self = try a.create(@This());
+            self.* = .{
+                .a = a,
+                .win = win,
+                .lines = ArrayList(CodePointLine).init(a),
+            };
+            var iter = self.win.codePointIter(font_data, index_map, screen);
+            self.process(&iter);
+            return self;
+        }
+
+        fn process(self: *@This(), iter: *CodePointIterator) !void {
+            var reached_first_char = false;
+            while (iter.next()) |result| {
+                switch (result) {
+                    .code_point => |cp| {
+                        if (!reached_first_char) {
+                            try self.lines.append(CodePointLine{
+                                .y = cp.y,
+                                .code_points = ArrayList(CodePointIterator.CodePoint).init(self.a),
+                            });
+                            reached_first_char = true;
+                        }
+                        self.lines.items[self.lines.items.len - 1].code_points.append(cp);
+                    },
+                    .skip_to_new_line => |line_y| {
+                        reached_first_char = true;
+                        try self.lines.append(CodePointLine{
+                            .y = line_y,
+                            .code_points = ArrayList(CodePointIterator.CodePoint).init(self.a),
+                        });
+                    },
+                    .skip_this_char => continue,
+                }
+            }
+        }
+
+        pub fn deinit(self: *@This()) void {
+            for (self.lines.items) |line| line.code_points.deinit();
+            self.lines.deinit();
+            self.a.destroy(self);
+        }
+    };
+
+    ///////////////////////////// Spawn Window
 
     pub const SpawnOptions = struct {
         font_size: i32,
@@ -494,7 +551,7 @@ pub const Window = struct {
 
         const IterResult = union(enum) {
             code_point: CodePoint,
-            skip_to_new_line,
+            skip_to_new_line: f32,
             skip_this_char,
         };
 
@@ -595,8 +652,9 @@ pub const Window = struct {
             self.current_col = 0;
             self.current_x = self.win.x;
             if (self.win.bounded) self.current_x -= self.win.bounds.offset.x;
-            self.current_y += self.win.getLineHeight();
-            return .skip_to_new_line;
+            const line_y = self.current_y;
+            defer self.current_y += self.win.getLineHeight();
+            return .{ .skip_to_new_line = line_y };
         }
     };
 

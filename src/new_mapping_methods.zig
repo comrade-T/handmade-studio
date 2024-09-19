@@ -244,6 +244,10 @@ pub fn main() !void {
         .add = &.{"visual"},
         .remove = &.{"normal"},
     } });
+    try council.map("visual", &.{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{
+        .add = &.{"normal"},
+        .remove = &.{"visual"},
+    } });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -270,6 +274,10 @@ pub fn main() !void {
             {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
+
+                if (council.active_contexts.contains("visual")) {
+                    // TODO:
+                }
 
                 // rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
 
