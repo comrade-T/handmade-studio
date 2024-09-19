@@ -24,8 +24,10 @@ const eqStr = std.testing.expectEqualStrings;
 pub const Window = struct {
     exa: Allocator,
     buf: *Buffer,
-    cursor: Cursor,
     contents: Contents = undefined,
+
+    cursor: Cursor,
+    visual_mode_cursor: Cursor,
 
     x: f32,
     y: f32,
@@ -178,6 +180,7 @@ pub const Window = struct {
             .exa = exa,
             .buf = buf,
             .cursor = Cursor{},
+            .visual_mode_cursor = Cursor{},
             .x = opts.x,
             .y = opts.y,
             .bounded = if (opts.bounds != null) true else false,
@@ -386,6 +389,13 @@ pub const Window = struct {
         }
 
         try self.contents.updateLines(start_line, end_line, start_line, start_line);
+    }
+
+    ///////////////////////////// Visual Mode
+
+    pub fn enterVisualMode(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        self.visual_mode_cursor = self.cursor;
     }
 
     ///////////////////////////// Directional Cursor Movement

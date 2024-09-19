@@ -24,9 +24,9 @@ pub const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
     quick: bool = false,
-    after_trigger: struct {
-        contexts_to_add: []const []const u8 = &.{},
-        contexts_to_remove: []const []const u8 = &.{},
+    contexts: struct {
+        add: []const []const u8 = &.{},
+        remove: []const []const u8 = &.{},
     } = .{},
 };
 
@@ -207,8 +207,8 @@ pub const MappingCouncil = struct {
     }
 
     fn resolveContextsAfterCallback(self: *@This(), cb: Callback) !void {
-        for (cb.after_trigger.contexts_to_remove) |id| try self.removeActiveContext(id);
-        for (cb.after_trigger.contexts_to_add) |id| try self.addActiveContext(id);
+        for (cb.contexts.remove) |id| try self.removeActiveContext(id);
+        for (cb.contexts.add) |id| try self.addActiveContext(id);
     }
 
     fn cleanUpUpNDowns(self: *@This()) !void {

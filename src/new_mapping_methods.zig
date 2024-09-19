@@ -79,9 +79,9 @@ pub fn main() !void {
     try council.map("dummy_in_the_list", &[_]Key{.q}, .{
         .f = TheList.hide,
         .ctx = the_list,
-        .after_trigger = .{
-            .contexts_to_remove = &.{"dummy_in_the_list"},
-            .contexts_to_add = &.{"dummy"},
+        .contexts = .{
+            .add = &.{"dummy"},
+            .remove = &.{"dummy_in_the_list"},
         },
     });
 
@@ -181,63 +181,69 @@ pub fn main() !void {
 
     ///////////////////////////// Mappings
 
-    try council.map("normal", &[_]Key{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
-    try council.map("normal", &[_]Key{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
-    try council.map("normal", &[_]Key{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
-    try council.map("normal", &[_]Key{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+    try council.map("normal", &.{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
+    try council.map("normal", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
+    try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
+    try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
 
-    try council.map("normal", &[_]Key{.zero}, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window });
-    try council.map("normal", &[_]Key{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
-    try council.map("normal", &[_]Key{ .right_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
-    try council.map("normal", &[_]Key{ .left_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
-    try council.map("normal", &[_]Key{ .right_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &.{.zero}, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
+    try council.map("normal", &.{ .right_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &.{ .right_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
 
-    try council.map("normal", &[_]Key{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
-        .contexts_to_remove = &.{"normal"},
-        .contexts_to_add = &.{"dummy"},
+    try council.map("normal", &.{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{
+        .remove = &.{"normal"},
+        .add = &.{"dummy"},
     } });
 
-    try council.map("normal", &[_]Key{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
-    try council.map("normal", &[_]Key{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
-    try council.map("normal", &[_]Key{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
+    try council.map("normal", &.{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
+    try council.map("normal", &.{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
+    try council.map("normal", &.{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
 
-    try council.map("normal", &[_]Key{ .left_control, .u }, .{ .f = DummyCtx.moveCameraUp, .ctx = &dummy_ctx });
-    try council.map("normal", &[_]Key{ .left_control, .d }, .{ .f = DummyCtx.moveCameraDown, .ctx = &dummy_ctx });
+    try council.map("normal", &.{ .left_control, .u }, .{ .f = DummyCtx.moveCameraUp, .ctx = &dummy_ctx });
+    try council.map("normal", &.{ .left_control, .d }, .{ .f = DummyCtx.moveCameraDown, .ctx = &dummy_ctx });
 
     // Part 2
-    try council.map("normal", &[_]Key{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .after_trigger = .{
-        .contexts_to_add = &.{"insert"},
-        .contexts_to_remove = &.{"normal"},
+    try council.map("normal", &.{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{
+        .add = &.{"insert"},
+        .remove = &.{"normal"},
     } });
-    try council.map("normal", &[_]Key{.a}, .{ .f = Window.enterAFTERInsertMode, .ctx = window, .after_trigger = .{
-        .contexts_to_add = &.{"insert"},
-        .contexts_to_remove = &.{"normal"},
+    try council.map("normal", &.{.a}, .{ .f = Window.enterAFTERInsertMode, .ctx = window, .contexts = .{
+        .add = &.{"insert"},
+        .remove = &.{"normal"},
     } });
 
-    try council.map("normal", &[_]Key{ .left_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .after_trigger = .{
-        .contexts_to_add = &.{"insert"},
-        .contexts_to_remove = &.{"normal"},
+    try council.map("normal", &.{ .left_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .contexts = .{
+        .add = &.{"insert"},
+        .remove = &.{"normal"},
     } });
-    try council.map("normal", &[_]Key{ .left_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .after_trigger = .{
-        .contexts_to_add = &.{"insert"},
-        .contexts_to_remove = &.{"normal"},
+    try council.map("normal", &.{ .left_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .contexts = .{
+        .add = &.{"insert"},
+        .remove = &.{"normal"},
     } });
-    try council.map("normal", &[_]Key{ .right_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .after_trigger = .{
-        .contexts_to_add = &.{"insert"},
-        .contexts_to_remove = &.{"normal"},
+    try council.map("normal", &.{ .right_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .contexts = .{
+        .add = &.{"insert"},
+        .remove = &.{"normal"},
     } });
-    try council.map("normal", &[_]Key{ .right_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .after_trigger = .{
-        .contexts_to_add = &.{"insert"},
-        .contexts_to_remove = &.{"normal"},
+    try council.map("normal", &.{ .right_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .contexts = .{
+        .add = &.{"insert"},
+        .remove = &.{"normal"},
     } });
 
     try window.mapInsertModeCharacters(council);
 
-    try council.map("insert", &[_]Key{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .after_trigger = .{
-        .contexts_to_add = &.{"normal"},
-        .contexts_to_remove = &.{"insert"},
+    try council.map("insert", &.{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .contexts = .{
+        .add = &.{"normal"},
+        .remove = &.{"insert"},
     } });
-    try council.map("insert", &[_]Key{.backspace}, .{ .f = Window.backspace, .ctx = window });
+    try council.map("insert", &.{.backspace}, .{ .f = Window.backspace, .ctx = window });
+
+    // Visual Mode
+    try council.map("normal", &.{.v}, .{ .f = Window.enterVisualMode, .ctx = window, .contexts = .{
+        .add = &.{"visual"},
+        .remove = &.{"normal"},
+    } });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
