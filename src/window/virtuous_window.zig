@@ -84,29 +84,6 @@ pub const Window = struct {
             };
         }
 
-        fn updateLinesTS(self: *@This(), ranges: []const ts.Range) !void {
-            for (ranges) |range| {
-                const old_start_line: usize = @intCast(range.start_point.row);
-                const old_end_line: usize = @intCast(range.end_point.row);
-                const new_start_line: usize = @intCast(range.start_point.row);
-                const num_of_lines: usize = @intCast(range.end_point.row - range.start_point.row + 1);
-
-                var new_lines, var new_line_colors = try createLines(self.window, new_start_line, num_of_lines);
-                defer new_lines.deinit();
-                defer new_line_colors.deinit();
-
-                for (old_start_line..old_end_line + 1) |i| {
-                    self.window.exa.free(self.lines.items[i]);
-                    self.window.exa.free(self.line_colors.items[i]);
-                }
-
-                try self.lines.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_lines.items);
-                try self.line_colors.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_line_colors.items);
-            }
-
-            self.end_line = self.start_line + self.lines.items.len -| 1;
-        }
-
         fn updateLines(self: *@This(), old_start_line: usize, old_end_line: usize, new_start_line: usize, new_end_line: usize) !void {
             var new_lines, var new_line_colors = try createLines(self.window, new_start_line, new_end_line -| new_start_line + 1);
             defer new_lines.deinit();
@@ -271,20 +248,23 @@ pub const Window = struct {
         const zone = ztracy.ZoneNC(@src(), "insertChars()", 0xAAAAFF);
         defer zone.End();
 
-        const old_start_line = self.cursor.line;
-        const old_end_line = self.cursor.line;
+        var start_line = self.cursor.line;
 
-        const zone2 = ztracy.ZoneNC(@src(), "self.buf.insertChars & set cursor()", 0xFFAAFF);
         const new_pos, const may_ranges = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
         self.cursor.set(new_pos.line, new_pos.col);
-        zone2.End();
+
+        var end_line = new_pos.line;
 
         if (may_ranges) |ranges| {
-            try self.contents.updateLinesTS(ranges);
-            return;
+            for (ranges) |range| {
+                const ts_start_row: usize = @intCast(range.start_point.row);
+                const ts_end_row: usize = @intCast(range.end_point.row);
+                start_line = @min(start_line, ts_start_row);
+                end_line = @max(end_line, ts_end_row);
+            }
         }
 
-        try self.contents.updateLines(old_start_line, old_end_line, old_start_line, new_pos.line);
+        try self.contents.updateLines(start_line, end_line, start_line, new_pos.line);
     }
 
     pub const InsertCharsCb = struct {
