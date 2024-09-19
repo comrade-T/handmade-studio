@@ -169,10 +169,8 @@ pub const Window = struct {
                         const node_end = match.cap_node.?.getEndPoint();
                         for (node_start.row..node_end.row + 1) |linenr| {
                             const line_index = linenr - start_line;
-                            if (line_index >= lines.items.len) continue;
                             const start_col = if (linenr == node_start.row) node_start.column else 0;
                             const end_col = if (linenr == node_end.row) node_end.column else lines.items[line_index].len;
-                            if (start_col >= line_colors.items[line_index].len or end_col >= line_colors.items[line_index].len) continue;
                             @memset(line_colors.items[line_index][start_col..end_col], color);
                         }
                     }
@@ -387,7 +385,7 @@ pub const Window = struct {
 
         var start_line: usize = self.cursor.line;
         var start_col: usize = self.cursor.col -| 1;
-        const end_line: usize = self.cursor.line;
+        var end_line: usize = self.cursor.line;
         const end_col: usize = self.cursor.col;
 
         if (self.cursor.col == 0 and self.cursor.line > 0) {
@@ -399,8 +397,12 @@ pub const Window = struct {
         self.cursor.set(start_line, start_col);
 
         if (may_ranges) |ranges| {
-            try self.contents.updateLinesTS(ranges);
-            return;
+            for (ranges) |range| {
+                const ts_start_row: usize = @intCast(range.start_point.row);
+                const ts_end_row: usize = @intCast(range.end_point.row);
+                start_line = @min(start_line, ts_start_row);
+                end_line = @max(end_line, ts_end_row);
+            }
         }
 
         try self.contents.updateLines(start_line, end_line, start_line, start_line);
