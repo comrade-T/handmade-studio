@@ -1069,7 +1069,8 @@ pub const Node = union(enum) {
                 cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
                 if (leaf.eol) {
-                    const replace = try Leaf.new(cx.a, "", false, true);
+                    const eol = if (leaf.buf.len == 0) false else true;
+                    const replace = try Leaf.new(cx.a, "", false, eol);
                     return WalkMutResult{ .replace = replace };
                 }
                 return WalkMutResult.removed;
@@ -1358,6 +1359,49 @@ pub const Node = union(enum) {
                 const new_document = try new_root.getContent(a);
                 try eqStr("Hello\nEarth", new_document.items);
             }
+        }
+        {
+            const root = try Node.fromString(a, "1\n\n22\n\n333", true);
+            const root_debug_str =
+                \\4 5/10/6
+                \\  2 2/3/1
+                \\    1 B| `1` |E
+                \\    1 B| `` |E
+                \\  3 3/7/5
+                \\    1 B| `22` |E
+                \\    2 2/4/3
+                \\      1 B| `` |E
+                \\      1 B| `333`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const edit_1 = try root.deleteBytes(a, 1, 1);
+            const edit_1_debug_str =
+                \\4 4/9/6
+                \\  2 1/2/1
+                \\    1 B| `1`
+                \\    1 `` |E
+                \\  3 3/7/5
+                \\    1 B| `22` |E
+                \\    2 2/4/3
+                \\      1 B| `` |E
+                \\      1 B| `333`
+            ;
+            try eqStr(edit_1_debug_str, try edit_1.debugPrint());
+
+            const edit_2 = try edit_1.deleteBytes(a, 1, 1);
+            const edit_2_debug_str =
+                \\4 3/8/6
+                \\  2 1/1/1
+                \\    1 B| `1`
+                \\    1 ``
+                \\  3 2/7/5
+                \\    1 `22` |E
+                \\    2 2/4/3
+                \\      1 B| `` |E
+                \\      1 B| `333`
+            ;
+            try eqStr(edit_2_debug_str, try edit_2.debugPrint());
         }
     }
 
