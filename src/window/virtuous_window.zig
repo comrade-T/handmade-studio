@@ -264,7 +264,7 @@ pub const Window = struct {
             }
         }
 
-        try self.contents.updateLines(start_line, end_line, start_line, new_pos.line);
+        try self.contents.updateLines(start_line, end_line, start_line, end_line);
     }
 
     pub const InsertCharsCb = struct {
