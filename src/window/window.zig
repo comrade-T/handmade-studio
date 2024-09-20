@@ -11,13 +11,73 @@ const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
+////////////////////////////////////////////////////////////////////////////////////////////// Window
+
 const Window = @This();
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// Fields
 
-exa: Allocator,
+a: Allocator,
+
 buf: *Buffer,
-contents: Contents = undefined,
+
+cursor: Cursor,
+
+contents: Contents,
+
+x: f32,
+y: f32,
+bounds: Bounds,
+bounded: bool,
+
+font_size: i32,
+line_spacing: i32 = 2,
+
+///////////////////////////// Spawn
+
+pub fn spawn(a: Allocator, buf: *Buffer, opts: SpawnOptions) !*Window {
+    const self = try a.create(@This());
+    self.* = .{
+        .a = a,
+        .buf = buf,
+        .cursor = Cursor{},
+        .x = opts.x,
+        .y = opts.y,
+        .bounded = if (opts.bounds != null) true else false,
+        .bounds = if (opts.bounds) |b| b else Bounds{},
+        .font_size = opts.font_size,
+        .contents = try Contents.create(self, 0, buf.roperoot.weights().bols),
+    };
+    try self.updateContents(buf);
+    return self;
+}
+
+pub fn destroy(self: *@This()) void {
+    self.contents.destroy();
+    self.a.destroy(self);
+}
+
+///////////////////////////// Structs
+
+const Cursor = struct {
+    line: usize = 0,
+    col: usize = 0,
+};
+
+pub const Bounds = struct {
+    width: f32 = 400,
+    height: f32 = 400,
+    offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
+};
+
+pub const SpawnOptions = struct {
+    font_size: i32,
+    x: f32,
+    y: f32,
+    bounds: ?Bounds = null,
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////// Contents
 
 const Contents = struct {
     window: *Window,
@@ -29,7 +89,7 @@ const Contents = struct {
     const Line = []u21;
     const Colors = []u32;
 
-    fn createWithCapacity(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
+    fn create(win: *Window, start_line: usize, num_of_lines: usize) !Contents {
         const lines, const line_colors = try createLines(win, start_line, num_of_lines);
         return .{
             .window = win,
@@ -40,18 +100,25 @@ const Contents = struct {
         };
     }
 
-    fn updateLines(self: *@This(), old_start_line: usize, old_end_line: usize, new_start_line: usize, new_end_line: usize) !void {
-        var new_lines, var new_line_colors = try createLines(self.window, new_start_line, new_end_line -| new_start_line + 1);
+    fn destroy(self: *@This()) void {
+        for (self.lines.items) |line| self.window.exa.free(line);
+        for (self.line_colors.items) |lc| self.window.exa.free(lc);
+        self.lines.deinit();
+        self.line_colors.deinit();
+    }
+
+    fn updateLines(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) !void {
+        var new_lines, var new_line_colors = try createLines(self.window, new_start, new_end -| new_start + 1);
         defer new_lines.deinit();
         defer new_line_colors.deinit();
 
-        for (old_start_line..old_end_line + 1) |i| {
+        for (old_start..old_end + 1) |i| {
             self.window.exa.free(self.lines.items[i]);
             self.window.exa.free(self.line_colors.items[i]);
         }
 
-        try self.lines.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_lines.items);
-        try self.line_colors.replaceRange(old_start_line, old_end_line -| old_start_line + 1, new_line_colors.items);
+        try self.lines.replaceRange(old_start, old_end -| old_start + 1, new_lines.items);
+        try self.line_colors.replaceRange(old_start, old_end -| old_start + 1, new_line_colors.items);
 
         self.end_line = self.start_line + self.lines.items.len -| 1;
     }
@@ -105,12 +172,5 @@ const Contents = struct {
         }
 
         return .{ lines, line_colors };
-    }
-
-    fn destroy(self: *@This()) void {
-        for (self.lines.items) |line| self.window.exa.free(line);
-        for (self.line_colors.items) |lc| self.window.exa.free(lc);
-        self.lines.deinit();
-        self.line_colors.deinit();
     }
 };
