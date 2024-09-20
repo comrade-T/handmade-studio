@@ -92,6 +92,14 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     virtuous_window.compile.linkLibrary(tree_sitter);
 
+    const window = addTestableModule(&bops, "src/window/window.zig", &.{
+        .{ .name = "neo_buffer", .module = neo_buffer.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    virtuous_window.compile.linkLibrary(tree_sitter);
+    _ = window;
+
     const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
         .{ .name = "virtuous_window", .module = virtuous_window.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
