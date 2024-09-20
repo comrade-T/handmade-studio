@@ -158,37 +158,3 @@ const Nightfly = enum(u32) {
     kashmir_blue = 0x4d618eff,
     plant_green = 0x2a4e57ff,
 };
-
-const source_10 =
-    \\fn add(a: i32, b: i32) i32 { return a + b; }
-    \\const x = 10;
-    \\const MyStruct = struct { a: i32, b: i32 };
-    \\fn subtract(a: i32, b: i32) i32 { return a - b; }
-    \\const y = 20;
-    \\const AnotherStruct = struct { x: i32, y: i32 };
-    \\fn multiply(a: i32, b: i32) i32 { return a * b; }
-    \\const z = 30;
-    \\const YetAnotherStruct = struct { m: i32, n: i32 };
-    \\fn divide(a: i32, b: i32) i32 { return a / b; }
-    \\const w = 40;
-    \\const FinalStruct = struct { p: i32, q: i32 };
-    \\fn modulus(a: i32, b: i32) i32 { return a % b; }
-;
-
-test "experiment" {
-    var langsuite = try LangSuite.create(.zig);
-    {
-        const source =
-            \\fn add(a: i32, b: i32) i32 { return a + b; }
-            \\const x = 10;
-        ;
-        const parser = try langsuite.newParser();
-        const tree = try parser.parseString(null, source);
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-
-        const structure = try exp.CustomNode.new(arena.allocator(), tree.getRootNode());
-
-        try exp.sugondeese(testing_allocator, structure, 0);
-    }
-}

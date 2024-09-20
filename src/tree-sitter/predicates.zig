@@ -61,9 +61,7 @@ pub const PredicatesFilter = struct {
         self.external_allocator.destroy(self);
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// With Callback
-
-    ///////////////////////////// Limited Range
+    ////////////////////////////////////////////////////////////////////////////////////////////// Get Source with Callback using 1024 bytes buffers
 
     const MatchRangeResult = union(enum) {
         match: struct { match: ?Query.Match = null, cap_name: []const u8 = "", cap_node: ?b.Node = null },
@@ -130,7 +128,7 @@ pub const PredicatesFilter = struct {
         return true;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////// Contiguous String Source
 
     pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
         while (true) {
@@ -149,7 +147,7 @@ pub const PredicatesFilter = struct {
         return true;
     }
 
-    /////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////////////////// Predicates
 
     const EqPredicate = struct {
         capture: []const u8,
