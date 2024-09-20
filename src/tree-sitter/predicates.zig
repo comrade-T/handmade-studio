@@ -329,67 +329,69 @@ const test_source =
     \\const String = []const u8;
 ;
 
+///////////////////////////// Predicates
+
 test "no predicate" {
     const patterns = "((IDENTIFIER) @variable)";
-    try runTest(test_source, patterns, &.{ "std", "ztracy", "not_false", "String" });
+    try testFilter(test_source, patterns, &.{ "std", "ztracy", "not_false", "String" });
 }
 
 test "#eq?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#eq? @variable "std"))
     ;
-    try runTest(test_source, patterns, &.{"std"});
+    try testFilter(test_source, patterns, &.{"std"});
 }
 
 test "#not-eq?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#not-eq? @variable "std"))
     ;
-    try runTest(test_source, patterns, &.{ "ztracy", "not_false", "String" });
+    try testFilter(test_source, patterns, &.{ "ztracy", "not_false", "String" });
 }
 
 test "#any-of?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "ztracy"))
     ;
-    try runTest(test_source, patterns, &.{ "std", "ztracy" });
+    try testFilter(test_source, patterns, &.{ "std", "ztracy" });
 }
 
 test "#match?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
     ;
-    try runTest(test_source, patterns, &.{"String"});
+    try testFilter(test_source, patterns, &.{"String"});
 }
 
 test "#not-match?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#not-match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
     ;
-    try runTest(test_source, patterns, &.{ "std", "ztracy", "not_false" });
+    try testFilter(test_source, patterns, &.{ "std", "ztracy", "not_false" });
 }
+
+///////////////////////////// Directives
+
+// TODO:
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn runTest(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
+fn setupTestWithNoCleanUp(source: []const u8, patterns: []const u8) !struct { *b.Query, *b.Query.Cursor } {
     const language = try b.Language.get("zig");
-
     const query = try b.Query.create(language, patterns);
-    defer query.destroy();
-
-    var filter = try PredicatesFilter.init(testing_allocator, query);
-    defer filter.deinit();
-
     var parser = try b.Parser.create();
     try parser.setLanguage(language);
-    defer parser.destroy();
-
     const tree = try parser.parseString(null, source);
-    defer tree.destroy();
-
     const cursor = try b.Query.Cursor.create();
     cursor.execute(query, tree.getRootNode());
-    defer cursor.destroy();
+    return .{ query, cursor };
+}
+
+fn testFilter(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
+    var filter = try PredicatesFilter.init(testing_allocator, query);
+    defer filter.deinit();
 
     var i: usize = 0;
     while (filter.nextMatch(source, cursor)) |match| {
