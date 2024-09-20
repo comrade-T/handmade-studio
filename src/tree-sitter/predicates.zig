@@ -21,7 +21,6 @@ const eqStr = std.testing.expectEqualStrings;
 pub const PredicatesFilter = struct {
     external_allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
-    a: std.mem.Allocator,
     patterns: [][]Predicate,
 
     const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
@@ -35,21 +34,20 @@ pub const PredicatesFilter = struct {
         self.* = .{
             .external_allocator = external_allocator,
             .arena = std.heap.ArenaAllocator.init(external_allocator),
-            .a = self.arena.allocator(),
             .patterns = undefined,
         };
 
-        var patterns = std.ArrayList([]Predicate).init(self.a);
+        var patterns = std.ArrayList([]Predicate).init(self.arena.allocator());
         errdefer patterns.deinit();
         for (0..query.getPatternCount()) |pattern_index| {
             const steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
-            var predicates = std.ArrayList(Predicate).init(self.a);
+            var predicates = std.ArrayList(Predicate).init(self.arena.allocator());
             errdefer predicates.deinit();
 
             var start: usize = 0;
             for (steps, 0..) |step, i| {
                 if (step.type == .done) {
-                    const predicate = try Predicate.create(self.a, query, steps[start .. i + 1]);
+                    const predicate = try Predicate.create(self.arena.allocator(), query, steps[start .. i + 1]);
                     try predicates.append(predicate);
                     start = i + 1;
                 }
