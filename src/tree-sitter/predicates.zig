@@ -2,13 +2,19 @@
 
 const std = @import("std");
 const ztracy = @import("ztracy");
-const Regex = @import("regex").Regex;
-const b = @import("bindings.zig");
 
+const Regex = @import("regex").Regex;
+
+const b = @import("bindings.zig");
 const Query = b.Query;
 const PredicateStep = b.Query.PredicateStep;
+
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
+const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
+const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -313,3 +319,84 @@ pub const PredicatesFilter = struct {
         }
     };
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const test_source =
+    \\const std = @import("std");
+    \\const ztracy = @import("ztracy");
+    \\const not_false = true;
+    \\const String = []const u8;
+;
+
+test "no predicate" {
+    const patterns = "((IDENTIFIER) @variable)";
+    try runTest(test_source, patterns, &.{ "std", "ztracy", "not_false", "String" });
+}
+
+test "#eq?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#eq? @variable "std"))
+    ;
+    try runTest(test_source, patterns, &.{"std"});
+}
+
+test "#not-eq?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#not-eq? @variable "std"))
+    ;
+    try runTest(test_source, patterns, &.{ "ztracy", "not_false", "String" });
+}
+
+test "#any-of?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "ztracy"))
+    ;
+    try runTest(test_source, patterns, &.{ "std", "ztracy" });
+}
+
+test "#match?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
+    ;
+    try runTest(test_source, patterns, &.{"String"});
+}
+
+test "#not-match?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#not-match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
+    ;
+    try runTest(test_source, patterns, &.{ "std", "ztracy", "not_false" });
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn runTest(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
+    const language = try b.Language.get("zig");
+
+    const query = try b.Query.create(language, patterns);
+    defer query.destroy();
+
+    var filter = try PredicatesFilter.init(testing_allocator, query);
+    defer filter.deinit();
+
+    var parser = try b.Parser.create();
+    try parser.setLanguage(language);
+    defer parser.destroy();
+
+    const tree = try parser.parseString(null, source);
+    defer tree.destroy();
+
+    const cursor = try b.Query.Cursor.create();
+    cursor.execute(query, tree.getRootNode());
+    defer cursor.destroy();
+
+    var i: usize = 0;
+    while (filter.nextMatch(source, cursor)) |match| {
+        defer i += 1;
+        const node = match.captures()[0].node;
+        const node_contents = source[node.getStartByte()..node.getEndByte()];
+        try eqStr(expected[i], node_contents);
+    }
+    try eq(expected.len, i);
+}

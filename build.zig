@@ -68,6 +68,14 @@ pub fn build(b: *std.Build) void {
 
     _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);
 
+    const ts_predicates = addTestableModule(&bops, "src/tree-sitter/predicates.zig", &.{
+        .{ .name = "regex", .module = regex },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    ts_predicates.compile.linkLibrary(tree_sitter);
+    ts_predicates.compile.linkLibrary(ztracy.artifact("tracy"));
+
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
         .{ .name = "regex", .module = regex },
         .{ .name = "ztracy", .module = ztracy.module("root") },

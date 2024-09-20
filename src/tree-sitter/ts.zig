@@ -3,8 +3,6 @@ const ztracy = @import("ztracy");
 pub const b = @import("bindings.zig");
 pub const PredicatesFilter = @import("predicates.zig").PredicatesFilter;
 
-pub const exp = @import("experiment.zig");
-
 const Language = b.Language;
 const Query = b.Query;
 const Parser = b.Parser;
