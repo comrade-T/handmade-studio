@@ -115,7 +115,12 @@ pub const PredicatesFilter = struct {
     ////////////////////////////////////////////////////////////////////////////////////////////// Get Source with Callback using 1024 bytes buffers
 
     const MatchRangeResult = union(enum) {
-        match: struct { match: ?Query.Match = null, cap_name: []const u8 = "", cap_node: ?b.Node = null },
+        match: struct {
+            match: ?Query.Match = null,
+            cap_name: []const u8 = "",
+            cap_node: ?b.Node = null,
+            directives: ?[]Directive,
+        },
         ignore: bool,
     };
 
@@ -152,13 +157,23 @@ pub const PredicatesFilter = struct {
                 }
             }
 
-            if (cap_name.len == 0) @panic("capture_name.len == 0");
+            if (cap_name.len == 0) {
+                std.log.err("capture_name.len == 0!", .{});
+                return .{ .ignore = true };
+            }
 
             if (cap_node.getStartPoint().row > end_line or cap_node.getEndPoint().row < start_line) {
                 return .{ .ignore = true };
             }
 
-            return .{ .match = .{ .match = match, .cap_name = cap_name, .cap_node = cap_node } };
+            return .{
+                .match = .{
+                    .match = match,
+                    .cap_name = cap_name,
+                    .cap_node = cap_node,
+                    .directives = self.directives.get(match.pattern_index),
+                },
+            };
         }
     }
 
@@ -439,6 +454,10 @@ test "trying out directives" {
 
     try eq(1, filter.directives.values().len);
     try eq(2, filter.directives.get(0).?.len);
+    try eqStr("injection.language", filter.directives.get(0).?[0].set.property);
+    try eqStr("vim", filter.directives.get(0).?[0].set.value);
+    try eqStr("priority", filter.directives.get(0).?[1].set.property);
+    try eqStr("105", filter.directives.get(0).?[1].set.value);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
