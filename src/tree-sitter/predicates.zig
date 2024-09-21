@@ -47,9 +47,18 @@ pub const PredicatesFilter = struct {
             var start: usize = 0;
             for (steps, 0..) |step, i| {
                 if (step.type == .done) {
-                    const predicate = try Predicate.create(self.arena.allocator(), query, steps[start .. i + 1]);
-                    try predicates.append(predicate);
-                    start = i + 1;
+                    defer start = i + 1;
+                    const subset = steps[start .. i + 1];
+                    const name = checkIfStepsAreValid(query, subset) catch continue;
+                    if (name.len == 0) continue;
+                    if (name[name.len - 1] == '?') {
+                        const predicate = try Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]);
+                        if (predicate != .unsupported) try predicates.append(predicate);
+                        continue;
+                    }
+                    if (name[name.len - 1] == '!') {
+                        std.debug.print("this is a directive: '{s}'\n", .{name});
+                    }
                 }
             }
 
@@ -58,6 +67,19 @@ pub const PredicatesFilter = struct {
 
         self.*.patterns = try patterns.toOwnedSlice();
         return self;
+    }
+
+    fn checkIfStepsAreValid(query: *const Query, subset: []const PredicateStep) PredicateError![]const u8 {
+        if (subset[0].type != .string) {
+            std.log.err("First step of predicate isn't .string.", .{});
+            return PredicateError.Unknown;
+        }
+        const name = query.getStringValueForId(@as(u32, @intCast(subset[0].value_id)));
+        if (subset[subset.len - 1].type != .done) {
+            std.log.err("Last step of predicate '{s}' isn't .done.", .{name});
+            return PredicateError.InvalidArgument;
+        }
+        return name;
     }
 
     pub fn deinit(self: *@This()) void {
@@ -282,26 +304,15 @@ pub const PredicatesFilter = struct {
         eq: EqPredicate,
         any_of: AnyOfPredicate,
         match: MatchPredicate,
-        unsupported: enum { unsupported },
+        unsupported,
 
-        fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
-            if (steps[0].type != .string) {
-                std.log.err("First step of predicate isn't .string.", .{});
-                return PredicateError.Unknown;
-            }
-            const name = query.getStringValueForId(@as(u32, @intCast(steps[0].value_id)));
-
-            if (steps[steps.len - 1].type != .done) {
-                std.log.err("Last step of predicate {s} isn't .done.", .{name});
-                return PredicateError.InvalidArgument;
-            }
-
+        fn create(a: Allocator, query: *const Query, name: []const u8, steps: []const PredicateStep) PredicateError!Predicate {
             if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps, .eq);
             if (eql(u8, name, "not-eq?")) return EqPredicate.create(query, steps, .not_eq);
             if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
             if (eql(u8, name, "match?")) return MatchPredicate.create(a, query, steps, .match);
             if (eql(u8, name, "not-match?")) return MatchPredicate.create(a, query, steps, .not_match);
-            return Predicate{ .unsupported = .unsupported };
+            return Predicate.unsupported;
         }
 
         fn eval(self: *const Predicate, source: []const u8) bool {
@@ -316,6 +327,12 @@ pub const PredicatesFilter = struct {
             };
         }
     };
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Directives
+
+    const Directives = struct {
+        pattern_index: u32,
+    };
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -327,7 +344,7 @@ const test_source =
     \\const String = []const u8;
 ;
 
-///////////////////////////// Predicates
+////////////////////////////////////////////////////////////////////////////////////////////// Predicates
 
 test "no predicate" {
     const patterns = "((IDENTIFIER) @variable)";
@@ -369,9 +386,30 @@ test "#not-match?" {
     try testFilter(test_source, patterns, &.{ "std", "ztracy", "not_false" });
 }
 
-///////////////////////////// Directives
+///////////////////////////// Multiple predicates in single pattern
 
-// TODO:
+test "#any-of? + #not-eq?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "ztracy") (#not-eq? @variable "std"))
+    ;
+    try testFilter(test_source, patterns, &.{"ztracy"});
+}
+
+test "#not-eq? + #any-of?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable(#not-eq? @variable "std") (#any-of? @variable "std" "ztracy"))
+    ;
+    try testFilter(test_source, patterns, &.{"ztracy"});
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Directives
+
+test "trying out directives" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable(#eq? @variable "std") (#set! injection.language "vim"))
+    ;
+    try testFilter(test_source, patterns, &.{"std"});
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
