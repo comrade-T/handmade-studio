@@ -315,12 +315,11 @@ const Glyph = struct {
     rectangle: Rectagle,
 };
 
+const GlyphMap = std.AutoArrayHashMap(i32, Glyph);
 const FontWithSize = struct {
     a: Allocator,
     font: rl.Font,
     glyphs: GlyphMap,
-
-    const GlyphMap = std.AutoArrayHashMap(i32, Glyph);
 
     fn create(a: Allocator, font_path: [*:0]const u8, font_size: i32) !@This() {
         const character_set = null; // TODO: handle different character sets
@@ -400,5 +399,15 @@ const FontManager = struct {
     fn destroy(self: *@This()) void {
         for (self.fonts.values()) |mf| try mf.destroy();
         self.a.destroy(self);
+    }
+
+    fn getGlyphMap(ctx: *anyopaque, name: []const u8, size: i32) ?GlyphMap {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        if (self.fonts.get(name)) |mf| {
+            if (mf.sizes.get(size)) |fws| {
+                return fws.glyphs;
+            }
+        }
+        return null;
     }
 };
