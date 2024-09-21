@@ -296,3 +296,109 @@ pub fn main() !void {
         }
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const Glyph = struct {
+    const Info = struct {
+        advanceX: i32,
+        offsetX: i32,
+    };
+    const Rectagle = struct {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    };
+
+    info: Info,
+    rectangle: Rectagle,
+};
+
+const FontWithSize = struct {
+    a: Allocator,
+    font: rl.Font,
+    glyphs: GlyphMap,
+
+    const GlyphMap = std.AutoArrayHashMap(i32, Glyph);
+
+    fn create(a: Allocator, font_path: [*:0]const u8, font_size: i32) !@This() {
+        const character_set = null; // TODO: handle different character sets
+        const font = rl.loadFontEx(font_path, font_size, character_set);
+        return FontWithSize{
+            .a = a,
+            .font = font,
+            .glyphs = createGlyphMap(a, font),
+        };
+    }
+
+    fn destroy(self: *@This()) void {
+        self.glyphs.deinit();
+    }
+
+    fn createGlyphMap(a: Allocator, font: rl.Font) !GlyphMap {
+        var map = GlyphMap.init(a);
+        for (0..@intCast(font.glyphCount)) |i| {
+            const rec = font.recs[i];
+            const gi = font.glyphs[i];
+            try map.put(gi.value, Glyph{
+                .rectangle = .{ .x = rec.x, .y = rec.y, .width = rec.width, .height = rec.height },
+                .info = .{ .offsetX = gi.offsetX, .advanceX = gi.advanceX },
+            });
+        }
+        return map;
+    }
+};
+
+const ManagedFont = struct {
+    a: Allocator,
+    sizes: std.AutoArrayHashMap(i32, FontWithSize),
+
+    const FontWithSizeMap = std.AutoArrayHashMap(i32, FontWithSize);
+
+    fn create(a: Allocator) !@This() {
+        return ManagedFont{
+            .a = a,
+            .sizes = FontWithSizeMap.init(a),
+        };
+    }
+
+    fn destroy(self: *@This()) void {
+        for (self.sizes.values()) |fws| fws.destroy();
+        self.sizes.deinit();
+    }
+
+    fn addFontWithSize(self: *@This(), path: [*:0]const u8, size: i32) !void {
+        if (self.sizes.get(size)) return;
+        const font_with_size = FontWithSize.create(self.a, path, size);
+        try self.sizes.put(size, font_with_size);
+    }
+};
+
+const FontManager = struct {
+    a: Allocator,
+    fonts: ManagedFontMap,
+
+    const ManagedFontMap = std.StringArrayHashMap(ManagedFont);
+
+    fn create(a: Allocator) !*@This() {
+        const self = try a.create(@This());
+        self.* = .{
+            .a = a,
+            .fonts = ManagedFontMap.init(a),
+        };
+        return self;
+    }
+
+    fn addFontWithSize(self: *@This(), name: []const u8, path: [*:0]const u8, size: i32) !void {
+        if (self.fonts.get(name)) |mf| return mf.addFontWithSize(path, size);
+        var mf = try ManagedFont.create(self.a);
+        mf.addFontWithSize(path, size);
+        try self.fonts.put(name, mf);
+    }
+
+    fn destroy(self: *@This()) void {
+        for (self.fonts.values()) |mf| try mf.destroy();
+        self.a.destroy(self);
+    }
+};
