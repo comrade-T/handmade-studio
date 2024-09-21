@@ -24,8 +24,6 @@ pub const PredicatesFilter = struct {
     patterns: [][]Predicate = undefined,
     directives: std.AutoArrayHashMap(usize, []Directive),
 
-    const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
-
     pub fn init(external_allocator: Allocator, query: *const Query) !*@This() {
         const zone = ztracy.ZoneNC(@src(), "PredicatesFilter.init()", 0x00AA00);
         defer zone.End();
@@ -114,15 +112,14 @@ pub const PredicatesFilter = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Get Source with Callback using 1024 bytes buffers
 
-    const MatchRangeResult = union(enum) {
-        match: struct {
-            match: ?Query.Match = null,
-            cap_name: []const u8 = "",
-            cap_node: ?b.Node = null,
-            directives: ?[]Directive,
-        },
-        ignore: bool,
-    };
+    const MatchRangeResult = union(enum) { match: struct {
+        match: Query.Match,
+        cap_name: []const u8 = "",
+        cap_node: b.Node,
+        directives: ?[]Directive = null,
+    }, stop };
+
+    const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
 
     pub fn nextMatchInLines(
         self: *@This(),
@@ -138,7 +135,7 @@ pub const PredicatesFilter = struct {
             const match = cursor.nextMatch() orelse {
                 next_match_zone.Name("no more nextMatch()");
                 next_match_zone.End();
-                return .{ .match = .{} };
+                return .stop;
             };
             next_match_zone.End();
 
@@ -159,11 +156,11 @@ pub const PredicatesFilter = struct {
 
             if (cap_name.len == 0) {
                 std.log.err("capture_name.len == 0!", .{});
-                return .{ .ignore = true };
+                return .stop;
             }
 
             if (cap_node.getStartPoint().row > end_line or cap_node.getEndPoint().row < start_line) {
-                return .{ .ignore = true };
+                return .stop;
             }
 
             return .{
@@ -440,24 +437,21 @@ test "#not-eq? + #any-of?" {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Directives
 
-test "trying out directives" {
+test "#set!" {
     const patterns =
         \\ (
-        \\   (IDENTIFIER) @variable(#eq? @variable "std")
+        \\   (IDENTIFIER) @variable
+        \\   (#eq? @variable "std")
         \\   (#set! injection.language "vim")
         \\   (#set! priority 105)
         \\ )
     ;
-    const query, _ = try setupTestWithNoCleanUp(test_source, patterns);
-    var filter = try PredicatesFilter.init(testing_allocator, query);
-    defer filter.deinit();
-
-    try eq(1, filter.directives.values().len);
-    try eq(2, filter.directives.get(0).?.len);
-    try eqStr("injection.language", filter.directives.get(0).?[0].set.property);
-    try eqStr("vim", filter.directives.get(0).?[0].set.value);
-    try eqStr("priority", filter.directives.get(0).?[1].set.property);
-    try eqStr("105", filter.directives.get(0).?[1].set.value);
+    try testFilterWithDirectives(test_source, patterns, &.{
+        .{ "std", &.{
+            .{ .set = .{ .property = "injection.language", .value = "vim" } },
+            .{ .set = .{ .property = "priority", .value = "105" } },
+        } },
+    });
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -471,6 +465,47 @@ fn setupTestWithNoCleanUp(source: []const u8, patterns: []const u8) !struct { *b
     const cursor = try b.Query.Cursor.create();
     cursor.execute(query, tree.getRootNode());
     return .{ query, cursor };
+}
+
+const ContentCallback = struct {
+    source: []const u8,
+    fn f(ctx: *anyopaque, start_byte: usize, end_byte: usize, _: []u8, _: usize) []const u8 {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        return self.source[start_byte..end_byte];
+    }
+};
+
+const ExpectedContentAndDirectives = struct { []const u8, []const PredicatesFilter.Directive };
+fn testFilterWithDirectives(source: []const u8, patterns: []const u8, expected: []const ExpectedContentAndDirectives) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
+    var filter = try PredicatesFilter.init(testing_allocator, query);
+    defer filter.deinit();
+    var ctx = ContentCallback{ .source = source };
+
+    var i: usize = 0;
+    while (true) {
+        defer i += 1;
+        const result = switch (filter.nextMatchInLines(query, cursor, ContentCallback.f, &ctx, 0, std.mem.count(u8, source, "\n"))) {
+            .match => |result| result,
+            .stop => break,
+        };
+
+        const expected_content, const expected_directives = expected[i];
+        try eqStr(expected_content, source[result.cap_node.getStartByte()..result.cap_node.getEndByte()]);
+
+        if (expected_directives.len == 0 and result.directives == null) continue;
+        const directives = result.directives.?;
+        try eq(expected_directives.len, directives.len);
+
+        for (expected_directives, 0..) |e, j| {
+            switch (e) {
+                .set => |set| {
+                    try eqStr(set.property, directives[j].set.property);
+                    try eqStr(set.value, directives[j].set.value);
+                },
+            }
+        }
+    }
 }
 
 fn testFilter(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
