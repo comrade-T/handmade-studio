@@ -208,18 +208,7 @@ pub const PredicatesFilter = struct {
         const EqPredicateVariant = enum { eq, not_eq };
 
         fn create(query: *const Query, steps: []const PredicateStep, variant: EqPredicateVariant) PredicateError!Predicate {
-            if (steps.len != 4) {
-                std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
-                return PredicateError.InvalidAmountOfSteps;
-            }
-            if (steps[1].type != .capture) {
-                std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
-                return PredicateError.InvalidArgument;
-            }
-            if (steps[2].type != .string) {
-                std.log.err("Second argument of #eq? predicate must be type .string, got {any}", .{steps[2].type});
-                return PredicateError.InvalidArgument;
-            }
+            checkBodySteps("#eq? / #not-eq?", steps, &.{ .capture, .string }) catch |err| return err;
             return Predicate{
                 .eq = EqPredicate{
                     .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
@@ -245,7 +234,7 @@ pub const PredicatesFilter = struct {
 
         fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
             if (steps.len < 4) {
-                std.log.err("Expected steps.len to be < 4, got {d}\n", .{steps.len});
+                std.log.err("Expected steps.len to be > 4, got {d}\n", .{steps.len});
                 return PredicateError.InvalidAmountOfSteps;
             }
             if (steps[1].type != .capture) {
@@ -287,18 +276,7 @@ pub const PredicatesFilter = struct {
         const MatchPredicateVariant = enum { match, not_match };
 
         fn create(a: Allocator, query: *const Query, steps: []const PredicateStep, variant: MatchPredicateVariant) PredicateError!Predicate {
-            if (steps.len != 4) {
-                std.log.err("Expected steps.len == 4, got {d}\n", .{steps.len});
-                return PredicateError.InvalidAmountOfSteps;
-            }
-            if (steps[1].type != .capture) {
-                std.log.err("First argument of #match? predicate must be type .capture, got {any}", .{steps[1].type});
-                return PredicateError.InvalidArgument;
-            }
-            if (steps[2].type != .string) {
-                std.log.err("Second argument of #match? predicate must be type .string, got {any}", .{steps[2].type});
-                return PredicateError.InvalidArgument;
-            }
+            checkBodySteps("#match? / #not-match?", steps, &.{ .capture, .string }) catch |err| return err;
 
             const regex = try a.create(Regex);
             regex.* = Regex.compile(a, query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)))) catch return PredicateError.RegexCompileError;
