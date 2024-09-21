@@ -440,14 +440,14 @@ test "#set!" {
         \\ (
         \\   (IDENTIFIER) @variable
         \\   (#eq? @variable "std")
-        \\   (#set! injection.language "vim")
-        \\   (#set! priority 105)
+        \\   (#set! font-size 80)
+        \\   (#set! font-name "Inter")
         \\ )
     ;
     try testFilterWithDirectives(test_source, patterns, &.{
         .{ "std", &.{
-            .{ .set = .{ .property = "injection.language", .value = "vim" } },
-            .{ .set = .{ .property = "priority", .value = "105" } },
+            .{ .set = .{ .property = "font-size", .value = "80" } },
+            .{ .set = .{ .property = "font-name", .value = "Inter" } },
         } },
     });
 }
