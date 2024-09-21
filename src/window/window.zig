@@ -8,6 +8,7 @@ const ts = sitter.b;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
+const AutoArrayHashMap = std.AutoArrayHashMap;
 const idc_if_it_leaks = std.heap.page_allocator;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
@@ -63,7 +64,7 @@ const CachedContents = struct {
     arena: ArenaAllocator,
     win: *const Window,
 
-    lines: ArrayList([]u21) = undefined,
+    lines: AutoArrayHashMap(usize, []u21) = undefined,
     displays: ArrayList([]Display) = undefined,
 
     start_line: usize = 0,
@@ -97,11 +98,11 @@ const CachedContents = struct {
     }
 
     const CreateLinesError = error{ OutOfMemory, LineOutOfBounds };
-    fn createLines(a: Allocator, win: *const Window, start_line: usize, end_line: usize) CreateLinesError!ArrayList([]u21) {
-        var lines = ArrayList([]u21).init(a);
+    fn createLines(a: Allocator, win: *const Window, start_line: usize, end_line: usize) CreateLinesError!AutoArrayHashMap(usize, []u21) {
+        var lines = AutoArrayHashMap(usize, []u21).init(a);
         for (start_line..end_line + 1) |linenr| {
             const line = try win.buf.roperoot.getLineEx(a, linenr);
-            try lines.append(line);
+            try lines.put(linenr, line);
         }
         return lines;
     }
@@ -109,14 +110,31 @@ const CachedContents = struct {
     test createLines {
         const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333");
         const win = try Window.create(idc_if_it_leaks, buf);
-        var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
-        defer cc.deinit();
-
-        const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
-        try eq(3, lines.items.len);
-        try eqStrU21("1", lines.items[0]);
-        try eqStrU21("22", lines.items[1]);
-        try eqStrU21("333", lines.items[2]);
+        {
+            var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
+            const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            try eq(3, lines.values().len);
+            try eqStrU21("1", lines.get(0).?);
+            try eqStrU21("22", lines.get(1).?);
+            try eqStrU21("333", lines.get(2).?);
+        }
+        {
+            const lines = try createLines(idc_if_it_leaks, win, 0, 0);
+            try eq(1, lines.values().len);
+            try eqStrU21("1", lines.get(0).?);
+        }
+        {
+            const lines = try createLines(idc_if_it_leaks, win, 0, 1);
+            try eq(2, lines.values().len);
+            try eqStrU21("1", lines.get(0).?);
+            try eqStrU21("22", lines.get(1).?);
+        }
+        {
+            const lines = try createLines(idc_if_it_leaks, win, 1, 2);
+            try eq(2, lines.values().len);
+            try eqStrU21("22", lines.get(1).?);
+            try eqStrU21("333", lines.get(2).?);
+        }
     }
 };
 
