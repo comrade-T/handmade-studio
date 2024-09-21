@@ -82,10 +82,11 @@ const WalkMutResult = struct {
 
 /// Represents the result of a walk operation on a Leaf where there will be 0 new Nodes created in the process.
 /// Used to get information about the document.
+const WalkError = error{OutOfMemory};
 const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
-    err: ?anyerror = null,
+    err: ?WalkError = null,
 
     const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkResult;
 
@@ -643,7 +644,8 @@ pub const Node = union(enum) {
 
     ///////////////////////////// getLineEx
 
-    pub fn getLineEx(self: *const Node, a: Allocator, line: usize) ![]u21 {
+    const GetLineExError = error{ OutOfMemory, LineOutOfBounds };
+    pub fn getLineEx(self: *const Node, a: Allocator, line: usize) GetLineExError![]u21 {
         const zone = ztracy.ZoneNC(@src(), "Rope.getLineEx()", 0x00AA00);
         defer zone.End();
 
@@ -662,7 +664,7 @@ pub const Node = union(enum) {
 
         if (line > self.weights().bols) return error.LineOutOfBounds;
 
-        var list = try ArrayList(u21).initCapacity(a, 1024);
+        var list = try ArrayList(u21).initCapacity(a, 128);
         errdefer list.deinit();
 
         var ctx = GetLineExCtx{ .list = list };
