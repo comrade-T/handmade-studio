@@ -112,12 +112,15 @@ pub const PredicatesFilter = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Get Source with Callback using 1024 bytes buffers
 
-    const MatchRangeResult = union(enum) { match: struct {
-        match: Query.Match,
-        cap_name: []const u8 = "",
-        cap_node: b.Node,
-        directives: ?[]Directive = null,
-    }, stop };
+    const MatchRangeResult = union(enum) {
+        match: struct {
+            match: Query.Match,
+            cap_name: []const u8 = "",
+            cap_node: b.Node,
+            directives: ?[]Directive = null,
+        },
+        stop: enum { no_more_matches, cap_name_not_found, node_out_of_bounds },
+    };
 
     const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
 
@@ -135,7 +138,7 @@ pub const PredicatesFilter = struct {
             const match = cursor.nextMatch() orelse {
                 next_match_zone.Name("no more nextMatch()");
                 next_match_zone.End();
-                return .stop;
+                return MatchRangeResult{ .stop = .no_more_matches };
             };
             next_match_zone.End();
 
@@ -154,23 +157,18 @@ pub const PredicatesFilter = struct {
                 }
             }
 
-            if (cap_name.len == 0) {
-                std.log.err("capture_name.len == 0!", .{});
-                return .stop;
-            }
+            if (cap_name.len == 0) return MatchRangeResult{ .stop = .cap_name_not_found };
 
             if (cap_node.getStartPoint().row > end_line or cap_node.getEndPoint().row < start_line) {
-                return .stop;
+                return MatchRangeResult{ .stop = .node_out_of_bounds };
             }
 
-            return .{
-                .match = .{
-                    .match = match,
-                    .cap_name = cap_name,
-                    .cap_node = cap_node,
-                    .directives = self.directives.get(match.pattern_index),
-                },
-            };
+            return MatchRangeResult{ .match = .{
+                .match = match,
+                .cap_name = cap_name,
+                .cap_node = cap_node,
+                .directives = self.directives.get(match.pattern_index),
+            } };
         }
     }
 
