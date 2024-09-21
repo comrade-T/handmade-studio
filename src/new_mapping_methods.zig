@@ -411,3 +411,39 @@ const FontManager = struct {
         return null;
     }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const ImageInfo = struct {
+    width: f32,
+    height: f32,
+};
+
+const ImageManager = struct {
+    a: Allocator,
+    images: std.StringArrayHashMap(rl.Image),
+
+    fn create(a: Allocator) !@This() {
+        return ImageManager{ .images = std.StringArrayHashMap(rl.Image).init(a) };
+    }
+
+    fn addImage(self: *@This(), path: [*:0]const u8) !void {
+        if (self.images.get(path)) return;
+        try self.images.put(path, rl.loadImage(path));
+    }
+
+    fn destroy(self: *@This()) void {
+        for (self.images.values()) |img| img.unload();
+    }
+
+    fn getImageInfo(ctx: *anyopaque, path: []const u8) ?ImageInfo {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        if (self.images.get(path)) |img| {
+            return ImageInfo{
+                .width = @floatFromInt(img.width),
+                .height = @floatFromInt(img.height),
+            };
+        }
+        return null;
+    }
+};
