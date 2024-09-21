@@ -21,7 +21,8 @@ const eqStr = std.testing.expectEqualStrings;
 pub const PredicatesFilter = struct {
     external_allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
-    patterns: [][]Predicate,
+    patterns: [][]Predicate = undefined,
+    directives: std.AutoArrayHashMap(usize, []Directive),
 
     const F = *const fn (ctx: *anyopaque, start_byte: usize, end_byte: usize, buf: []u8, buf_size: usize) []const u8;
 
@@ -34,22 +35,27 @@ pub const PredicatesFilter = struct {
         self.* = .{
             .external_allocator = external_allocator,
             .arena = std.heap.ArenaAllocator.init(external_allocator),
-            .patterns = undefined,
+            .directives = std.AutoArrayHashMap(usize, []Directive).init(self.arena.allocator()),
         };
 
         var patterns = std.ArrayList([]Predicate).init(self.arena.allocator());
-        errdefer patterns.deinit();
+        errdefer self.arena.deinit();
+
         for (0..query.getPatternCount()) |pattern_index| {
             const steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
-            var predicates = std.ArrayList(Predicate).init(self.arena.allocator());
+
+            var predicates = ArrayList(Predicate).init(self.arena.allocator());
             errdefer predicates.deinit();
+
+            var directives = ArrayList(Directive).init(self.arena.allocator());
+            errdefer directives.deinit();
 
             var start: usize = 0;
             for (steps, 0..) |step, i| {
                 if (step.type == .done) {
                     defer start = i + 1;
                     const subset = steps[start .. i + 1];
-                    const name = checkIfStepsAreValid(query, subset) catch continue;
+                    const name = checkFirstAndLastSteps(query, subset) catch continue;
                     if (name.len == 0) continue;
                     if (name[name.len - 1] == '?') {
                         const predicate = try Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]);
@@ -57,19 +63,23 @@ pub const PredicatesFilter = struct {
                         continue;
                     }
                     if (name[name.len - 1] == '!') {
-                        std.debug.print("this is a directive: '{s}'\n", .{name});
+                        const directive = Directive.create(name, query, subset) catch continue;
+                        try directives.append(directive);
                     }
                 }
             }
 
             try patterns.append(try predicates.toOwnedSlice());
+
+            if (directives.items.len == 0) directives.deinit();
+            try self.directives.put(pattern_index, try directives.toOwnedSlice());
         }
 
         self.*.patterns = try patterns.toOwnedSlice();
         return self;
     }
 
-    fn checkIfStepsAreValid(query: *const Query, subset: []const PredicateStep) PredicateError![]const u8 {
+    fn checkFirstAndLastSteps(query: *const Query, subset: []const PredicateStep) PredicateError![]const u8 {
         if (subset[0].type != .string) {
             std.log.err("First step of predicate isn't .string.", .{});
             return PredicateError.Unknown;
@@ -80,6 +90,21 @@ pub const PredicatesFilter = struct {
             return PredicateError.InvalidArgument;
         }
         return name;
+    }
+
+    fn checkBodySteps(name: []const u8, subset: []const PredicateStep, types: []const PredicateStep.Type) PredicateError!void {
+        if (subset.len -| types.len != 2) return PredicateError.InvalidAmountOfSteps;
+        for (types, 0..) |t, i| {
+            if (subset[i + 1].type != t) {
+                std.log.err("Argument #{d} of '{s}' must be type '{any}, not '{any}'", .{
+                    i,
+                    name,
+                    t,
+                    subset[i + 1].type,
+                });
+                return PredicateError.InvalidArgument;
+            }
+        }
     }
 
     pub fn deinit(self: *@This()) void {
@@ -299,7 +324,7 @@ pub const PredicatesFilter = struct {
         }
     };
 
-    const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError };
+    const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError, UnsupportedDirective };
     const Predicate = union(enum) {
         eq: EqPredicate,
         any_of: AnyOfPredicate,
@@ -330,8 +355,26 @@ pub const PredicatesFilter = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Directives
 
-    const Directives = struct {
-        pattern_index: u32,
+    const Directive = union(enum) {
+        set: struct {
+            property: []const u8,
+            value: []const u8,
+        },
+
+        fn create(name: []const u8, query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
+            if (eql(u8, name, "set!")) return createSetPredicate(query, steps);
+            return PredicateError.UnsupportedDirective;
+        }
+
+        fn createSetPredicate(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
+            checkBodySteps("set!", steps, &.{ .string, .string }) catch |err| return err;
+            return Directive{
+                .set = .{
+                    .property = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))),
+                    .value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+                },
+            };
+        }
     };
 };
 
@@ -406,9 +449,18 @@ test "#not-eq? + #any-of?" {
 
 test "trying out directives" {
     const patterns =
-        \\ ((IDENTIFIER) @variable(#eq? @variable "std") (#set! injection.language "vim"))
+        \\ (
+        \\   (IDENTIFIER) @variable(#eq? @variable "std")
+        \\   (#set! injection.language "vim")
+        \\   (#set! priority 105)
+        \\ )
     ;
-    try testFilter(test_source, patterns, &.{"std"});
+    const query, _ = try setupTestWithNoCleanUp(test_source, patterns);
+    var filter = try PredicatesFilter.init(testing_allocator, query);
+    defer filter.deinit();
+
+    try eq(1, filter.directives.values().len);
+    try eq(2, filter.directives.get(0).?.len);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
