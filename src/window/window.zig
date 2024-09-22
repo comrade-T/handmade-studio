@@ -280,7 +280,46 @@ const CachedContents = struct {
                     .stop => break,
                 };
 
-                std.debug.print("cap_name: {s}\n", .{result.cap_name});
+                var display = self.win.default_display;
+
+                if (self.win.buf.langsuite.?.highlight_map) |hl_map| {
+                    if (hl_map.get(result.cap_name)) |color| {
+                        if (self.win.default_display == .char) display.char.color = color;
+                    }
+                }
+
+                if (result.directives) |directives| {
+                    for (directives) |d| {
+                        switch (d) {
+                            .font => |face| {
+                                if (display == .char) display.char.font_face = face;
+                            },
+                            .size => |size| {
+                                if (display == .char) display.char.font_size = size;
+                            },
+                            .img => |path| {
+                                if (display == .image) {
+                                    display.image.path = path;
+                                    break;
+                                }
+                            },
+                            else => {},
+                        }
+                    }
+                }
+
+                // TODO: add tests
+                // TODO: split to smaller functions
+                // TODO: test those smaller functions especially the last chunk with @memset
+
+                const node_start = result.cap_node.getStartPoint();
+                const node_end = result.cap_node.getEndPoint();
+                for (node_start.row..node_end.row + 1) |linenr| {
+                    const line_index = linenr - self.start_line;
+                    const start_col = if (linenr == node_start.row) node_start.column else 0;
+                    const end_col = if (linenr == node_end.row) node_end.column else self.lines.items[line_index].len;
+                    @memset(self.displays.items[line_index][start_col..end_col], display);
+                }
             }
         }
     }
