@@ -151,18 +151,29 @@ const CachedContents = struct {
         return list;
     }
 
-    test createDisplays {
+    test "createDisplays() returns default displays when Buffer is not highlighted by Tree Sitter" {
         const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333");
         const win = try Window.create(idc_if_it_leaks, buf, _default_display);
         var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
         cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+        const dd = _default_display;
         {
             const displays = try cc.createDisplays(cc.start_line, cc.end_line);
-            const dd = _default_display;
             try eq(3, displays.items.len);
             try eqDisplays(&.{dd}, displays.items[0]);
             try eqDisplays(&.{ dd, dd }, displays.items[1]);
             try eqDisplays(&.{ dd, dd, dd }, displays.items[2]);
+        }
+        {
+            const displays = try cc.createDisplays(0, 0);
+            try eq(1, displays.items.len);
+            try eqDisplays(&.{dd}, displays.items[0]);
+        }
+        {
+            const displays = try cc.createDisplays(1, 2);
+            try eq(2, displays.items.len);
+            try eqDisplays(&.{ dd, dd }, displays.items[0]);
+            try eqDisplays(&.{ dd, dd, dd }, displays.items[1]);
         }
     }
     fn eqDisplays(expected: []const Display, got: []Display) !void {
