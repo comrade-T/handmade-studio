@@ -59,7 +59,7 @@ pub fn disableDefaultQueries(self: *@This()) void {
 }
 
 pub fn disableQuery(self: *@This(), name: []const u8) !void {
-    try self.queries.orderedRemove(name);
+    _ = self.queries.orderedRemove(name);
 }
 
 pub fn enableQuery(self: *@This(), name: []const u8) !void {
@@ -308,10 +308,6 @@ const CachedContents = struct {
                     }
                 }
 
-                // TODO: add tests
-                // TODO: split to smaller functions
-                // TODO: test those smaller functions especially the last chunk with @memset
-
                 const node_start = result.cap_node.getStartPoint();
                 const node_end = result.cap_node.getEndPoint();
                 for (node_start.row..node_end.row + 1) |linenr| {
@@ -330,17 +326,32 @@ const CachedContents = struct {
             \\const Allocator = std.mem.Allocator;
         ;
 
-        var tswin = try TSWin.init(source);
-        defer tswin.deinit();
+        {
+            var tswin = try TSWin.init(source);
+            defer tswin.deinit();
 
-        var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
-        cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
-        cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
+            tswin.win.disableDefaultQueries();
+            try tswin.win.enableQuery("trimed_down_highlights");
 
-        try eq(cc.lines.items.len, cc.displays.items.len);
-        try eqStrU21Slice(&.{ "const std = @import(\"std\");", "const Allocator = std.mem.Allocator;" }, cc.lines.items);
+            var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
+            cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
+            cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
 
-        try cc.applyTreeSitterDisplays();
+            try cc.applyTreeSitterDisplays();
+            var test_iter = DisplayChunkTester{ .cc = cc };
+
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " std = ", .default);
+            try test_iter.next(0, "@import", .{ .hl_group = "include" });
+            try test_iter.next(0, "(\"std\");", .default);
+
+            try test_iter.next(1, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(1, " ", .default);
+            try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
+            try test_iter.next(1, " = std.mem.", .default);
+            try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
+            try test_iter.next(1, ";", .default);
+        }
     }
 };
 
@@ -371,20 +382,57 @@ fn eqStrU21(expected: []const u8, got: []u21) !void {
     try eqStr(expected, slice);
 }
 
+const DisplayChunkTester = struct {
+    i: usize = 0,
+    current_line: usize = 0,
+    cc: CachedContents,
+
+    const ChunkVariant = union(enum) {
+        default,
+        hl_group: []const u8,
+    };
+
+    fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
+        if (linenr != self.current_line) {
+            self.current_line = linenr;
+            self.i = 0;
+        }
+        defer self.i += expected_str.len;
+
+        try eqStrU21(expected_str, self.cc.lines.items[linenr][self.i .. self.i + expected_str.len]);
+
+        var expected_display = self.cc.win.default_display;
+        if (expected_display == .char) {
+            switch (expected_variant) {
+                .hl_group => |hl_group| {
+                    const color = self.cc.win.buf.langsuite.?.highlight_map.?.get(hl_group).?;
+                    expected_display.char.color = color;
+                },
+                else => {},
+            }
+        }
+
+        const displays = self.cc.displays.items[linenr];
+        for (displays[self.i .. self.i + expected_str.len]) |d| try eqDisplay(expected_display, d);
+    }
+};
+
+fn eqDisplay(expected: CachedContents.Display, got: CachedContents.Display) !void {
+    switch (got) {
+        .char => |char| {
+            try eq(char.color, expected.char.color);
+            try eq(char.font_size, expected.char.font_size);
+            try eqStr(char.font_face, expected.char.font_face);
+        },
+        .image => |image| {
+            try eqStr(image.path, expected.image.path);
+        },
+    }
+}
+
 fn eqDisplays(expected: []const CachedContents.Display, got: []CachedContents.Display) !void {
     try eq(expected.len, got.len);
-    for (0..expected.len) |i| {
-        switch (expected[i]) {
-            .char => |char| {
-                try eq(char.color, expected[i].char.color);
-                try eq(char.font_size, expected[i].char.font_size);
-                try eqStr(char.font_face, expected[i].char.font_face);
-            },
-            .image => |image| {
-                try eqStr(image.path, expected[i].image.path);
-            },
-        }
-    }
+    for (0..expected.len) |i| try eqDisplay(expected[i], got[i]);
 }
 
 const _default_display = CachedContents.Display{
@@ -420,7 +468,6 @@ const TSWin = struct {
         try self.buf.initiateTreeSitter(self.langsuite);
 
         self.win = try Window.create(testing_allocator, self.buf, _default_display);
-        try enableCustomQueries(self.win);
 
         return self;
     }
@@ -434,10 +481,30 @@ const TSWin = struct {
             \\   (#set! font-name "Inter")
             \\ )
         );
-    }
-
-    fn enableCustomQueries(win: *Window) !void {
-        try win.enableQuery("std_60_inter");
+        try self.langsuite.addQuery("trimed_down_highlights",
+            \\ [
+            \\   "const"
+            \\   "var"
+            \\ ] @type.qualifier
+            \\
+            \\ [
+            \\  "true"
+            \\  "false"
+            \\ ] @boolean
+            \\
+            \\ ((BUILTINIDENTIFIER) @include
+            \\ (#any-of? @include "@import" "@cImport"))
+            \\
+            \\ ;; assume TitleCase is a type
+            \\ (
+            \\   [
+            \\     variable_type_function: (IDENTIFIER)
+            \\     field_access: (IDENTIFIER)
+            \\     parameter: (IDENTIFIER)
+            \\   ] @type
+            \\   (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
+            \\ )
+        );
     }
 
     fn deinit(self: *@This()) void {
