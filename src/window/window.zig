@@ -28,7 +28,6 @@ cached: CachedContents = undefined,
 default_display: CachedContents.Display,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
-disable_default_queries: bool = false,
 
 pub fn create(a: Allocator, buf: *Buffer, default_display: CachedContents.Display) !*Window {
     const self = try a.create(@This());
@@ -38,6 +37,7 @@ pub fn create(a: Allocator, buf: *Buffer, default_display: CachedContents.Displa
         .default_display = default_display,
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
     };
+    if (buf.tstree) |_| try self.enableQuery(sitter.DEFAULT_QUERY_ID);
     return self;
 }
 
@@ -54,11 +54,20 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+pub fn disableDefaultQueries(self: *@This()) void {
+    try self.disableQuery(sitter.DEFAULT_QUERY_ID);
+}
+
+pub fn disableQuery(self: *@This(), name: []const u8) !void {
+    try self.queries.orderedRemove(name);
+}
+
 pub fn enableQuery(self: *@This(), name: []const u8) !void {
+    assert(self.buf.langsuite.?.queries != null);
     const langsuite = self.buf.langsuite orelse return;
     const queries = langsuite.queries orelse return;
     const ptr = queries.get(name) orelse return;
-    try self.queries.put(name, ptr);
+    _ = try self.queries.getOrPutValue(name, ptr);
 }
 
 fn bols(self: *const @This()) u32 {
@@ -247,8 +256,33 @@ const CachedContents = struct {
         }
     }
 
-    fn applyTreeSitterDisplays(self: *@This()) !void {
+    // TODO:                                   list specific errors
+    fn applyTreeSitterDisplays(self: *@This()) anyerror!void {
         if (self.win.buf.tstree == null) return;
+
+        for (self.win.queries.values()) |sq| {
+            const query = sq.query;
+
+            const cursor = try ts.Query.Cursor.create();
+            defer cursor.destroy();
+            cursor.setPointRange(
+                ts.Point{ .row = @intCast(self.start_line), .column = 0 },
+                ts.Point{ .row = @intCast(self.end_line + 1), .column = 0 },
+            );
+            cursor.execute(query, self.win.buf.tstree.?.getRootNode());
+
+            const filter = try sitter.PredicatesFilter.init(self.arena.allocator(), query);
+            defer filter.deinit();
+
+            while (true) {
+                const result = switch (filter.nextMatchInLines(query, cursor, Buffer.contentCallback, self.win.buf, self.start_line, self.end_line)) {
+                    .match => |result| result,
+                    .stop => break,
+                };
+
+                std.debug.print("cap_name: {s}\n", .{result.cap_name});
+            }
+        }
     }
 
     test applyTreeSitterDisplays {
@@ -266,6 +300,8 @@ const CachedContents = struct {
 
         try eq(cc.lines.items.len, cc.displays.items.len);
         try eqStrU21Slice(&.{ "const std = @import(\"std\");", "const Allocator = std.mem.Allocator;" }, cc.lines.items);
+
+        try cc.applyTreeSitterDisplays();
     }
 };
 

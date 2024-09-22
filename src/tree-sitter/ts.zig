@@ -18,7 +18,7 @@ const eqStr = std.testing.expectEqualStrings;
 
 pub const SupportedLanguages = enum { zig };
 
-pub const DEFAULT_QUERIES_NAME = "DEFAULT";
+pub const DEFAULT_QUERY_ID = "DEFAULT";
 
 pub const StoredQuery = struct {
     query: *b.Query,
@@ -61,7 +61,7 @@ pub const LangSuite = struct {
 
         self.queries_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         self.queries = std.StringArrayHashMap(*StoredQuery).init(self.queries_arena.?.allocator());
-        try self.addQuery(DEFAULT_QUERIES_NAME, patterns);
+        try self.addQuery(DEFAULT_QUERY_ID, patterns);
     }
 
     pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
