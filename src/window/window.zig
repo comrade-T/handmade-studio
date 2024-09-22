@@ -229,20 +229,19 @@ const CachedContents = struct {
             }
         }
     }
-    fn eqDisplays(expected: []const Display, got: []Display) !void {
-        try eq(expected.len, got.len);
-        for (0..expected.len) |i| {
-            switch (expected[i]) {
-                .char => |char| {
-                    try eq(char.color, expected[i].char.color);
-                    try eq(char.font_size, expected[i].char.font_size);
-                    try eqStr(char.font_face, expected[i].char.font_face);
-                },
-                .image => |image| {
-                    try eqStr(image.path, expected[i].image.path);
-                },
-            }
-        }
+
+    fn addTSHighlighting(self: *@This()) !void {
+        _ = self;
+    }
+
+    test addTSHighlighting {
+        const source =
+            \\const std = @import("std");
+            \\const Allocator = std.mem.Allocator;
+        ;
+
+        var tswin = try TSWin.init(source);
+        defer tswin.deinit();
     }
 };
 
@@ -253,7 +252,7 @@ const ContentRestrictions = union(enum) {
 
 const Cursor = struct { line: usize = 0, col: usize = 0 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Helpers
+////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
 fn eqStrU21Slice(expected: []const []const u8, got: [][]u21) !void {
     try eq(expected.len, got.len);
@@ -267,6 +266,22 @@ fn eqStrU21(expected: []const u8, got: []u21) !void {
     try eqStr(expected, slice);
 }
 
+fn eqDisplays(expected: []const CachedContents.Display, got: []CachedContents.Display) !void {
+    try eq(expected.len, got.len);
+    for (0..expected.len) |i| {
+        switch (expected[i]) {
+            .char => |char| {
+                try eq(char.color, expected[i].char.color);
+                try eq(char.font_size, expected[i].char.font_size);
+                try eqStr(char.font_face, expected[i].char.font_face);
+            },
+            .image => |image| {
+                try eqStr(image.path, expected[i].image.path);
+            },
+        }
+    }
+}
+
 const _default_display = CachedContents.Display{
     .char = .{
         .font_size = 40,
@@ -275,10 +290,35 @@ const _default_display = CachedContents.Display{
     },
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Lesser Helpers
+////////////////////////////////////////////////////////////////////////////////////////////// Test Setup Helpers
 
 fn _createWinWithBuf(source: []const u8) !*Window {
     const buf = try Buffer.create(idc_if_it_leaks, .string, source);
     const win = try Window.create(idc_if_it_leaks, buf, _default_display);
     return win;
 }
+
+const TSWin = struct {
+    langsuite: sitter.LangSuite = undefined,
+    buf: *Buffer = undefined,
+    win: *Window = undefined,
+
+    fn init(source: []const u8) !@This() {
+        var self = TSWin{
+            .langsuite = try sitter.LangSuite.create(.zig),
+            .buf = try Buffer.create(idc_if_it_leaks, .string, source),
+        };
+        try self.langsuite.initializeQuery();
+        try self.langsuite.initializeNightflyColorscheme(testing_allocator);
+        try self.langsuite.initializeFilter(testing_allocator);
+        try self.buf.initiateTreeSitter(self.langsuite);
+        self.win = try Window.create(testing_allocator, self.buf, _default_display);
+        return self;
+    }
+
+    fn deinit(self: *@This()) void {
+        self.langsuite.destroy();
+        self.buf.destroy();
+        self.win.destroy();
+    }
+};
