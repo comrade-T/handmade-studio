@@ -1470,7 +1470,7 @@ pub const Node = union(enum) {
                 const insert_at_end = cx.current_index + leaf.buf.len == cx.start_byte;
                 if (insert_at_end) return try _insertAtEnd(cx, leaf, new_leaves, yep_newline);
 
-                return try _insertInMiddle(cx, leaf, new_leaves);
+                return try _insertInMiddle(cx, leaf, new_leaves, yep_newline);
             }
 
             fn _leafBufHasNoText(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
@@ -1512,7 +1512,7 @@ pub const Node = union(enum) {
                 return WalkMutResult{ .replace = replacement };
             }
 
-            fn _insertInMiddle(cx: *@This(), leaf: *const Leaf, new_leaves: []Node) !WalkMutResult {
+            fn _insertInMiddle(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index;
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
@@ -1521,6 +1521,7 @@ pub const Node = union(enum) {
                 if (cx.buf[0] == '\n') first_eol = true;
 
                 var last_bol = false;
+                if (yep_newline) last_bol = true;
                 if (new_leaves.len > 1) {
                     const last_new_leaf = new_leaves[new_leaves.len - 1].leaf;
                     if (last_new_leaf.buf.len == 0 and last_new_leaf.bol) last_bol = true;
@@ -1734,9 +1735,9 @@ pub const Node = union(enum) {
             const root = try Leaf.new(a, "const str =;", true, false);
             const new_root, _, _ = try root.insertChars(a, 11, "\n");
             const new_root_debug_str =
-                \\2 1/13/12
+                \\2 2/13/12
                 \\  1 B| `const str =` |E
-                \\  1 `;`
+                \\  1 B| `;`
             ;
             try eqStr(new_root_debug_str, try new_root.debugPrint());
         }
@@ -1916,6 +1917,16 @@ pub const Node = union(enum) {
                 try eqStr(str, try root.debugPrint());
             }
         }
+
+        // insert '\n' in middle of a leaf
+        var root = try Node.fromString(a, "hello", true);
+        const new_root, _, _ = try root.insertChars(a, 4, "\n");
+        const str =
+            \\2 2/6/5
+            \\  1 B| `hell` |E
+            \\  1 B| `o`
+        ;
+        try eqStr(str, try new_root.debugPrint());
     }
 
     ///////////////////////////// Get Byte Offset from Position
