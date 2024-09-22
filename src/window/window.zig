@@ -231,7 +231,7 @@ const CachedContents = struct {
     }
 
     fn addTSHighlighting(self: *@This()) !void {
-        _ = self;
+        if (self.win.buf.tstree == null) return;
     }
 
     test addTSHighlighting {
@@ -242,7 +242,20 @@ const CachedContents = struct {
 
         var tswin = try TSWin.init(source);
         defer tswin.deinit();
+
+        var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
+        cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
+        cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
+
+        try eq(cc.lines.items.len, cc.displays.items.len);
+        try eqStrU21Slice(&.{ "const std = @import(\"std\");", "const Allocator = std.mem.Allocator;" }, cc.lines.items);
     }
+};
+
+const StoredQuery = struct {
+    query: ts.Query,
+    pattern: []const u8,
+    id: []const u8,
 };
 
 const ContentRestrictions = union(enum) {
@@ -308,9 +321,8 @@ const TSWin = struct {
             .langsuite = try sitter.LangSuite.create(.zig),
             .buf = try Buffer.create(idc_if_it_leaks, .string, source),
         };
-        try self.langsuite.initializeQuery();
+        try self.langsuite.initializeQueryMap();
         try self.langsuite.initializeNightflyColorscheme(testing_allocator);
-        try self.langsuite.initializeFilter(testing_allocator);
         try self.buf.initiateTreeSitter(self.langsuite);
         self.win = try Window.create(testing_allocator, self.buf, _default_display);
         return self;

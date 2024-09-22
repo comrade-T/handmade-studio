@@ -103,6 +103,7 @@ pub fn build(b: *std.Build) void {
     const window = addTestableModule(&bops, "src/window/window.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "ts", .module = ts.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     window.compile.linkLibrary(tree_sitter);

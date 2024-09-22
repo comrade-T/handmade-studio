@@ -1051,7 +1051,7 @@ fn testIterBatch(iter: *Window.CodePointIterator, sequence: []const u8, hl_group
 
 fn setupLangSuite(a: Allocator, lang_choice: sitter.SupportedLanguages) !sitter.LangSuite {
     var langsuite = try sitter.LangSuite.create(lang_choice);
-    try langsuite.initializeQuery();
+    try langsuite.initializeQueryMap();
     try langsuite.initializeFilter(a);
     try langsuite.initializeHighlightMap(a);
     return langsuite;

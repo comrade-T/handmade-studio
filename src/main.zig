@@ -293,7 +293,7 @@ pub fn main() anyerror!void {
     // LangSuite
     var zig_langsuite = try _neo_buffer.sitter.LangSuite.create(.zig);
     defer zig_langsuite.destroy();
-    try zig_langsuite.initializeQuery();
+    try zig_langsuite.initializeQueryMap();
     try zig_langsuite.initializeFilter(gpa);
     try zig_langsuite.initializeNightflyColorscheme(gpa);
 
