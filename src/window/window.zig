@@ -88,16 +88,36 @@ const CachedContents = struct {
             .arena = ArenaAllocator.init(std.heap.page_allocator),
             .win = win,
         };
+        const bols = win.buf.roperoot.weights().bols -| 1;
         switch (strategy) {
-            .entire_buffer => {
-                self.end_line = win.buf.roperoot.weights().bols -| 1;
-            },
+            .entire_buffer => self.end_line = bols,
             .section => |section| {
+                assert(section.start_line <= section.end_line);
+                assert(section.start_line <= bols and section.end_line <= bols);
                 self.start_line = section.start_line;
                 self.end_line = section.end_line;
             },
         }
         return self;
+    }
+
+    test init_bare_internal {
+        const win = try _createWinWithBuf("1\n22\n333\n4444\n55555");
+        {
+            const cc = try CachedContents.init_bare_internal(win, .entire_buffer);
+            try eq(0, cc.start_line);
+            try eq(4, cc.end_line);
+        }
+        {
+            const cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 0, .end_line = 2 } });
+            try eq(0, cc.start_line);
+            try eq(2, cc.end_line);
+        }
+        {
+            const cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
+            try eq(2, cc.start_line);
+            try eq(4, cc.end_line);
+        }
     }
 
     fn deinit(self: *@This()) void {
@@ -115,12 +135,16 @@ const CachedContents = struct {
     }
 
     test createLines {
-        const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333");
-        const win = try Window.create(idc_if_it_leaks, buf, _default_display);
+        const win = try _createWinWithBuf("1\n22\n333\n4444\n55555");
         {
             var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
             const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
-            try eqStrU21Slice(&.{ "1", "22", "333" }, lines.items);
+            try eqStrU21Slice(&.{ "1", "22", "333", "4444", "55555" }, lines.items);
+        }
+        {
+            var cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
+            const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            try eqStrU21Slice(&.{ "333", "4444", "55555" }, lines.items);
         }
         {
             const lines = try createLines(idc_if_it_leaks, win, 0, 0);
@@ -138,10 +162,10 @@ const CachedContents = struct {
 
     const CreateDisplaysError = error{OutOfMemory};
     fn createDisplays(self: *CachedContents, start_line: usize, end_line: usize) CreateDisplaysError!ArrayList([]Display) {
+        assert(start_line >= self.start_line and end_line <= self.end_line);
         const a = self.arena.allocator();
         var list = ArrayList([]Display).init(a);
         for (start_line..end_line + 1) |linenr| {
-            assert(linenr >= self.start_line);
             const line_index = linenr - self.start_line;
             const line = self.lines.items[line_index];
             const displays = try a.alloc(Display, line.len);
@@ -152,28 +176,46 @@ const CachedContents = struct {
     }
 
     test "createDisplays() returns default displays when Buffer is not highlighted by Tree Sitter" {
-        const buf = try Buffer.create(idc_if_it_leaks, .string, "1\n22\n333");
-        const win = try Window.create(idc_if_it_leaks, buf, _default_display);
-        var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
-        cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+        const win = try _createWinWithBuf("1\n22\n333\n4444\n55555");
         const dd = _default_display;
+
+        // CachedContents contains lines & displays for entire buffer
         {
-            const displays = try cc.createDisplays(cc.start_line, cc.end_line);
-            try eq(3, displays.items.len);
-            try eqDisplays(&.{dd}, displays.items[0]);
-            try eqDisplays(&.{ dd, dd }, displays.items[1]);
-            try eqDisplays(&.{ dd, dd, dd }, displays.items[2]);
+            var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
+            cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            {
+                const displays = try cc.createDisplays(cc.start_line, cc.end_line);
+                try eq(5, displays.items.len);
+                try eqDisplays(&.{dd}, displays.items[0]);
+                try eqDisplays(&.{ dd, dd }, displays.items[1]);
+                try eqDisplays(&.{ dd, dd, dd }, displays.items[2]);
+                try eqDisplays(&.{ dd, dd, dd, dd }, displays.items[3]);
+                try eqDisplays(&.{ dd, dd, dd, dd, dd }, displays.items[4]);
+            }
+            {
+                const displays = try cc.createDisplays(0, 0);
+                try eq(1, displays.items.len);
+                try eqDisplays(&.{dd}, displays.items[0]);
+            }
+            {
+                const displays = try cc.createDisplays(1, 2);
+                try eq(2, displays.items.len);
+                try eqDisplays(&.{ dd, dd }, displays.items[0]);
+                try eqDisplays(&.{ dd, dd, dd }, displays.items[1]);
+            }
         }
+
+        // CachedContents contains lines & displays only for specific region
         {
-            const displays = try cc.createDisplays(0, 0);
-            try eq(1, displays.items.len);
-            try eqDisplays(&.{dd}, displays.items[0]);
-        }
-        {
-            const displays = try cc.createDisplays(1, 2);
-            try eq(2, displays.items.len);
-            try eqDisplays(&.{ dd, dd }, displays.items[0]);
-            try eqDisplays(&.{ dd, dd, dd }, displays.items[1]);
+            var cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
+            cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            {
+                const displays = try cc.createDisplays(cc.start_line, cc.end_line);
+                try eq(3, displays.items.len);
+                try eqDisplays(&.{ dd, dd, dd }, displays.items[0]);
+                try eqDisplays(&.{ dd, dd, dd, dd }, displays.items[1]);
+                try eqDisplays(&.{ dd, dd, dd, dd, dd }, displays.items[2]);
+            }
         }
     }
     fn eqDisplays(expected: []const Display, got: []Display) !void {
@@ -221,3 +263,11 @@ const _default_display = CachedContents.Display{
         .color = 0xF5F5F5F5,
     },
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// Lesser Helpers
+
+fn _createWinWithBuf(source: []const u8) !*Window {
+    const buf = try Buffer.create(idc_if_it_leaks, .string, source);
+    const win = try Window.create(idc_if_it_leaks, buf, _default_display);
+    return win;
+}
