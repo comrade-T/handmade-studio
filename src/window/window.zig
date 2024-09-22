@@ -102,15 +102,16 @@ const CachedContents = struct {
     start_line: usize = 0,
     end_line: usize = 0,
 
-    const InitError = error{OutOfMemory};
-    fn init(win: *const Window, strategy: CacheStrategy) InitError!@This() {
+    const InitError = error{ OutOfMemory, LineOutOfBounds };
+    // TODO:                                             list specific errors
+    fn init(win: *const Window, strategy: CacheStrategy) anyerror!@This() {
         var self = try CachedContents.init_bare_internal(win, strategy);
 
         self.lines = try createLines(self.arena.allocator(), win, self.start_line, self.end_line);
         assert(self.lines.items.len == self.end_line - self.start_line + 1);
 
-        self.displays = try createDefaultDisplays(self.arena.allocator(), win, self.start_line, self.end_line);
-        assert(self.lines.values().len == self.displays.values().len);
+        self.displays = try self.createDefaultDisplays(self.start_line, self.end_line);
+        assert(self.lines.items.len == self.displays.items.len);
 
         try self.applyTreeSitterDisplays();
 
@@ -326,14 +327,14 @@ const CachedContents = struct {
             \\const Allocator = std.mem.Allocator;
         ;
 
+        var tswin = try TSWin.init(source);
+        defer tswin.deinit();
+        tswin.win.disableDefaultQueries();
+        try tswin.win.enableQuery("trimed_down_highlights");
+
         {
-            var tswin = try TSWin.init(source);
-            defer tswin.deinit();
-
-            tswin.win.disableDefaultQueries();
-            try tswin.win.enableQuery("trimed_down_highlights");
-
             var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
+            defer cc.deinit();
             cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
             cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
 
@@ -349,6 +350,29 @@ const CachedContents = struct {
             try test_iter.next(1, " ", .default);
             try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
             try test_iter.next(1, " = std.mem.", .default);
+            try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
+            try test_iter.next(1, ";", .default);
+        }
+
+        try tswin.win.enableQuery("std_60_inter");
+        {
+            var cc = try CachedContents.init(tswin.win, .entire_buffer);
+            defer cc.deinit();
+            var test_iter = DisplayChunkTester{ .cc = cc };
+
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " ", .default);
+            try test_iter.next(0, "std", .{ .literal = .{ "Inter", 60, tswin.hl.get("variable").? } });
+            try test_iter.next(0, " = ", .default);
+            try test_iter.next(0, "@import", .{ .hl_group = "include" });
+            try test_iter.next(0, "(\"std\");", .default);
+
+            try test_iter.next(1, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(1, " ", .default);
+            try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
+            try test_iter.next(1, " = ", .default);
+            try test_iter.next(1, "std", .{ .literal = .{ "Inter", 60, tswin.hl.get("variable").? } });
+            try test_iter.next(1, ".mem.", .default);
             try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
             try test_iter.next(1, ";", .default);
         }
@@ -390,6 +414,7 @@ const DisplayChunkTester = struct {
     const ChunkVariant = union(enum) {
         default,
         hl_group: []const u8,
+        literal: struct { []const u8, i32, u32 },
     };
 
     fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
@@ -408,21 +433,30 @@ const DisplayChunkTester = struct {
                     const color = self.cc.win.buf.langsuite.?.highlight_map.?.get(hl_group).?;
                     expected_display.char.color = color;
                 },
+                .literal => |literal| {
+                    expected_display.char.font_face = literal[0];
+                    expected_display.char.font_size = literal[1];
+                    expected_display.char.color = literal[2];
+                },
                 else => {},
             }
         }
 
         const displays = self.cc.displays.items[linenr];
-        for (displays[self.i .. self.i + expected_str.len]) |d| try eqDisplay(expected_display, d);
+        for (displays[self.i .. self.i + expected_str.len], 0..) |d, i| {
+            errdefer std.debug.print("display comparison failed at index [{d}] of sequence '{s}'\n", .{ i, expected_str });
+            try eqDisplay(expected_display, d);
+        }
     }
 };
 
 fn eqDisplay(expected: CachedContents.Display, got: CachedContents.Display) !void {
     switch (got) {
         .char => |char| {
-            try eq(char.color, expected.char.color);
-            try eq(char.font_size, expected.char.font_size);
-            try eqStr(char.font_face, expected.char.font_face);
+            errdefer std.debug.print("expected color 0x{x} got 0x{x}\n", .{ expected.char.color, char.color });
+            try eqStr(expected.char.font_face, char.font_face);
+            try eq(expected.char.font_size, char.font_size);
+            try eq(expected.char.color, char.color);
         },
         .image => |image| {
             try eqStr(image.path, expected.image.path);
@@ -455,6 +489,7 @@ const TSWin = struct {
     langsuite: sitter.LangSuite = undefined,
     buf: *Buffer = undefined,
     win: *Window = undefined,
+    hl: std.StringHashMap(u32) = undefined,
 
     fn init(source: []const u8) !@This() {
         var self = TSWin{
@@ -463,6 +498,7 @@ const TSWin = struct {
         };
         try self.langsuite.initializeQueryMap();
         try self.langsuite.initializeNightflyColorscheme(testing_allocator);
+        self.hl = self.langsuite.highlight_map.?;
         try self.addCustomQueries();
 
         try self.buf.initiateTreeSitter(self.langsuite);
@@ -477,10 +513,11 @@ const TSWin = struct {
             \\ (
             \\   (IDENTIFIER) @variable
             \\   (#eq? @variable "std")
-            \\   (#set! font-size 60)
-            \\   (#set! font-name "Inter")
+            \\   (#size! 60)
+            \\   (#font! "Inter")
             \\ )
         );
+
         try self.langsuite.addQuery("trimed_down_highlights",
             \\ [
             \\   "const"
