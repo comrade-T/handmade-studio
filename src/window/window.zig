@@ -29,7 +29,12 @@ default_display: CachedContents.Display,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
-pub fn create(a: Allocator, buf: *Buffer, default_display: CachedContents.Display) !*Window {
+pub fn create(
+    a: Allocator,
+    buf: *Buffer,
+    cache_strategy: CachedContents.CacheStrategy,
+    default_display: CachedContents.Display,
+) !*Window {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -38,13 +43,14 @@ pub fn create(a: Allocator, buf: *Buffer, default_display: CachedContents.Displa
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
     };
     if (buf.tstree) |_| try self.enableQuery(sitter.DEFAULT_QUERY_ID);
+    self.cached = try CachedContents.init(self, cache_strategy);
     return self;
 }
 
 test create {
     var buf = try Buffer.create(testing_allocator, .string, "");
     defer buf.destroy();
-    var win = try Window.create(testing_allocator, buf, _default_display);
+    var win = try Window.create(testing_allocator, buf, .entire_buffer, _default_display);
     defer win.destroy();
     try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
 }
@@ -52,6 +58,32 @@ test create {
 pub fn destroy(self: *@This()) void {
     self.queries.deinit();
     self.a.destroy(self);
+}
+
+pub fn insertChars(self: *@This(), chars: []const u8) !void {
+    const new_cusror_pos, const hl_range = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+
+    const change_start = self.cursor.line;
+    const change_end = new_cusror_pos.line;
+    assert(change_start <= change_end);
+
+    try self.cached.updateLines(change_start, change_start, change_start, change_end);
+
+    self.cursor = .{ .line = new_cusror_pos.line, .col = new_cusror_pos.col };
+
+    _ = hl_range;
+}
+
+test insertChars {
+    var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+    defer tswin.deinit();
+
+    try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
+
+    try tswin.win.insertChars("h");
+    try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
+    try tswin.win.insertChars("ello");
+    try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
 }
 
 pub fn disableDefaultQueries(self: *@This()) void {
@@ -326,11 +358,8 @@ const CachedContents = struct {
             \\const std = @import("std");
             \\const Allocator = std.mem.Allocator;
         ;
-
-        var tswin = try TSWin.init(source);
+        var tswin = try TSWin.init(source, .entire_buffer, true, &.{"trimed_down_highlights"});
         defer tswin.deinit();
-        tswin.win.disableDefaultQueries();
-        try tswin.win.enableQuery("trimed_down_highlights");
 
         {
             var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
@@ -375,6 +404,49 @@ const CachedContents = struct {
             try test_iter.next(1, ".mem.", .default);
             try test_iter.next(1, "Allocator", .{ .hl_group = "type" });
             try test_iter.next(1, ";", .default);
+        }
+    }
+
+    const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
+    fn updateLines(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) UpdateLinesError!void {
+        var new_lines = try createLines(self.arena.allocator(), self.win, new_start, new_end);
+        try self.lines.replaceRange(new_start, old_end - old_start + 1, try new_lines.toOwnedSlice());
+    }
+
+    test updateLines {
+        {
+            var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+            defer tswin.deinit();
+            try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
+
+            _ = try tswin.buf.insertChars("h", 0, 0);
+            try tswin.win.cached.updateLines(0, 0, 0, 0);
+            try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
+
+            _ = try tswin.buf.insertChars("ello", 0, 1);
+            try tswin.win.cached.updateLines(0, 0, 0, 0);
+            try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
+
+            _ = try tswin.buf.insertChars("\n", 0, 5);
+            try tswin.win.cached.updateLines(0, 0, 0, 1);
+            try eqStrU21Slice(&.{ "hello", "" }, tswin.win.cached.lines.items);
+        }
+        {
+            var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+            defer tswin.deinit();
+            try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
+
+            _ = try tswin.buf.insertChars("h", 0, 0);
+            try tswin.win.cached.updateLines(0, 0, 0, 0);
+            try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
+
+            _ = try tswin.buf.insertChars("ello", 0, 1);
+            try tswin.win.cached.updateLines(0, 0, 0, 0);
+            try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
+
+            _ = try tswin.buf.insertChars("\n", 0, 4);
+            try tswin.win.cached.updateLines(0, 0, 0, 1);
+            try eqStrU21Slice(&.{ "hell", "o" }, tswin.win.cached.lines.items);
         }
     }
 };
@@ -481,7 +553,7 @@ const _default_display = CachedContents.Display{
 
 fn _createWinWithBuf(source: []const u8) !*Window {
     const buf = try Buffer.create(idc_if_it_leaks, .string, source);
-    const win = try Window.create(idc_if_it_leaks, buf, _default_display);
+    const win = try Window.create(idc_if_it_leaks, buf, .entire_buffer, _default_display);
     return win;
 }
 
@@ -491,7 +563,12 @@ const TSWin = struct {
     win: *Window = undefined,
     hl: std.StringHashMap(u32) = undefined,
 
-    fn init(source: []const u8) !@This() {
+    fn init(
+        source: []const u8,
+        cache_strategy: CachedContents.CacheStrategy,
+        disable_default_queries: bool,
+        enabled_queries: []const []const u8,
+    ) !@This() {
         var self = TSWin{
             .langsuite = try sitter.LangSuite.create(.zig),
             .buf = try Buffer.create(idc_if_it_leaks, .string, source),
@@ -503,7 +580,15 @@ const TSWin = struct {
 
         try self.buf.initiateTreeSitter(self.langsuite);
 
-        self.win = try Window.create(testing_allocator, self.buf, _default_display);
+        self.win = try Window.create(
+            testing_allocator,
+            self.buf,
+            cache_strategy,
+            _default_display,
+        );
+
+        if (disable_default_queries) self.win.disableDefaultQueries();
+        for (enabled_queries) |query_id| try self.win.enableQuery(query_id);
 
         return self;
     }
