@@ -60,30 +60,92 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+// TODO:                                              list specific errors
 pub fn insertChars(self: *@This(), chars: []const u8) !void {
-    const new_cusror_pos, const hl_range = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+    const new_cusror_pos, const hl_ranges = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
 
     const change_start = self.cursor.line;
     const change_end = new_cusror_pos.line;
     assert(change_start <= change_end);
 
-    try self.cached.updateLines(change_start, change_start, change_start, change_end);
+    const len_diff = try self.cached.updateObsoleteLines(change_start, change_start, change_start, change_end);
+    self.cached.updateEndLine(len_diff);
+
+    try self.cached.updateObsoleteDisplays(change_start, change_start, change_start, change_end);
+    assert(self.cached.lines.items.len == self.cached.displays.items.len);
+
+    var new_hl_start = change_start;
+    var new_hl_end = change_end;
+    if (hl_ranges) |ranges| {
+        for (ranges) |r| {
+            new_hl_start = @min(new_hl_start, r.start_point.row);
+            new_hl_end = @max(new_hl_end, r.end_point.row);
+        }
+    }
+    try self.cached.applyTreeSitterDisplays(new_hl_start, new_hl_end);
 
     self.cursor = .{ .line = new_cusror_pos.line, .col = new_cusror_pos.col };
-
-    _ = hl_range;
 }
 
 test insertChars {
-    var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
-    defer tswin.deinit();
-
-    try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
-
-    try tswin.win.insertChars("h");
-    try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
-    try tswin.win.insertChars("ello");
-    try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
+    {
+        var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
+        try tswin.win.insertChars("h");
+        try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
+        try tswin.win.insertChars("ello");
+        try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
+        try tswin.win.insertChars("\n");
+        try eqStrU21Slice(&.{ "hello", "" }, tswin.win.cached.lines.items);
+        try tswin.win.insertChars("\nworld");
+        try eqStrU21Slice(&.{ "hello", "", "world" }, tswin.win.cached.lines.items);
+    }
+    {
+        var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        {
+            try tswin.win.insertChars("v");
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "v", .default);
+        }
+        {
+            try tswin.win.insertChars("ar");
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
+        }
+        {
+            try tswin.win.insertChars(" not_false = true;");
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(0, ";", .default);
+            try eqStrU21Slice(&.{"var not_false = true;"}, tswin.win.cached.lines.items);
+        }
+        {
+            try tswin.win.insertChars("\n");
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(0, ";", .default);
+            try eqStrU21Slice(&.{ "var not_false = true;", "" }, tswin.win.cached.lines.items);
+        }
+        {
+            try tswin.win.insertChars("const eleven = 11;");
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(0, ";", .default);
+            try test_iter.next(1, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(1, " eleven = ", .default);
+            try test_iter.next(1, "11", .{ .hl_group = "number" });
+            try test_iter.next(1, ";", .default);
+            try eqStrU21Slice(&.{ "var not_false = true;", "const eleven = 11;" }, tswin.win.cached.lines.items);
+        }
+    }
 }
 
 pub fn disableDefaultQueries(self: *@This()) void {
@@ -145,7 +207,7 @@ const CachedContents = struct {
         self.displays = try self.createDefaultDisplays(self.start_line, self.end_line);
         assert(self.lines.items.len == self.displays.items.len);
 
-        try self.applyTreeSitterDisplays();
+        try self.applyTreeSitterDisplays(self.start_line, self.end_line);
 
         return self;
     }
@@ -289,8 +351,8 @@ const CachedContents = struct {
         }
     }
 
-    // TODO:                                   list specific errors
-    fn applyTreeSitterDisplays(self: *@This()) anyerror!void {
+    // TODO:                                                                       list specific errors
+    fn applyTreeSitterDisplays(self: *@This(), start_line: usize, end_line: usize) anyerror!void {
         if (self.win.buf.tstree == null) return;
 
         for (self.win.queries.values()) |sq| {
@@ -299,8 +361,8 @@ const CachedContents = struct {
             const cursor = try ts.Query.Cursor.create();
             defer cursor.destroy();
             cursor.setPointRange(
-                ts.Point{ .row = @intCast(self.start_line), .column = 0 },
-                ts.Point{ .row = @intCast(self.end_line + 1), .column = 0 },
+                ts.Point{ .row = @intCast(start_line), .column = 0 },
+                ts.Point{ .row = @intCast(end_line + 1), .column = 0 },
             );
             cursor.execute(query, self.win.buf.tstree.?.getRootNode());
 
@@ -367,7 +429,7 @@ const CachedContents = struct {
             cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
             cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
 
-            try cc.applyTreeSitterDisplays();
+            try cc.applyTreeSitterDisplays(cc.start_line, cc.end_line);
             var test_iter = DisplayChunkTester{ .cc = cc };
 
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
@@ -408,45 +470,114 @@ const CachedContents = struct {
     }
 
     const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
-    fn updateLines(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) UpdateLinesError!void {
+    fn updateObsoleteLines(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) UpdateLinesError!i128 {
+        assert(new_start <= new_end);
+        assert(new_start >= self.start_line);
+
+        const old_len: i128 = @intCast(self.lines.items.len);
         var new_lines = try createLines(self.arena.allocator(), self.win, new_start, new_end);
         try self.lines.replaceRange(new_start, old_end - old_start + 1, try new_lines.toOwnedSlice());
+
+        const len_diff: i128 = @as(i128, @intCast(self.lines.items.len)) - old_len;
+        assert(self.end_line + len_diff >= self.start_line);
+        return len_diff;
     }
 
-    test updateLines {
+    test updateObsoleteLines {
         {
             var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
             defer tswin.deinit();
             try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
 
             _ = try tswin.buf.insertChars("h", 0, 0);
-            try tswin.win.cached.updateLines(0, 0, 0, 0);
-            try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
-
+            {
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 0);
+                try eq(0, len_diff);
+                tswin.win.cached.updateEndLine(len_diff);
+                try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
+            }
             _ = try tswin.buf.insertChars("ello", 0, 1);
-            try tswin.win.cached.updateLines(0, 0, 0, 0);
-            try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
-
+            {
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 0);
+                try eq(0, len_diff);
+                tswin.win.cached.updateEndLine(len_diff);
+                try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
+            }
             _ = try tswin.buf.insertChars("\n", 0, 5);
-            try tswin.win.cached.updateLines(0, 0, 0, 1);
-            try eqStrU21Slice(&.{ "hello", "" }, tswin.win.cached.lines.items);
+            {
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 1);
+                try eq(1, len_diff);
+                tswin.win.cached.updateEndLine(len_diff);
+                try eqStrU21Slice(&.{ "hello", "" }, tswin.win.cached.lines.items);
+            }
         }
         {
             var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
             defer tswin.deinit();
-            try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
-
             _ = try tswin.buf.insertChars("h", 0, 0);
-            try tswin.win.cached.updateLines(0, 0, 0, 0);
-            try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
-
+            {
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 0);
+                try eq(0, len_diff);
+                tswin.win.cached.updateEndLine(len_diff);
+                try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
+            }
             _ = try tswin.buf.insertChars("ello", 0, 1);
-            try tswin.win.cached.updateLines(0, 0, 0, 0);
-            try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
-
+            {
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 0);
+                try eq(0, len_diff);
+                tswin.win.cached.updateEndLine(len_diff);
+                try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
+            }
             _ = try tswin.buf.insertChars("\n", 0, 4);
-            try tswin.win.cached.updateLines(0, 0, 0, 1);
-            try eqStrU21Slice(&.{ "hell", "o" }, tswin.win.cached.lines.items);
+            {
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 1);
+                try eq(1, len_diff);
+                tswin.win.cached.updateEndLine(len_diff);
+                try eqStrU21Slice(&.{ "hell", "o" }, tswin.win.cached.lines.items);
+            }
+        }
+    }
+
+    fn updateEndLine(self: *@This(), len_diff: i128) void {
+        const new_end_line = @as(i128, @intCast(self.end_line)) + len_diff;
+        assert(new_end_line >= 0);
+        self.end_line = @intCast(new_end_line);
+    }
+
+    fn updateObsoleteDisplays(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) !void {
+        var new_displays = try self.createDefaultDisplays(new_start, new_end);
+        try self.displays.replaceRange(new_start, old_end - old_start + 1, try new_displays.toOwnedSlice());
+    }
+
+    test updateObsoleteDisplays {
+        {
+            var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+            defer tswin.deinit();
+            {
+                _ = try tswin.buf.insertChars("h", 0, 0);
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 0);
+                tswin.win.cached.updateEndLine(len_diff);
+                try tswin.win.cached.updateObsoleteDisplays(0, 0, 0, 0);
+                var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+                try test_iter.next(0, "h", .default);
+            }
+            {
+                _ = try tswin.buf.insertChars("ello", 0, 1);
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 0);
+                tswin.win.cached.updateEndLine(len_diff);
+                try tswin.win.cached.updateObsoleteDisplays(0, 0, 0, 0);
+                var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+                try test_iter.next(0, "hello", .default);
+            }
+            {
+                _ = try tswin.buf.insertChars("\n", 0, 4);
+                const len_diff = try tswin.win.cached.updateObsoleteLines(0, 0, 0, 1);
+                tswin.win.cached.updateEndLine(len_diff);
+                try tswin.win.cached.updateObsoleteDisplays(0, 0, 0, 1);
+                var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+                try test_iter.next(0, "hell", .default);
+                try test_iter.next(1, "o", .default);
+            }
         }
     }
 };
@@ -613,6 +744,8 @@ const TSWin = struct {
             \\  "true"
             \\  "false"
             \\ ] @boolean
+            \\
+            \\ (INTEGER) @number
             \\
             \\ ((BUILTINIDENTIFIER) @include
             \\ (#any-of? @include "@import" "@cImport"))
