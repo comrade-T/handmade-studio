@@ -67,13 +67,14 @@ const CachedContents = struct {
     arena: ArenaAllocator,
     win: *const Window,
 
-    lines: AutoArrayHashMap(usize, []u21) = undefined,
-    displays: AutoArrayHashMap(usize, []Display) = undefined,
+    lines: ArrayList([]u21) = undefined,
+    displays: ArrayList([]Display) = undefined,
 
     start_line: usize = 0,
     end_line: usize = 0,
 
-    fn init(win: *const Window, strategy: CacheStrategy) !@This() {
+    const InitError = error{OutOfMemory};
+    fn init(win: *const Window, strategy: CacheStrategy) InitError!@This() {
         var self = try CachedContents.init_bare_internal(win, strategy);
         self.lines = try createLines(self.arena.allocator(), win, self.start_line, self.end_line);
         self.displays = try createDisplays(self.arena.allocator(), win, self.start_line, self.end_line);
@@ -81,7 +82,8 @@ const CachedContents = struct {
         return self;
     }
 
-    fn init_bare_internal(win: *const Window, strategy: CacheStrategy) !@This() {
+    const InitBareInternalError = error{OutOfMemory};
+    fn init_bare_internal(win: *const Window, strategy: CacheStrategy) InitBareInternalError!@This() {
         var self = CachedContents{
             .arena = ArenaAllocator.init(std.heap.page_allocator),
             .win = win,
@@ -103,11 +105,11 @@ const CachedContents = struct {
     }
 
     const CreateLinesError = error{ OutOfMemory, LineOutOfBounds };
-    fn createLines(a: Allocator, win: *const Window, start_line: usize, end_line: usize) CreateLinesError!AutoArrayHashMap(usize, []u21) {
-        var lines = AutoArrayHashMap(usize, []u21).init(a);
+    fn createLines(a: Allocator, win: *const Window, start_line: usize, end_line: usize) CreateLinesError!ArrayList([]u21) {
+        var lines = ArrayList([]u21).init(a);
         for (start_line..end_line + 1) |linenr| {
             const line = try win.buf.roperoot.getLineEx(a, linenr);
-            try lines.put(linenr, line);
+            try lines.append(line);
         }
         return lines;
     }
@@ -118,42 +120,35 @@ const CachedContents = struct {
         {
             var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
             const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
-            try eq(3, lines.values().len);
-            try eqStrU21("1", lines.get(0).?);
-            try eqStrU21("22", lines.get(1).?);
-            try eqStrU21("333", lines.get(2).?);
+            try eqStrU21Slice(&.{ "1", "22", "333" }, lines.items);
         }
         {
             const lines = try createLines(idc_if_it_leaks, win, 0, 0);
-            try eq(1, lines.values().len);
-            try eqStrU21("1", lines.get(0).?);
+            try eqStrU21Slice(&.{"1"}, lines.items);
         }
         {
             const lines = try createLines(idc_if_it_leaks, win, 0, 1);
-            try eq(2, lines.values().len);
-            try eqStrU21("1", lines.get(0).?);
-            try eqStrU21("22", lines.get(1).?);
+            try eqStrU21Slice(&.{ "1", "22" }, lines.items);
         }
         {
             const lines = try createLines(idc_if_it_leaks, win, 1, 2);
-            try eq(2, lines.values().len);
-            try eqStrU21("22", lines.get(1).?);
-            try eqStrU21("333", lines.get(2).?);
+            try eqStrU21Slice(&.{ "22", "333" }, lines.items);
         }
     }
 
     const CreateDisplaysError = error{OutOfMemory};
-    fn createDisplays(self: *CachedContents, start_line: usize, end_line: usize) CreateDisplaysError!AutoArrayHashMap(usize, []Display) {
+    fn createDisplays(self: *CachedContents, start_line: usize, end_line: usize) CreateDisplaysError!ArrayList([]Display) {
         const a = self.arena.allocator();
-        var map = AutoArrayHashMap(usize, []Display).init(a);
+        var list = ArrayList([]Display).init(a);
         for (start_line..end_line + 1) |linenr| {
-            assert(self.lines.contains(linenr));
-            const line = self.lines.get(linenr) orelse &.{};
+            assert(linenr >= self.start_line);
+            const line_index = linenr - self.start_line;
+            const line = self.lines.items[line_index];
             const displays = try a.alloc(Display, line.len);
             @memset(displays, self.win.default_display);
-            try map.put(linenr, displays);
+            try list.append(displays);
         }
-        return map;
+        return list;
     }
 
     test createDisplays {
@@ -164,10 +159,10 @@ const CachedContents = struct {
         {
             const displays = try cc.createDisplays(cc.start_line, cc.end_line);
             const dd = _default_display;
-            try eq(3, displays.values().len);
-            try eqDisplays(&.{dd}, displays.get(0).?);
-            try eqDisplays(&.{ dd, dd }, displays.get(1).?);
-            try eqDisplays(&.{ dd, dd, dd }, displays.get(2).?);
+            try eq(3, displays.items.len);
+            try eqDisplays(&.{dd}, displays.items[0]);
+            try eqDisplays(&.{ dd, dd }, displays.items[1]);
+            try eqDisplays(&.{ dd, dd, dd }, displays.items[2]);
         }
     }
     fn eqDisplays(expected: []const Display, got: []Display) !void {
@@ -195,6 +190,11 @@ const ContentRestrictions = union(enum) {
 const Cursor = struct { line: usize = 0, col: usize = 0 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Helpers
+
+fn eqStrU21Slice(expected: []const []const u8, got: [][]u21) !void {
+    try eq(expected.len, got.len);
+    for (0..expected.len) |i| try eqStrU21(expected[i], got[i]);
+}
 
 fn eqStrU21(expected: []const u8, got: []u21) !void {
     var slice = try testing_allocator.alloc(u8, got.len);
