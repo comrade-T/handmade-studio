@@ -49,6 +49,14 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+fn bols(self: *const @This()) u32 {
+    return self.buf.roperoot.weights().bols;
+}
+
+fn endLineNr(self: *const @This()) u32 {
+    return self.bols() -| 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
 
 const CachedContents = struct {
@@ -77,7 +85,8 @@ const CachedContents = struct {
     fn init(win: *const Window, strategy: CacheStrategy) InitError!@This() {
         var self = try CachedContents.init_bare_internal(win, strategy);
         self.lines = try createLines(self.arena.allocator(), win, self.start_line, self.end_line);
-        self.displays = try createDisplays(self.arena.allocator(), win, self.start_line, self.end_line);
+        self.displays = try createDefaultDisplays(self.arena.allocator(), win, self.start_line, self.end_line);
+        // TODO: add TS Highlighting
         assert(self.lines.values().len == self.displays.values().len);
         return self;
     }
@@ -88,12 +97,12 @@ const CachedContents = struct {
             .arena = ArenaAllocator.init(std.heap.page_allocator),
             .win = win,
         };
-        const bols = win.buf.roperoot.weights().bols -| 1;
+        const end_linenr = self.win.endLineNr();
         switch (strategy) {
-            .entire_buffer => self.end_line = bols,
+            .entire_buffer => self.end_line = end_linenr,
             .section => |section| {
                 assert(section.start_line <= section.end_line);
-                assert(section.start_line <= bols and section.end_line <= bols);
+                assert(section.start_line <= end_linenr and section.end_line <= end_linenr);
                 self.start_line = section.start_line;
                 self.end_line = section.end_line;
             },
@@ -126,6 +135,8 @@ const CachedContents = struct {
 
     const CreateLinesError = error{ OutOfMemory, LineOutOfBounds };
     fn createLines(a: Allocator, win: *const Window, start_line: usize, end_line: usize) CreateLinesError!ArrayList([]u21) {
+        assert(start_line <= end_line);
+        assert(start_line <= win.endLineNr() and end_line <= win.endLineNr());
         var lines = ArrayList([]u21).init(a);
         for (start_line..end_line + 1) |linenr| {
             const line = try win.buf.roperoot.getLineEx(a, linenr);
@@ -160,8 +171,8 @@ const CachedContents = struct {
         }
     }
 
-    const CreateDisplaysError = error{OutOfMemory};
-    fn createDisplays(self: *CachedContents, start_line: usize, end_line: usize) CreateDisplaysError!ArrayList([]Display) {
+    const CreateDefaultDisplaysError = error{OutOfMemory};
+    fn createDefaultDisplays(self: *CachedContents, start_line: usize, end_line: usize) CreateDefaultDisplaysError!ArrayList([]Display) {
         assert(start_line >= self.start_line and end_line <= self.end_line);
         const a = self.arena.allocator();
         var list = ArrayList([]Display).init(a);
@@ -175,7 +186,7 @@ const CachedContents = struct {
         return list;
     }
 
-    test "createDisplays() returns default displays when Buffer is not highlighted by Tree Sitter" {
+    test createDefaultDisplays {
         const win = try _createWinWithBuf("1\n22\n333\n4444\n55555");
         const dd = _default_display;
 
@@ -184,7 +195,7 @@ const CachedContents = struct {
             var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
             cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
             {
-                const displays = try cc.createDisplays(cc.start_line, cc.end_line);
+                const displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
                 try eq(5, displays.items.len);
                 try eqDisplays(&.{dd}, displays.items[0]);
                 try eqDisplays(&.{ dd, dd }, displays.items[1]);
@@ -193,12 +204,12 @@ const CachedContents = struct {
                 try eqDisplays(&.{ dd, dd, dd, dd, dd }, displays.items[4]);
             }
             {
-                const displays = try cc.createDisplays(0, 0);
+                const displays = try cc.createDefaultDisplays(0, 0);
                 try eq(1, displays.items.len);
                 try eqDisplays(&.{dd}, displays.items[0]);
             }
             {
-                const displays = try cc.createDisplays(1, 2);
+                const displays = try cc.createDefaultDisplays(1, 2);
                 try eq(2, displays.items.len);
                 try eqDisplays(&.{ dd, dd }, displays.items[0]);
                 try eqDisplays(&.{ dd, dd, dd }, displays.items[1]);
@@ -210,7 +221,7 @@ const CachedContents = struct {
             var cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
             cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
             {
-                const displays = try cc.createDisplays(cc.start_line, cc.end_line);
+                const displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
                 try eq(3, displays.items.len);
                 try eqDisplays(&.{ dd, dd, dd }, displays.items[0]);
                 try eqDisplays(&.{ dd, dd, dd, dd }, displays.items[1]);
