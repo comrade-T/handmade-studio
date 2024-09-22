@@ -18,7 +18,9 @@ const eqStr = std.testing.expectEqualStrings;
 
 pub const SupportedLanguages = enum { zig };
 
-const StoredQuery = struct {
+pub const DEFAULT_QUERIES_NAME = "DEFAULT";
+
+pub const StoredQuery = struct {
     query: *b.Query,
     patterns: []const u8,
 };
@@ -27,7 +29,7 @@ pub const LangSuite = struct {
     lang_choice: SupportedLanguages,
     language: *const Language,
 
-    queries: ?std.StringHashMap(StoredQuery) = null,
+    queries: ?std.StringArrayHashMap(*StoredQuery) = null,
     queries_arena: ?std.heap.ArenaAllocator = null,
 
     filter: ?*PredicatesFilter = null,
@@ -44,11 +46,7 @@ pub const LangSuite = struct {
     }
 
     pub fn destroy(self: *@This()) void {
-        if (self.queries) |map| {
-            var iter = map.valueIterator();
-            while (iter.next()) |sq| sq.query.destroy();
-            self.queries.?.deinit();
-        }
+        if (self.queries_arena) |_| self.queries_arena.?.deinit();
         if (self.filter) |filter| filter.deinit();
         if (self.highlight_map) |_| self.highlight_map.?.deinit();
     }
@@ -62,16 +60,20 @@ pub const LangSuite = struct {
         };
 
         self.queries_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        self.queries = std.StringHashMap(StoredQuery).init(self.queries_arena.?.allocator());
-        try self.addQuery("DEFAULT", patterns);
+        self.queries = std.StringArrayHashMap(*StoredQuery).init(self.queries_arena.?.allocator());
+        try self.addQuery(DEFAULT_QUERIES_NAME, patterns);
     }
 
     pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
         const query = try b.Query.create(self.language, patterns);
-        if (self.queries) |_| try self.queries.?.put(id, StoredQuery{
-            .query = query,
-            .patterns = try self.queries_arena.?.allocator().dupe(u8, patterns),
-        });
+        if (self.queries) |_| {
+            const sq = try self.queries_arena.?.allocator().create(StoredQuery);
+            sq.* = StoredQuery{
+                .query = query,
+                .patterns = try self.queries_arena.?.allocator().dupe(u8, patterns),
+            };
+            try self.queries.?.put(id, sq);
+        }
     }
 
     pub fn initializeNightflyColorscheme(self: *@This(), a: Allocator) !void {

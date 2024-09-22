@@ -23,9 +23,12 @@ buf: *Buffer,
 
 cursor: Cursor = .{},
 
-content_restrictions: ContentRestrictions = .none,
+content_restrictions: ContentRestrictions = .none, // TODO: add .query variant in the future.
 cached: CachedContents = undefined,
 default_display: CachedContents.Display,
+
+queries: std.StringArrayHashMap(*sitter.StoredQuery),
+disable_default_queries: bool = false,
 
 pub fn create(a: Allocator, buf: *Buffer, default_display: CachedContents.Display) !*Window {
     const self = try a.create(@This());
@@ -33,6 +36,7 @@ pub fn create(a: Allocator, buf: *Buffer, default_display: CachedContents.Displa
         .a = a,
         .buf = buf,
         .default_display = default_display,
+        .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
     };
     return self;
 }
@@ -46,7 +50,15 @@ test create {
 }
 
 pub fn destroy(self: *@This()) void {
+    self.queries.deinit();
     self.a.destroy(self);
+}
+
+pub fn enableQuery(self: *@This(), name: []const u8) !void {
+    const langsuite = self.buf.langsuite orelse return;
+    const queries = langsuite.queries orelse return;
+    const ptr = queries.get(name) orelse return;
+    try self.queries.put(name, ptr);
 }
 
 fn bols(self: *const @This()) u32 {
@@ -84,10 +96,15 @@ const CachedContents = struct {
     const InitError = error{OutOfMemory};
     fn init(win: *const Window, strategy: CacheStrategy) InitError!@This() {
         var self = try CachedContents.init_bare_internal(win, strategy);
+
         self.lines = try createLines(self.arena.allocator(), win, self.start_line, self.end_line);
+        assert(self.lines.items.len == self.end_line - self.start_line + 1);
+
         self.displays = try createDefaultDisplays(self.arena.allocator(), win, self.start_line, self.end_line);
-        // TODO: add TS Highlighting
         assert(self.lines.values().len == self.displays.values().len);
+
+        try self.applyTreeSitterDisplays();
+
         return self;
     }
 
@@ -230,11 +247,11 @@ const CachedContents = struct {
         }
     }
 
-    fn addTSHighlighting(self: *@This()) !void {
+    fn applyTreeSitterDisplays(self: *@This()) !void {
         if (self.win.buf.tstree == null) return;
     }
 
-    test addTSHighlighting {
+    test applyTreeSitterDisplays {
         const source =
             \\const std = @import("std");
             \\const Allocator = std.mem.Allocator;
@@ -323,9 +340,29 @@ const TSWin = struct {
         };
         try self.langsuite.initializeQueryMap();
         try self.langsuite.initializeNightflyColorscheme(testing_allocator);
+        try self.addCustomQueries();
+
         try self.buf.initiateTreeSitter(self.langsuite);
+
         self.win = try Window.create(testing_allocator, self.buf, _default_display);
+        try enableCustomQueries(self.win);
+
         return self;
+    }
+
+    fn addCustomQueries(self: *@This()) !void {
+        try self.langsuite.addQuery("std_60_inter",
+            \\ (
+            \\   (IDENTIFIER) @variable
+            \\   (#eq? @variable "std")
+            \\   (#set! font-size 60)
+            \\   (#set! font-name "Inter")
+            \\ )
+        );
+    }
+
+    fn enableCustomQueries(win: *Window) !void {
+        try win.enableQuery("std_60_inter");
     }
 
     fn deinit(self: *@This()) void {
