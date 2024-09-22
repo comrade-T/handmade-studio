@@ -348,13 +348,36 @@ pub const PredicatesFilter = struct {
             property: []const u8,
             value: []const u8,
         },
+        size: i32,
+        font: []const u8,
+        img: []const u8,
+        // TODO: color: u32 -> not doing right now since I'd have to parse colors
 
         fn create(name: []const u8, query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
-            if (eql(u8, name, "set!")) return createSetPredicate(query, steps);
+            if (eql(u8, name, "set!")) return createSetDirective(query, steps);
+            if (eql(u8, name, "size!")) return createSizeDirective(query, steps);
+            if (eql(u8, name, "font!")) return createFontDirective(query, steps);
+            if (eql(u8, name, "img!")) return createImgDirective(query, steps);
             return PredicateError.UnsupportedDirective;
         }
 
-        fn createSetPredicate(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
+        fn createSizeDirective(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
+            checkBodySteps("size!", steps, &.{.string}) catch |err| return err;
+            const str_value = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id)));
+            return Directive{ .size = std.fmt.parseInt(i32, str_value, 10) catch 0 };
+        }
+
+        fn createFontDirective(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
+            checkBodySteps("font!", steps, &.{.string}) catch |err| return err;
+            return Directive{ .font = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
+        }
+
+        fn createImgDirective(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
+            checkBodySteps("img!", steps, &.{.string}) catch |err| return err;
+            return Directive{ .img = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
+        }
+
+        fn createSetDirective(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
             checkBodySteps("set!", steps, &.{ .string, .string }) catch |err| return err;
             return Directive{
                 .set = .{
@@ -501,6 +524,7 @@ fn testFilterWithDirectives(source: []const u8, patterns: []const u8, expected: 
                     try eqStr(set.property, directives[j].set.property);
                     try eqStr(set.value, directives[j].set.value);
                 },
+                else => {},
             }
         }
     }
