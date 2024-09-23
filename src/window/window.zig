@@ -31,7 +31,6 @@ cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
-// TODO: use builder pattern (mainly for nice API for query management)
 pub fn create(
     a: Allocator,
     buf: *Buffer,
@@ -53,15 +52,17 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+// FIXME: accessing `cache` field before calling this will segfault
+// I'll do it later after the module is feature stable enough to care about this.
 pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
     self.cached = try CachedContents.init(self, cache_strategy);
 }
 
-pub fn insertChars(self: *@This(), chars: []const u8) !void {
-    const new_cusror_pos, const may_ts_ranges = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
+    const new_pos, const may_ts_ranges = try self.buf.insertChars(chars, cursor.line, cursor.col);
 
-    const change_start = self.cursor.line;
-    const change_end = new_cusror_pos.line;
+    const change_start = cursor.line;
+    const change_end = new_pos.line;
     assert(change_start <= change_end);
 
     const len_diff = try self.cached.updateObsoleteLines(change_start, change_start, change_start, change_end);
@@ -72,7 +73,7 @@ pub fn insertChars(self: *@This(), chars: []const u8) !void {
 
     try self.cached.updateObsoleteTreeSitterDisplays(change_start, change_end, may_ts_ranges);
 
-    self.cursor = .{ .line = new_cusror_pos.line, .col = new_cusror_pos.col };
+    cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
 }
 
 test insertChars {
@@ -80,30 +81,30 @@ test insertChars {
         var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
         defer tswin.deinit();
         try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
-        try tswin.win.insertChars("h");
+        try tswin.win.insertChars(&tswin.win.cursor, "h");
         try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
-        try tswin.win.insertChars("ello");
+        try tswin.win.insertChars(&tswin.win.cursor, "ello");
         try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
-        try tswin.win.insertChars("\n");
+        try tswin.win.insertChars(&tswin.win.cursor, "\n");
         try eqStrU21Slice(&.{ "hello", "" }, tswin.win.cached.lines.items);
-        try tswin.win.insertChars("\nworld");
+        try tswin.win.insertChars(&tswin.win.cursor, "\nworld");
         try eqStrU21Slice(&.{ "hello", "", "world" }, tswin.win.cached.lines.items);
     }
     {
         var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
         defer tswin.deinit();
         {
-            try tswin.win.insertChars("v");
+            try tswin.win.insertChars(&tswin.win.cursor, "v");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "v", .default);
         }
         {
-            try tswin.win.insertChars("ar");
+            try tswin.win.insertChars(&tswin.win.cursor, "ar");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
         }
         {
-            try tswin.win.insertChars(" not_false = true;");
+            try tswin.win.insertChars(&tswin.win.cursor, " not_false = true;");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
@@ -112,7 +113,7 @@ test insertChars {
             try eqStrU21Slice(&.{"var not_false = true;"}, tswin.win.cached.lines.items);
         }
         {
-            try tswin.win.insertChars("\n");
+            try tswin.win.insertChars(&tswin.win.cursor, "\n");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
@@ -121,7 +122,7 @@ test insertChars {
             try eqStrU21Slice(&.{ "var not_false = true;", "" }, tswin.win.cached.lines.items);
         }
         {
-            try tswin.win.insertChars("const eleven = 11;");
+            try tswin.win.insertChars(&tswin.win.cursor, "const eleven = 11;");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
