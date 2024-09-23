@@ -58,6 +58,8 @@ pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !
     self.cached = try CachedContents.init(self, cache_strategy);
 }
 
+///////////////////////////// Insert
+
 pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     const new_pos, const may_ts_ranges = try self.buf.insertChars(chars, cursor.line, cursor.col);
 
@@ -133,6 +135,145 @@ test insertChars {
             try test_iter.next(1, "11", .{ .hl_group = "number" });
             try test_iter.next(1, ";", .default);
             try eqStrU21Slice(&.{ "var not_false = true;", "const eleven = 11;" }, tswin.win.cached.lines.items);
+        }
+    }
+}
+
+///////////////////////////// Delete
+
+pub fn backspace(self: *@This(), cursor: *Cursor) !void {
+    if (cursor.line == 0 and cursor.col == 0) return;
+
+    var start_line: usize = cursor.line;
+    var start_col: usize = cursor.col -| 1;
+    const end_line: usize = cursor.line;
+    const end_col: usize = cursor.col;
+
+    if (self.cursor.col == 0 and self.cursor.line > 0) {
+        start_line = self.cursor.line - 1;
+
+        // FIXME: this will fail once we touch CacheStrategy.section
+        assert(self.cursor.line - 1 >= self.cached.start_line);
+
+        const line_index = self.cursor.line - 1 - self.cached.start_line;
+        start_col = self.cached.lines.items[line_index].len;
+    }
+
+    try self.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
+
+    cursor.set(start_line, start_col);
+}
+
+test backspace {
+    {
+        var tswin = try TSWin.init("const not_false = true;", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+
+        tswin.win.cursor.set(0, tswin.win.cached.lines.items[0].len);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(0, ";", .default);
+        }
+        try tswin.win.backspace(&tswin.win.cursor);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+        }
+        try tswin.win.backspace(&tswin.win.cursor);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = tru", .default);
+        }
+        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace(&tswin.win.cursor);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = t", .default);
+        }
+
+        tswin.win.cursor.set(0, 1);
+        try tswin.win.backspace(&tswin.win.cursor);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "onst not_false = t", .default);
+        }
+
+        try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
+        try tswin.win.backspace(&tswin.win.cursor);
+        try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
+        try tswin.win.backspace(&tswin.win.cursor);
+        try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
+        try tswin.win.backspace(&tswin.win.cursor);
+    }
+
+    {
+        var tswin = try TSWin.init("const one = 1;\nvar two = 2;\nconst not_false = true;", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " one = ", .default);
+            try test_iter.next(0, "1", .{ .hl_group = "number" });
+            try test_iter.next(0, ";", .default);
+            try test_iter.next(1, "var", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(1, " two = ", .default);
+            try test_iter.next(1, "2", .{ .hl_group = "number" });
+            try test_iter.next(1, ";", .default);
+            try test_iter.next(2, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(2, " not_false = ", .default);
+            try test_iter.next(2, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(2, ";", .default);
+        }
+        tswin.win.cursor.set(1, 0);
+        try tswin.win.backspace(&tswin.win.cursor);
+        try eq(2, tswin.win.cached.lines.items.len);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " one = ", .default);
+            try test_iter.next(0, "1", .{ .hl_group = "number" });
+            try test_iter.next(0, ";", .default);
+            try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " two = ", .default);
+            try test_iter.next(0, "2", .{ .hl_group = "number" });
+            try test_iter.next(0, ";", .default);
+            try test_iter.next(1, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(1, " not_false = ", .default);
+            try test_iter.next(1, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(1, ";", .default);
+        }
+        tswin.win.cursor.set(1, 0);
+        try tswin.win.backspace(&tswin.win.cursor);
+        try eq(1, tswin.win.cached.lines.items.len);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " one = ", .default);
+            try test_iter.next(0, "1", .{ .hl_group = "number" });
+            try test_iter.next(0, ";", .default);
+            try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " two = ", .default);
+            try test_iter.next(0, "2", .{ .hl_group = "number" });
+            try test_iter.next(0, ";", .default);
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(0, ";", .default);
+        }
+        for (0..100) |_| try tswin.win.backspace(&tswin.win.cursor);
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+            try test_iter.next(0, ";", .default);
         }
     }
 }
@@ -694,7 +835,15 @@ const ContentRestrictions = union(enum) {
     restricted: struct { start_line: usize, end_line: usize },
 };
 
-const Cursor = struct { line: usize = 0, col: usize = 0 };
+const Cursor = struct {
+    line: usize = 0,
+    col: usize = 0,
+
+    fn set(self: *@This(), line: usize, col: usize) void {
+        self.line = line;
+        self.col = col;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
