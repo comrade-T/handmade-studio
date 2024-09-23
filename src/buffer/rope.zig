@@ -1041,6 +1041,7 @@ pub const Node = union(enum) {
 
                 const start_before_leaf = cx.start_byte <= cx.current_index.*;
                 const end_after_leaf = cx.end_byte >= cx.current_index.* + leaf.weights().len - 1;
+
                 const delete_covers_leaf = start_before_leaf and end_after_leaf;
                 if (delete_covers_leaf) return try _removed(cx, leaf);
 
@@ -1071,7 +1072,7 @@ pub const Node = union(enum) {
                 cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
                 if (leaf.eol) {
-                    const eol = if (leaf.buf.len == 0) false else true;
+                    const eol = if (cx.start_byte + cx.bytes_deleted <= cx.end_byte) false else leaf.eol;
                     const replace = try Leaf.new(cx.a, "", false, eol);
                     return WalkMutResult{ .replace = replace };
                 }
@@ -1104,10 +1105,10 @@ pub const Node = union(enum) {
             fn _leftSide(cx: *@This(), leaf: *const Leaf, node: *const Node) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index.*;
                 const left_side_content = leaf.buf[0..split_index];
-                const left_eol = if (left_side_content.len == leaf.buf.len) false else leaf.eol;
-                const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, left_eol);
+                const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, false);
                 cx.bytes_deleted += leaf.buf.len - left_side_content.len;
-                if (left_side_content.len == leaf.buf.len and leaf.eol) {
+
+                if (leaf.eol) {
                     cx.bytes_deleted += 1;
                     cx.last_node = node;
                     cx.last_node_with_new_line_removed = node;
@@ -1116,7 +1117,7 @@ pub const Node = union(enum) {
             }
 
             fn _rightSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
-                const bol = if (cx.last_node_with_new_line_removed != null) false else leaf.bol;
+                const bol = if (cx.start_byte + cx.bytes_deleted <= cx.current_index.*) false else leaf.bol;
                 const bytes_left_to_delete = cx.num_of_bytes_to_delete - cx.bytes_deleted;
                 const right_side_content = leaf.buf[bytes_left_to_delete..];
                 const right_side = try Leaf.new(cx.a, right_side_content, bol, leaf.eol);
@@ -1404,6 +1405,65 @@ pub const Node = union(enum) {
                 \\      1 B| `333`
             ;
             try eqStr(edit_2_debug_str, try edit_2.debugPrint());
+        }
+
+        {
+            const root = try Node.fromString(a, "hello\nworld", true);
+            const root_debug_str =
+                \\2 2/11/10
+                \\  1 B| `hello` |E
+                \\  1 B| `world`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const edit_1 = try root.deleteBytes(a, 2, 6);
+            const edit_1_debug_str =
+                \\2 1/5/5
+                \\  1 B| `he`
+                \\  1 `rld`
+            ;
+            try eqStr(edit_1_debug_str, try edit_1.debugPrint());
+        }
+        {
+            const root = try Node.fromString(a, "hello\nworld\nvenus", true);
+            const root_debug_str =
+                \\3 3/17/15
+                \\  1 B| `hello` |E
+                \\  2 2/11/10
+                \\    1 B| `world` |E
+                \\    1 B| `venus`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const edit_1 = try root.deleteBytes(a, 4, 1);
+            const edit_1_debug_str =
+                \\3 3/16/14
+                \\  1 B| `hell` |E
+                \\  2 2/11/10
+                \\    1 B| `world` |E
+                \\    1 B| `venus`
+            ;
+            try eqStr(edit_1_debug_str, try edit_1.debugPrint());
+
+            const edit_2 = try edit_1.deleteBytes(a, 4, 1);
+            const edit_2_debug_str =
+                \\3 2/15/14
+                \\  1 B| `hell`
+                \\  2 1/11/10
+                \\    1 `world` |E
+                \\    1 B| `venus`
+            ;
+            try eqStr(edit_2_debug_str, try edit_2.debugPrint());
+
+            const edit_3 = try edit_2.deleteBytes(a, 3, 9);
+            const edit_3_debug_str =
+                \\3 1/6/6
+                \\  1 B| `hel`
+                \\  2 0/3/3
+                \\    1 ``
+                \\    1 `nus`
+            ;
+            try eqStr(edit_3_debug_str, try edit_3.debugPrint());
         }
     }
 
