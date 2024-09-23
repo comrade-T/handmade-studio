@@ -24,15 +24,17 @@ buf: *Buffer,
 cursor: Cursor = .{},
 
 content_restrictions: ContentRestrictions = .none, // TODO: add .query variant in the future.
-cached: CachedContents = undefined,
 default_display: CachedContents.Display,
+
+cached: CachedContents = undefined,
+cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
+// TODO: use builder pattern (mainly for nice API for query management)
 pub fn create(
     a: Allocator,
     buf: *Buffer,
-    cache_strategy: CachedContents.CacheStrategy,
     default_display: CachedContents.Display,
 ) !*Window {
     const self = try a.create(@This());
@@ -43,16 +45,7 @@ pub fn create(
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
     };
     if (buf.tstree) |_| try self.enableQuery(sitter.DEFAULT_QUERY_ID);
-    self.cached = try CachedContents.init(self, cache_strategy);
     return self;
-}
-
-test create {
-    var buf = try Buffer.create(testing_allocator, .string, "");
-    defer buf.destroy();
-    var win = try Window.create(testing_allocator, buf, .entire_buffer, _default_display);
-    defer win.destroy();
-    try eq(Cursor{ .line = 0, .col = 0 }, win.cursor);
 }
 
 pub fn destroy(self: *@This()) void {
@@ -60,9 +53,12 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
-// TODO:                                              list specific errors
+pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
+    self.cached = try CachedContents.init(self, cache_strategy);
+}
+
 pub fn insertChars(self: *@This(), chars: []const u8) !void {
-    const new_cusror_pos, const hl_ranges = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
+    const new_cusror_pos, const may_ts_ranges = try self.buf.insertChars(chars, self.cursor.line, self.cursor.col);
 
     const change_start = self.cursor.line;
     const change_end = new_cusror_pos.line;
@@ -74,15 +70,7 @@ pub fn insertChars(self: *@This(), chars: []const u8) !void {
     try self.cached.updateObsoleteDisplays(change_start, change_start, change_start, change_end);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
-    var new_hl_start = change_start;
-    var new_hl_end = change_end;
-    if (hl_ranges) |ranges| {
-        for (ranges) |r| {
-            new_hl_start = @min(new_hl_start, r.start_point.row);
-            new_hl_end = @max(new_hl_end, r.end_point.row);
-        }
-    }
-    try self.cached.applyTreeSitterDisplays(new_hl_start, new_hl_end);
+    try self.cached.updateObsoleteTreeSitterDisplays(change_start, change_end, may_ts_ranges);
 
     self.cursor = .{ .line = new_cusror_pos.line, .col = new_cusror_pos.col };
 }
@@ -184,7 +172,10 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     const len_diff = try self.cached.updateObsoleteLines(start_range[0], end_range[0], start_range[0], start_range[0]);
     self.cached.updateEndLine(len_diff);
 
-    _ = may_ts_ranges;
+    try self.cached.updateObsoleteDisplays(start_range[0], end_range[0], start_range[0], start_range[0]);
+    assert(self.cached.lines.items.len == self.cached.displays.items.len);
+
+    try self.cached.updateObsoleteTreeSitterDisplays(start_range[0], start_range[0], may_ts_ranges);
 }
 
 test deleteRange {
@@ -214,6 +205,34 @@ test deleteRange {
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
         try tswin.win.deleteRange(.{ 0, 3 }, .{ 2, 2 });
         try eqStrU21Slice(&.{"helnus"}, tswin.win.cached.lines.items);
+    }
+
+    {
+        var tswin = try TSWin.init("xconst not_false = true", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "xconst not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+        }
+        try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = ", .default);
+            try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+        }
+        try tswin.win.deleteRange(.{ 0, 22 }, .{ 0, 21 });
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+            try test_iter.next(0, " not_false = tru", .default);
+        }
+        try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 2 });
+        {
+            var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+            try test_iter.next(0, "nst not_false = tru", .default);
+        }
     }
 }
 
@@ -649,6 +668,18 @@ const CachedContents = struct {
             }
         }
     }
+
+    fn updateObsoleteTreeSitterDisplays(self: *@This(), base_start: usize, base_end: usize, ranges: ?[]const ts.Range) !void {
+        var new_hl_start = base_start;
+        var new_hl_end = base_end;
+        if (ranges) |ts_ranges| {
+            for (ts_ranges) |r| {
+                new_hl_start = @min(new_hl_start, r.start_point.row);
+                new_hl_end = @max(new_hl_end, r.end_point.row);
+            }
+        }
+        try self.applyTreeSitterDisplays(new_hl_start, new_hl_end);
+    }
 };
 
 const StoredQuery = struct {
@@ -753,7 +784,7 @@ const _default_display = CachedContents.Display{
 
 fn _createWinWithBuf(source: []const u8) !*Window {
     const buf = try Buffer.create(idc_if_it_leaks, .string, source);
-    const win = try Window.create(idc_if_it_leaks, buf, .entire_buffer, _default_display);
+    const win = try Window.create(idc_if_it_leaks, buf, _default_display);
     return win;
 }
 
@@ -780,15 +811,10 @@ const TSWin = struct {
 
         try self.buf.initiateTreeSitter(self.langsuite);
 
-        self.win = try Window.create(
-            testing_allocator,
-            self.buf,
-            cache_strategy,
-            _default_display,
-        );
-
+        self.win = try Window.create(testing_allocator, self.buf, _default_display);
         if (disable_default_queries) self.win.disableDefaultQueries();
         for (enabled_queries) |query_id| try self.win.enableQuery(query_id);
+        try self.win.initCache(cache_strategy);
 
         return self;
     }
