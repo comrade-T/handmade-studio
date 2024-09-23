@@ -148,6 +148,75 @@ test insertChars {
     }
 }
 
+const Range = struct { usize, usize };
+fn sortRanges(a: Range, b: Range) struct { Range, Range } {
+    if (a[0] == b[0]) {
+        if (a[1] < b[1]) return .{ a, b };
+        return .{ b, a };
+    }
+    if (a[0] < b[0]) return .{ a, b };
+    return .{ b, a };
+}
+
+test sortRanges {
+    {
+        const start, const end = sortRanges(.{ 0, 0 }, .{ 0, 1 });
+        try eq(.{ 0, 0 }, start);
+        try eq(.{ 0, 1 }, end);
+    }
+    {
+        const start, const end = sortRanges(.{ 0, 2 }, .{ 0, 10 });
+        try eq(.{ 0, 2 }, start);
+        try eq(.{ 0, 10 }, end);
+    }
+    {
+        const start, const end = sortRanges(.{ 1, 0 }, .{ 0, 10 });
+        try eq(.{ 0, 10 }, start);
+        try eq(.{ 1, 0 }, end);
+    }
+}
+
+fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
+    const start_range, const end_range = sortRanges(a, b);
+
+    const may_ts_ranges = try self.buf.deleteRange(start_range, end_range);
+
+    const len_diff = try self.cached.updateObsoleteLines(start_range[0], end_range[0], start_range[0], start_range[0]);
+    self.cached.updateEndLine(len_diff);
+
+    _ = may_ts_ranges;
+}
+
+test deleteRange {
+    {
+        var tswin = try TSWin.init("hello\nworld\nvenus", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
+        try tswin.win.deleteRange(.{ 0, 4 }, .{ 0, 5 });
+        try eqStrU21Slice(&.{ "hell", "world", "venus" }, tswin.win.cached.lines.items);
+        try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+        try eqStrU21Slice(&.{ "ell", "world", "venus" }, tswin.win.cached.lines.items);
+        try tswin.win.deleteRange(.{ 1, 0 }, .{ 0, 3 });
+        try eqStrU21Slice(&.{ "ellworld", "venus" }, tswin.win.cached.lines.items);
+        try tswin.win.deleteRange(.{ 0, 2 }, .{ 1, 3 });
+        try eqStrU21Slice(&.{"elus"}, tswin.win.cached.lines.items);
+    }
+    {
+        var tswin = try TSWin.init("hello\nworld\nvenus", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
+        try tswin.win.deleteRange(.{ 0, 3 }, .{ 1, 2 });
+        try eqStrU21Slice(&.{ "helrld", "venus" }, tswin.win.cached.lines.items);
+    }
+    {
+        var tswin = try TSWin.init("hello\nworld\nvenus", .entire_buffer, true, &.{"trimed_down_highlights"});
+        defer tswin.deinit();
+        try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
+        try tswin.win.deleteRange(.{ 0, 3 }, .{ 2, 2 });
+        try eqStrU21Slice(&.{"helnus"}, tswin.win.cached.lines.items);
+    }
+}
+
 pub fn disableDefaultQueries(self: *@This()) void {
     try self.disableQuery(sitter.DEFAULT_QUERY_ID);
 }
