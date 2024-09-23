@@ -52,8 +52,7 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
-// FIXME: accessing `cache` field before calling this will segfault
-// I'll do it later after the module is feature stable enough to care about this.
+// TODO: have a `createWithCache()` method, make other create methods private
 pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
     self.cached = try CachedContents.init(self, cache_strategy);
 }
@@ -73,7 +72,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     try self.cached.updateObsoleteDisplays(change_start, change_start, change_start, change_end);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
-    try self.cached.updateObsoleteTreeSitterDisplays(change_start, change_end, may_ts_ranges);
+    try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
 }
@@ -317,7 +316,7 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     try self.cached.updateObsoleteDisplays(start_range[0], end_range[0], start_range[0], start_range[0]);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
-    try self.cached.updateObsoleteTreeSitterDisplays(start_range[0], start_range[0], may_ts_ranges);
+    try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
 }
 
 test deleteRange {
@@ -405,6 +404,7 @@ fn endLineNr(self: *const @This()) u32 {
 ////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
 
 const CachedContents = struct {
+    const DisplayDimensions = struct { x: f32, y: f32, width: f32, height: f32 };
     const Display = union(enum) {
         const Char = struct { font_size: i32, font_face: []const u8, color: u32 };
         const Image = struct { path: []const u8 };
@@ -422,6 +422,7 @@ const CachedContents = struct {
 
     lines: ArrayList([]u21) = undefined,
     displays: ArrayList([]Display) = undefined,
+    dimensions: ArrayList([]DisplayDimensions) = undefined,
 
     start_line: usize = 0,
     end_line: usize = 0,
@@ -437,7 +438,7 @@ const CachedContents = struct {
         self.displays = try self.createDefaultDisplays(self.start_line, self.end_line);
         assert(self.lines.items.len == self.displays.items.len);
 
-        try self.applyTreeSitterDisplays(self.start_line, self.end_line);
+        try self.applyTreeSitterToDisplays(self.start_line, self.end_line);
 
         return self;
     }
@@ -483,6 +484,8 @@ const CachedContents = struct {
     fn deinit(self: *@This()) void {
         self.arena.deinit();
     }
+
+    ///////////////////////////// Initial Creation
 
     const CreateLinesError = error{ OutOfMemory, LineOutOfBounds };
     fn createLines(a: Allocator, win: *const Window, start_line: usize, end_line: usize) CreateLinesError!ArrayList([]u21) {
@@ -582,7 +585,7 @@ const CachedContents = struct {
     }
 
     // TODO:                                                                       list specific errors
-    fn applyTreeSitterDisplays(self: *@This(), start_line: usize, end_line: usize) anyerror!void {
+    fn applyTreeSitterToDisplays(self: *@This(), start_line: usize, end_line: usize) anyerror!void {
         if (self.win.buf.tstree == null) return;
 
         for (self.win.queries.values()) |sq| {
@@ -645,7 +648,7 @@ const CachedContents = struct {
         }
     }
 
-    test applyTreeSitterDisplays {
+    test applyTreeSitterToDisplays {
         const source =
             \\const std = @import("std");
             \\const Allocator = std.mem.Allocator;
@@ -659,7 +662,7 @@ const CachedContents = struct {
             cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
             cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
 
-            try cc.applyTreeSitterDisplays(cc.start_line, cc.end_line);
+            try cc.applyTreeSitterToDisplays(cc.start_line, cc.end_line);
             var test_iter = DisplayChunkTester{ .cc = cc };
 
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
@@ -698,6 +701,30 @@ const CachedContents = struct {
             try test_iter.next(1, ";", .default);
         }
     }
+
+    fn createDisplaysDimensions(self: *CachedContents, start_line: usize, end_line: usize) !ArrayList([]DisplayDimensions) {
+        assert(start_line >= self.start_line and end_line <= self.end_line);
+    }
+
+    test createDisplaysDimensions {
+        const source =
+            \\const std = @import("std");
+            \\const Allocator = std.mem.Allocator;
+        ;
+        var tswin = try TSWin.initNoCache(source, true, &.{ "trimed_down_highlights", "std_60_inter" });
+        defer tswin.deinit();
+
+        var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
+        cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
+        cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
+        try cc.applyTreeSitterToDisplays(cc.start_line, cc.end_line);
+        cc.dimensions = try cc.createDisplaysDimensions(cc.start_line, cc.end_line);
+
+        var iter = DisplayChunkTester{ .cc = cc };
+        try iter.sizes(0, "const ", .{ .x = 0, .y = 0, .width = 30, .height = 40 });
+    }
+
+    ///////////////////////////// Update Obsolete
 
     const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
     fn updateObsoleteLines(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) UpdateLinesError!i128 {
@@ -811,7 +838,7 @@ const CachedContents = struct {
         }
     }
 
-    fn updateObsoleteTreeSitterDisplays(self: *@This(), base_start: usize, base_end: usize, ranges: ?[]const ts.Range) !void {
+    fn updateObsoleteTreeSitterToDisplays(self: *@This(), base_start: usize, base_end: usize, ranges: ?[]const ts.Range) !void {
         var new_hl_start = base_start;
         var new_hl_end = base_end;
         if (ranges) |ts_ranges| {
@@ -820,7 +847,7 @@ const CachedContents = struct {
                 new_hl_end = @max(new_hl_end, r.end_point.row);
             }
         }
-        try self.applyTreeSitterDisplays(new_hl_start, new_hl_end);
+        try self.applyTreeSitterToDisplays(new_hl_start, new_hl_end);
     }
 };
 
@@ -870,7 +897,20 @@ const DisplayChunkTester = struct {
         literal: struct { []const u8, i32, u32 },
     };
 
-    fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
+    fn sizes(self: *@This(), linenr: usize, expected_str: []const u8, expected: CachedContents.DisplayDimensions) !void {
+        try self.linesCheck(linenr, expected_str);
+
+        const s = self.cc.sizes.items[linenr];
+        for (s[self.i .. self.i + expected_str.len]) |size| {
+            errdefer std.debug.print("expected x {d} | {d}\n", .{ expected.x, size.x });
+            errdefer std.debug.print("expected y {d} | {d}\n", .{ expected.y, size.y });
+            errdefer std.debug.print("expected width {d} | {d}\n", .{ expected.width, size.width });
+            errdefer std.debug.print("expected height {d} | {d}\n", .{ expected.height, size.height });
+            try eq(expected, size);
+        }
+    }
+
+    fn linesCheck(self: *@This(), linenr: usize, expected_str: []const u8) !void {
         if (linenr != self.current_line) {
             self.current_line = linenr;
             self.i = 0;
@@ -878,6 +918,10 @@ const DisplayChunkTester = struct {
         defer self.i += expected_str.len;
 
         try eqStrU21(expected_str, self.cc.lines.items[linenr][self.i .. self.i + expected_str.len]);
+    }
+
+    fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
+        try self.linesCheck(linenr, expected_str);
 
         var expected_display = self.cc.win.default_display;
         if (expected_display == .char) {
@@ -950,6 +994,16 @@ const TSWin = struct {
         disable_default_queries: bool,
         enabled_queries: []const []const u8,
     ) !@This() {
+        var self = try initNoCache(source, disable_default_queries, enabled_queries);
+        try self.win.initCache(cache_strategy);
+        return self;
+    }
+
+    fn initNoCache(
+        source: []const u8,
+        disable_default_queries: bool,
+        enabled_queries: []const []const u8,
+    ) !@This() {
         var self = TSWin{
             .langsuite = try sitter.LangSuite.create(.zig),
             .buf = try Buffer.create(idc_if_it_leaks, .string, source),
@@ -964,7 +1018,6 @@ const TSWin = struct {
         self.win = try Window.create(testing_allocator, self.buf, _default_display);
         if (disable_default_queries) self.win.disableDefaultQueries();
         for (enabled_queries) |query_id| try self.win.enableQuery(query_id);
-        try self.win.initCache(cache_strategy);
 
         return self;
     }
