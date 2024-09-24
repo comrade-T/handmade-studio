@@ -31,6 +31,32 @@ cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
+should_recompute_cells: bool = true,
+cells_arena: std.heap.ArenaAllocator,
+lines_of_cells: ArrayList(LineOfCells),
+
+const Cell = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    variant: union(enum) {
+        char: struct {
+            code_point: u21,
+            font_face: []const u8,
+            font_size: i32,
+            color: u32,
+        },
+        image: struct { path: []const u8 },
+    },
+};
+
+const LineOfCells = struct {
+    width: f32,
+    height: f32,
+    cells: []Cell,
+};
+
 pub fn create(
     a: Allocator,
     buf: *Buffer,
@@ -42,6 +68,9 @@ pub fn create(
         .buf = buf,
         .default_display = default_display,
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
+
+        .cells_arena = std.heap.ArenaAllocator.init(a),
+        .lines_of_cells = std.ArrayList(LineOfCells).init(self.cells_arena.allocator()),
     };
     if (buf.tstree) |_| try self.enableQuery(sitter.DEFAULT_QUERY_ID);
     return self;
@@ -49,11 +78,38 @@ pub fn create(
 
 pub fn destroy(self: *@This()) void {
     self.queries.deinit();
+    self.cached.deinit();
+    self.cells_arena.deinit();
     self.a.destroy(self);
 }
 
 pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
     self.cached = try CachedContents.init(self, cache_strategy);
+}
+
+const RenderCallbacks = struct {
+    // TODO:
+};
+
+const AssetsCallbacks = struct {
+    font_manager: *anyopaque,
+    glyph_callback: GetGlyphSizeCallback,
+    image_manager: *anyopaque,
+    image_callback: GetImageSizeCallback,
+};
+
+pub fn render(self: *@This(), render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
+    if (self.should_recompute_cells) try self.computeLinesOfCells(assets_callbacks);
+    self.executeRenderCallbacks(render_callbacks);
+}
+
+fn executeRenderCallbacks(self: *@This(), render_callbacks: RenderCallbacks) void {
+    _ = self;
+    _ = render_callbacks;
+}
+
+fn computeLinesOfCells(self: *@This(), assets_callbacks: AssetsCallbacks) !void {
+    // TODO:
 }
 
 ///////////////////////////// Insert
@@ -74,6 +130,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
+    self.should_recompute_cells = true;
 }
 
 test insertChars {
@@ -316,6 +373,7 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
     try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
+    self.should_recompute_cells = true;
 }
 
 test deleteRange {
@@ -855,7 +913,7 @@ pub const ImageInfo = struct {
     width: f32,
     height: f32,
 };
-pub const GetImageInfoCallback = *const fn (ctx: *anyopaque, path: []const u8) ?ImageInfo;
+pub const GetImageSizeCallback = *const fn (ctx: *anyopaque, path: []const u8) ?ImageInfo;
 
 pub const Glyph = struct {
     advanceX: i32,
