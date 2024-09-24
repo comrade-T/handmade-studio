@@ -26,6 +26,11 @@ cursor: Cursor = .{},
 content_restrictions: ContentRestrictions = .none,
 default_display: CachedContents.Display,
 
+x: f32,
+y: f32,
+bounds: Bounds,
+bounded: bool,
+
 cached: CachedContents = undefined,
 cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
@@ -35,44 +40,32 @@ should_recompute_cells: bool = true,
 cells_arena: std.heap.ArenaAllocator,
 lines_of_cells: ArrayList(LineOfCells),
 
-const Cell = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    variant: union(enum) {
-        char: struct {
-            code_point: u21,
-            font_face: []const u8,
-            font_size: i32,
-            color: u32,
-        },
-        image: struct { path: []const u8 },
-    },
-};
-
-const LineOfCells = struct {
-    width: f32,
-    height: f32,
-    cells: []Cell,
-};
-
 pub fn create(
     a: Allocator,
     buf: *Buffer,
-    default_display: CachedContents.Display,
+    opts: SpawnOptions,
 ) !*Window {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
         .buf = buf,
-        .default_display = default_display,
+
+        .default_display = opts.default_display,
+        .x = opts.x,
+        .y = opts.y,
+        .bounds = if (opts.bounds) |b| b else Bounds{},
+        .bounded = if (opts.bounds) |_| true else false,
+
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
 
         .cells_arena = std.heap.ArenaAllocator.init(a),
         .lines_of_cells = std.ArrayList(LineOfCells).init(self.cells_arena.allocator()),
     };
-    if (buf.tstree) |_| try self.enableQuery(sitter.DEFAULT_QUERY_ID);
+    if (buf.tstree) |_| {
+        if (!opts.disable_default_queries) try self.enableQuery(sitter.DEFAULT_QUERY_ID);
+        for (opts.enabled_queries) |query_id| try self.enableQuery(query_id);
+    }
+    self.cached = try CachedContents.init(self, opts.cache_strategy);
     return self;
 }
 
@@ -81,10 +74,6 @@ pub fn destroy(self: *@This()) void {
     self.cached.deinit();
     self.cells_arena.deinit();
     self.a.destroy(self);
-}
-
-pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
-    self.cached = try CachedContents.init(self, cache_strategy);
 }
 
 const RenderCallbacks = struct {
@@ -109,7 +98,27 @@ fn executeRenderCallbacks(self: *@This(), render_callbacks: RenderCallbacks) voi
 }
 
 fn computeLinesOfCells(self: *@This(), assets_callbacks: AssetsCallbacks) !void {
-    // TODO:
+    _ = self;
+    _ = assets_callbacks;
+}
+
+test computeLinesOfCells {
+    var tswin = try TSWin.init("const not_false = true;", .{
+        .disable_default_queries = true,
+        .enabled_queries = &.{"trimed_down_highlights"},
+    });
+    defer tswin.deinit();
+    {
+        var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+        try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
+        try test_iter.next(0, " not_false = ", .default);
+        try test_iter.next(0, "true", .{ .hl_group = "boolean" });
+        try test_iter.next(0, ";", .default);
+    }
+    {
+        const mock_man = try MockManager.create(idc_if_it_leaks);
+        try tswin.win.computeLinesOfCells(mock_man.assetsCallbacks());
+    }
 }
 
 ///////////////////////////// Insert
@@ -135,7 +144,10 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
 
 test insertChars {
     {
-        var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
         try tswin.win.insertChars(&tswin.win.cursor, "h");
@@ -148,7 +160,10 @@ test insertChars {
         try eqStrU21Slice(&.{ "hello", "", "world" }, tswin.win.cached.lines.items);
     }
     {
-        var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         {
             try tswin.win.insertChars(&tswin.win.cursor, "v");
@@ -221,7 +236,10 @@ pub fn backspace(self: *@This(), cursor: *Cursor) !void {
 
 test backspace {
     {
-        var tswin = try TSWin.init("const not_false = true;", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("const not_false = true;", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
 
         tswin.win.cursor.set(0, tswin.win.cached.lines.items[0].len);
@@ -269,7 +287,10 @@ test backspace {
     }
 
     {
-        var tswin = try TSWin.init("const one = 1;\nvar two = 2;\nconst not_false = true;", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("const one = 1;\nvar two = 2;\nconst not_false = true;", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
@@ -378,7 +399,10 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
 
 test deleteRange {
     {
-        var tswin = try TSWin.init("hello\nworld\nvenus", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("hello\nworld\nvenus", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
         try tswin.win.deleteRange(.{ 0, 4 }, .{ 0, 5 });
@@ -391,14 +415,20 @@ test deleteRange {
         try eqStrU21Slice(&.{"elus"}, tswin.win.cached.lines.items);
     }
     {
-        var tswin = try TSWin.init("hello\nworld\nvenus", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("hello\nworld\nvenus", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
         try tswin.win.deleteRange(.{ 0, 3 }, .{ 1, 2 });
         try eqStrU21Slice(&.{ "helrld", "venus" }, tswin.win.cached.lines.items);
     }
     {
-        var tswin = try TSWin.init("hello\nworld\nvenus", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("hello\nworld\nvenus", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
         try tswin.win.deleteRange(.{ 0, 3 }, .{ 2, 2 });
@@ -406,7 +436,10 @@ test deleteRange {
     }
 
     {
-        var tswin = try TSWin.init("xconst not_false = true", .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init("xconst not_false = true", .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
         defer tswin.deinit();
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
@@ -709,7 +742,11 @@ const CachedContents = struct {
             \\const std = @import("std");
             \\const Allocator = std.mem.Allocator;
         ;
-        var tswin = try TSWin.init(source, .entire_buffer, true, &.{"trimed_down_highlights"});
+        var tswin = try TSWin.init(source, .{
+            .disable_default_queries = true,
+            .enabled_queries = &.{"trimed_down_highlights"},
+        });
+
         defer tswin.deinit();
 
         {
@@ -776,7 +813,10 @@ const CachedContents = struct {
 
     test updateObsoleteLines {
         {
-            var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+            var tswin = try TSWin.init("", .{
+                .disable_default_queries = true,
+                .enabled_queries = &.{"trimed_down_highlights"},
+            });
             defer tswin.deinit();
             try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
 
@@ -803,7 +843,10 @@ const CachedContents = struct {
             }
         }
         {
-            var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+            var tswin = try TSWin.init("", .{
+                .disable_default_queries = true,
+                .enabled_queries = &.{"trimed_down_highlights"},
+            });
             defer tswin.deinit();
             _ = try tswin.buf.insertChars("h", 0, 0);
             {
@@ -842,7 +885,10 @@ const CachedContents = struct {
 
     test updateObsoleteDisplays {
         {
-            var tswin = try TSWin.init("", .entire_buffer, true, &.{"trimed_down_highlights"});
+            var tswin = try TSWin.init("", .{
+                .disable_default_queries = true,
+                .enabled_queries = &.{"trimed_down_highlights"},
+            });
             defer tswin.deinit();
             {
                 _ = try tswin.buf.insertChars("h", 0, 0);
@@ -887,16 +933,20 @@ const CachedContents = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
-const StoredQuery = struct {
-    query: ts.Query,
-    pattern: []const u8,
-    id: []const u8,
+pub const SpawnOptions = struct {
+    default_display: CachedContents.Display = _default_display,
+    x: f32 = 0,
+    y: f32 = 0,
+    bounds: ?Bounds = null,
+    disable_default_queries: bool = false,
+    enabled_queries: []const []const u8 = &.{},
+    cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 };
 
-const ContentRestrictions = union(enum) {
-    none,
-    section: struct { start_line: usize, end_line: usize },
-    query: struct { id: []const u8 },
+pub const Bounds = struct {
+    width: f32 = 400,
+    height: f32 = 400,
+    offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
 };
 
 const Cursor = struct {
@@ -907,6 +957,40 @@ const Cursor = struct {
         self.line = line;
         self.col = col;
     }
+};
+
+const Cell = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    variant: union(enum) {
+        char: struct {
+            code_point: u21,
+            font_face: []const u8,
+            font_size: i32,
+            color: u32,
+        },
+        image: struct { path: []const u8 },
+    },
+};
+
+const LineOfCells = struct {
+    width: f32,
+    height: f32,
+    cells: []Cell,
+};
+
+const StoredQuery = struct {
+    query: ts.Query,
+    pattern: []const u8,
+    id: []const u8,
+};
+
+const ContentRestrictions = union(enum) {
+    none,
+    section: struct { start_line: usize, end_line: usize },
+    query: struct { id: []const u8 },
 };
 
 pub const ImageInfo = struct {
@@ -1013,7 +1097,7 @@ const _default_display = CachedContents.Display{
 
 fn _createWinWithBuf(source: []const u8) !*Window {
     const buf = try Buffer.create(idc_if_it_leaks, .string, source);
-    const win = try Window.create(idc_if_it_leaks, buf, _default_display);
+    const win = try Window.create(idc_if_it_leaks, buf, .{});
     return win;
 }
 
@@ -1022,14 +1106,12 @@ const MockManager = struct {
     arena: std.heap.ArenaAllocator,
     maps: std.StringHashMap(GlyphMap),
 
-    fn getGlyphMap(ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph {
+    fn getGlyphInfo(ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph {
         _ = size;
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
         if (self.maps.get(name)) |map| if (map.get(char)) |glyph| return glyph;
         return null;
     }
-
-    // TODO: generate dynamic sizes using RNG with seed
 
     fn generateMonoGlyphMap(self: *@This(), size: i32, width_aspect_ratio: f32) GlyphMap {
         const height: f32 = @floatFromInt(size);
@@ -1062,6 +1144,15 @@ const MockManager = struct {
         return self;
     }
 
+    fn assetsCallbacks(self: *@This()) AssetsCallbacks {
+        return AssetsCallbacks{
+            .font_manager = self,
+            .glyph_callback = MockManager.getGlyphInfo,
+            .image_manager = self,
+            .image_callback = MockManager.getImageInfo,
+        };
+    }
+
     fn destroy(self: *@This()) void {
         self.arena.deinit();
         self.a.destroy(self);
@@ -1076,19 +1167,7 @@ const TSWin = struct {
 
     fn init(
         source: []const u8,
-        cache_strategy: CachedContents.CacheStrategy,
-        disable_default_queries: bool,
-        enabled_queries: []const []const u8,
-    ) !@This() {
-        var self = try initNoCache(source, disable_default_queries, enabled_queries);
-        try self.win.initCache(cache_strategy);
-        return self;
-    }
-
-    fn initNoCache(
-        source: []const u8,
-        disable_default_queries: bool,
-        enabled_queries: []const []const u8,
+        opts: SpawnOptions,
     ) !@This() {
         var self = TSWin{
             .langsuite = try sitter.LangSuite.create(.zig),
@@ -1101,10 +1180,7 @@ const TSWin = struct {
 
         try self.buf.initiateTreeSitter(self.langsuite);
 
-        self.win = try Window.create(testing_allocator, self.buf, _default_display);
-        if (disable_default_queries) self.win.disableDefaultQueries();
-        for (enabled_queries) |query_id| try self.win.enableQuery(query_id);
-
+        self.win = try Window.create(testing_allocator, self.buf, opts);
         return self;
     }
 
