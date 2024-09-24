@@ -436,7 +436,6 @@ const CachedContents = struct {
 
     lines: ArrayList([]u21) = undefined,
     displays: ArrayList([]Display) = undefined,
-    sizes: ArrayList([]DisplaySize) = undefined,
 
     start_line: usize = 0,
     end_line: usize = 0,
@@ -716,47 +715,6 @@ const CachedContents = struct {
         }
     }
 
-    // fn createDisplaySizes(self: *CachedContents, start_line: usize, end_line: usize) !ArrayList([]DisplaySize) {
-    //     assert(start_line >= self.start_line and end_line <= self.end_line);
-    //     const a = self.arena.allocator();
-    //     var list = ArrayList([]DisplaySize).init(a);
-    //     for (start_line..end_line + 1) |linenr| {
-    //         const displays_index = linenr - self.start_line;
-    //         const displays = self.displays.items[displays_index];
-    //         const sizes = try a.alloc(DisplaySize, displays.len);
-    //         for (displays) |d| {
-    //             switch (d) {
-    //                 .char => |char| {
-    //                     // TODO:
-    //                 },
-    //                 .image => |image| {
-    //                     // TODO:
-    //                 },
-    //             }
-    //         }
-    //         try list.append(sizes);
-    //     }
-    //     return list;
-    // }
-    //
-    // test createDisplaySizes {
-    //     const source =
-    //         \\const std = @import("std");
-    //         \\const Allocator = std.mem.Allocator;
-    //     ;
-    //     var tswin = try TSWin.initNoCache(source, true, &.{ "trimed_down_highlights", "std_60_inter" });
-    //     defer tswin.deinit();
-    //
-    //     var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
-    //     cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
-    //     cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
-    //     try cc.applyTreeSitterToDisplays(cc.start_line, cc.end_line);
-    //     cc.sizes = try cc.createDisplaySizes(cc.start_line, cc.end_line);
-    //
-    //     var iter = DisplayChunkTester{ .cc = cc };
-    //     try iter.sizes(0, "const ", .{ .width = 30, .height = 40 });
-    // }
-
     ///////////////////////////// Update Obsolete
 
     const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
@@ -948,30 +906,14 @@ const DisplayChunkTester = struct {
         literal: struct { []const u8, i32, u32 },
     };
 
-    fn sizes(self: *@This(), linenr: usize, expected_str: []const u8, expected: CachedContents.DisplaySize) !void {
-        defer self.i += expected_str.len;
-        try self.linesCheck(linenr, expected_str);
-
-        const s = self.cc.sizes.items[linenr];
-        for (s[self.i .. self.i + expected_str.len]) |size| {
-            errdefer std.debug.print("expected width {d} | {d}\n", .{ expected.width, size.width });
-            errdefer std.debug.print("expected height {d} | {d}\n", .{ expected.height, size.height });
-            try eq(expected, size);
-        }
-    }
-
-    fn linesCheck(self: *@This(), linenr: usize, expected_str: []const u8) !void {
+    fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
         if (linenr != self.current_line) {
             self.current_line = linenr;
             self.i = 0;
         }
+        defer self.i += expected_str.len;
 
         try eqStrU21(expected_str, self.cc.lines.items[linenr][self.i .. self.i + expected_str.len]);
-    }
-
-    fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
-        defer self.i += expected_str.len;
-        try self.linesCheck(linenr, expected_str);
 
         var expected_display = self.cc.win.default_display;
         if (expected_display == .char) {
@@ -1073,7 +1015,7 @@ const MockManager = struct {
             .maps = std.StringHashMap(GlyphMap).init(self.arena.allocator()),
         };
         try self.maps.put("Meslo", self.generateMonoGlyphMap(40, 0.75));
-        try self.maps.put("Inter", self.generateMonoGlyphMap(40, 0.5));
+        try self.maps.put("Inter", self.generateMonoGlyphMap(30, 0.5));
         return self;
     }
 
