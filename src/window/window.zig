@@ -110,56 +110,52 @@ fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
     return .{ current_x, current_y };
 }
 
+fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) ?Cell {
+    switch (d) {
+        .char => |char| {
+            if (cbs.glyph_callback(cbs.font_manager, char.font_face, char.font_size, code_point)) |glyph| {
+                const scale_factor: f32 = @as(f32, @floatFromInt(char.font_size)) / @as(f32, @floatFromInt(glyph.base_size));
+                var width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
+                width = width * scale_factor;
+
+                const height = char.font_size;
+
+                return Cell{
+                    .width = width,
+                    .height = height,
+                    .variant = .char{
+                        .code_point = code_point,
+                        .font_face = char.font_face,
+                        .font_size = char.font_size,
+                        .color = char.color,
+                    },
+                };
+            }
+        },
+        .image => |image| {
+            if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
+                return Cell{ .width = size.width, .height = size.height, .variant = .image{ .id = image.path } };
+            }
+        },
+    }
+    return null;
+}
+
 fn computeLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
     self.cells_arena.deinit();
     self.cells_arena = std.heap.ArenaAllocator.init(self.a);
 
-    self.lines_of_cells = ArrayList(LineOfCells).init(self.cells_arena.allocator());
+    self.lines_of_cells = try ArrayList(LineOfCells).initCapacity(self.cells_arena.allocator(), self.cached.displays.items.len);
     for (self.cached.displays.items, 0..) |displays, line_index| {
-        var cells = ArrayList(Cell).init(self.cells_arena.allocator());
+        var cells = try ArrayList(Cell).initCapacity(self.cells_arena.allocator(), self.cached.displays.items[line_index].len);
+
         for (displays, 0..) |d, i| {
-            switch (d) {
-                .char => |char| {
-                    const code_point = self.cached.lines.items[line_index][i];
-                    if (cbs.glyph_callback(cbs.font_manager, char.font_face, char.font_size, code_point)) |glyph| {
-                        const scale_factor: f32 = @as(f32, @floatFromInt(char.font_size)) / @as(f32, @floatFromInt(glyph.base_size));
-                        var width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
-                        width = width * scale_factor;
-
-                        const height = char.font_size;
-
-                        const cell = Cell{
-                            .width = width,
-                            .height = height,
-                            .variant = .char{
-                                .code_point = code_point,
-                                .font_face = char.font_face,
-                                .font_size = char.font_size,
-                                .color = char.color,
-                            },
-                        };
-
-                        try cells.append(cell);
-                        continue;
-                    }
-                },
-                .image => |image| {
-                    if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
-                        const cell = Cell{
-                            .width = size.width,
-                            .height = size.height,
-                            .variant = .image{
-                                .id = image.path,
-                            },
-                        };
-                        try cells.append(cell);
-                        continue;
-                    }
-                },
-            }
-
-            // TODO: no match --> append default cell
+            const cp = self.cached.lines.items[line_index][i];
+            const cell = createCell(cbs, cp, d) orelse createCell(cbs, cp, self.default_display).?;
+            try cells.append(cell);
         }
+
+        try self.lines_of_cells.append(try cells.toOwnedSlice());
     }
 }
 
