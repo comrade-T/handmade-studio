@@ -119,6 +119,21 @@ pub fn build(b: *std.Build) void {
     ///////////////////////////// Raylib
 
     {
+        const path = "src/window_test.zig";
+        const exe = b.addExecutable(.{
+            .name = "window_test",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("window", window.module);
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.linkLibrary(tree_sitter);
+        exe.linkLibrary(ztracy.artifact("tracy"));
+        addRunnableRaylibFile(b, exe, raylib, path);
+    }
+
+    {
         const path = "src/new_mapping_methods.zig";
         const exe = b.addExecutable(.{
             .name = "new_mapping_methods",
