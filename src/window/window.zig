@@ -118,6 +118,8 @@ test computeLinesOfCells {
     {
         const mock_man = try MockManager.create(idc_if_it_leaks);
         try tswin.win.computeLinesOfCells(mock_man.assetsCallbacks());
+
+        // TODO:
     }
 }
 
@@ -946,7 +948,20 @@ pub const SpawnOptions = struct {
 pub const Bounds = struct {
     width: f32 = 400,
     height: f32 = 400,
-    offset: struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
+    padding: Padding = .{},
+    offset: Offset = .{},
+
+    const Padding = struct {
+        top: f32 = 0,
+        right: f32 = 0,
+        bottom: f32 = 0,
+        left: f32 = 0,
+    };
+
+    const Offset = struct {
+        x: f32 = 0,
+        y: f32 = 0,
+    };
 };
 
 const Cursor = struct {
