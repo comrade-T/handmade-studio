@@ -36,9 +36,9 @@ cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
-should_recompute_cells: bool = true,
+should_recreate_cells: bool = true,
 cells_arena: std.heap.ArenaAllocator,
-lines_of_cells: ArrayList(LineOfCells),
+lines_of_cells: []LineOfCells,
 
 pub fn create(
     a: Allocator,
@@ -59,7 +59,7 @@ pub fn create(
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
 
         .cells_arena = std.heap.ArenaAllocator.init(a),
-        .lines_of_cells = std.ArrayList(LineOfCells).init(self.cells_arena.allocator()),
+        .lines_of_cells = &.{},
     };
     if (buf.tstree) |_| {
         if (!opts.disable_default_queries) try self.enableQuery(sitter.DEFAULT_QUERY_ID);
@@ -76,28 +76,58 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
-const RenderCallbacks = struct {
-    // TODO:
-};
+///////////////////////////// Render
 
-const AssetsCallbacks = struct {
-    font_manager: *anyopaque,
-    glyph_callback: GetGlyphSizeCallback,
-    image_manager: *anyopaque,
-    image_callback: GetImageSizeCallback,
-};
+pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
+    if (self.should_recreate_cells) {
+        try self.createLinesOfCells(assets_callbacks);
+        assert(self.cached.lines.items.len == self.lines_of_cells.items.len);
+        self.should_recreate_cells = false;
+    }
 
-pub fn render(self: *@This(), render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
-    if (self.should_recompute_cells) try self.createLinesOfCells(assets_callbacks);
-    assert(self.cached.lines.items.len == self.lines_of_cells.items.len);
+    // TODO: if (self.should_recompute_cell_positions)
+    self.setCellPositions(render_callbacks);
 
-    self.executeRenderCallbacks(render_callbacks);
+    self.executeRenderCallbacks(render_callbacks, screen_view);
 }
 
-fn executeRenderCallbacks(self: *@This(), render_callbacks: RenderCallbacks) void {
-    // var current_x, var current_y = self.getInitialRenderPosition();
-    _ = self;
-    _ = render_callbacks;
+fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, view: ScreenView) void {
+    for (self.lines_of_cells) |loc| {
+        if (loc.y > view.end.y) return;
+        if (loc.y + loc.height < view.start.y) continue;
+
+        if (loc.x > view.end.x) continue;
+        if (loc.x + loc.width < view.start.x) continue;
+
+        for (loc.cells) |cell| {
+            if (cell.x > view.end.x) break;
+            if (cell.x + cell.width < view.start.x) continue;
+
+            switch (cell.variant) {
+                .char => |char| {
+                    cbs.drawCodePoint(char.code_point, char.font_face, char.font_size, char.color, cell.x, cell.y);
+                },
+                .image => {},
+            }
+        }
+    }
+}
+
+///////////////////////////// Cell Positions
+
+fn setCellPositions(self: *@This()) void {
+    var current_x, var current_y = self.getFirstCellPosition();
+
+    for (self.lines_of_cells, 0..) |loc, i| {
+        defer current_y += loc.height;
+        self.lines_of_cells[i].x = current_x;
+        self.lines_of_cells[i].y = current_y;
+        for (loc.cells, 0..) |cell, j| {
+            defer current_x += cell.width;
+            self.lines_of_cells[i].cells[j].x = current_x;
+            self.lines_of_cells[i].cells[j].y = current_y;
+        }
+    }
 }
 
 fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
@@ -111,6 +141,8 @@ fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
     }
     return .{ current_x, current_y };
 }
+
+///////////////////////////// Cells
 
 fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) ?Cell {
     switch (d) {
@@ -146,14 +178,14 @@ fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) 
 }
 
 fn _c(self: *@This(), line: usize, col: usize) Cell {
-    return self.lines_of_cells.items[line].cells[col];
+    return self.lines_of_cells[line].cells[col];
 }
 
 fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
     self.cells_arena.deinit();
     self.cells_arena = std.heap.ArenaAllocator.init(self.a);
 
-    self.lines_of_cells = try ArrayList(LineOfCells).initCapacity(self.cells_arena.allocator(), self.cached.displays.items.len);
+    var lines_of_cells = try ArrayList(LineOfCells).initCapacity(self.cells_arena.allocator(), self.cached.displays.items.len);
     for (self.cached.displays.items, 0..) |displays, line_index| {
         var cells = try ArrayList(Cell).initCapacity(self.cells_arena.allocator(), self.cached.displays.items[line_index].len);
         var line_width: f32 = 0;
@@ -167,12 +199,14 @@ fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
             try cells.append(cell);
         }
 
-        try self.lines_of_cells.append(LineOfCells{
+        try lines_of_cells.append(LineOfCells{
             .width = line_width,
             .height = line_height,
             .cells = try cells.toOwnedSlice(),
         });
     }
+
+    self.lines_of_cells = try lines_of_cells.toOwnedSlice();
 }
 
 test createLinesOfCells {
@@ -192,7 +226,7 @@ test createLinesOfCells {
     {
         const mock_man = try MockManager.create(idc_if_it_leaks);
         try tswin.win.createLinesOfCells(mock_man.assetsCallbacks());
-        try eq(win.cached.lines.items.len, win.lines_of_cells.items.len);
+        try eq(win.cached.lines.items.len, win.lines_of_cells.len);
 
         try eqStr("0:0 15x40 'c' 'Meslo' s40 0xc792eaff", win._c(0, 0).dbg());
         try eqStr("0:0 15x40 'o' 'Meslo' s40 0xc792eaff", win._c(0, 1).dbg());
@@ -220,7 +254,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
-    self.should_recompute_cells = true;
+    self.should_recreate_cells = true;
 }
 
 test insertChars {
@@ -475,7 +509,7 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
     try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
-    self.should_recompute_cells = true;
+    self.should_recreate_cells = true;
 }
 
 test deleteRange {
@@ -1024,6 +1058,22 @@ pub const SpawnOptions = struct {
     cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 };
 
+const ScreenView = struct {
+    start: struct { x: f32 = 0, y: f32 = 0 },
+    end: struct { x: f32 = 0, y: f32 = 0 },
+};
+
+const RenderCallbacks = struct {
+    drawCodePoint: *const fn (code_point: u21, font_face: []const u8, font_size: i32, color: u32, x: f32, y: f32) void,
+};
+
+const AssetsCallbacks = struct {
+    font_manager: *anyopaque,
+    glyph_callback: GetGlyphSizeCallback,
+    image_manager: *anyopaque,
+    image_callback: GetImageSizeCallback,
+};
+
 pub const Bounds = struct {
     width: f32 = 400,
     height: f32 = 400,
@@ -1099,6 +1149,8 @@ const Cell = struct {
 };
 
 const LineOfCells = struct {
+    x: f32 = 0,
+    y: f32 = 0,
     width: f32,
     height: f32,
     cells: []Cell,
