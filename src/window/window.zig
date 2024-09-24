@@ -31,11 +31,6 @@ cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
-font_manager: *anyopaque = undefined,
-font_callback: GetGlyphSizeCallback = undefined,
-image_manager: *anyopaque = undefined,
-image_callback: GetImageInfoCallback = undefined,
-
 pub fn create(
     a: Allocator,
     buf: *Buffer,
@@ -59,16 +54,6 @@ pub fn destroy(self: *@This()) void {
 
 pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
     self.cached = try CachedContents.init(self, cache_strategy);
-}
-
-pub fn registerImageManager(self: *@This(), ctx: *anyopaque, cb: GetImageInfoCallback) !void {
-    self.image_manager = ctx;
-    self.image_callback = cb;
-}
-
-pub fn registerFontManager(self: *@This(), ctx: *anyopaque, cb: GetGlyphSizeCallback) !void {
-    self.font_manager = ctx;
-    self.font_callback = cb;
 }
 
 ///////////////////////////// Insert
@@ -1030,7 +1015,6 @@ const TSWin = struct {
     buf: *Buffer = undefined,
     win: *Window = undefined,
     hl: std.StringHashMap(u32) = undefined,
-    mock_manager: *MockManager = undefined,
 
     fn init(
         source: []const u8,
@@ -1041,12 +1025,6 @@ const TSWin = struct {
         var self = try initNoCache(source, disable_default_queries, enabled_queries);
         try self.win.initCache(cache_strategy);
         return self;
-    }
-
-    fn initMockCallbacks(self: *@This()) !void {
-        self.mock_manager = try MockManager.create(testing_allocator);
-        try self.win.registerFontManager(self.mock_manager, MockManager.getGlyphMap);
-        try self.win.registerImageManager(self.mock_manager, MockManager.getImageInfo);
     }
 
     fn initNoCache(
@@ -1069,9 +1047,13 @@ const TSWin = struct {
         if (disable_default_queries) self.win.disableDefaultQueries();
         for (enabled_queries) |query_id| try self.win.enableQuery(query_id);
 
-        try self.initMockCallbacks();
-
         return self;
+    }
+
+    fn deinit(self: *@This()) void {
+        self.langsuite.destroy();
+        self.buf.destroy();
+        self.win.destroy();
     }
 
     fn addCustomQueries(self: *@This()) !void {
@@ -1110,12 +1092,5 @@ const TSWin = struct {
             \\   (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
             \\ )
         );
-    }
-
-    fn deinit(self: *@This()) void {
-        self.langsuite.destroy();
-        self.buf.destroy();
-        self.win.destroy();
-        self.mock_manager.destroy();
     }
 };
