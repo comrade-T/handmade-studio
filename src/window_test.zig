@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const fm = @import("font_manager.zig");
 
 const Window = @import("window");
 const Buffer = @import("window").Buffer;
@@ -40,6 +41,15 @@ pub fn main() !void {
     var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa_.deinit();
     const gpa = gpa_.allocator();
+
+    ///////////////////////////// Font Manager
+
+    var font_manager = try fm.FontManager.create(gpa);
+    defer font_manager.destroy();
+
+    try font_manager.addFontWithSize("Meslo", "Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 120);
+
+    std.debug.print("result: {any}\n", .{fm.FontManager.getGlyphInfo(font_manager, "Meslo", 33).?});
 
     ///////////////////////////// LangSuite
 
