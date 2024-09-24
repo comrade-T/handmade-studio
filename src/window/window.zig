@@ -32,7 +32,7 @@ cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
 font_manager: *anyopaque = undefined,
-font_callback: GetGlyphMapCallback = undefined,
+font_callback: GetGlyphSizeCallback = undefined,
 image_manager: *anyopaque = undefined,
 image_callback: GetImageInfoCallback = undefined,
 
@@ -57,7 +57,6 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
-// TODO: have a `createWithCache()` method, make other create methods private
 pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
     self.cached = try CachedContents.init(self, cache_strategy);
 }
@@ -67,7 +66,7 @@ pub fn registerImageManager(self: *@This(), ctx: *anyopaque, cb: GetImageInfoCal
     self.image_callback = cb;
 }
 
-pub fn registerFontManager(self: *@This(), ctx: *anyopaque, cb: GetGlyphMapCallback) !void {
+pub fn registerFontManager(self: *@This(), ctx: *anyopaque, cb: GetGlyphSizeCallback) !void {
     self.font_manager = ctx;
     self.font_callback = cb;
 }
@@ -717,6 +716,47 @@ const CachedContents = struct {
         }
     }
 
+    // fn createDisplaySizes(self: *CachedContents, start_line: usize, end_line: usize) !ArrayList([]DisplaySize) {
+    //     assert(start_line >= self.start_line and end_line <= self.end_line);
+    //     const a = self.arena.allocator();
+    //     var list = ArrayList([]DisplaySize).init(a);
+    //     for (start_line..end_line + 1) |linenr| {
+    //         const displays_index = linenr - self.start_line;
+    //         const displays = self.displays.items[displays_index];
+    //         const sizes = try a.alloc(DisplaySize, displays.len);
+    //         for (displays) |d| {
+    //             switch (d) {
+    //                 .char => |char| {
+    //                     // TODO:
+    //                 },
+    //                 .image => |image| {
+    //                     // TODO:
+    //                 },
+    //             }
+    //         }
+    //         try list.append(sizes);
+    //     }
+    //     return list;
+    // }
+    //
+    // test createDisplaySizes {
+    //     const source =
+    //         \\const std = @import("std");
+    //         \\const Allocator = std.mem.Allocator;
+    //     ;
+    //     var tswin = try TSWin.initNoCache(source, true, &.{ "trimed_down_highlights", "std_60_inter" });
+    //     defer tswin.deinit();
+    //
+    //     var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
+    //     cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
+    //     cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
+    //     try cc.applyTreeSitterToDisplays(cc.start_line, cc.end_line);
+    //     cc.sizes = try cc.createDisplaySizes(cc.start_line, cc.end_line);
+    //
+    //     var iter = DisplayChunkTester{ .cc = cc };
+    //     try iter.sizes(0, "const ", .{ .width = 30, .height = 40 });
+    // }
+
     ///////////////////////////// Update Obsolete
 
     const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
@@ -880,8 +920,8 @@ pub const Glyph = struct {
     width: f32,
     height: f32,
 };
-pub const GlyphMap = std.AutoArrayHashMap(i32, Glyph);
-pub const GetGlyphMapCallback = *const fn (ctx: *anyopaque, name: []const u8, size: i32) ?GlyphMap;
+pub const GlyphMap = std.AutoArrayHashMap(u21, Glyph);
+pub const GetGlyphSizeCallback = *const fn (ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
@@ -995,12 +1035,17 @@ fn _createWinWithBuf(source: []const u8) !*Window {
 const MockManager = struct {
     a: Allocator,
     arena: std.heap.ArenaAllocator,
-    fn getGlyphMap(ctx: *anyopaque, name: []const u8, size: i32) ?GlyphMap {
+    maps: std.StringHashMap(GlyphMap),
+
+    fn getGlyphMap(ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph {
+        _ = size;
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-        if (eql(u8, name, "Meslo")) return self.generateMonoGlyphMap(size, 0.75);
-        if (eql(u8, name, "Inter")) return self.generateMonoGlyphMap(size, 0.5);
+        if (self.maps.get(name)) |map| if (map.get(char)) |glyph| return glyph;
         return null;
     }
+
+    // TODO: generate dynamic sizes using RNG with seed
+
     fn generateMonoGlyphMap(self: *@This(), size: i32, width_aspect_ratio: f32) GlyphMap {
         const height: f32 = @floatFromInt(size);
         const width: f32 = height * width_aspect_ratio;
@@ -1014,15 +1059,24 @@ const MockManager = struct {
         for (32..127) |i| map.put(@intCast(i), glyph) catch unreachable;
         return map;
     }
+
     fn getImageInfo(_: *anyopaque, path: []const u8) ?ImageInfo {
         if (eql(u8, path, "kekw.png")) return ImageInfo{ .width = 420, .height = 420 };
         return null;
     }
+
     fn create(a: Allocator) !*@This() {
         const self = try a.create(@This());
-        self.* = .{ .a = a, .arena = std.heap.ArenaAllocator.init(a) };
+        self.* = .{
+            .a = a,
+            .arena = std.heap.ArenaAllocator.init(a),
+            .maps = std.StringHashMap(GlyphMap).init(self.arena.allocator()),
+        };
+        try self.maps.put("Meslo", self.generateMonoGlyphMap(40, 0.75));
+        try self.maps.put("Inter", self.generateMonoGlyphMap(40, 0.5));
         return self;
     }
+
     fn destroy(self: *@This()) void {
         self.arena.deinit();
         self.a.destroy(self);
