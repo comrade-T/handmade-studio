@@ -348,7 +348,7 @@ pub const PredicatesFilter = struct {
             property: []const u8,
             value: []const u8,
         },
-        size: i32,
+        size: f32,
         font: []const u8,
         img: []const u8,
         // TODO: color: u32 -> not doing right now since I'd have to parse colors
@@ -364,7 +364,7 @@ pub const PredicatesFilter = struct {
         fn createSizeDirective(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {
             checkBodySteps("size!", steps, &.{.string}) catch |err| return err;
             const str_value = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id)));
-            return Directive{ .size = std.fmt.parseInt(i32, str_value, 10) catch 0 };
+            return Directive{ .size = std.fmt.parseFloat(f32, str_value) catch 0 };
         }
 
         fn createFontDirective(query: *const Query, steps: []const PredicateStep) PredicateError!Directive {

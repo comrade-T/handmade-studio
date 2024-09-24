@@ -1,16 +1,11 @@
 const std = @import("std");
 const rl = @import("raylib");
 const Allocator = std.mem.Allocator;
+const Window = @import("window");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Glyph = struct {
-    advanceX: i32,
-    offsetX: i32,
-    width: f32,
-};
-
-const GlyphMap = std.AutoArrayHashMap(i32, Glyph);
+const GlyphMap = std.AutoArrayHashMap(i32, Window.Glyph);
 
 const ManagedFont = struct {
     a: Allocator,
@@ -40,7 +35,12 @@ const ManagedFont = struct {
         for (0..@intCast(font.glyphCount)) |i| {
             const rec = font.recs[i];
             const gi = font.glyphs[i];
-            try map.put(gi.value, Glyph{ .width = rec.width, .offsetX = gi.offsetX, .advanceX = gi.advanceX });
+            try map.put(gi.value, Window.Glyph{
+                .width = rec.width,
+                .offsetX = gi.offsetX,
+                .advanceX = gi.advanceX,
+                .base_size = font.baseSize,
+            });
         }
         return map;
     }
@@ -74,7 +74,7 @@ pub const FontManager = struct {
         self.a.destroy(self);
     }
 
-    pub fn getGlyphInfo(ctx: *anyopaque, name: []const u8, code_point: u21) ?Glyph {
+    pub fn getGlyphInfo(ctx: *anyopaque, name: []const u8, code_point: u21) ?Window.Glyph {
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
         if (self.fonts.get(name)) |mf| {
             if (mf.glyphs.get(@as(i32, @intCast(code_point)))) |glyph| return glyph;

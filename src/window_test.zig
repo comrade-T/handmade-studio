@@ -42,14 +42,14 @@ pub fn main() !void {
     defer _ = gpa_.deinit();
     const gpa = gpa_.allocator();
 
-    ///////////////////////////// Font Manager
+    ///////////////////////////// Font Manager & Image Manager
 
     var font_manager = try fm.FontManager.create(gpa);
     defer font_manager.destroy();
 
-    try font_manager.addFontWithSize("Meslo", "Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 120);
+    var image_manager = ImageManager{};
 
-    std.debug.print("result: {any}\n", .{fm.FontManager.getGlyphInfo(font_manager, "Meslo", 33).?});
+    try font_manager.addFontWithSize("Meslo", "Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", 120);
 
     ///////////////////////////// LangSuite
 
@@ -89,6 +89,22 @@ pub fn main() !void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
+                try window.render(
+                    .{
+                        .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+                        .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
+                    },
+                    .{
+                        .drawCodePoint = drawCodePoint,
+                    },
+                    .{
+                        .font_manager = font_manager,
+                        .glyph_callback = fm.FontManager.getGlyphInfo,
+                        .image_manager = &image_manager,
+                        .image_callback = ImageManager.getImageSize,
+                    },
+                );
+
                 rl.drawText("hello world", 100, 100, 40, rl.Color.sky_blue);
             }
         }
@@ -97,7 +113,22 @@ pub fn main() !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const ScreenView = struct {
+fn drawCodePoint(ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void {
+    const font_manager = @as(*fm.FontManager, @ptrCast(@alignCast(ctx)));
+    if (font_manager.fonts.get(font_face)) |mf| {
+        rl.drawTextCodepoint(mf.font, @intCast(code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(color));
+    }
+}
+
+const ImageManager = struct {
+    fn getImageSize(ctx: *anyopaque, path: []const u8) ?Window.ImageInfo {
+        _ = ctx;
+        _ = path;
+        return Window.ImageInfo{ .width = 100, .height = 100 };
+    }
+};
+
+const ScreenView = struct {
     start: rl.Vector2 = .{ .x = 0, .y = 0 },
     end: rl.Vector2 = .{ .x = 0, .y = 0 },
     width: f32,

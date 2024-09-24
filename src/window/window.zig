@@ -81,17 +81,17 @@ pub fn destroy(self: *@This()) void {
 pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
     if (self.should_recreate_cells) {
         try self.createLinesOfCells(assets_callbacks);
-        assert(self.cached.lines.items.len == self.lines_of_cells.items.len);
+        assert(self.cached.lines.items.len == self.lines_of_cells.len);
         self.should_recreate_cells = false;
     }
 
     // TODO: if (self.should_recompute_cell_positions)
-    self.setCellPositions(render_callbacks);
+    self.setCellPositions();
 
-    self.executeRenderCallbacks(render_callbacks, screen_view);
+    self.executeRenderCallbacks(render_callbacks, assets_callbacks.font_manager, screen_view);
 }
 
-fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, view: ScreenView) void {
+fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
     for (self.lines_of_cells) |loc| {
         if (loc.y > view.end.y) return;
         if (loc.y + loc.height < view.start.y) continue;
@@ -105,7 +105,7 @@ fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, view: ScreenView
 
             switch (cell.variant) {
                 .char => |char| {
-                    cbs.drawCodePoint(char.code_point, char.font_face, char.font_size, char.color, cell.x, cell.y);
+                    cbs.drawCodePoint(font_manager, char.code_point, char.font_face, char.font_size, char.color, cell.x, cell.y);
                 },
                 .image => {},
             }
@@ -147,8 +147,8 @@ fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
 fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) ?Cell {
     switch (d) {
         .char => |char| {
-            if (cbs.glyph_callback(cbs.font_manager, char.font_face, char.font_size, code_point)) |glyph| {
-                const scale_factor: f32 = @as(f32, @floatFromInt(char.font_size)) / @as(f32, @floatFromInt(glyph.base_size));
+            if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
+                const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
                 var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
                 width = width * scale_factor;
 
@@ -156,7 +156,7 @@ fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) 
 
                 return Cell{
                     .width = width,
-                    .height = @as(f32, @floatFromInt(height)),
+                    .height = height,
                     .variant = .{
                         .char = .{
                             .code_point = code_point,
@@ -611,7 +611,7 @@ fn endLineNr(self: *const @This()) u32 {
 const CachedContents = struct {
     const DisplaySize = struct { width: f32, height: f32 };
     const Display = union(enum) {
-        const Char = struct { font_size: i32, font_face: []const u8, color: u32 };
+        const Char = struct { font_size: f32, font_face: []const u8, color: u32 };
         const Image = struct { path: []const u8 };
         char: Char,
         image: Image,
@@ -1064,7 +1064,7 @@ const ScreenView = struct {
 };
 
 const RenderCallbacks = struct {
-    drawCodePoint: *const fn (code_point: u21, font_face: []const u8, font_size: i32, color: u32, x: f32, y: f32) void,
+    drawCodePoint: *const fn (ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void,
 };
 
 const AssetsCallbacks = struct {
@@ -1112,7 +1112,7 @@ const Cell = struct {
         char: struct {
             code_point: u21,
             font_face: []const u8,
-            font_size: i32,
+            font_size: f32,
             color: u32,
         },
         image: struct { path: []const u8 },
@@ -1178,11 +1178,10 @@ pub const Glyph = struct {
     advanceX: i32,
     offsetX: i32,
     width: f32,
-    height: f32,
     base_size: i32,
 };
 pub const GlyphMap = std.AutoArrayHashMap(u21, Glyph);
-pub const GetGlyphSizeCallback = *const fn (ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph;
+pub const GetGlyphSizeCallback = *const fn (ctx: *anyopaque, name: []const u8, char: u21) ?Glyph;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
@@ -1282,8 +1281,7 @@ const MockManager = struct {
     arena: std.heap.ArenaAllocator,
     maps: std.StringHashMap(GlyphMap),
 
-    fn getGlyphInfo(ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph {
-        _ = size;
+    fn getGlyphInfo(ctx: *anyopaque, name: []const u8, char: u21) ?Glyph {
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
         if (self.maps.get(name)) |map| if (map.get(char)) |glyph| return glyph;
         return null;
@@ -1294,7 +1292,6 @@ const MockManager = struct {
         const width: f32 = height * width_aspect_ratio;
         const glyph = Glyph{
             .width = width,
-            .height = height,
             .advanceX = 15,
             .offsetX = 4,
             .base_size = size,
