@@ -93,13 +93,74 @@ pub fn render(self: *@This(), render_callbacks: RenderCallbacks, assets_callback
 }
 
 fn executeRenderCallbacks(self: *@This(), render_callbacks: RenderCallbacks) void {
+    // var current_x, var current_y = self.getInitialRenderPosition();
     _ = self;
     _ = render_callbacks;
 }
 
-fn computeLinesOfCells(self: *@This(), assets_callbacks: AssetsCallbacks) !void {
-    _ = self;
-    _ = assets_callbacks;
+fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
+    var current_x: f32 = self.x;
+    var current_y: f32 = self.y;
+    if (self.bounded) {
+        current_x -= self.bounds.offset.x;
+        current_y -= self.bounds.offset.y;
+        current_x += self.bounds.padding.left;
+        current_y += self.bounds.padding.top;
+    }
+    return .{ current_x, current_y };
+}
+
+fn computeLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
+    self.cells_arena.deinit();
+    self.cells_arena = std.heap.ArenaAllocator.init(self.a);
+
+    self.lines_of_cells = ArrayList(LineOfCells).init(self.cells_arena.allocator());
+    for (self.cached.displays.items, 0..) |displays, line_index| {
+        var cells = ArrayList(Cell).init(self.cells_arena.allocator());
+        for (displays, 0..) |d, i| {
+            switch (d) {
+                .char => |char| {
+                    const code_point = self.cached.lines.items[line_index][i];
+                    if (cbs.glyph_callback(cbs.font_manager, char.font_face, char.font_size, code_point)) |glyph| {
+                        const scale_factor: f32 = @as(f32, @floatFromInt(char.font_size)) / @as(f32, @floatFromInt(glyph.base_size));
+                        var width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
+                        width = width * scale_factor;
+
+                        const height = char.font_size;
+
+                        const cell = Cell{
+                            .width = width,
+                            .height = height,
+                            .variant = .char{
+                                .code_point = code_point,
+                                .font_face = char.font_face,
+                                .font_size = char.font_size,
+                                .color = char.color,
+                            },
+                        };
+
+                        try cells.append(cell);
+                        continue;
+                    }
+                },
+                .image => |image| {
+                    if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
+                        const cell = Cell{
+                            .width = size.width,
+                            .height = size.height,
+                            .variant = .image{
+                                .id = image.path,
+                            },
+                        };
+                        try cells.append(cell);
+                        continue;
+                    }
+                },
+            }
+
+            // TODO: no match --> append default cell
+        }
+    }
 }
 
 test computeLinesOfCells {
@@ -119,7 +180,8 @@ test computeLinesOfCells {
         const mock_man = try MockManager.create(idc_if_it_leaks);
         try tswin.win.computeLinesOfCells(mock_man.assetsCallbacks());
 
-        // TODO:
+        // TODO: start with unbound window
+        // - first character will have x = 0, y = 0
     }
 }
 
@@ -975,8 +1037,8 @@ const Cursor = struct {
 };
 
 const Cell = struct {
-    x: f32,
-    y: f32,
+    x: f32 = 0,
+    y: f32 = 0,
     width: f32,
     height: f32,
     variant: union(enum) {
@@ -1019,6 +1081,7 @@ pub const Glyph = struct {
     offsetX: i32,
     width: f32,
     height: f32,
+    base_size: i32,
 };
 pub const GlyphMap = std.AutoArrayHashMap(u21, Glyph);
 pub const GetGlyphSizeCallback = *const fn (ctx: *anyopaque, name: []const u8, size: i32, char: u21) ?Glyph;
