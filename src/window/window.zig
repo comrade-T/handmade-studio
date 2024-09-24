@@ -23,13 +23,18 @@ buf: *Buffer,
 
 cursor: Cursor = .{},
 
-content_restrictions: ContentRestrictions = .none, // TODO: add .query variant in the future.
+content_restrictions: ContentRestrictions = .none,
 default_display: CachedContents.Display,
 
 cached: CachedContents = undefined,
 cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
+
+font_manager: *anyopaque = undefined,
+font_callback: GetGlyphMapCallback = undefined,
+image_manager: *anyopaque = undefined,
+image_callback: GetImageInfoCallback = undefined,
 
 pub fn create(
     a: Allocator,
@@ -55,6 +60,16 @@ pub fn destroy(self: *@This()) void {
 // TODO: have a `createWithCache()` method, make other create methods private
 pub fn initCache(self: *@This(), cache_strategy: CachedContents.CacheStrategy) !void {
     self.cached = try CachedContents.init(self, cache_strategy);
+}
+
+pub fn registerImageManager(self: *@This(), ctx: *anyopaque, cb: GetImageInfoCallback) !void {
+    self.image_manager = ctx;
+    self.image_callback = cb;
+}
+
+pub fn registerFontManager(self: *@This(), ctx: *anyopaque, cb: GetGlyphMapCallback) !void {
+    self.font_manager = ctx;
+    self.font_callback = cb;
 }
 
 ///////////////////////////// Insert
@@ -404,7 +419,7 @@ fn endLineNr(self: *const @This()) u32 {
 ////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
 
 const CachedContents = struct {
-    const DisplayDimensions = struct { x: f32, y: f32, width: f32, height: f32 };
+    const DisplaySize = struct { width: f32, height: f32 };
     const Display = union(enum) {
         const Char = struct { font_size: i32, font_face: []const u8, color: u32 };
         const Image = struct { path: []const u8 };
@@ -422,7 +437,7 @@ const CachedContents = struct {
 
     lines: ArrayList([]u21) = undefined,
     displays: ArrayList([]Display) = undefined,
-    dimensions: ArrayList([]DisplayDimensions) = undefined,
+    sizes: ArrayList([]DisplaySize) = undefined,
 
     start_line: usize = 0,
     end_line: usize = 0,
@@ -702,28 +717,6 @@ const CachedContents = struct {
         }
     }
 
-    fn createDisplaysDimensions(self: *CachedContents, start_line: usize, end_line: usize) !ArrayList([]DisplayDimensions) {
-        assert(start_line >= self.start_line and end_line <= self.end_line);
-    }
-
-    test createDisplaysDimensions {
-        const source =
-            \\const std = @import("std");
-            \\const Allocator = std.mem.Allocator;
-        ;
-        var tswin = try TSWin.initNoCache(source, true, &.{ "trimed_down_highlights", "std_60_inter" });
-        defer tswin.deinit();
-
-        var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
-        cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
-        cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
-        try cc.applyTreeSitterToDisplays(cc.start_line, cc.end_line);
-        cc.dimensions = try cc.createDisplaysDimensions(cc.start_line, cc.end_line);
-
-        var iter = DisplayChunkTester{ .cc = cc };
-        try iter.sizes(0, "const ", .{ .x = 0, .y = 0, .width = 30, .height = 40 });
-    }
-
     ///////////////////////////// Update Obsolete
 
     const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
@@ -851,6 +844,8 @@ const CachedContents = struct {
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////// Types
+
 const StoredQuery = struct {
     query: ts.Query,
     pattern: []const u8,
@@ -859,7 +854,8 @@ const StoredQuery = struct {
 
 const ContentRestrictions = union(enum) {
     none,
-    restricted: struct { start_line: usize, end_line: usize },
+    section: struct { start_line: usize, end_line: usize },
+    query: struct { id: []const u8 },
 };
 
 const Cursor = struct {
@@ -871,6 +867,21 @@ const Cursor = struct {
         self.col = col;
     }
 };
+
+pub const ImageInfo = struct {
+    width: f32,
+    height: f32,
+};
+pub const GetImageInfoCallback = *const fn (ctx: *anyopaque, path: []const u8) ?ImageInfo;
+
+pub const Glyph = struct {
+    advanceX: i32,
+    offsetX: i32,
+    width: f32,
+    height: f32,
+};
+pub const GlyphMap = std.AutoArrayHashMap(i32, Glyph);
+pub const GetGlyphMapCallback = *const fn (ctx: *anyopaque, name: []const u8, size: i32) ?GlyphMap;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
@@ -897,13 +908,12 @@ const DisplayChunkTester = struct {
         literal: struct { []const u8, i32, u32 },
     };
 
-    fn sizes(self: *@This(), linenr: usize, expected_str: []const u8, expected: CachedContents.DisplayDimensions) !void {
+    fn sizes(self: *@This(), linenr: usize, expected_str: []const u8, expected: CachedContents.DisplaySize) !void {
+        defer self.i += expected_str.len;
         try self.linesCheck(linenr, expected_str);
 
         const s = self.cc.sizes.items[linenr];
         for (s[self.i .. self.i + expected_str.len]) |size| {
-            errdefer std.debug.print("expected x {d} | {d}\n", .{ expected.x, size.x });
-            errdefer std.debug.print("expected y {d} | {d}\n", .{ expected.y, size.y });
             errdefer std.debug.print("expected width {d} | {d}\n", .{ expected.width, size.width });
             errdefer std.debug.print("expected height {d} | {d}\n", .{ expected.height, size.height });
             try eq(expected, size);
@@ -915,12 +925,12 @@ const DisplayChunkTester = struct {
             self.current_line = linenr;
             self.i = 0;
         }
-        defer self.i += expected_str.len;
 
         try eqStrU21(expected_str, self.cc.lines.items[linenr][self.i .. self.i + expected_str.len]);
     }
 
     fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
+        defer self.i += expected_str.len;
         try self.linesCheck(linenr, expected_str);
 
         var expected_display = self.cc.win.default_display;
@@ -982,11 +992,49 @@ fn _createWinWithBuf(source: []const u8) !*Window {
     return win;
 }
 
+const MockManager = struct {
+    a: Allocator,
+    arena: std.heap.ArenaAllocator,
+    fn getGlyphMap(ctx: *anyopaque, name: []const u8, size: i32) ?GlyphMap {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        if (eql(u8, name, "Meslo")) return self.generateMonoGlyphMap(size, 0.75);
+        if (eql(u8, name, "Inter")) return self.generateMonoGlyphMap(size, 0.5);
+        return null;
+    }
+    fn generateMonoGlyphMap(self: *@This(), size: i32, width_aspect_ratio: f32) GlyphMap {
+        const height: f32 = @floatFromInt(size);
+        const width: f32 = height * width_aspect_ratio;
+        const glyph = Glyph{
+            .width = width,
+            .height = height,
+            .advanceX = 15,
+            .offsetX = 4,
+        };
+        var map = GlyphMap.init(self.arena.allocator());
+        for (32..127) |i| map.put(@intCast(i), glyph) catch unreachable;
+        return map;
+    }
+    fn getImageInfo(_: *anyopaque, path: []const u8) ?ImageInfo {
+        if (eql(u8, path, "kekw.png")) return ImageInfo{ .width = 420, .height = 420 };
+        return null;
+    }
+    fn create(a: Allocator) !*@This() {
+        const self = try a.create(@This());
+        self.* = .{ .a = a, .arena = std.heap.ArenaAllocator.init(a) };
+        return self;
+    }
+    fn destroy(self: *@This()) void {
+        self.arena.deinit();
+        self.a.destroy(self);
+    }
+};
+
 const TSWin = struct {
     langsuite: sitter.LangSuite = undefined,
     buf: *Buffer = undefined,
     win: *Window = undefined,
     hl: std.StringHashMap(u32) = undefined,
+    mock_manager: *MockManager = undefined,
 
     fn init(
         source: []const u8,
@@ -997,6 +1045,12 @@ const TSWin = struct {
         var self = try initNoCache(source, disable_default_queries, enabled_queries);
         try self.win.initCache(cache_strategy);
         return self;
+    }
+
+    fn initMockCallbacks(self: *@This()) !void {
+        self.mock_manager = try MockManager.create(testing_allocator);
+        try self.win.registerFontManager(self.mock_manager, MockManager.getGlyphMap);
+        try self.win.registerImageManager(self.mock_manager, MockManager.getImageInfo);
     }
 
     fn initNoCache(
@@ -1018,6 +1072,8 @@ const TSWin = struct {
         self.win = try Window.create(testing_allocator, self.buf, _default_display);
         if (disable_default_queries) self.win.disableDefaultQueries();
         for (enabled_queries) |query_id| try self.win.enableQuery(query_id);
+
+        try self.initMockCallbacks();
 
         return self;
     }
@@ -1064,5 +1120,6 @@ const TSWin = struct {
         self.langsuite.destroy();
         self.buf.destroy();
         self.win.destroy();
+        self.mock_manager.destroy();
     }
 };
