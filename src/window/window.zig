@@ -89,6 +89,8 @@ const AssetsCallbacks = struct {
 
 pub fn render(self: *@This(), render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
     if (self.should_recompute_cells) try self.createLinesOfCells(assets_callbacks);
+    assert(self.cached.lines.items.len == self.lines_of_cells.items.len);
+
     self.executeRenderCallbacks(render_callbacks);
 }
 
@@ -143,6 +145,10 @@ fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) 
     return null;
 }
 
+fn _c(self: *@This(), line: usize, col: usize) Cell {
+    return self.lines_of_cells.items[line].cells[col];
+}
+
 fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
     self.cells_arena.deinit();
     self.cells_arena = std.heap.ArenaAllocator.init(self.a);
@@ -174,9 +180,10 @@ test createLinesOfCells {
         .disable_default_queries = true,
         .enabled_queries = &.{"trimed_down_highlights"},
     });
+    const win = tswin.win;
     defer tswin.deinit();
     {
-        var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
+        var test_iter = DisplayChunkTester{ .cc = win.cached };
         try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
         try test_iter.next(0, " not_false = ", .default);
         try test_iter.next(0, "true", .{ .hl_group = "boolean" });
@@ -185,8 +192,13 @@ test createLinesOfCells {
     {
         const mock_man = try MockManager.create(idc_if_it_leaks);
         try tswin.win.createLinesOfCells(mock_man.assetsCallbacks());
+        try eq(win.cached.lines.items.len, win.lines_of_cells.items.len);
 
-        // TODO:
+        try eqStr("0:0 15x40 'c' 'Meslo' s40 0xc792eaff", win._c(0, 0).dbg());
+        try eqStr("0:0 15x40 'o' 'Meslo' s40 0xc792eaff", win._c(0, 1).dbg());
+        try eqStr("0:0 15x40 'n' 'Meslo' s40 0xc792eaff", win._c(0, 2).dbg());
+        try eqStr("0:0 15x40 's' 'Meslo' s40 0xc792eaff", win._c(0, 3).dbg());
+        try eqStr("0:0 15x40 't' 'Meslo' s40 0xc792eaff", win._c(0, 4).dbg());
     }
 }
 
@@ -1055,6 +1067,35 @@ const Cell = struct {
         },
         image: struct { path: []const u8 },
     },
+
+    fn dbg(self: *const @This()) []u8 {
+        switch (self.variant) {
+            .char => |char| {
+                var char_buf: [3]u8 = undefined;
+                const char_len = std.unicode.utf8Encode(char.code_point, &char_buf) catch unreachable;
+                const char_str = char_buf[0..char_len];
+                return std.fmt.allocPrint(idc_if_it_leaks, "{d}:{d} {d}x{d} '{s}' '{s}' s{d} 0x{x}", .{
+                    self.x,
+                    self.y,
+                    self.width,
+                    self.height,
+                    char_str,
+                    char.font_face,
+                    char.font_size,
+                    char.color,
+                }) catch unreachable;
+            },
+            .image => |image| {
+                return std.fmt.allocPrint(idc_if_it_leaks, "{d}:{d} {d}x{d} '{s}'", .{
+                    self.x,
+                    self.y,
+                    self.width,
+                    self.height,
+                    image.path,
+                }) catch unreachable;
+            },
+        }
+    }
 };
 
 const LineOfCells = struct {
