@@ -92,6 +92,9 @@ pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderC
 }
 
 fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
+    // var chars_rendered: u32 = 0;
+    // defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
+
     for (self.lines_of_cells) |loc| {
         if (loc.y > view.end.y) return;
         if (loc.y + loc.height < view.start.y) continue;
@@ -106,6 +109,7 @@ fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *a
             switch (cell.variant) {
                 .char => |char| {
                     cbs.drawCodePoint(font_manager, char.code_point, char.font_face, char.font_size, char.color, cell.x, cell.y);
+                    // chars_rendered += 1;
                 },
                 .image => {},
             }
@@ -116,10 +120,13 @@ fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *a
 ///////////////////////////// Cell Positions
 
 fn setCellPositions(self: *@This()) void {
-    var current_x, var current_y = self.getFirstCellPosition();
+    const initial_x, const initial_y = self.getFirstCellPosition();
+    var current_x = initial_x;
+    var current_y = initial_y;
 
     for (self.lines_of_cells, 0..) |loc, i| {
         defer current_y += loc.height;
+        defer current_x = initial_x;
         self.lines_of_cells[i].x = current_x;
         self.lines_of_cells[i].y = current_y;
         for (loc.cells, 0..) |cell, j| {
@@ -194,8 +201,8 @@ fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
         for (displays, 0..) |d, i| {
             const cp = self.cached.lines.items[line_index][i];
             const cell = createCell(cbs, cp, d) orelse createCell(cbs, cp, self.default_display).?;
-            line_width = @max(line_width, cell.width);
-            line_height = @max(line_width, cell.height);
+            line_width += cell.width;
+            line_height = @max(line_height, cell.height);
             try cells.append(cell);
         }
 

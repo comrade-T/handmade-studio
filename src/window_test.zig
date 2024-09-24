@@ -60,11 +60,11 @@ pub fn main() !void {
 
     ///////////////////////////// Window
 
-    var buffer = try Buffer.create(gpa, .string, "hello window");
+    var buffer = try Buffer.create(gpa, .file, "build.zig");
     try buffer.initiateTreeSitter(zig_langsuite);
     defer buffer.destroy();
 
-    var window = try Window.create(gpa, buffer, .{});
+    var window = try Window.create(gpa, buffer, .{ .x = 400, .y = 100 });
     defer window.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
@@ -105,7 +105,7 @@ pub fn main() !void {
                     },
                 );
 
-                rl.drawText("hello world", 100, 100, 40, rl.Color.sky_blue);
+                // rl.drawText("hello world", 100, 100, 40, rl.Color.sky_blue);
             }
         }
     }
