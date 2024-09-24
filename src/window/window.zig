@@ -88,7 +88,7 @@ const AssetsCallbacks = struct {
 };
 
 pub fn render(self: *@This(), render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
-    if (self.should_recompute_cells) try self.computeLinesOfCells(assets_callbacks);
+    if (self.should_recompute_cells) try self.createLinesOfCells(assets_callbacks);
     self.executeRenderCallbacks(render_callbacks);
 }
 
@@ -115,51 +115,61 @@ fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) 
         .char => |char| {
             if (cbs.glyph_callback(cbs.font_manager, char.font_face, char.font_size, code_point)) |glyph| {
                 const scale_factor: f32 = @as(f32, @floatFromInt(char.font_size)) / @as(f32, @floatFromInt(glyph.base_size));
-                var width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
+                var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
                 width = width * scale_factor;
 
                 const height = char.font_size;
 
                 return Cell{
                     .width = width,
-                    .height = height,
-                    .variant = .char{
-                        .code_point = code_point,
-                        .font_face = char.font_face,
-                        .font_size = char.font_size,
-                        .color = char.color,
+                    .height = @as(f32, @floatFromInt(height)),
+                    .variant = .{
+                        .char = .{
+                            .code_point = code_point,
+                            .font_face = char.font_face,
+                            .font_size = char.font_size,
+                            .color = char.color,
+                        },
                     },
                 };
             }
         },
         .image => |image| {
             if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
-                return Cell{ .width = size.width, .height = size.height, .variant = .image{ .id = image.path } };
+                return Cell{ .width = size.width, .height = size.height, .variant = .{ .image = .{ .path = image.path } } };
             }
         },
     }
     return null;
 }
 
-fn computeLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
+fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
     self.cells_arena.deinit();
     self.cells_arena = std.heap.ArenaAllocator.init(self.a);
 
     self.lines_of_cells = try ArrayList(LineOfCells).initCapacity(self.cells_arena.allocator(), self.cached.displays.items.len);
     for (self.cached.displays.items, 0..) |displays, line_index| {
         var cells = try ArrayList(Cell).initCapacity(self.cells_arena.allocator(), self.cached.displays.items[line_index].len);
+        var line_width: f32 = 0;
+        var line_height: f32 = 0;
 
         for (displays, 0..) |d, i| {
             const cp = self.cached.lines.items[line_index][i];
             const cell = createCell(cbs, cp, d) orelse createCell(cbs, cp, self.default_display).?;
+            line_width = @max(line_width, cell.width);
+            line_height = @max(line_width, cell.height);
             try cells.append(cell);
         }
 
-        try self.lines_of_cells.append(try cells.toOwnedSlice());
+        try self.lines_of_cells.append(LineOfCells{
+            .width = line_width,
+            .height = line_height,
+            .cells = try cells.toOwnedSlice(),
+        });
     }
 }
 
-test computeLinesOfCells {
+test createLinesOfCells {
     var tswin = try TSWin.init("const not_false = true;", .{
         .disable_default_queries = true,
         .enabled_queries = &.{"trimed_down_highlights"},
@@ -174,10 +184,9 @@ test computeLinesOfCells {
     }
     {
         const mock_man = try MockManager.create(idc_if_it_leaks);
-        try tswin.win.computeLinesOfCells(mock_man.assetsCallbacks());
+        try tswin.win.createLinesOfCells(mock_man.assetsCallbacks());
 
-        // TODO: start with unbound window
-        // - first character will have x = 0, y = 0
+        // TODO:
     }
 }
 
@@ -1195,6 +1204,7 @@ const MockManager = struct {
             .height = height,
             .advanceX = 15,
             .offsetX = 4,
+            .base_size = size,
         };
         var map = GlyphMap.init(self.arena.allocator());
         for (32..127) |i| map.put(@intCast(i), glyph) catch unreachable;
