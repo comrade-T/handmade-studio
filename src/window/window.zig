@@ -1,7 +1,7 @@
 const Window = @This();
 const std = @import("std");
 
-const Buffer = @import("neo_buffer").Buffer;
+pub const Buffer = @import("neo_buffer").Buffer;
 const sitter = @import("ts");
 const ts = sitter.b;
 

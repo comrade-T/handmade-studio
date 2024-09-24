@@ -1,6 +1,10 @@
 const std = @import("std");
 const rl = @import("raylib");
 
+const Window = @import("window");
+const Buffer = @import("window").Buffer;
+const sitter = @import("ts");
+
 const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +34,28 @@ pub fn main() !void {
         .screen_width = screen_width,
         .screen_height = screen_height,
     };
+
+    ///////////////////////////// Allocator
+
+    var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa_.deinit();
+    const gpa = gpa_.allocator();
+
+    ///////////////////////////// LangSuite
+
+    var zig_langsuite = try sitter.LangSuite.create(.zig);
+    defer zig_langsuite.destroy();
+    try zig_langsuite.initializeQueryMap();
+    try zig_langsuite.initializeNightflyColorscheme(gpa);
+
+    ///////////////////////////// Window
+
+    var buffer = try Buffer.create(gpa, .string, "hello window");
+    try buffer.initiateTreeSitter(zig_langsuite);
+    defer buffer.destroy();
+
+    var window = try Window.create(gpa, buffer, .{});
+    defer window.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

@@ -127,6 +127,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         exe.root_module.addImport("window", window.module);
+        exe.root_module.addImport("ts", ts.module);
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(tree_sitter);
         exe.linkLibrary(ztracy.artifact("tracy"));
