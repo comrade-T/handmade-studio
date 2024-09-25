@@ -129,6 +129,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("window", window.module);
         exe.root_module.addImport("ts", ts.module);
         exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.root_module.addImport("input_processor", input_processor.module);
         exe.linkLibrary(tree_sitter);
         exe.linkLibrary(ztracy.artifact("tracy"));
         addRunnableRaylibFile(b, exe, raylib, path);

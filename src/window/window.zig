@@ -40,6 +40,8 @@ should_recreate_cells: bool = true,
 cells_arena: std.heap.ArenaAllocator,
 lines_of_cells: []LineOfCells,
 
+is_in_AFTER_insert_mode: bool = false,
+
 pub fn create(
     a: Allocator,
     buf: *Buffer,
@@ -1057,6 +1059,10 @@ const CachedContents = struct {
         try self.applyTreeSitterToDisplays(new_hl_start, new_hl_end);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// Interactions
+
+// TODO:
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 

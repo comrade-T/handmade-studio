@@ -1,10 +1,13 @@
 const std = @import("std");
 const rl = @import("raylib");
-const fm = @import("font_manager.zig");
 
 const Window = @import("window");
 const Buffer = @import("window").Buffer;
+const fm = @import("font_manager.zig");
 const sitter = @import("ts");
+
+const ip = @import("input_processor");
+const InputRepeatManager = @import("raylib-related/InputRepeatManager.zig");
 
 const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 
@@ -67,11 +70,42 @@ pub fn main() !void {
     var window = try Window.create(gpa, buffer, .{ .x = 400, .y = 100 });
     defer window.destroy();
 
+    ///////////////////////////// Inputs
+
+    var council = try ip.MappingCouncil.init(gpa);
+    defer council.deinit();
+
+    var input_frame = try ip.InputFrame.init(gpa);
+    defer input_frame.deinit();
+
+    var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
+
+    ///////////////////////////// Mappings
+
+    try council.setActiveContext("normal");
+
+    const DummyCtx = struct {
+        fn nop(_: *anyopaque) !void {}
+        fn dummy_print(_: *anyopaque) !void {
+            std.debug.print("Dumb Dumb\n", .{});
+        }
+    };
+    var dummy_ctx = DummyCtx{};
+    try council.map("dummy", &.{.p}, .{ .f = DummyCtx.dummy_print, .ctx = &dummy_ctx });
+
+    try council.map("normal", &.{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
+    try council.map("normal", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
+    try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
+    try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
+
+        // Inputs
+        try input_repeat_manager.updateInputState();
 
         // Smooth Camera
         smooth_cam.update();
