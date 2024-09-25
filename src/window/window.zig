@@ -206,6 +206,11 @@ fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
             try cells.append(cell);
         }
 
+        if (displays.len == 0) {
+            const dummy_cell = createCell(cbs, ' ', self.default_display).?;
+            line_height = @max(line_height, dummy_cell.height);
+        }
+
         try lines_of_cells.append(LineOfCells{
             .width = line_width,
             .height = line_height,
