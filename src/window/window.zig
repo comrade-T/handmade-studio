@@ -23,9 +23,6 @@ buf: *Buffer,
 
 cursor: Cursor = .{},
 
-content_restrictions: ContentRestrictions = .none,
-default_display: CachedContents.Display,
-
 x: f32,
 y: f32,
 bounds: Bounds,
@@ -33,14 +30,13 @@ bounded: bool,
 
 cached: CachedContents = undefined,
 cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
+default_display: CachedContents.Display,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
 should_recreate_cells: bool = true,
 cells_arena: std.heap.ArenaAllocator,
 lines_of_cells: []LineOfCells,
-
-is_in_AFTER_insert_mode: bool = false,
 
 pub fn create(
     a: Allocator,
@@ -1180,12 +1176,6 @@ const StoredQuery = struct {
     id: []const u8,
 };
 
-const ContentRestrictions = union(enum) {
-    none,
-    section: struct { start_line: usize, end_line: usize },
-    query: struct { id: []const u8 },
-};
-
 pub const ImageInfo = struct {
     width: f32,
     height: f32,
@@ -1223,7 +1213,7 @@ const DisplayChunkTester = struct {
     const ChunkVariant = union(enum) {
         default,
         hl_group: []const u8,
-        literal: struct { []const u8, i32, u32 },
+        literal: struct { []const u8, f32, u32 },
     };
 
     fn next(self: *@This(), linenr: usize, expected_str: []const u8, expected_variant: ChunkVariant) !void {
