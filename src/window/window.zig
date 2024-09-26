@@ -67,6 +67,7 @@ pub fn create(
         if (!opts.disable_default_queries) try self.enableQuery(sitter.DEFAULT_QUERY_ID);
         for (opts.enabled_queries) |query_id| try self.enableQuery(query_id);
     }
+    if (self.assets_callbacks) |cbs| self.default_display.setSize(' ', cbs);
     self.cached = try CachedContents.init(self.a, self, opts.cache_strategy);
     return self;
 }
@@ -82,10 +83,33 @@ pub fn destroy(self: *@This()) void {
 pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
-    self.executeRenderCallbacks2(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
+    self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
+    self.renderCursor(self.render_callbacks.?);
 }
 
-fn executeRenderCallbacks2(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
+fn renderCursor(self: *@This(), cbs: RenderCallbacks) void {
+    assert(self.cursor.line >= self.cached.start_line);
+    const line_index = self.cursor.line - self.cached.start_line;
+    const cursor_color = 0xF5F5F5F5;
+
+    const lif = self.cached.line_infos.items[line_index];
+    const displays = self.cached.displays.items[line_index];
+    if (displays.len == 0) {
+        cbs.drawRectangle(lif.x, lif.y, self.default_display.size.width, self.default_display.size.height, cursor_color);
+        return;
+    }
+
+    if (self.cursor.col == displays.len) {
+        cbs.drawRectangle(lif.x + lif.width, lif.y, self.default_display.size.width, self.default_display.size.height, cursor_color);
+        return;
+    }
+
+    assert(self.cursor.col < displays.len);
+    const d = displays[self.cursor.col];
+    cbs.drawRectangle(d.position.x, d.position.y, d.size.width, d.size.height, cursor_color);
+}
+
+fn renderCharacters(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
     for (self.cached.line_infos.items, 0..) |lif, i| {
         if (lif.y > view.end.y) return;
         if (lif.y + lif.height < view.start.y) continue;
@@ -701,6 +725,24 @@ const CachedContents = struct {
             char: Char,
             image: Image,
         },
+
+        fn setSize(self: *@This(), code_point: u21, cbs: AssetsCallbacks) void {
+            switch (self.variant) {
+                .char => |char| {
+                    if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
+                        const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
+                        var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
+                        width = width * scale_factor;
+                        self.size = Display.Size{ .width = width, .height = char.font_size };
+                    }
+                },
+                .image => |image| {
+                    if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
+                        self.size = Display.Size{ .width = size.width, .height = size.height };
+                    }
+                },
+            }
+        }
     };
     const CacheStrategy = union(enum) {
         const Section = struct { start_line: usize, end_line: usize };
@@ -1172,6 +1214,7 @@ const CachedContents = struct {
     }
 
     fn calculateDisplaySizes(self: *@This(), start: usize, end: usize) void {
+        const cbs = self.win.assets_callbacks orelse return;
         for (start..end + 1) |i| {
             const line_index = self.start_line + i;
 
@@ -1181,28 +1224,16 @@ const CachedContents = struct {
             defer self.line_infos.items[line_index].height = line_height;
             defer self.line_infos.items[line_index].linenr = i;
 
-            for (self.displays.items[line_index], 0..) |d, j| {
+            if (self.displays.items[line_index].len == 0) {
+                line_width += self.win.default_display.size.width;
+                line_height = @max(line_height, self.win.default_display.size.height);
+            }
+
+            for (0..self.displays.items[line_index].len) |j| {
                 const code_point = self.lines.items[line_index][j];
-                const cbs = self.win.assets_callbacks orelse return;
-                switch (d.variant) {
-                    .char => |char| {
-                        if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
-                            const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
-                            var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
-                            width = width * scale_factor;
-                            self.displays.items[line_index][j].size = .{ .width = width, .height = char.font_size };
-                            line_width += width;
-                            line_height = @max(line_height, char.font_size);
-                        }
-                    },
-                    .image => |image| {
-                        if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
-                            self.displays.items[line_index][j].size = .{ .width = size.width, .height = size.height };
-                            line_width += size.width;
-                            line_height = @max(line_height, size.height);
-                        }
-                    },
-                }
+                self.displays.items[line_index][j].setSize(code_point, cbs);
+                line_width += self.displays.items[line_index][j].size.width;
+                line_height = @max(line_height, self.displays.items[line_index][j].size.height);
             }
         }
     }
@@ -1218,6 +1249,7 @@ const CachedContents = struct {
             self.line_infos.items[i].y = current_y;
             defer current_x = initial_x;
             defer current_y += max_height;
+            if (displays.len == 0) max_height = self.win.default_display.size.height;
             for (displays, 0..) |d, j| {
                 defer current_x += d.size.width;
                 max_height = @max(max_height, d.size.height);
