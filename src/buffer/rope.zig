@@ -1073,7 +1073,8 @@ pub const Node = union(enum) {
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
                 if (leaf.eol) {
                     const eol = if (cx.start_byte + cx.bytes_deleted <= cx.end_byte) false else leaf.eol;
-                    const replace = try Leaf.new(cx.a, "", false, eol);
+                    const bol = if (cx.leaves_encountered == 0) leaf.bol else false;
+                    const replace = try Leaf.new(cx.a, "", bol, eol);
                     return WalkMutResult{ .replace = replace };
                 }
                 return WalkMutResult.removed;
@@ -1464,6 +1465,27 @@ pub const Node = union(enum) {
                 \\    1 `nus`
             ;
             try eqStr(edit_3_debug_str, try edit_3.debugPrint());
+        }
+        {
+            const root = try Node.fromString(a, "a\nb\nc", true);
+            const root_debug_str =
+                \\3 3/5/3
+                \\  1 B| `a` |E
+                \\  2 2/3/2
+                \\    1 B| `b` |E
+                \\    1 B| `c`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const edit_1 = try root.deleteBytes(a, 2, 1);
+            const edit_1_debug_str =
+                \\3 3/4/2
+                \\  1 B| `a` |E
+                \\  2 2/2/1
+                \\    1 B| `` |E
+                \\    1 B| `c`
+            ;
+            try eqStr(edit_1_debug_str, try edit_1.debugPrint());
         }
     }
 

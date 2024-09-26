@@ -299,10 +299,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
 
 test insertChars {
     {
-        var tswin = try TSWin.init("", .{
-            .disable_default_queries = true,
-            .enabled_queries = &.{"trimed_down_highlights"},
-        });
+        var tswin = try TSWin.init("", .{ .disable_default_queries = true, .enabled_queries = &.{"trimed_down_highlights"} });
         defer tswin.deinit();
         try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
         try tswin.win.insertChars(&tswin.win.cursor, "h");
@@ -315,10 +312,7 @@ test insertChars {
         try eqStrU21Slice(&.{ "hello", "", "world" }, tswin.win.cached.lines.items);
     }
     {
-        var tswin = try TSWin.init("", .{
-            .disable_default_queries = true,
-            .enabled_queries = &.{"trimed_down_highlights"},
-        });
+        var tswin = try TSWin.init("", .{ .disable_default_queries = true, .enabled_queries = &.{"trimed_down_highlights"} });
         defer tswin.deinit();
         {
             try tswin.win.insertChars(&tswin.win.cursor, "v");
@@ -364,6 +358,31 @@ test insertChars {
     }
 }
 
+test "insert / delete crash check" {
+    {
+        const source =
+            \\const ten = 10;
+            \\fn dummy() void {
+            \\}
+            \\var x = 10;
+            \\var y = 0;
+        ;
+        var tswin = try TSWin.init(source, .{ .disable_default_queries = true, .enabled_queries = &.{"trimed_down_highlights"} });
+        defer tswin.deinit();
+        {
+            tswin.win.cursor = .{ .line = 2, .col = 1 };
+            try tswin.win.backspace_internal(&tswin.win.cursor);
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "",
+                "var x = 10;",
+                "var y = 0;",
+            }, tswin.win.cached.lines.items);
+        }
+    }
+}
+
 ///////////////////////////// Delete
 
 fn backspace_internal(self: *@This(), cursor: *Cursor) !void {
@@ -376,10 +395,7 @@ fn backspace_internal(self: *@This(), cursor: *Cursor) !void {
 
     if (self.cursor.col == 0 and self.cursor.line > 0) {
         start_line = self.cursor.line - 1;
-
-        // FIXME: this will fail once we touch CacheStrategy.section
         assert(self.cursor.line - 1 >= self.cached.start_line);
-
         const line_index = self.cursor.line - 1 - self.cached.start_line;
         start_col = self.cached.lines.items[line_index].len;
     }
@@ -959,6 +975,7 @@ const CachedContents = struct {
 
         const old_len: i128 = @intCast(self.lines.items.len);
         var new_lines = try createLines(self.arena.allocator(), self.win, new_start, new_end);
+
         try self.lines.replaceRange(new_start, old_end - old_start + 1, try new_lines.toOwnedSlice());
 
         const len_diff: i128 = @as(i128, @intCast(self.lines.items.len)) - old_len;
@@ -1419,7 +1436,10 @@ pub const GetGlyphSizeCallback = *const fn (ctx: *anyopaque, name: []const u8, c
 
 fn eqStrU21Slice(expected: []const []const u8, got: [][]u21) !void {
     try eq(expected.len, got.len);
-    for (0..expected.len) |i| try eqStrU21(expected[i], got[i]);
+    for (0..expected.len) |i| {
+        errdefer std.debug.print("comparison failed at index: {d}\n", .{i});
+        try eqStrU21(expected[i], got[i]);
+    }
 }
 
 fn eqStrU21(expected: []const u8, got: []u21) !void {
