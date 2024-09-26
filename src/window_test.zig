@@ -63,7 +63,15 @@ pub fn main() !void {
 
     ///////////////////////////// Window
 
-    var buffer = try Buffer.create(gpa, .file, "build.zig");
+    // var buffer = try Buffer.create(gpa, .file, "dummy.zig");
+    const source =
+        \\const ten = 10;
+        \\fn dummy() void {
+        \\}
+        \\pub var x = 0;
+        \\pub var y = 0;
+    ;
+    var buffer = try Buffer.create(gpa, .string, source);
     try buffer.initiateTreeSitter(zig_langsuite);
     defer buffer.destroy();
 
