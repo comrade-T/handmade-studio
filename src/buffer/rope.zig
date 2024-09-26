@@ -2149,7 +2149,7 @@ pub const Node = union(enum) {
             ;
             try eqStr(b1d, try b1.debugPrint());
 
-            const e2 = try b1.deleteBytes(a, try root.getByteOffsetOfPosition(2, 1), 1);
+            const e2 = try b1.deleteBytes(a, try b1.getByteOffsetOfPosition(2, 1), 1);
             const e2d =
                 \\4 5/65/61
                 \\  2 2/34/32
@@ -2181,7 +2181,7 @@ pub const Node = union(enum) {
             ;
             try eqStr(b2d, try b2.debugPrint());
 
-            const e3, _, _ = try b2.insertChars(a, try root.getByteOffsetOfPosition(2, 1), "\n");
+            const e3, _, _ = try b2.insertChars(a, try b2.getByteOffsetOfPosition(2, 1), "\n");
             const e3d =
                 \\5 6/66/61
                 \\  2 2/34/32
@@ -2249,7 +2249,7 @@ pub const Node = union(enum) {
             ;
             try eqStr(b4d, try b4.debugPrint());
 
-            const e5, _, _ = try b2.insertChars(a, try root.getByteOffsetOfPosition(2, 1), "o");
+            const e5, _, _ = try b2.insertChars(a, try b4.getByteOffsetOfPosition(2, 1), "o");
             const e5d =
                 \\4 5/66/62
                 \\  2 2/34/32
@@ -2296,6 +2296,231 @@ pub const Node = union(enum) {
                 \\      1 B| `pub var y = 0;`
             ;
             try eqStr(e6d, try e6.debugPrint());
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////////////
+
+        {
+            const source =
+                \\const ten = 10;
+                \\fn dummy() void {
+                \\}
+                \\pub var x = 0;
+                \\pub var y = 0;
+            ;
+            var root = try Node.fromString(a, source, true);
+            const rootd =
+                \\4 5/65/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/31/29
+                \\    1 B| `}` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(rootd, try root.debugPrint());
+
+            const e1, _, _ = try root.insertChars(a, try root.getByteOffsetOfPosition(2, 1), "\n");
+            const e1d =
+                \\4 6/66/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 4/32/29
+                \\    2 2/3/1
+                \\      1 B| `}` |E
+                \\      1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e1d, try e1.debugPrint());
+
+            const b1 = try e1.balance(a);
+            const b1d =
+                \\4 6/66/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 4/32/29
+                \\    2 2/3/1
+                \\      1 B| `}` |E
+                \\      1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b1d, try b1.debugPrint());
+
+            const e2, _, _ = try b1.insertChars(a, try b1.getByteOffsetOfPosition(3, 0), "\n");
+            const e2d =
+                \\5 7/67/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  4 5/33/29
+                \\    3 3/4/1
+                \\      1 B| `}` |E
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e2d, try e2.debugPrint());
+
+            const b2 = try e2.balance(a);
+            const b2d =
+                \\4 7/67/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  3 4/31/28
+                \\    2 2/2/0
+                \\      1 B| `` |E
+                \\      1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b2d, try b2.debugPrint());
+
+            const e3, _, _ = try b2.insertChars(a, try b2.getByteOffsetOfPosition(4, 0), "\n");
+            const e3d =
+                \\5 8/68/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  4 5/32/28
+                \\    3 3/3/0
+                \\      1 B| `` |E
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e3d, try e3.debugPrint());
+
+            const b3 = try e3.balance(a);
+            const b3d =
+                \\5 8/68/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  4 5/32/28
+                \\    3 3/3/0
+                \\      1 B| `` |E
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b3d, try b3.debugPrint());
+
+            const e4, _, _ = try b3.insertChars(a, try b3.getByteOffsetOfPosition(5, 0), "\n");
+            const e4d =
+                \\6 9/69/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  5 6/33/28
+                \\    4 4/4/0
+                \\      1 B| `` |E
+                \\      3 3/3/0
+                \\        1 B| `` |E
+                \\        2 2/2/0
+                \\          1 B| `` |E
+                \\          1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e4d, try e4.debugPrint());
+
+            const b4 = try e4.balance(a);
+            const b4d =
+                \\5 9/69/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  4 6/33/28
+                \\    3 4/4/0
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b4d, try b4.debugPrint());
+
+            const e5, _, _ = try b4.insertChars(a, try b4.getByteOffsetOfPosition(6, 0), "\n");
+            const e5d =
+                \\6 10/70/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  5 7/34/28
+                \\    4 5/5/0
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\      3 3/3/0
+                \\        1 B| `` |E
+                \\        2 2/2/0
+                \\          1 B| `` |E
+                \\          1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e5d, try e5.debugPrint());
+
+            const b5 = try e5.balance(a);
+            const b5d =
+                \\5 10/70/61
+                \\  3 3/36/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}` |E
+                \\  4 7/34/28
+                \\    3 3/3/0
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\      1 B| `` |E
+                \\    3 4/31/28
+                \\      2 2/2/0
+                \\        1 B| `` |E
+                \\        1 B| `` |E
+                \\      2 2/29/28
+                \\        1 B| `pub var x = 0;` |E
+                \\        1 B| `pub var y = 0;`
+            ;
+            try eqStr(b5d, try b5.debugPrint());
         }
     }
 

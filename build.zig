@@ -101,6 +101,7 @@ pub fn build(b: *std.Build) void {
     virtuous_window.compile.linkLibrary(tree_sitter);
 
     const window = addTestableModule(&bops, "src/window/window.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "ts", .module = ts.module },

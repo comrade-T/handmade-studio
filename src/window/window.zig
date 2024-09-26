@@ -67,7 +67,7 @@ pub fn create(
         if (!opts.disable_default_queries) try self.enableQuery(sitter.DEFAULT_QUERY_ID);
         for (opts.enabled_queries) |query_id| try self.enableQuery(query_id);
     }
-    self.cached = try CachedContents.init(self, opts.cache_strategy);
+    self.cached = try CachedContents.init(self.a, self, opts.cache_strategy);
     return self;
 }
 
@@ -287,8 +287,6 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
 
     const len_diff = try self.cached.updateObsoleteLines(change_start, change_start, change_start, change_end);
     self.cached.updateEndLine(len_diff);
-
-    try self.debugPrintLines("insert chars");
 
     try self.cached.updateObsoleteDisplays(change_start, change_start, change_start, change_end);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
@@ -516,24 +514,24 @@ test "insert / delete crash check" {
     }
 }
 
-fn debugPrintLines(self: *@This(), msg: []const u8) !void {
-    // _ = self;
-    // _ = msg;
-
-    std.debug.print("{s} ========================================\n", .{msg});
-    for (self.cached.lines.items) |line| {
-        var u8line = try idc_if_it_leaks.alloc(u8, line.len);
-        defer idc_if_it_leaks.free(u8line);
-        for (line, 0..) |char, i| {
-            u8line[i] = @intCast(char);
-        }
-        std.debug.print("'{s}'\n", .{u8line});
-    }
-
-    std.debug.print("~~~~~\n", .{});
-
-    std.debug.print("{s}\n", .{try self.buf.roperoot.debugPrint()});
-}
+// fn debugPrintLines(self: *@This(), msg: []const u8) !void {
+//     // _ = self;
+//     // _ = msg;
+//
+//     std.debug.print("{s} ========================================\n", .{msg});
+//     for (self.cached.lines.items) |line| {
+//         var u8line = try idc_if_it_leaks.alloc(u8, line.len);
+//         defer idc_if_it_leaks.free(u8line);
+//         for (line, 0..) |char, i| {
+//             u8line[i] = @intCast(char);
+//         }
+//         std.debug.print("'{s}'\n", .{u8line});
+//     }
+//
+//     std.debug.print("~~~~~\n", .{});
+//
+//     std.debug.print("{s}\n", .{try self.buf.roperoot.debugPrint()});
+// }
 
 ///////////////////////////// Delete
 
@@ -713,8 +711,6 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     const len_diff = try self.cached.updateObsoleteLines(start_range[0], end_range[0], start_range[0], start_range[0]);
     self.cached.updateEndLine(len_diff);
 
-    try self.debugPrintLines("deleteRange");
-
     try self.cached.updateObsoleteDisplays(start_range[0], end_range[0], start_range[0], start_range[0]);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
@@ -832,7 +828,7 @@ const CachedContents = struct {
         section: Section,
     };
 
-    arena: ArenaAllocator,
+    a: Allocator,
     win: *const Window,
 
     lines: ArrayList([]u21) = undefined,
@@ -843,10 +839,10 @@ const CachedContents = struct {
 
     const InitError = error{ OutOfMemory, LineOutOfBounds };
     // TODO:                                             list specific errors
-    fn init(win: *const Window, strategy: CacheStrategy) anyerror!@This() {
-        var self = try CachedContents.init_bare_internal(win, strategy);
+    fn init(a: Allocator, win: *const Window, strategy: CacheStrategy) anyerror!@This() {
+        var self = try CachedContents.init_bare_internal(a, win, strategy);
 
-        self.lines = try createLines(self.arena.allocator(), win, self.start_line, self.end_line);
+        self.lines = try createLines(self.a, win, self.start_line, self.end_line);
         assert(self.lines.items.len == self.end_line - self.start_line + 1);
 
         self.displays = try self.createDefaultDisplays(self.start_line, self.end_line);
@@ -858,10 +854,10 @@ const CachedContents = struct {
     }
 
     const InitBareInternalError = error{OutOfMemory};
-    fn init_bare_internal(win: *const Window, strategy: CacheStrategy) InitBareInternalError!@This() {
+    fn init_bare_internal(a: Allocator, win: *const Window, strategy: CacheStrategy) InitBareInternalError!@This() {
         var self = CachedContents{
-            .arena = ArenaAllocator.init(std.heap.page_allocator),
             .win = win,
+            .a = a,
         };
         const end_linenr = self.win.endLineNr();
         switch (strategy) {
@@ -879,24 +875,27 @@ const CachedContents = struct {
     test init_bare_internal {
         const win = try _createWinWithBuf("1\n22\n333\n4444\n55555");
         {
-            const cc = try CachedContents.init_bare_internal(win, .entire_buffer);
+            const cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .entire_buffer);
             try eq(0, cc.start_line);
             try eq(4, cc.end_line);
         }
         {
-            const cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 0, .end_line = 2 } });
+            const cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .{ .section = .{ .start_line = 0, .end_line = 2 } });
             try eq(0, cc.start_line);
             try eq(2, cc.end_line);
         }
         {
-            const cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
+            const cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
             try eq(2, cc.start_line);
             try eq(4, cc.end_line);
         }
     }
 
     fn deinit(self: *@This()) void {
-        self.arena.deinit();
+        for (self.lines.items) |line| self.a.free(line);
+        self.lines.deinit();
+        for (self.displays.items) |displays| self.a.free(displays);
+        self.displays.deinit();
     }
 
     ///////////////////////////// Initial Creation
@@ -916,13 +915,13 @@ const CachedContents = struct {
     test createLines {
         const win = try _createWinWithBuf("1\n22\n333\n4444\n55555");
         {
-            var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
-            const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            const cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .entire_buffer);
+            const lines = try createLines(idc_if_it_leaks, win, cc.start_line, cc.end_line);
             try eqStrU21Slice(&.{ "1", "22", "333", "4444", "55555" }, lines.items);
         }
         {
-            var cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
-            const lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            const cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
+            const lines = try createLines(idc_if_it_leaks, win, cc.start_line, cc.end_line);
             try eqStrU21Slice(&.{ "333", "4444", "55555" }, lines.items);
         }
         {
@@ -942,12 +941,11 @@ const CachedContents = struct {
     const CreateDefaultDisplaysError = error{OutOfMemory};
     fn createDefaultDisplays(self: *CachedContents, start_line: usize, end_line: usize) CreateDefaultDisplaysError!ArrayList([]Display) {
         assert(start_line >= self.start_line and end_line <= self.end_line);
-        const a = self.arena.allocator();
-        var list = ArrayList([]Display).init(a);
+        var list = ArrayList([]Display).init(self.a);
         for (start_line..end_line + 1) |linenr| {
             const line_index = linenr - self.start_line;
             const line = self.lines.items[line_index];
-            const displays = try a.alloc(Display, line.len);
+            const displays = try self.a.alloc(Display, line.len);
             @memset(displays, self.win.default_display);
             try list.append(displays);
         }
@@ -960,8 +958,8 @@ const CachedContents = struct {
 
         // CachedContents contains lines & displays for entire buffer
         {
-            var cc = try CachedContents.init_bare_internal(win, .entire_buffer);
-            cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            var cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .entire_buffer);
+            cc.lines = try createLines(idc_if_it_leaks, win, cc.start_line, cc.end_line);
             {
                 const displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
                 try eq(5, displays.items.len);
@@ -986,8 +984,8 @@ const CachedContents = struct {
 
         // CachedContents contains lines & displays only for specific region
         {
-            var cc = try CachedContents.init_bare_internal(win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
-            cc.lines = try createLines(cc.arena.allocator(), win, cc.start_line, cc.end_line);
+            var cc = try CachedContents.init_bare_internal(idc_if_it_leaks, win, .{ .section = .{ .start_line = 2, .end_line = 4 } });
+            cc.lines = try createLines(idc_if_it_leaks, win, cc.start_line, cc.end_line);
             {
                 const displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
                 try eq(3, displays.items.len);
@@ -1013,7 +1011,7 @@ const CachedContents = struct {
             );
             cursor.execute(query, self.win.buf.tstree.?.getRootNode());
 
-            const filter = try sitter.PredicatesFilter.init(self.arena.allocator(), query);
+            const filter = try sitter.PredicatesFilter.init(self.a, query);
             defer filter.deinit();
 
             while (true) {
@@ -1077,9 +1075,9 @@ const CachedContents = struct {
         defer tswin.deinit();
 
         {
-            var cc = try CachedContents.init_bare_internal(tswin.win, .entire_buffer);
+            var cc = try CachedContents.init_bare_internal(testing_allocator, tswin.win, .entire_buffer);
             defer cc.deinit();
-            cc.lines = try createLines(cc.arena.allocator(), tswin.win, cc.start_line, cc.end_line);
+            cc.lines = try createLines(testing_allocator, tswin.win, cc.start_line, cc.end_line);
             cc.displays = try cc.createDefaultDisplays(cc.start_line, cc.end_line);
 
             try cc.applyTreeSitterToDisplays(cc.start_line, cc.end_line);
@@ -1100,7 +1098,7 @@ const CachedContents = struct {
 
         try tswin.win.enableQuery("std_60_inter");
         {
-            var cc = try CachedContents.init(tswin.win, .entire_buffer);
+            var cc = try CachedContents.init(testing_allocator, tswin.win, .entire_buffer);
             defer cc.deinit();
             var test_iter = DisplayChunkTester{ .cc = cc };
 
@@ -1130,8 +1128,15 @@ const CachedContents = struct {
         assert(new_start >= self.start_line);
 
         const old_len: i128 = @intCast(self.lines.items.len);
-        var new_lines_list = try createLines(self.arena.allocator(), self.win, new_start, new_end);
+        var new_lines_list = try createLines(self.a, self.win, new_start, new_end);
         const new_lines = try new_lines_list.toOwnedSlice();
+        defer self.a.free(new_lines);
+
+        const replace_len = old_end - old_start + 1;
+        for (0..replace_len) |i| {
+            const index = new_start + i;
+            self.a.free(self.lines.items[index]);
+        }
 
         try self.lines.replaceRange(new_start, old_end - old_start + 1, new_lines);
 
@@ -1208,8 +1213,17 @@ const CachedContents = struct {
     }
 
     fn updateObsoleteDisplays(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) !void {
-        var new_displays = try self.createDefaultDisplays(new_start, new_end);
-        try self.displays.replaceRange(new_start, old_end - old_start + 1, try new_displays.toOwnedSlice());
+        var new_displays_list = try self.createDefaultDisplays(new_start, new_end);
+        const new_displays = try new_displays_list.toOwnedSlice();
+        defer self.a.free(new_displays);
+
+        const replace_len = old_end - old_start + 1;
+        for (0..replace_len) |i| {
+            const index = new_start + i;
+            self.a.free(self.displays.items[index]);
+        }
+
+        try self.displays.replaceRange(new_start, old_end - old_start + 1, new_displays);
     }
 
     test updateObsoleteDisplays {
@@ -1678,6 +1692,10 @@ const _default_display = CachedContents.Display{
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Setup Helpers
+
+test {
+    std.testing.refAllDecls(Window);
+}
 
 fn _createWinWithBuf(source: []const u8) !*Window {
     const buf = try Buffer.create(idc_if_it_leaks, .string, source);
