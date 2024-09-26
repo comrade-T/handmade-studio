@@ -1000,7 +1000,7 @@ pub const Node = union(enum) {
             a: Allocator,
 
             leaves_encountered: usize = 0,
-            should_stop_amending_bols: bool = false,
+            should_amend_bols: bool = true,
             first_leaf_bol: ?bool = null,
             last_node: ?*const Node = null,
             last_node_with_new_line_removed: ?*const Node = null,
@@ -1041,7 +1041,7 @@ pub const Node = union(enum) {
                 if (leaf_outside_delete_range) return try _amendBol(cx, leaf);
 
                 const start_before_leaf = cx.start_byte <= cx.current_index.*;
-                const end_after_leaf = cx.end_byte >= cx.current_index.* + leaf.weights().len - 1;
+                const end_after_leaf = cx.end_byte >= cx.current_index.* + leaf.buf.len;
 
                 const delete_covers_leaf = start_before_leaf and end_after_leaf;
                 if (delete_covers_leaf) return try _removed(cx, leaf);
@@ -1058,13 +1058,13 @@ pub const Node = union(enum) {
             }
 
             fn _amendBol(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
-                if (cx.should_stop_amending_bols) return WalkMutResult.stop;
+                if (!cx.should_amend_bols) return WalkMutResult.stop;
                 if (cx.last_node == cx.last_node_with_new_line_removed) {
                     const replace = try Leaf.new(cx.a, leaf.buf, false, leaf.eol);
                     return WalkMutResult{ .replace = replace };
                 }
                 if (cx.first_leaf_bol) |bol| {
-                    defer cx.should_stop_amending_bols = true;
+                    defer cx.should_amend_bols = false;
                     const replace = try Leaf.new(cx.a, leaf.buf, bol, leaf.eol);
                     return WalkMutResult{ .replace = replace };
                 }
@@ -1074,10 +1074,14 @@ pub const Node = union(enum) {
             fn _removed(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
-                if (leaf.eol and cx.num_of_bytes_to_delete == 1 and cx.bytes_deleted == 1) {
-                    return WalkMutResult.removed;
-                }
                 if (leaf.eol) {
+                    if (leaf.buf.len == 0 and cx.num_of_bytes_to_delete == 1) return WalkMutResult.removed;
+                    if (leaf.buf.len == 1 and cx.num_of_bytes_to_delete == 1) {
+                        cx.should_amend_bols = false;
+                        const replace = try Leaf.new(cx.a, "", leaf.bol, true);
+                        return WalkMutResult{ .replace = replace };
+                    }
+
                     const eol = if (cx.start_byte + cx.bytes_deleted <= cx.end_byte) false else leaf.eol;
                     const bol = if (cx.leaves_encountered == 0) leaf.bol else false;
                     const replace = try Leaf.new(cx.a, "", bol, eol);
@@ -1180,13 +1184,13 @@ pub const Node = union(enum) {
             }
         }
 
-        const one_two = try Node.new(a, try Leaf.new(a, "one", true, false), try Leaf.new(a, "_two", false, false));
+        const one_two = try Node.new(a, try Leaf.new(a, "1ne", true, false), try Leaf.new(a, "_two", false, false));
         const three_four = try Node.new(a, try Leaf.new(a, "_three", false, false), try Leaf.new(a, "_four", false, true));
         const one_two_three_four = try Node.new(a, one_two, three_four);
         const one_two_three_four_str =
             \\3 1/19/18
             \\  2 1/7/7
-            \\    1 B| `one`
+            \\    1 B| `1ne`
             \\    1 `_two`
             \\  2 0/12/11
             \\    1 `_three`
@@ -1213,7 +1217,7 @@ pub const Node = union(enum) {
                 const new_root_debug_str =
                     \\3 1/17/16
                     \\  2 1/5/5
-                    \\    1 B| `one`
+                    \\    1 B| `1ne`
                     \\    1 `wo`
                     \\  2 0/12/11
                     \\    1 `_three`
@@ -1240,7 +1244,7 @@ pub const Node = union(enum) {
                 const new_root_debug_str =
                     \\3 1/16/15
                     \\  2 1/4/4
-                    \\    1 B| `o`
+                    \\    1 B| `1`
                     \\    1 `two`
                     \\  2 0/12/11
                     \\    1 `_three`
@@ -1253,7 +1257,7 @@ pub const Node = union(enum) {
                 const new_root_debug_str =
                     \\3 1/15/14
                     \\  2 1/3/3
-                    \\    1 B| `o`
+                    \\    1 B| `1`
                     \\    1 `wo`
                     \\  2 0/12/11
                     \\    1 `_three`
@@ -1265,7 +1269,7 @@ pub const Node = union(enum) {
                 const new_root = try one_two_three_four.deleteBytes(a, 1, 6);
                 const new_root_debug_str =
                     \\3 1/13/12
-                    \\  1 B| `o`
+                    \\  1 B| `1`
                     \\  2 0/12/11
                     \\    1 `_three`
                     \\    1 `_four` |E
@@ -1275,9 +1279,11 @@ pub const Node = union(enum) {
             {
                 const new_root = try one_two_three_four.deleteBytes(a, 0, 6);
                 const new_root_debug_str =
-                    \\2 1/12/11
-                    \\  1 B| `_three`
-                    \\  1 `_four` |E
+                    \\3 1/13/12
+                    \\  1 `o`
+                    \\  2 1/12/11
+                    \\    1 B| `_three`
+                    \\    1 `_four` |E
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
             }
@@ -2165,6 +2171,70 @@ pub const Node = union(enum) {
                 \\      1 B| `pub var y = 0;`
             ;
             try eqStr(e4d, try e4.debugPrint());
+
+            const b4 = try e4.balance(a);
+            const b4d =
+                \\4 5/65/61
+                \\  3 3/35/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}`
+                \\  3 2/30/28
+                \\    1 `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b4d, try b4.debugPrint());
+
+            const e5, _, _ = try b2.insertChars(a, try root.getByteOffsetOfPosition(2, 1), "o");
+            const e5d =
+                \\4 5/66/62
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/32/30
+                \\    2 1/3/2
+                \\      1 B| `}`
+                \\      1 `o` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e5d, try e5.debugPrint());
+
+            const b5 = try e5.balance(a);
+            const b5d =
+                \\4 5/66/62
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/32/30
+                \\    2 1/3/2
+                \\      1 B| `}`
+                \\      1 `o` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b5d, try b5.debugPrint());
+
+            const e6 = try b5.deleteBytes(a, try b5.getByteOffsetOfPosition(2, 1), 1);
+            const e6d =
+                \\4 5/65/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/31/29
+                \\    2 1/2/1
+                \\      1 B| `}`
+                \\      1 `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e6d, try e6.debugPrint());
         }
     }
 
