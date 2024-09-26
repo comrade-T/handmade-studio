@@ -104,6 +104,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "ts", .module = ts.module },
+        .{ .name = "input_processor", .module = input_processor.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     window.compile.linkLibrary(tree_sitter);

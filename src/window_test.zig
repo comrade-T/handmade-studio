@@ -97,11 +97,23 @@ pub fn main() !void {
     try council.map("normal", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
     try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
     try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
-    try council.map("normal", &.{.zero}, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .six }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &.{.zero}, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window });
     try council.map("normal", &.{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
     try council.map("normal", &.{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
     try council.map("normal", &.{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
     try council.map("normal", &.{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
+
+    // Insert Mode
+    try window.mapInsertModeCharacters(council);
+    try council.map("normal", &.{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.a}, .{ .f = Window.enterAFTERInsertMode, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .left_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .left_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .right_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .right_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("insert", &.{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
+    try council.map("insert", &.{.backspace}, .{ .f = Window.backspace, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

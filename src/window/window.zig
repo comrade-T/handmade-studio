@@ -5,6 +5,7 @@ pub const Buffer = @import("neo_buffer").Buffer;
 const sitter = @import("ts");
 const ts = sitter.b;
 const neo_cell = @import("neo_cell.zig");
+const ip = @import("input_processor");
 
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -103,7 +104,12 @@ fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *a
 
         const loc = self.lines_of_cells[line_index];
         if (loc.cells.len == 0) {
-            cbs.drawRectangle(loc.x, loc.y, loc.width, loc.height, cursor_color);
+            cbs.drawRectangle(loc.x, loc.y, loc.cursor_width, loc.cursor_height, cursor_color);
+            break :draw_cursor;
+        }
+
+        if (self.cursor.col == loc.cells.len) {
+            cbs.drawRectangle(loc.x + loc.width, loc.y, loc.cursor_width, loc.cursor_height, cursor_color);
             break :draw_cursor;
         }
 
@@ -215,6 +221,10 @@ fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
         var line_width: f32 = 0;
         var line_height: f32 = 0;
 
+        const dummy_cell = createCell(cbs, ' ', self.default_display).?;
+        const cursor_width = dummy_cell.width;
+        const cursor_height = dummy_cell.height;
+
         for (displays, 0..) |d, i| {
             const cp = self.cached.lines.items[line_index][i];
             const cell = createCell(cbs, cp, d) orelse createCell(cbs, cp, self.default_display).?;
@@ -224,14 +234,14 @@ fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
         }
 
         if (displays.len == 0) {
-            const dummy_cell = createCell(cbs, ' ', self.default_display).?;
-            line_width = dummy_cell.width;
             line_height = dummy_cell.height;
         }
 
         try lines_of_cells.append(LineOfCells{
             .width = line_width,
             .height = line_height,
+            .cursor_width = cursor_width,
+            .cursor_height = cursor_height,
             .cells = try cells.toOwnedSlice(),
         });
     }
@@ -356,7 +366,7 @@ test insertChars {
 
 ///////////////////////////// Delete
 
-pub fn backspace(self: *@This(), cursor: *Cursor) !void {
+fn backspace_internal(self: *@This(), cursor: *Cursor) !void {
     if (cursor.line == 0 and cursor.col == 0) return;
 
     var start_line: usize = cursor.line;
@@ -379,7 +389,7 @@ pub fn backspace(self: *@This(), cursor: *Cursor) !void {
     cursor.set(start_line, start_col);
 }
 
-test backspace {
+test backspace_internal {
     {
         var tswin = try TSWin.init("const not_false = true;", .{
             .disable_default_queries = true,
@@ -395,21 +405,21 @@ test backspace {
             try test_iter.next(0, "true", .{ .hl_group = "boolean" });
             try test_iter.next(0, ";", .default);
         }
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
             try test_iter.next(0, "true", .{ .hl_group = "boolean" });
         }
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = tru", .default);
         }
-        try tswin.win.backspace(&tswin.win.cursor);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
@@ -417,18 +427,18 @@ test backspace {
         }
 
         tswin.win.cursor.set(0, 1);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "onst not_false = t", .default);
         }
 
         try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
     }
 
     {
@@ -453,7 +463,7 @@ test backspace {
             try test_iter.next(2, ";", .default);
         }
         tswin.win.cursor.set(1, 0);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         try eq(2, tswin.win.cached.lines.items.len);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
@@ -471,7 +481,7 @@ test backspace {
             try test_iter.next(1, ";", .default);
         }
         tswin.win.cursor.set(1, 0);
-        try tswin.win.backspace(&tswin.win.cursor);
+        try tswin.win.backspace_internal(&tswin.win.cursor);
         try eq(1, tswin.win.cached.lines.items.len);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
@@ -488,7 +498,7 @@ test backspace {
             try test_iter.next(0, "true", .{ .hl_group = "boolean" });
             try test_iter.next(0, ";", .default);
         }
-        for (0..100) |_| try tswin.win.backspace(&tswin.win.cursor);
+        for (0..100) |_| try tswin.win.backspace_internal(&tswin.win.cursor);
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
@@ -1078,6 +1088,106 @@ const CachedContents = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Interactions
 
+///////////////////////////// Insert Chars
+
+pub const InsertCharsCb = struct {
+    chars: []const u8,
+    target: *Window,
+    fn f(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        try self.target.insertChars(&self.target.cursor, self.chars);
+    }
+    pub fn init(allocator: Allocator, target: *Window, chars: []const u8) !ip.Callback {
+        const self = try allocator.create(@This());
+        self.* = .{ .chars = chars, .target = target };
+        return ip.Callback{ .f = @This().f, .ctx = self, .quick = true };
+    }
+};
+
+const Pair = struct { []const ip.Key, []const u8 };
+const pairs = [_]Pair{
+    .{ &.{.a}, "a" },             .{ &.{ .left_shift, .a }, "A" },             .{ &.{ .right_shift, .a }, "A" },
+    .{ &.{.b}, "b" },             .{ &.{ .left_shift, .b }, "B" },             .{ &.{ .right_shift, .b }, "B" },
+    .{ &.{.c}, "c" },             .{ &.{ .left_shift, .c }, "C" },             .{ &.{ .right_shift, .c }, "C" },
+    .{ &.{.d}, "d" },             .{ &.{ .left_shift, .d }, "D" },             .{ &.{ .right_shift, .d }, "D" },
+    .{ &.{.e}, "e" },             .{ &.{ .left_shift, .e }, "E" },             .{ &.{ .right_shift, .e }, "E" },
+    .{ &.{.f}, "f" },             .{ &.{ .left_shift, .f }, "F" },             .{ &.{ .right_shift, .f }, "F" },
+    .{ &.{.g}, "g" },             .{ &.{ .left_shift, .g }, "G" },             .{ &.{ .right_shift, .g }, "G" },
+    .{ &.{.h}, "h" },             .{ &.{ .left_shift, .h }, "H" },             .{ &.{ .right_shift, .h }, "H" },
+    .{ &.{.i}, "i" },             .{ &.{ .left_shift, .i }, "I" },             .{ &.{ .right_shift, .i }, "I" },
+    .{ &.{.j}, "j" },             .{ &.{ .left_shift, .j }, "J" },             .{ &.{ .right_shift, .j }, "J" },
+    .{ &.{.k}, "k" },             .{ &.{ .left_shift, .k }, "K" },             .{ &.{ .right_shift, .k }, "K" },
+    .{ &.{.l}, "l" },             .{ &.{ .left_shift, .l }, "L" },             .{ &.{ .right_shift, .l }, "L" },
+    .{ &.{.m}, "m" },             .{ &.{ .left_shift, .m }, "M" },             .{ &.{ .right_shift, .m }, "M" },
+    .{ &.{.n}, "n" },             .{ &.{ .left_shift, .n }, "N" },             .{ &.{ .right_shift, .n }, "N" },
+    .{ &.{.o}, "o" },             .{ &.{ .left_shift, .o }, "O" },             .{ &.{ .right_shift, .o }, "O" },
+    .{ &.{.p}, "p" },             .{ &.{ .left_shift, .p }, "P" },             .{ &.{ .right_shift, .p }, "P" },
+    .{ &.{.q}, "q" },             .{ &.{ .left_shift, .q }, "Q" },             .{ &.{ .right_shift, .q }, "Q" },
+    .{ &.{.r}, "r" },             .{ &.{ .left_shift, .r }, "R" },             .{ &.{ .right_shift, .r }, "R" },
+    .{ &.{.s}, "s" },             .{ &.{ .left_shift, .s }, "S" },             .{ &.{ .right_shift, .s }, "S" },
+    .{ &.{.t}, "t" },             .{ &.{ .left_shift, .t }, "T" },             .{ &.{ .right_shift, .t }, "T" },
+    .{ &.{.u}, "u" },             .{ &.{ .left_shift, .u }, "U" },             .{ &.{ .right_shift, .u }, "U" },
+    .{ &.{.v}, "v" },             .{ &.{ .left_shift, .v }, "V" },             .{ &.{ .right_shift, .v }, "V" },
+    .{ &.{.w}, "w" },             .{ &.{ .left_shift, .w }, "W" },             .{ &.{ .right_shift, .w }, "W" },
+    .{ &.{.x}, "x" },             .{ &.{ .left_shift, .x }, "X" },             .{ &.{ .right_shift, .x }, "X" },
+    .{ &.{.y}, "y" },             .{ &.{ .left_shift, .y }, "Y" },             .{ &.{ .right_shift, .y }, "Y" },
+    .{ &.{.z}, "z" },             .{ &.{ .left_shift, .z }, "Z" },             .{ &.{ .right_shift, .z }, "Z" },
+    .{ &.{.one}, "1" },           .{ &.{ .left_shift, .one }, "!" },           .{ &.{ .right_shift, .one }, "!" },
+    .{ &.{.two}, "2" },           .{ &.{ .left_shift, .two }, "@" },           .{ &.{ .right_shift, .two }, "@" },
+    .{ &.{.three}, "3" },         .{ &.{ .left_shift, .three }, "#" },         .{ &.{ .right_shift, .three }, "#" },
+    .{ &.{.four}, "4" },          .{ &.{ .left_shift, .four }, "$" },          .{ &.{ .right_shift, .four }, "$" },
+    .{ &.{.five}, "5" },          .{ &.{ .left_shift, .five }, "%" },          .{ &.{ .right_shift, .five }, "%" },
+    .{ &.{.six}, "6" },           .{ &.{ .left_shift, .six }, "^" },           .{ &.{ .right_shift, .six }, "^" },
+    .{ &.{.seven}, "7" },         .{ &.{ .left_shift, .seven }, "&" },         .{ &.{ .right_shift, .seven }, "&" },
+    .{ &.{.eight}, "8" },         .{ &.{ .left_shift, .eight }, "*" },         .{ &.{ .right_shift, .eight }, "*" },
+    .{ &.{.nine}, "9" },          .{ &.{ .left_shift, .nine }, "(" },          .{ &.{ .right_shift, .nine }, "(" },
+    .{ &.{.zero}, "0" },          .{ &.{ .left_shift, .zero }, ")" },          .{ &.{ .right_shift, .zero }, ")" },
+    .{ &.{.equal}, "=" },         .{ &.{ .left_shift, .equal }, "+" },         .{ &.{ .right_shift, .equal }, "+" },
+    .{ &.{.comma}, "," },         .{ &.{ .left_shift, .comma }, "<" },         .{ &.{ .right_shift, .comma }, "<" },
+    .{ &.{.period}, "." },        .{ &.{ .left_shift, .period }, ">" },        .{ &.{ .right_shift, .period }, ">" },
+    .{ &.{.slash}, "/" },         .{ &.{ .left_shift, .slash }, "?" },         .{ &.{ .right_shift, .slash }, "?" },
+    .{ &.{.semicolon}, ";" },     .{ &.{ .left_shift, .semicolon }, ":" },     .{ &.{ .right_shift, .semicolon }, ":" },
+    .{ &.{.apostrophe}, "'" },    .{ &.{ .left_shift, .apostrophe }, "\"" },   .{ &.{ .right_shift, .apostrophe }, "\"" },
+    .{ &.{.backslash}, "\\" },    .{ &.{ .left_shift, .backslash }, "|" },     .{ &.{ .right_shift, .backslash }, "|" },
+    .{ &.{.left_bracket}, "[" },  .{ &.{ .left_shift, .left_bracket }, "{" },  .{ &.{ .right_shift, .left_bracket }, "{" },
+    .{ &.{.right_bracket}, "]" }, .{ &.{ .left_shift, .right_bracket }, "}" }, .{ &.{ .right_shift, .right_bracket }, "}" },
+    .{ &.{.grave}, "`" },         .{ &.{ .left_shift, .grave }, "~" },         .{ &.{ .right_shift, .grave }, "~" },
+    .{ &.{.space}, " " },         .{ &.{ .left_shift, .space }, " " },         .{ &.{ .right_shift, .space }, " " },
+};
+
+pub fn mapInsertModeCharacters(self: *@This(), council: *ip.MappingCouncil) !void {
+    for (0..pairs.len) |i| {
+        const keys, const chars = pairs[i];
+        try council.map("insert", keys, try InsertCharsCb.init(council.arena.allocator(), self, chars));
+    }
+}
+
+///////////////////////////// Backspace
+
+pub fn backspace(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.backspace_internal(&self.cursor);
+}
+
+///////////////////////////// Enter / Exit Insert Mode
+
+pub fn enterAFTERInsertMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.is_in_AFTER_insert_mode = true;
+    try moveCursorRight(self);
+}
+
+pub fn exitInsertMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.is_in_AFTER_insert_mode = false;
+    try moveCursorLeft(self);
+}
+
+pub fn capitalA(ctx: *anyopaque) !void {
+    try moveCursorToEndOfLine(ctx);
+    try enterAFTERInsertMode(ctx);
+}
+
 ///////////////////////////// Directional Cursor Movement
 
 pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
@@ -1089,6 +1199,15 @@ pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.col = self.cached.lines.items[self.cursor.line].len;
     self.restrictCursorInView(&self.cursor);
+}
+
+pub fn moveCursorToFirstNonBlankChar(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.col = 0;
+    if (self.cached.lines.items[self.cursor.line].len == 0) return;
+    const first_char = self.cached.lines.items[self.cursor.line][0];
+    if (!neo_cell.isSpace(first_char)) return;
+    try vimForwardStart(self);
 }
 
 pub fn moveCursorLeft(ctx: *anyopaque) !void {
@@ -1259,6 +1378,8 @@ const Cell = struct {
 const LineOfCells = struct {
     x: f32 = 0,
     y: f32 = 0,
+    cursor_width: f32 = 0,
+    cursor_height: f32 = 0,
     width: f32,
     height: f32,
     cells: []Cell,
