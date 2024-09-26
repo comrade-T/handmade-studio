@@ -315,6 +315,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
     try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
+    try self.cached.updateObsoleteLineInfoList(change_start, change_start, change_start, change_end);
     self.cached.calculateDisplaySizes(change_start, change_end);
     self.cached.calculateAllDisplayPositions();
 
@@ -743,6 +744,7 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
     try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
+    try self.cached.updateObsoleteLineInfoList(start_range[0], end_range[0], start_range[0], start_range[0]);
     self.cached.calculateDisplaySizes(start_range[0], end_range[0]);
     self.cached.calculateAllDisplayPositions();
     self.should_recreate_cells = true;
@@ -845,6 +847,13 @@ fn endLineNr(self: *const @This()) u32 {
 ////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
 
 const CachedContents = struct {
+    const LineInfo = struct {
+        width: f32 = 0,
+        height: f32 = 0,
+        x: f32 = 0,
+        y: f32 = 0,
+        linenr: usize = 0,
+    };
     const Display = struct {
         const Size = struct {
             width: f32 = 0,
@@ -881,6 +890,7 @@ const CachedContents = struct {
 
     lines: ArrayList([]u21) = undefined,
     displays: ArrayList([]Display) = undefined,
+    line_infos: ArrayList(LineInfo) = undefined,
 
     start_line: usize = 0,
     end_line: usize = 0,
@@ -897,6 +907,8 @@ const CachedContents = struct {
         assert(self.lines.items.len == self.displays.items.len);
 
         try self.applyTreeSitterToDisplays(self.start_line, self.end_line);
+
+        self.line_infos = try self.createLineInfoList(self.start_line, self.end_line);
         self.calculateDisplaySizes(self.start_line, self.end_line);
         self.calculateAllDisplayPositions();
 
@@ -946,6 +958,7 @@ const CachedContents = struct {
         self.lines.deinit();
         for (self.displays.items) |displays| self.a.free(displays);
         self.displays.deinit();
+        self.line_infos.deinit();
     }
 
     ///////////////////////////// Initial Creation
@@ -1323,11 +1336,29 @@ const CachedContents = struct {
         try self.applyTreeSitterToDisplays(new_hl_start, new_hl_end);
     }
 
+    fn createLineInfoList(self: *@This(), start: usize, end: usize) !ArrayList(LineInfo) {
+        var list = try ArrayList(LineInfo).initCapacity(self.a, self.lines.items.len);
+        for (start..end + 1) |_| try list.append(LineInfo{});
+        return list;
+    }
+
+    fn updateObsoleteLineInfoList(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) !void {
+        var new_list = try self.createLineInfoList(new_start, new_end);
+        defer new_list.deinit();
+        try self.line_infos.replaceRange(new_start, old_end - old_start + 1, new_list.items);
+    }
+
     fn calculateDisplaySizes(self: *@This(), start: usize, end: usize) void {
         for (start..end + 1) |i| {
             const line_index = self.start_line + i;
-            const displays = self.displays.items[line_index];
-            for (displays, 0..) |d, j| {
+
+            var line_width: f32 = 0;
+            var line_height: f32 = 0;
+            defer self.line_infos.items[line_index].width = line_width;
+            defer self.line_infos.items[line_index].height = line_height;
+            defer self.line_infos.items[line_index].linenr = i;
+
+            for (self.displays.items[line_index], 0..) |d, j| {
                 const code_point = self.lines.items[line_index][j];
                 const cbs = self.win.assets_callbacks orelse return;
                 switch (d.variant) {
@@ -1337,11 +1368,15 @@ const CachedContents = struct {
                             var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
                             width = width * scale_factor;
                             self.displays.items[line_index][j].size = .{ .width = width, .height = char.font_size };
+                            line_width += width;
+                            line_height = @max(line_height, char.font_size);
                         }
                     },
                     .image => |image| {
                         if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
                             self.displays.items[line_index][j].size = .{ .width = size.width, .height = size.height };
+                            line_width += size.width;
+                            line_height = @max(line_height, size.height);
                         }
                     },
                 }
@@ -1356,6 +1391,8 @@ const CachedContents = struct {
 
         for (self.displays.items, 0..) |displays, i| {
             var max_height: f32 = 0;
+            self.line_infos.items[i].x = current_x;
+            self.line_infos.items[i].y = current_y;
             defer current_x = initial_x;
             defer current_y += max_height;
             for (displays, 0..) |d, j| {
