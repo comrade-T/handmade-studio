@@ -63,7 +63,7 @@ pub fn main() !void {
 
     ///////////////////////////// Window
 
-    var buffer = try Buffer.create(gpa, .file, "build.zig");
+    var buffer = try Buffer.create(gpa, .file, "src/window/window.zig");
     // const source =
     //     \\const ten = 10;
     //     \\fn dummy() void {

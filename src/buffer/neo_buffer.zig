@@ -191,6 +191,9 @@ pub const Buffer = struct {
     ///////////////////////////// Delete
 
     pub fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !?[]const ts.Range {
+        const zone = ztracy.ZoneNC(@src(), "Buffer.deleteRange()", 0x55AA55);
+        defer zone.End();
+
         if (a[0] == b[0] and a[1] == b[1]) return null;
 
         const offset_a = try self.roperoot.getByteOffsetOfPosition(a[0], a[1]);
@@ -314,9 +317,11 @@ pub const Buffer = struct {
             }.read,
             .encoding = .utf_8,
         };
-        self.tstree = try self.tsparser.?.parse(self.tstree, input);
 
-        if (may_old_tree) |old_tree| return old_tree.getChangedRanges(self.tstree.?);
+        const new_tree = try self.tsparser.?.parse(may_old_tree, input);
+        defer self.tstree = new_tree;
+
+        if (may_old_tree) |old_tree| return old_tree.getChangedRanges(new_tree);
         return null;
     }
     test parse {

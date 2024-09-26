@@ -578,7 +578,7 @@ test sortRanges {
 }
 
 fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
-    const zone = ztracy.ZoneNC(@src(), "Widnow.deleteRange()", 0x00000F);
+    const zone = ztracy.ZoneNC(@src(), "Window.deleteRange()", 0x00000F);
     defer zone.End();
 
     const start_range, const end_range = sortRanges(a, b);
@@ -1190,6 +1190,9 @@ const CachedContents = struct {
     }
 
     fn updateObsoleteTreeSitterToDisplays(self: *@This(), base_start: usize, base_end: usize, ranges: ?[]const ts.Range) !void {
+        const zone = ztracy.ZoneNC(@src(), "CachedContents.updateObsoleteTreeSitterToDisplays()", 0x00AAFF);
+        defer zone.End();
+
         var new_hl_start = base_start;
         var new_hl_end = base_end;
         if (ranges) |ts_ranges| {
@@ -1198,6 +1201,9 @@ const CachedContents = struct {
                 new_hl_end = @max(new_hl_end, r.end_point.row);
             }
         }
+
+        zone.Value(@intCast(new_hl_end - new_hl_start));
+
         try self.applyTreeSitterToDisplays(new_hl_start, new_hl_end);
     }
 
@@ -1239,6 +1245,9 @@ const CachedContents = struct {
     }
 
     fn calculateAllDisplayPositions(self: *@This()) void {
+        const zone = ztracy.ZoneNC(@src(), "CachedContents.calculateAllDisplayPositions()", 0xAAAA66);
+        defer zone.End();
+
         const initial_x, const initial_y = self.win.getFirstCellPosition();
         var current_x = initial_x;
         var current_y = initial_y;
