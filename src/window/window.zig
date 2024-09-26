@@ -393,6 +393,54 @@ test "insert / delete crash check" {
         ;
         var tswin = try TSWin.init(source, .{ .disable_default_queries = false, .enabled_queries = &.{""} });
         defer tswin.deinit();
+        {
+            tswin.win.cursor.set(4, 0);
+            try Window.vimO(tswin.win);
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "pub var x = 0;",
+                "pub var y = 0;",
+                "",
+            }, tswin.win.cached.lines.items);
+        }
+        {
+            try tswin.win.insertChars(&tswin.win.cursor, "a");
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "pub var x = 0;",
+                "pub var y = 0;",
+                "a",
+            }, tswin.win.cached.lines.items);
+        }
+        {
+            try eq(6, tswin.win.bols());
+            try eq(5, tswin.win.endLineNr());
+
+            try tswin.win.backspace_internal(&tswin.win.cursor);
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "pub var x = 0;",
+                "pub var y = 0;",
+                "",
+            }, tswin.win.cached.lines.items);
+        }
+    }
+    {
+        const source =
+            \\const ten = 10;
+            \\fn dummy() void {
+            \\}
+            \\pub var x = 0;
+            \\pub var y = 0;
+        ;
+        var tswin = try TSWin.init(source, .{ .disable_default_queries = false, .enabled_queries = &.{""} });
+        defer tswin.deinit();
 
         try Window.moveCursorDown(tswin.win);
         try Window.moveCursorDown(tswin.win);
@@ -469,6 +517,9 @@ test "insert / delete crash check" {
 }
 
 fn debugPrintLines(self: *@This(), msg: []const u8) !void {
+    // _ = self;
+    // _ = msg;
+
     std.debug.print("{s} ========================================\n", .{msg});
     for (self.cached.lines.items) |line| {
         var u8line = try idc_if_it_leaks.alloc(u8, line.len);

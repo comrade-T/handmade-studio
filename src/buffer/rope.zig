@@ -1074,6 +1074,13 @@ pub const Node = union(enum) {
             fn _removed(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
+
+                if (cx.num_of_bytes_to_delete == 1 and leaf.bol and !leaf.eol) {
+                    cx.should_amend_bols = false;
+                    const replace = try Leaf.new(cx.a, "", true, false);
+                    return WalkMutResult{ .replace = replace };
+                }
+
                 if (leaf.eol) {
                     if (leaf.buf.len == 0 and cx.num_of_bytes_to_delete == 1) return WalkMutResult.removed;
                     if (leaf.buf.len == 1 and cx.num_of_bytes_to_delete == 1) {
@@ -1087,6 +1094,7 @@ pub const Node = union(enum) {
                     const replace = try Leaf.new(cx.a, "", bol, eol);
                     return WalkMutResult{ .replace = replace };
                 }
+
                 return WalkMutResult.removed;
             }
 
@@ -1503,6 +1511,59 @@ pub const Node = union(enum) {
                 \\  1 B| `c`
             ;
             try eqStr(edit_2_debug_str, try edit_2.debugPrint());
+        }
+
+        // keep bol
+        {
+            const root = try Node.fromString(a, "a", true);
+            const root_debug_str =
+                \\1 B| `a`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const e1 = try root.deleteBytes(a, 0, 1);
+            const e1d =
+                \\1 B| ``
+            ;
+            try eqStr(e1d, try e1.debugPrint());
+        }
+        {
+            const root = try Node.fromString(a, "a\nb", true);
+            const root_debug_str =
+                \\2 2/3/2
+                \\  1 B| `a` |E
+                \\  1 B| `b`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const e1 = try root.deleteBytes(a, 2, 1);
+            const e1d =
+                \\2 2/2/1
+                \\  1 B| `a` |E
+                \\  1 B| ``
+            ;
+            try eqStr(e1d, try e1.debugPrint());
+        }
+        {
+            const root = try Node.fromString(a, "a\nb\nc", true);
+            const root_debug_str =
+                \\3 3/5/3
+                \\  1 B| `a` |E
+                \\  2 2/3/2
+                \\    1 B| `b` |E
+                \\    1 B| `c`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            const e1 = try root.deleteBytes(a, 2, 1);
+            const e1d =
+                \\3 3/4/2
+                \\  1 B| `a` |E
+                \\  2 2/2/1
+                \\    1 B| `` |E
+                \\    1 B| `c`
+            ;
+            try eqStr(e1d, try e1.debugPrint());
         }
     }
 
