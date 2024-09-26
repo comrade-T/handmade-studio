@@ -176,7 +176,7 @@ fn setCellPositions(self: *@This()) void {
     }
 }
 
-fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
+fn getFirstCellPosition(self: *const @This()) struct { f32, f32 } {
     var current_x: f32 = self.x;
     var current_y: f32 = self.y;
     if (self.bounded) {
@@ -316,6 +316,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
 
     try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
     self.cached.calculateDisplaySizes(change_start, change_end);
+    self.cached.calculateAllDisplayPositions();
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
     self.should_recreate_cells = true;
@@ -743,6 +744,7 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
 
     try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
     self.cached.calculateDisplaySizes(start_range[0], end_range[0]);
+    self.cached.calculateAllDisplayPositions();
     self.should_recreate_cells = true;
 }
 
@@ -896,6 +898,7 @@ const CachedContents = struct {
 
         try self.applyTreeSitterToDisplays(self.start_line, self.end_line);
         self.calculateDisplaySizes(self.start_line, self.end_line);
+        self.calculateAllDisplayPositions();
 
         return self;
     }
@@ -1342,6 +1345,24 @@ const CachedContents = struct {
                         }
                     },
                 }
+            }
+        }
+    }
+
+    fn calculateAllDisplayPositions(self: *@This()) void {
+        const initial_x, const initial_y = self.win.getFirstCellPosition();
+        var current_x = initial_x;
+        var current_y = initial_y;
+
+        for (self.displays.items, 0..) |displays, i| {
+            var max_height: f32 = 0;
+            defer current_x = initial_x;
+            defer current_y += max_height;
+            for (displays, 0..) |d, j| {
+                defer current_x += d.size.width;
+                max_height = @max(max_height, d.size.height);
+                self.displays.items[i][j].position.x = current_x;
+                self.displays.items[i][j].position.y = current_y;
             }
         }
     }
