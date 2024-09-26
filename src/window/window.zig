@@ -22,6 +22,8 @@ a: Allocator,
 buf: *Buffer,
 
 cursor: Cursor = .{},
+// TODO: find a better name for this field.
+is_in_AFTER_insert_mode: bool = false,
 
 x: f32,
 y: f32,
@@ -92,6 +94,22 @@ pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderC
 fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
     // var chars_rendered: u32 = 0;
     // defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
+
+    draw_cursor: {
+        assert(self.cursor.line >= self.cached.start_line);
+        const line_index = self.cursor.line - self.cached.start_line;
+        const cursor_color = 0xF5F5F5F5;
+
+        const loc = self.lines_of_cells[line_index];
+        if (loc.cells.len == 0) {
+            cbs.drawRectangle(loc.x, loc.y, loc.width, loc.height, cursor_color);
+            break :draw_cursor;
+        }
+
+        assert(self.cursor.col < loc.cells.len);
+        const cell = loc.cells[self.cursor.col];
+        cbs.drawRectangle(cell.x, cell.y, cell.width, cell.height, cursor_color);
+    }
 
     for (self.lines_of_cells) |loc| {
         if (loc.y > view.end.y) return;
@@ -206,7 +224,8 @@ fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
 
         if (displays.len == 0) {
             const dummy_cell = createCell(cbs, ' ', self.default_display).?;
-            line_height = @max(line_height, dummy_cell.height);
+            line_width = dummy_cell.width;
+            line_height = dummy_cell.height;
         }
 
         try lines_of_cells.append(LineOfCells{
@@ -1058,7 +1077,53 @@ const CachedContents = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Interactions
 
-// TODO:
+///////////////////////////// Directional Cursor Movement
+
+pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.col = 0;
+}
+
+pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.col = self.cached.lines.items[self.cursor.line].len;
+    self.restrictCursorInView(&self.cursor);
+}
+
+pub fn moveCursorLeft(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.col -|= 1;
+    self.restrictCursorInView(&self.cursor);
+}
+
+pub fn moveCursorUp(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.line -|= 1;
+    self.restrictCursorInView(&self.cursor);
+}
+
+pub fn moveCursorRight(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.col += 1;
+    self.restrictCursorInView(&self.cursor);
+}
+
+pub fn moveCursorDown(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.line += 1;
+    self.restrictCursorInView(&self.cursor);
+}
+
+fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
+    if (cursor.line < self.cached.start_line) cursor.line = self.cached.start_line;
+    if (cursor.line > self.cached.end_line) cursor.line = self.cached.end_line;
+    const current_line_index = cursor.line - self.cached.start_line;
+    const current_line = self.cached.lines.items[current_line_index];
+    if (current_line.len == 0) cursor.col = 0;
+
+    const offset: usize = if (self.is_in_AFTER_insert_mode) 0 else 1;
+    if (cursor.col > current_line.len -| offset) cursor.col = current_line.len -| 1;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
@@ -1079,6 +1144,7 @@ const ScreenView = struct {
 
 const RenderCallbacks = struct {
     drawCodePoint: *const fn (ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void,
+    drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
 };
 
 const AssetsCallbacks = struct {

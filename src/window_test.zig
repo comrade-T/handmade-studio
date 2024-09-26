@@ -97,6 +97,8 @@ pub fn main() !void {
     try council.map("normal", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
     try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
     try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+    try council.map("normal", &.{.zero}, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -130,6 +132,7 @@ pub fn main() !void {
                     },
                     .{
                         .drawCodePoint = drawCodePoint,
+                        .drawRectangle = drawRectangle,
                     },
                     .{
                         .font_manager = font_manager,
@@ -146,6 +149,16 @@ pub fn main() !void {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
+    rl.drawRectangle(
+        @as(i32, @intFromFloat(x)),
+        @as(i32, @intFromFloat(y)),
+        @as(i32, @intFromFloat(width)),
+        @as(i32, @intFromFloat(height)),
+        rl.Color.fromInt(color),
+    );
+}
 
 fn drawCodePoint(ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void {
     const font_manager = @as(*fm.FontManager, @ptrCast(@alignCast(ctx)));
