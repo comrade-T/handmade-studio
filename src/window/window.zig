@@ -1142,6 +1142,7 @@ const pairs = [_]Pair{
     .{ &.{.eight}, "8" },         .{ &.{ .left_shift, .eight }, "*" },         .{ &.{ .right_shift, .eight }, "*" },
     .{ &.{.nine}, "9" },          .{ &.{ .left_shift, .nine }, "(" },          .{ &.{ .right_shift, .nine }, "(" },
     .{ &.{.zero}, "0" },          .{ &.{ .left_shift, .zero }, ")" },          .{ &.{ .right_shift, .zero }, ")" },
+    .{ &.{.minus}, "-" },         .{ &.{ .left_shift, .minus }, "_" },         .{ &.{ .right_shift, .minus }, "_" },
     .{ &.{.equal}, "=" },         .{ &.{ .left_shift, .equal }, "+" },         .{ &.{ .right_shift, .equal }, "+" },
     .{ &.{.comma}, "," },         .{ &.{ .left_shift, .comma }, "<" },         .{ &.{ .right_shift, .comma }, "<" },
     .{ &.{.period}, "." },        .{ &.{ .left_shift, .period }, ">" },        .{ &.{ .right_shift, .period }, ">" },
@@ -1153,6 +1154,7 @@ const pairs = [_]Pair{
     .{ &.{.right_bracket}, "]" }, .{ &.{ .left_shift, .right_bracket }, "}" }, .{ &.{ .right_shift, .right_bracket }, "}" },
     .{ &.{.grave}, "`" },         .{ &.{ .left_shift, .grave }, "~" },         .{ &.{ .right_shift, .grave }, "~" },
     .{ &.{.space}, " " },         .{ &.{ .left_shift, .space }, " " },         .{ &.{ .right_shift, .space }, " " },
+    .{ &.{.enter}, "\n" },        .{ &.{ .left_shift, .enter }, "\n" },        .{ &.{ .right_shift, .enter }, "\n" },
 };
 
 pub fn mapInsertModeCharacters(self: *@This(), council: *ip.MappingCouncil) !void {
@@ -1186,6 +1188,13 @@ pub fn exitInsertMode(ctx: *anyopaque) !void {
 pub fn capitalA(ctx: *anyopaque) !void {
     try moveCursorToEndOfLine(ctx);
     try enterAFTERInsertMode(ctx);
+}
+
+pub fn vimO(ctx: *anyopaque) !void {
+    try moveCursorToEndOfLine(ctx);
+    try enterAFTERInsertMode(ctx);
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.insertChars(&self.cursor, "\n");
 }
 
 ///////////////////////////// Directional Cursor Movement

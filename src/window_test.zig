@@ -112,6 +112,7 @@ pub fn main() !void {
     try council.map("normal", &.{ .left_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("normal", &.{ .right_shift, .i }, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("normal", &.{ .right_shift, .a }, .{ .f = Window.capitalA, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.o}, .{ .f = Window.vimO, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("insert", &.{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
     try council.map("insert", &.{.backspace}, .{ .f = Window.backspace, .ctx = window });
 
