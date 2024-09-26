@@ -99,6 +99,9 @@ pub fn main() !void {
     try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
     try council.map("normal", &.{.zero}, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
     try council.map("normal", &.{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
+    try council.map("normal", &.{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
+    try council.map("normal", &.{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
+    try council.map("normal", &.{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

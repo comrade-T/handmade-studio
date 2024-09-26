@@ -4,6 +4,7 @@ const std = @import("std");
 pub const Buffer = @import("neo_buffer").Buffer;
 const sitter = @import("ts");
 const ts = sitter.b;
+const neo_cell = @import("neo_cell.zig");
 
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -1123,6 +1124,33 @@ fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
 
     const offset: usize = if (self.is_in_AFTER_insert_mode) 0 else 1;
     if (cursor.col > current_line.len -| offset) cursor.col = current_line.len -| 1;
+}
+
+///////////////////////////// Vim Cursor Movement
+
+fn vimBackwards(self: *@This(), boundary_type: neo_cell.WordBoundaryType, cursor: *Cursor) void {
+    const line, const col = neo_cell.backwardsByWord(boundary_type, self.cached.lines.items, cursor.line, cursor.col);
+    cursor.set(line, col);
+}
+
+fn vimForward(self: *@This(), boundary_type: neo_cell.WordBoundaryType, cursor: *Cursor) void {
+    const line, const col = neo_cell.forwardByWord(boundary_type, self.cached.lines.items, cursor.line, cursor.col);
+    cursor.set(line, col);
+}
+
+pub fn vimForwardStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.vimForward(.start, &self.cursor);
+}
+
+pub fn vimForwardEnd(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.vimForward(.end, &self.cursor);
+}
+
+pub fn vimBackwardsStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.vimBackwards(.start, &self.cursor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
