@@ -191,7 +191,7 @@ fn getFirstCellPosition(self: *@This()) struct { f32, f32 } {
 ///////////////////////////// Cells
 
 fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) ?Cell {
-    switch (d) {
+    switch (d.variant) {
         .char => |char| {
             if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
                 const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
@@ -843,23 +843,30 @@ fn endLineNr(self: *const @This()) u32 {
 ////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
 
 const CachedContents = struct {
-    const Display = union(enum) {
+    const Display = struct {
         const Size = struct {
             width: f32 = 0,
             height: f32 = 0,
+        };
+        const Position = struct {
+            x: f32 = 0,
+            y: f32 = 0,
         };
         const Char = struct {
             font_size: f32,
             font_face: []const u8,
             color: u32,
-            size: Size = .{},
         };
         const Image = struct {
             path: []const u8,
-            size: Size = .{},
         };
-        char: Char,
-        image: Image,
+
+        size: Size = .{},
+        position: Position = .{},
+        variant: union(enum) {
+            char: Char,
+            image: Image,
+        },
     };
     const CacheStrategy = union(enum) {
         const Section = struct { start_line: usize, end_line: usize };
@@ -1064,7 +1071,7 @@ const CachedContents = struct {
 
                 if (self.win.buf.langsuite.?.highlight_map) |hl_map| {
                     if (hl_map.get(result.cap_name)) |color| {
-                        if (self.win.default_display == .char) display.char.color = color;
+                        if (self.win.default_display.variant == .char) display.variant.char.color = color;
                     }
                 }
 
@@ -1072,14 +1079,14 @@ const CachedContents = struct {
                     for (directives) |d| {
                         switch (d) {
                             .font => |face| {
-                                if (display == .char) display.char.font_face = face;
+                                if (display.variant == .char) display.variant.char.font_face = face;
                             },
                             .size => |size| {
-                                if (display == .char) display.char.font_size = size;
+                                if (display.variant == .char) display.variant.char.font_size = size;
                             },
                             .img => |path| {
-                                if (display == .image) {
-                                    display.image.path = path;
+                                if (display.variant == .image) {
+                                    display.variant.image.path = path;
                                     break;
                                 }
                             },
@@ -1320,18 +1327,18 @@ const CachedContents = struct {
             for (displays, 0..) |d, j| {
                 const code_point = self.lines.items[line_index][j];
                 const cbs = self.win.assets_callbacks orelse return;
-                switch (d) {
+                switch (d.variant) {
                     .char => |char| {
                         if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
                             const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
                             var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
                             width = width * scale_factor;
-                            self.displays.items[line_index][j].char.size = .{ .width = width, .height = char.font_size };
+                            self.displays.items[line_index][j].size = .{ .width = width, .height = char.font_size };
                         }
                     },
                     .image => |image| {
                         if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
-                            self.displays.items[line_index][j].char.size = .{ .width = size.width, .height = size.height };
+                            self.displays.items[line_index][j].size = .{ .width = size.width, .height = size.height };
                         }
                     },
                 }
@@ -1709,16 +1716,16 @@ const DisplayChunkTester = struct {
         try eqStrU21(expected_str, self.cc.lines.items[linenr][self.i .. self.i + expected_str.len]);
 
         var expected_display = self.cc.win.default_display;
-        if (expected_display == .char) {
+        if (expected_display.variant == .char) {
             switch (expected_variant) {
                 .hl_group => |hl_group| {
                     const color = self.cc.win.buf.langsuite.?.highlight_map.?.get(hl_group).?;
-                    expected_display.char.color = color;
+                    expected_display.variant.char.color = color;
                 },
                 .literal => |literal| {
-                    expected_display.char.font_face = literal[0];
-                    expected_display.char.font_size = literal[1];
-                    expected_display.char.color = literal[2];
+                    expected_display.variant.char.font_face = literal[0];
+                    expected_display.variant.char.font_size = literal[1];
+                    expected_display.variant.char.color = literal[2];
                 },
                 else => {},
             }
@@ -1733,15 +1740,15 @@ const DisplayChunkTester = struct {
 };
 
 fn eqDisplay(expected: CachedContents.Display, got: CachedContents.Display) !void {
-    switch (got) {
+    switch (got.variant) {
         .char => |char| {
-            errdefer std.debug.print("expected color 0x{x} got 0x{x}\n", .{ expected.char.color, char.color });
-            try eqStr(expected.char.font_face, char.font_face);
-            try eq(expected.char.font_size, char.font_size);
-            try eq(expected.char.color, char.color);
+            errdefer std.debug.print("expected color 0x{x} got 0x{x}\n", .{ expected.variant.char.color, char.color });
+            try eqStr(expected.variant.char.font_face, char.font_face);
+            try eq(expected.variant.char.font_size, char.font_size);
+            try eq(expected.variant.char.color, char.color);
         },
         .image => |image| {
-            try eqStr(image.path, expected.image.path);
+            try eqStr(image.path, expected.variant.image.path);
         },
     }
 }
@@ -1752,10 +1759,12 @@ fn eqDisplays(expected: []const CachedContents.Display, got: []CachedContents.Di
 }
 
 const _default_display = CachedContents.Display{
-    .char = .{
-        .font_size = 40,
-        .font_face = "Meslo",
-        .color = 0xF5F5F5F5,
+    .variant = .{
+        .char = .{
+            .font_size = 40,
+            .font_face = "Meslo",
+            .color = 0xF5F5F5F5,
+        },
     },
 };
 
