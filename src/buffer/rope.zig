@@ -1071,6 +1071,9 @@ pub const Node = union(enum) {
             fn _removed(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 cx.bytes_deleted += leaf.weights().len;
                 if (cx.leaves_encountered == 0) cx.first_leaf_bol = leaf.bol;
+                if (leaf.eol and cx.num_of_bytes_to_delete == 1 and cx.bytes_deleted == 1) {
+                    return WalkMutResult.removed;
+                }
                 if (leaf.eol) {
                     const eol = if (cx.start_byte + cx.bytes_deleted <= cx.end_byte) false else leaf.eol;
                     const bol = if (cx.leaves_encountered == 0) leaf.bol else false;
@@ -1396,9 +1399,7 @@ pub const Node = union(enum) {
             const edit_2 = try edit_1.deleteBytes(a, 1, 1);
             const edit_2_debug_str =
                 \\4 3/8/6
-                \\  2 1/1/1
-                \\    1 B| `1`
-                \\    1 ``
+                \\  1 B| `1`
                 \\  3 2/7/5
                 \\    1 `22` |E
                 \\    2 2/4/3
@@ -1486,6 +1487,14 @@ pub const Node = union(enum) {
                 \\    1 B| `c`
             ;
             try eqStr(edit_1_debug_str, try edit_1.debugPrint());
+
+            const edit_2 = try edit_1.deleteBytes(a, 2, 1);
+            const edit_2_debug_str =
+                \\2 2/3/2
+                \\  1 B| `a` |E
+                \\  1 B| `c`
+            ;
+            try eqStr(edit_2_debug_str, try edit_2.debugPrint());
         }
     }
 
