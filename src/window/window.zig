@@ -39,10 +39,6 @@ default_display: CachedContents.Display,
 
 queries: std.StringArrayHashMap(*sitter.StoredQuery),
 
-should_recreate_cells: bool = true,
-cells_arena: std.heap.ArenaAllocator,
-lines_of_cells: []LineOfCells,
-
 render_callbacks: ?RenderCallbacks,
 assets_callbacks: ?AssetsCallbacks,
 
@@ -64,9 +60,6 @@ pub fn create(
 
         .queries = std.StringArrayHashMap(*sitter.StoredQuery).init(a),
 
-        .cells_arena = std.heap.ArenaAllocator.init(a),
-        .lines_of_cells = &.{},
-
         .render_callbacks = opts.render_callbacks,
         .assets_callbacks = opts.assets_callbacks,
     };
@@ -81,97 +74,36 @@ pub fn create(
 pub fn destroy(self: *@This()) void {
     self.queries.deinit();
     self.cached.deinit();
-    self.cells_arena.deinit();
     self.a.destroy(self);
 }
 
 ///////////////////////////// Render
 
-pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
+pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
-
-    if (self.should_recreate_cells) {
-        try self.createLinesOfCells(assets_callbacks);
-        assert(self.cached.lines.items.len == self.lines_of_cells.len);
-        self.should_recreate_cells = false;
-    }
-
-    // TODO: if (self.should_recompute_cell_positions)
-    self.setCellPositions();
-
-    self.executeRenderCallbacks(render_callbacks, assets_callbacks.font_manager, screen_view);
+    self.executeRenderCallbacks2(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
 }
 
-fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
-    const zone = ztracy.ZoneNC(@src(), "Window.executeRenderCallbacks()", 0x00FF00);
-    defer zone.End();
+fn executeRenderCallbacks2(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
+    for (self.cached.line_infos.items, 0..) |lif, i| {
+        if (lif.y > view.end.y) return;
+        if (lif.y + lif.height < view.start.y) continue;
 
-    // var chars_rendered: u32 = 0;
-    // defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
+        if (lif.x > view.end.x) continue;
+        if (lif.x + lif.width < view.start.x) continue;
 
-    draw_cursor: {
-        assert(self.cursor.line >= self.cached.start_line);
-        const line_index = self.cursor.line - self.cached.start_line;
-        const cursor_color = 0xF5F5F5F5;
+        for (self.cached.displays.items[i], 0..) |d, j| {
+            if (d.position.x > view.end.x) break;
+            if (d.position.x + d.size.width < view.start.x) continue;
 
-        const loc = self.lines_of_cells[line_index];
-        if (loc.cells.len == 0) {
-            cbs.drawRectangle(loc.x, loc.y, loc.cursor_width, loc.cursor_height, cursor_color);
-            break :draw_cursor;
-        }
-
-        if (self.cursor.col == loc.cells.len) {
-            cbs.drawRectangle(loc.x + loc.width, loc.y, loc.cursor_width, loc.cursor_height, cursor_color);
-            break :draw_cursor;
-        }
-
-        assert(self.cursor.col < loc.cells.len);
-        const cell = loc.cells[self.cursor.col];
-        cbs.drawRectangle(cell.x, cell.y, cell.width, cell.height, cursor_color);
-    }
-
-    for (self.lines_of_cells) |loc| {
-        if (loc.y > view.end.y) return;
-        if (loc.y + loc.height < view.start.y) continue;
-
-        if (loc.x > view.end.x) continue;
-        if (loc.x + loc.width < view.start.x) continue;
-
-        for (loc.cells) |cell| {
-            if (cell.x > view.end.x) break;
-            if (cell.x + cell.width < view.start.x) continue;
-
-            switch (cell.variant) {
+            switch (d.variant) {
                 .char => |char| {
-                    cbs.drawCodePoint(font_manager, char.code_point, char.font_face, char.font_size, char.color, cell.x, cell.y);
-                    // chars_rendered += 1;
+                    const code_point = self.cached.lines.items[i][j];
+                    cbs.drawCodePoint(font_manager, code_point, char.font_face, char.font_size, char.color, d.position.x, d.position.y);
                 },
-                .image => {},
+                else => {},
             }
-        }
-    }
-}
-
-///////////////////////////// Cell Positions
-
-fn setCellPositions(self: *@This()) void {
-    const zone = ztracy.ZoneNC(@src(), "Window.setCellPositions()", 0x00AAFF);
-    defer zone.End();
-
-    const initial_x, const initial_y = self.getFirstCellPosition();
-    var current_x = initial_x;
-    var current_y = initial_y;
-
-    for (self.lines_of_cells, 0..) |loc, i| {
-        defer current_y += loc.height;
-        defer current_x = initial_x;
-        self.lines_of_cells[i].x = current_x;
-        self.lines_of_cells[i].y = current_y;
-        for (loc.cells, 0..) |cell, j| {
-            defer current_x += cell.width;
-            self.lines_of_cells[i].cells[j].x = current_x;
-            self.lines_of_cells[i].cells[j].y = current_y;
         }
     }
 }
@@ -186,113 +118,6 @@ fn getFirstCellPosition(self: *const @This()) struct { f32, f32 } {
         current_y += self.bounds.padding.top;
     }
     return .{ current_x, current_y };
-}
-
-///////////////////////////// Cells
-
-fn createCell(cbs: AssetsCallbacks, code_point: u21, d: CachedContents.Display) ?Cell {
-    switch (d.variant) {
-        .char => |char| {
-            if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
-                const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
-                var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
-                width = width * scale_factor;
-
-                const height = char.font_size;
-
-                return Cell{
-                    .width = width,
-                    .height = height,
-                    .variant = .{
-                        .char = .{
-                            .code_point = code_point,
-                            .font_face = char.font_face,
-                            .font_size = char.font_size,
-                            .color = char.color,
-                        },
-                    },
-                };
-            }
-        },
-        .image => |image| {
-            if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
-                return Cell{ .width = size.width, .height = size.height, .variant = .{ .image = .{ .path = image.path } } };
-            }
-        },
-    }
-    return null;
-}
-
-fn _c(self: *@This(), line: usize, col: usize) Cell {
-    return self.lines_of_cells[line].cells[col];
-}
-
-fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.createLinesOfCells()", 0xFFFF00);
-    defer zone.End();
-
-    self.cells_arena.deinit();
-    self.cells_arena = std.heap.ArenaAllocator.init(self.a);
-
-    var lines_of_cells = try ArrayList(LineOfCells).initCapacity(self.cells_arena.allocator(), self.cached.displays.items.len);
-    for (self.cached.displays.items, 0..) |displays, line_index| {
-        var cells = try ArrayList(Cell).initCapacity(self.cells_arena.allocator(), self.cached.displays.items[line_index].len);
-        var line_width: f32 = 0;
-        var line_height: f32 = 0;
-
-        const dummy_cell = createCell(cbs, ' ', self.default_display).?;
-        const cursor_width = dummy_cell.width;
-        const cursor_height = dummy_cell.height;
-
-        for (displays, 0..) |d, i| {
-            const cp = self.cached.lines.items[line_index][i];
-            const cell = createCell(cbs, cp, d) orelse createCell(cbs, cp, self.default_display).?;
-            line_width += cell.width;
-            line_height = @max(line_height, cell.height);
-            try cells.append(cell);
-        }
-
-        if (displays.len == 0) {
-            line_height = dummy_cell.height;
-        }
-
-        try lines_of_cells.append(LineOfCells{
-            .width = line_width,
-            .height = line_height,
-            .cursor_width = cursor_width,
-            .cursor_height = cursor_height,
-            .cells = try cells.toOwnedSlice(),
-        });
-    }
-
-    self.lines_of_cells = try lines_of_cells.toOwnedSlice();
-}
-
-test createLinesOfCells {
-    var tswin = try TSWin.init("const not_false = true;", .{
-        .disable_default_queries = true,
-        .enabled_queries = &.{"trimed_down_highlights"},
-    });
-    const win = tswin.win;
-    defer tswin.deinit();
-    {
-        var test_iter = DisplayChunkTester{ .cc = win.cached };
-        try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
-        try test_iter.next(0, " not_false = ", .default);
-        try test_iter.next(0, "true", .{ .hl_group = "boolean" });
-        try test_iter.next(0, ";", .default);
-    }
-    {
-        const mock_man = try MockManager.create(idc_if_it_leaks);
-        try tswin.win.createLinesOfCells(mock_man.assetsCallbacks());
-        try eq(win.cached.lines.items.len, win.lines_of_cells.len);
-
-        try eqStr("0:0 15x40 'c' 'Meslo' s40 0xc792eaff", win._c(0, 0).dbg());
-        try eqStr("0:0 15x40 'o' 'Meslo' s40 0xc792eaff", win._c(0, 1).dbg());
-        try eqStr("0:0 15x40 'n' 'Meslo' s40 0xc792eaff", win._c(0, 2).dbg());
-        try eqStr("0:0 15x40 's' 'Meslo' s40 0xc792eaff", win._c(0, 3).dbg());
-        try eqStr("0:0 15x40 't' 'Meslo' s40 0xc792eaff", win._c(0, 4).dbg());
-    }
 }
 
 ///////////////////////////// Insert
@@ -320,7 +145,6 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     self.cached.calculateAllDisplayPositions();
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
-    self.should_recreate_cells = true;
 }
 
 test insertChars {
@@ -747,7 +571,6 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     try self.cached.updateObsoleteLineInfoList(start_range[0], end_range[0], start_range[0], start_range[0]);
     self.cached.calculateDisplaySizes(start_range[0], end_range[0]);
     self.cached.calculateAllDisplayPositions();
-    self.should_recreate_cells = true;
 }
 
 test deleteRange {

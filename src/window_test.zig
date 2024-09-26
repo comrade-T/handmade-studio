@@ -75,7 +75,20 @@ pub fn main() !void {
     try buffer.initiateTreeSitter(zig_langsuite);
     defer buffer.destroy();
 
-    var window = try Window.create(gpa, buffer, .{ .x = 400, .y = 100 });
+    var window = try Window.create(gpa, buffer, .{
+        .x = 400,
+        .y = 100,
+        .render_callbacks = .{
+            .drawCodePoint = drawCodePoint,
+            .drawRectangle = drawRectangle,
+        },
+        .assets_callbacks = .{
+            .font_manager = font_manager,
+            .glyph_callback = fm.FontManager.getGlyphInfo,
+            .image_manager = &image_manager,
+            .image_callback = ImageManager.getImageSize,
+        },
+    });
     defer window.destroy();
 
     ///////////////////////////// Inputs
@@ -149,24 +162,10 @@ pub fn main() !void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                try window.render(
-                    .{
-                        .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
-                        .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
-                    },
-                    .{
-                        .drawCodePoint = drawCodePoint,
-                        .drawRectangle = drawRectangle,
-                    },
-                    .{
-                        .font_manager = font_manager,
-                        .glyph_callback = fm.FontManager.getGlyphInfo,
-                        .image_manager = &image_manager,
-                        .image_callback = ImageManager.getImageSize,
-                    },
-                );
-
-                // rl.drawText("hello world", 100, 100, 40, rl.Color.sky_blue);
+                window.render(.{
+                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
+                });
             }
         }
     }
