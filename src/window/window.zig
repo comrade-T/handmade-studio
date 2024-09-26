@@ -381,7 +381,107 @@ test "insert / delete crash check" {
             }, tswin.win.cached.lines.items);
         }
     }
+    {
+        const source =
+            \\const ten = 10;
+            \\fn dummy() void {
+            \\}
+            \\pub var x = 0;
+            \\pub var y = 0;
+        ;
+        var tswin = try TSWin.init(source, .{ .disable_default_queries = false, .enabled_queries = &.{""} });
+        defer tswin.deinit();
+
+        try Window.moveCursorDown(tswin.win);
+        try Window.moveCursorDown(tswin.win);
+
+        {
+            try Window.vimO(tswin.win);
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "",
+                "pub var x = 0;",
+                "pub var y = 0;",
+            }, tswin.win.cached.lines.items);
+        }
+
+        {
+            try Window.backspace(tswin.win);
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "pub var x = 0;",
+                "pub var y = 0;",
+            }, tswin.win.cached.lines.items);
+        }
+
+        {
+            try tswin.win.insertChars(&tswin.win.cursor, "\n");
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "",
+                "pub var x = 0;",
+                "pub var y = 0;",
+            }, tswin.win.cached.lines.items);
+        }
+
+        {
+            try tswin.win.insertChars(&tswin.win.cursor, "f");
+            try eqStrU21Slice(&.{
+                "const ten = 10;",
+                "fn dummy() void {",
+                "}",
+                "f",
+                "pub var x = 0;",
+                "pub var y = 0;",
+            }, tswin.win.cached.lines.items);
+
+            {
+                try Window.backspace(tswin.win);
+                for (0..10) |_| {
+                    try Window.backspace(tswin.win);
+                    try tswin.win.insertChars(&tswin.win.cursor, "\n");
+                }
+                try eqStr(
+                    \\4 5/66/61
+                    \\  3 3/35/33
+                    \\    2 2/34/32
+                    \\      1 B| `const ten = 10;` |E
+                    \\      1 B| `fn dummy() void {` |E
+                    \\    1 B| `}`
+                    \\  3 2/31/28
+                    \\    2 1/2/0
+                    \\      1 `` |E
+                    \\      1 B| `` |E
+                    \\    2 1/29/28
+                    \\      1 `pub var x = 0;` |E
+                    \\      1 B| `pub var y = 0;`
+                , try tswin.win.buf.roperoot.debugPrint());
+            }
+        }
+    }
 }
+
+// fn debugPrintLines(self: *@This()) !void {
+//     std.debug.print("========================================\n", .{});
+//     for (self.cached.lines.items) |line| {
+//         var u8line = try idc_if_it_leaks.alloc(u8, line.len);
+//         defer idc_if_it_leaks.free(u8line);
+//         for (line, 0..) |char, i| {
+//             u8line[i] = @intCast(char);
+//         }
+//         std.debug.print("'{s}'\n", .{u8line});
+//     }
+//
+//     std.debug.print("~~~~~\n", .{});
+//
+//     std.debug.print("{s}\n", .{try self.buf.roperoot.debugPrint()});
+// }
 
 ///////////////////////////// Delete
 
@@ -899,6 +999,8 @@ const CachedContents = struct {
                 const node_start = result.cap_node.getStartPoint();
                 const node_end = result.cap_node.getEndPoint();
                 for (node_start.row..node_end.row + 1) |linenr| {
+                    if (linenr > self.end_line) continue;
+                    assert(linenr >= self.start_line);
                     const line_index = linenr - self.start_line;
                     const start_col = if (linenr == node_start.row) node_start.column else 0;
                     const end_col = if (linenr == node_end.row) node_end.column else self.lines.items[line_index].len;

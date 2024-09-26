@@ -1510,6 +1510,7 @@ pub const Node = union(enum) {
             a: Allocator,
             buf: []const u8,
             start_byte: usize,
+            yep_newline: bool,
             current_index: usize = 0,
             num_of_new_lines: usize = 0,
             last_new_leaf_noc: usize = 0,
@@ -1550,23 +1551,22 @@ pub const Node = union(enum) {
                 if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
                 if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
 
-                const yep_newline = eql(u8, cx.buf, "\n");
-                if (yep_newline) cx.num_of_new_lines = 1;
+                if (cx.yep_newline) cx.num_of_new_lines = 1;
 
-                if (leaf.buf.len == 0) return try _leafBufHasNoText(cx, leaf, new_leaves, yep_newline);
+                if (leaf.buf.len == 0) return try _leafBufHasNoText(cx, leaf, new_leaves);
 
                 const insert_at_start = cx.current_index == cx.start_byte;
-                if (insert_at_start) return try _insertAtStart(cx, leaf, new_leaves, yep_newline);
+                if (insert_at_start) return try _insertAtStart(cx, leaf, new_leaves);
 
                 const insert_at_end = cx.current_index + leaf.buf.len == cx.start_byte;
-                if (insert_at_end) return try _insertAtEnd(cx, leaf, new_leaves, yep_newline);
+                if (insert_at_end) return try _insertAtEnd(cx, leaf, new_leaves);
 
-                return try _insertInMiddle(cx, leaf, new_leaves, yep_newline);
+                return try _insertInMiddle(cx, leaf, new_leaves);
             }
 
-            fn _leafBufHasNoText(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
-                if (yep_newline) {
-                    const left = try Leaf.new(cx.a, "", true, true);
+            fn _leafBufHasNoText(cx: *@This(), leaf: *const Leaf, new_leaves: []Node) !WalkMutResult {
+                if (cx.yep_newline) {
+                    const left = try Leaf.new(cx.a, "", leaf.bol, true);
                     const right = try Leaf.new(cx.a, "", true, leaf.eol);
                     const replacement = try Node.new(cx.a, left, right);
                     return WalkMutResult{ .replace = replacement };
@@ -1580,22 +1580,22 @@ pub const Node = union(enum) {
                 return WalkMutResult{ .replace = replacement };
             }
 
-            fn _insertAtStart(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
+            fn _insertAtStart(cx: *@This(), leaf: *const Leaf, new_leaves: []Node) !WalkMutResult {
                 new_leaves[0].leaf.bol = leaf.bol;
                 const left = try mergeLeaves(cx.a, new_leaves);
 
-                const right_bol = if (yep_newline) true else false;
+                const right_bol = if (cx.yep_newline) true else false;
                 const right = try Leaf.new(cx.a, leaf.buf, right_bol, leaf.eol);
 
                 const replacement = try Node.new(cx.a, left, right);
                 return WalkMutResult{ .replace = replacement };
             }
 
-            fn _insertAtEnd(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
-                const left_eol = if (yep_newline) true else false;
+            fn _insertAtEnd(cx: *@This(), leaf: *const Leaf, new_leaves: []Node) !WalkMutResult {
+                const left_eol = if (cx.yep_newline) true else false;
                 const left = try Leaf.new(cx.a, leaf.buf, leaf.bol, left_eol);
 
-                if (yep_newline) new_leaves[0].leaf.bol = true;
+                if (cx.yep_newline) new_leaves[0].leaf.bol = true;
                 new_leaves[new_leaves.len - 1].leaf.eol = leaf.eol;
                 const right = try mergeLeaves(cx.a, new_leaves);
 
@@ -1603,7 +1603,7 @@ pub const Node = union(enum) {
                 return WalkMutResult{ .replace = replacement };
             }
 
-            fn _insertInMiddle(cx: *@This(), leaf: *const Leaf, new_leaves: []Node, yep_newline: bool) !WalkMutResult {
+            fn _insertInMiddle(cx: *@This(), leaf: *const Leaf, new_leaves: []Node) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index;
                 const left_split = leaf.buf[0..split_index];
                 const right_split = leaf.buf[split_index..leaf.buf.len];
@@ -1612,7 +1612,7 @@ pub const Node = union(enum) {
                 if (cx.buf[0] == '\n') first_eol = true;
 
                 var last_bol = false;
-                if (yep_newline) last_bol = true;
+                if (cx.yep_newline) last_bol = true;
                 if (new_leaves.len > 1) {
                     const last_new_leaf = new_leaves[new_leaves.len - 1].leaf;
                     if (last_new_leaf.buf.len == 0 and last_new_leaf.bol) last_bol = true;
@@ -1639,7 +1639,12 @@ pub const Node = union(enum) {
         if (chars.len == 0) return error.EmptyStringNotAllowed;
         if (start_byte > self.weights().len) return error.IndexOutOfBounds;
         const buf = try a.dupe(u8, chars);
-        var ctx = InsertCharsCtx{ .a = a, .buf = buf, .start_byte = start_byte };
+        var ctx = InsertCharsCtx{
+            .a = a,
+            .buf = buf,
+            .start_byte = start_byte,
+            .yep_newline = eql(u8, buf, "\n"),
+        };
         const walk_result = ctx.walkToInsert(self);
         if (walk_result.err) |e| return e;
         return .{ walk_result.replace.?, ctx.num_of_new_lines, ctx.last_new_leaf_noc };
@@ -2010,14 +2015,121 @@ pub const Node = union(enum) {
         }
 
         // insert '\n' in middle of a leaf
-        var root = try Node.fromString(a, "hello", true);
-        const new_root, _, _ = try root.insertChars(a, 4, "\n");
-        const str =
-            \\2 2/6/5
-            \\  1 B| `hell` |E
-            \\  1 B| `o`
-        ;
-        try eqStr(str, try new_root.debugPrint());
+        {
+            var root = try Node.fromString(a, "hello", true);
+            const new_root, _, _ = try root.insertChars(a, 4, "\n");
+            const str =
+                \\2 2/6/5
+                \\  1 B| `hell` |E
+                \\  1 B| `o`
+            ;
+            try eqStr(str, try new_root.debugPrint());
+        }
+
+        {
+            const source =
+                \\const ten = 10;
+                \\fn dummy() void {
+                \\}
+                \\pub var x = 0;
+                \\pub var y = 0;
+            ;
+            var root = try Node.fromString(a, source, true);
+            const rootd =
+                \\4 5/65/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/31/29
+                \\    1 B| `}` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(rootd, try root.debugPrint());
+
+            const e1, _, _ = try root.insertChars(a, try root.getByteOffsetOfPosition(2, 1), "\n");
+            const e1d =
+                \\4 6/66/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 4/32/29
+                \\    2 2/3/1
+                \\      1 B| `}` |E
+                \\      1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e1d, try e1.debugPrint());
+
+            const b1 = try e1.balance(a);
+            const b1d =
+                \\4 6/66/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 4/32/29
+                \\    2 2/3/1
+                \\      1 B| `}` |E
+                \\      1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b1d, try b1.debugPrint());
+
+            const e2 = try b1.deleteBytes(a, try root.getByteOffsetOfPosition(2, 1), 1);
+            const e2d =
+                \\4 5/65/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/31/29
+                \\    2 1/2/1
+                \\      1 B| `}`
+                \\      1 `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e2d, try e2.debugPrint());
+
+            const b2 = try e2.balance(a);
+            const b2d =
+                \\4 5/65/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  3 3/31/29
+                \\    2 1/2/1
+                \\      1 B| `}`
+                \\      1 `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b2d, try b2.debugPrint());
+
+            const e3, _, _ = try b2.insertChars(a, try root.getByteOffsetOfPosition(2, 1), "\n");
+            const e3d =
+                \\5 6/66/61
+                \\  2 2/34/32
+                \\    1 B| `const ten = 10;` |E
+                \\    1 B| `fn dummy() void {` |E
+                \\  4 4/32/29
+                \\    3 2/3/1
+                \\      1 B| `}`
+                \\      2 1/2/0
+                \\        1 `` |E
+                \\        1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e3d, try e3.debugPrint());
+        }
     }
 
     ///////////////////////////// Get Byte Offset from Position
