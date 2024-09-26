@@ -288,6 +288,8 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     const len_diff = try self.cached.updateObsoleteLines(change_start, change_start, change_start, change_end);
     self.cached.updateEndLine(len_diff);
 
+    try self.debugPrintLines("insert chars");
+
     try self.cached.updateObsoleteDisplays(change_start, change_start, change_start, change_end);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
@@ -447,19 +449,18 @@ test "insert / delete crash check" {
                     try Window.backspace(tswin.win);
                     try tswin.win.insertChars(&tswin.win.cursor, "\n");
                 }
+                try Window.backspace(tswin.win);
                 try eqStr(
-                    \\4 5/66/61
+                    \\4 5/65/61
                     \\  3 3/35/33
                     \\    2 2/34/32
                     \\      1 B| `const ten = 10;` |E
                     \\      1 B| `fn dummy() void {` |E
                     \\    1 B| `}`
-                    \\  3 2/31/28
-                    \\    2 1/2/0
-                    \\      1 `` |E
-                    \\      1 B| `` |E
-                    \\    2 1/29/28
-                    \\      1 `pub var x = 0;` |E
+                    \\  3 2/30/28
+                    \\    1 `` |E
+                    \\    2 2/29/28
+                    \\      1 B| `pub var x = 0;` |E
                     \\      1 B| `pub var y = 0;`
                 , try tswin.win.buf.roperoot.debugPrint());
             }
@@ -467,21 +468,21 @@ test "insert / delete crash check" {
     }
 }
 
-// fn debugPrintLines(self: *@This()) !void {
-//     std.debug.print("========================================\n", .{});
-//     for (self.cached.lines.items) |line| {
-//         var u8line = try idc_if_it_leaks.alloc(u8, line.len);
-//         defer idc_if_it_leaks.free(u8line);
-//         for (line, 0..) |char, i| {
-//             u8line[i] = @intCast(char);
-//         }
-//         std.debug.print("'{s}'\n", .{u8line});
-//     }
-//
-//     std.debug.print("~~~~~\n", .{});
-//
-//     std.debug.print("{s}\n", .{try self.buf.roperoot.debugPrint()});
-// }
+fn debugPrintLines(self: *@This(), msg: []const u8) !void {
+    std.debug.print("{s} ========================================\n", .{msg});
+    for (self.cached.lines.items) |line| {
+        var u8line = try idc_if_it_leaks.alloc(u8, line.len);
+        defer idc_if_it_leaks.free(u8line);
+        for (line, 0..) |char, i| {
+            u8line[i] = @intCast(char);
+        }
+        std.debug.print("'{s}'\n", .{u8line});
+    }
+
+    std.debug.print("~~~~~\n", .{});
+
+    std.debug.print("{s}\n", .{try self.buf.roperoot.debugPrint()});
+}
 
 ///////////////////////////// Delete
 
@@ -660,6 +661,8 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
 
     const len_diff = try self.cached.updateObsoleteLines(start_range[0], end_range[0], start_range[0], start_range[0]);
     self.cached.updateEndLine(len_diff);
+
+    try self.debugPrintLines("deleteRange");
 
     try self.cached.updateObsoleteDisplays(start_range[0], end_range[0], start_range[0], start_range[0]);
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
@@ -1076,9 +1079,10 @@ const CachedContents = struct {
         assert(new_start >= self.start_line);
 
         const old_len: i128 = @intCast(self.lines.items.len);
-        var new_lines = try createLines(self.arena.allocator(), self.win, new_start, new_end);
+        var new_lines_list = try createLines(self.arena.allocator(), self.win, new_start, new_end);
+        const new_lines = try new_lines_list.toOwnedSlice();
 
-        try self.lines.replaceRange(new_start, old_end - old_start + 1, try new_lines.toOwnedSlice());
+        try self.lines.replaceRange(new_start, old_end - old_start + 1, new_lines);
 
         const len_diff: i128 = @as(i128, @intCast(self.lines.items.len)) - old_len;
         assert(self.end_line + len_diff >= self.start_line);

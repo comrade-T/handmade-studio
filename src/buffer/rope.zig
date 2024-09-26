@@ -1000,6 +1000,7 @@ pub const Node = union(enum) {
             a: Allocator,
 
             leaves_encountered: usize = 0,
+            should_stop_amending_bols: bool = false,
             first_leaf_bol: ?bool = null,
             last_node: ?*const Node = null,
             last_node_with_new_line_removed: ?*const Node = null,
@@ -1057,11 +1058,13 @@ pub const Node = union(enum) {
             }
 
             fn _amendBol(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
+                if (cx.should_stop_amending_bols) return WalkMutResult.stop;
                 if (cx.last_node == cx.last_node_with_new_line_removed) {
                     const replace = try Leaf.new(cx.a, leaf.buf, false, leaf.eol);
                     return WalkMutResult{ .replace = replace };
                 }
                 if (cx.first_leaf_bol) |bol| {
+                    defer cx.should_stop_amending_bols = true;
                     const replace = try Leaf.new(cx.a, leaf.buf, bol, leaf.eol);
                     return WalkMutResult{ .replace = replace };
                 }
@@ -1114,7 +1117,6 @@ pub const Node = union(enum) {
 
                 if (leaf.eol) {
                     cx.bytes_deleted += 1;
-                    cx.last_node = node;
                     cx.last_node_with_new_line_removed = node;
                 }
                 return WalkMutResult{ .replace = left_side };
@@ -2129,6 +2131,40 @@ pub const Node = union(enum) {
                 \\      1 B| `pub var y = 0;`
             ;
             try eqStr(e3d, try e3.debugPrint());
+
+            const b3 = try e3.balance(a);
+            const b3d =
+                \\4 6/66/61
+                \\  3 3/35/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}`
+                \\  3 3/31/28
+                \\    2 1/2/0
+                \\      1 `` |E
+                \\      1 B| `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(b3d, try b3.debugPrint());
+
+            const e4 = try b3.deleteBytes(a, try b3.getByteOffsetOfPosition(2, 1), 1);
+            const e4d =
+                \\4 5/65/61
+                \\  3 3/35/33
+                \\    2 2/34/32
+                \\      1 B| `const ten = 10;` |E
+                \\      1 B| `fn dummy() void {` |E
+                \\    1 B| `}`
+                \\  3 2/30/28
+                \\    1 `` |E
+                \\    2 2/29/28
+                \\      1 B| `pub var x = 0;` |E
+                \\      1 B| `pub var y = 0;`
+            ;
+            try eqStr(e4d, try e4.debugPrint());
         }
     }
 
