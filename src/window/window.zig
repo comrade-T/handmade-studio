@@ -1,5 +1,6 @@
 const Window = @This();
 const std = @import("std");
+const ztracy = @import("ztracy");
 
 pub const Buffer = @import("neo_buffer").Buffer;
 const sitter = @import("ts");
@@ -42,6 +43,9 @@ should_recreate_cells: bool = true,
 cells_arena: std.heap.ArenaAllocator,
 lines_of_cells: []LineOfCells,
 
+render_callbacks: ?RenderCallbacks,
+assets_callbacks: ?AssetsCallbacks,
+
 pub fn create(
     a: Allocator,
     buf: *Buffer,
@@ -62,6 +66,9 @@ pub fn create(
 
         .cells_arena = std.heap.ArenaAllocator.init(a),
         .lines_of_cells = &.{},
+
+        .render_callbacks = opts.render_callbacks,
+        .assets_callbacks = opts.assets_callbacks,
     };
     if (buf.tstree) |_| {
         if (!opts.disable_default_queries) try self.enableQuery(sitter.DEFAULT_QUERY_ID);
@@ -81,6 +88,9 @@ pub fn destroy(self: *@This()) void {
 ///////////////////////////// Render
 
 pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderCallbacks, assets_callbacks: AssetsCallbacks) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
+    defer zone.End();
+
     if (self.should_recreate_cells) {
         try self.createLinesOfCells(assets_callbacks);
         assert(self.cached.lines.items.len == self.lines_of_cells.len);
@@ -94,6 +104,9 @@ pub fn render(self: *@This(), screen_view: ScreenView, render_callbacks: RenderC
 }
 
 fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
+    const zone = ztracy.ZoneNC(@src(), "Window.executeRenderCallbacks()", 0x00FF00);
+    defer zone.End();
+
     // var chars_rendered: u32 = 0;
     // defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
 
@@ -143,6 +156,9 @@ fn executeRenderCallbacks(self: *@This(), cbs: RenderCallbacks, font_manager: *a
 ///////////////////////////// Cell Positions
 
 fn setCellPositions(self: *@This()) void {
+    const zone = ztracy.ZoneNC(@src(), "Window.setCellPositions()", 0x00AAFF);
+    defer zone.End();
+
     const initial_x, const initial_y = self.getFirstCellPosition();
     var current_x = initial_x;
     var current_y = initial_y;
@@ -212,6 +228,9 @@ fn _c(self: *@This(), line: usize, col: usize) Cell {
 }
 
 fn createLinesOfCells(self: *@This(), cbs: AssetsCallbacks) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.createLinesOfCells()", 0xFFFF00);
+    defer zone.End();
+
     self.cells_arena.deinit();
     self.cells_arena = std.heap.ArenaAllocator.init(self.a);
 
@@ -279,6 +298,10 @@ test createLinesOfCells {
 ///////////////////////////// Insert
 
 pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0xFF00AA);
+    zone.Text(chars);
+    defer zone.End();
+
     const new_pos, const may_ts_ranges = try self.buf.insertChars(chars, cursor.line, cursor.col);
 
     const change_start = cursor.line;
@@ -292,6 +315,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
     try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
+    self.cached.calculateDisplaySizes(change_start, change_end);
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
     self.should_recreate_cells = true;
@@ -704,6 +728,9 @@ test sortRanges {
 }
 
 fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
+    const zone = ztracy.ZoneNC(@src(), "Widnow.deleteRange()", 0x00000F);
+    defer zone.End();
+
     const start_range, const end_range = sortRanges(a, b);
 
     const may_ts_ranges = try self.buf.deleteRange(start_range, end_range);
@@ -715,6 +742,7 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     assert(self.cached.lines.items.len == self.cached.displays.items.len);
 
     try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
+    self.cached.calculateDisplaySizes(start_range[0], end_range[0]);
     self.should_recreate_cells = true;
 }
 
@@ -815,10 +843,21 @@ fn endLineNr(self: *const @This()) u32 {
 ////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
 
 const CachedContents = struct {
-    const DisplaySize = struct { width: f32, height: f32 };
     const Display = union(enum) {
-        const Char = struct { font_size: f32, font_face: []const u8, color: u32 };
-        const Image = struct { path: []const u8 };
+        const Size = struct {
+            width: f32 = 0,
+            height: f32 = 0,
+        };
+        const Char = struct {
+            font_size: f32,
+            font_face: []const u8,
+            color: u32,
+            size: Size = .{},
+        };
+        const Image = struct {
+            path: []const u8,
+            size: Size = .{},
+        };
         char: Char,
         image: Image,
     };
@@ -849,6 +888,7 @@ const CachedContents = struct {
         assert(self.lines.items.len == self.displays.items.len);
 
         try self.applyTreeSitterToDisplays(self.start_line, self.end_line);
+        self.calculateDisplaySizes(self.start_line, self.end_line);
 
         return self;
     }
@@ -1272,6 +1312,32 @@ const CachedContents = struct {
         }
         try self.applyTreeSitterToDisplays(new_hl_start, new_hl_end);
     }
+
+    fn calculateDisplaySizes(self: *@This(), start: usize, end: usize) void {
+        for (start..end + 1) |i| {
+            const line_index = self.start_line + i;
+            const displays = self.displays.items[line_index];
+            for (displays, 0..) |d, j| {
+                const code_point = self.lines.items[line_index][j];
+                const cbs = self.win.assets_callbacks orelse return;
+                switch (d) {
+                    .char => |char| {
+                        if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
+                            const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
+                            var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
+                            width = width * scale_factor;
+                            self.displays.items[line_index][j].char.size = .{ .width = width, .height = char.font_size };
+                        }
+                    },
+                    .image => |image| {
+                        if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
+                            self.displays.items[line_index][j].char.size = .{ .width = size.width, .height = size.height };
+                        }
+                    },
+                }
+            }
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Interactions
@@ -1479,6 +1545,8 @@ pub const SpawnOptions = struct {
     disable_default_queries: bool = false,
     enabled_queries: []const []const u8 = &.{},
     cache_strategy: CachedContents.CacheStrategy = .entire_buffer,
+    render_callbacks: ?RenderCallbacks = null,
+    assets_callbacks: ?AssetsCallbacks = null,
 };
 
 const ScreenView = struct {
@@ -1765,10 +1833,11 @@ const TSWin = struct {
     buf: *Buffer = undefined,
     win: *Window = undefined,
     hl: std.StringHashMap(u32) = undefined,
+    mock_man: *MockManager = undefined,
 
     fn init(
         source: []const u8,
-        opts: SpawnOptions,
+        spawn_opts: SpawnOptions,
     ) !@This() {
         var self = TSWin{
             .langsuite = try sitter.LangSuite.create(.zig),
@@ -1781,7 +1850,11 @@ const TSWin = struct {
 
         try self.buf.initiateTreeSitter(self.langsuite);
 
-        self.win = try Window.create(testing_allocator, self.buf, opts);
+        self.mock_man = try MockManager.create(testing_allocator);
+        var spawn_opts_clone = spawn_opts;
+        spawn_opts_clone.assets_callbacks = self.mock_man.assetsCallbacks();
+
+        self.win = try Window.create(testing_allocator, self.buf, spawn_opts);
         return self;
     }
 
@@ -1789,6 +1862,7 @@ const TSWin = struct {
         self.langsuite.destroy();
         self.buf.destroy();
         self.win.destroy();
+        self.mock_man.destroy();
     }
 
     fn addCustomQueries(self: *@This()) !void {
