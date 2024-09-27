@@ -79,6 +79,8 @@ pub fn main() !void {
         .render_callbacks = .{
             .drawCodePoint = drawCodePoint,
             .drawRectangle = drawRectangle,
+            .camera = &smooth_cam.camera,
+            .getMousePositionOnScreen = getMousePositionOnScreen,
         },
         .assets_callbacks = .{
             .font_manager = font_manager,
@@ -135,6 +137,8 @@ pub fn main() !void {
     try council.map("insert", &.{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
     try council.map("insert", &.{.backspace}, .{ .f = Window.backspace, .ctx = window });
 
+    try council.map("normal", &.{.mouse_button_left}, .{ .f = DummyCtx.dummy_print, .ctx = &dummy_ctx });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -187,6 +191,14 @@ fn drawCodePoint(ctx: *anyopaque, code_point: u21, font_face: []const u8, font_s
         rl.drawTextCodepoint(mf.font, @intCast(code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(color));
     }
 }
+
+fn getMousePositionOnScreen(camera_: *anyopaque) struct { f32, f32 } {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    const mouse = rl.getScreenToWorld2D(rl.getMousePosition(), camera.*);
+    return .{ mouse.x, mouse.y };
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 const ImageManager = struct {
     fn getImageSize(ctx: *anyopaque, path: []const u8) ?Window.ImageInfo {

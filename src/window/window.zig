@@ -1486,6 +1486,9 @@ const ScreenView = struct {
 const RenderCallbacks = struct {
     drawCodePoint: *const fn (ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void,
     drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
+
+    camera: *anyopaque,
+    getMousePositionOnScreen: *const fn (camera: *anyopaque) struct { f32, f32 },
 };
 
 const AssetsCallbacks = struct {
