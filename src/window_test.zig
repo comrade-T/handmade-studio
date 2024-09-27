@@ -13,16 +13,16 @@ const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const screen_width = 1920;
-const screen_height = 1080;
+const initial_screen_width = 1920;
+const default_screen_height = 1080;
 
 pub fn main() !void {
 
     ///////////////////////////// OpenGL Window Initialization
 
-    rl.setConfigFlags(.{ .window_transparent = true, .vsync_hint = true });
+    rl.setConfigFlags(.{ .window_transparent = false, .vsync_hint = true });
 
-    rl.initWindow(screen_width, screen_height, "NewMappingMethods");
+    rl.initWindow(initial_screen_width, default_screen_height, "NewMappingMethods");
     defer rl.closeWindow();
 
     rl.setTargetFPS(60);
@@ -33,10 +33,8 @@ pub fn main() !void {
     var smooth_cam = Smooth2DCamera{};
 
     var screen_view = ScreenView{
-        .width = screen_width,
-        .height = screen_height,
-        .screen_width = screen_width,
-        .screen_height = screen_height,
+        .width = @as(f32, @floatFromInt(rl.getScreenWidth())),
+        .height = @as(f32, @floatFromInt(rl.getScreenHeight())),
     };
 
     ///////////////////////////// Allocator
@@ -203,12 +201,13 @@ const ScreenView = struct {
     end: rl.Vector2 = .{ .x = 0, .y = 0 },
     width: f32,
     height: f32,
-    screen_width: f32,
-    screen_height: f32,
 
     pub fn update(self: *@This(), camera: rl.Camera2D) void {
         self.start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
-        self.end = rl.getScreenToWorld2D(.{ .x = self.screen_width, .y = self.screen_height }, camera);
+        self.end = rl.getScreenToWorld2D(.{
+            .x = @as(f32, @floatFromInt(rl.getScreenWidth())),
+            .y = @as(f32, @floatFromInt(rl.getScreenHeight())),
+        }, camera);
         self.width = self.end.x - self.start.x;
         self.height = self.end.y - self.start.y;
     }
