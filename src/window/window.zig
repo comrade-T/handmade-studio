@@ -1380,6 +1380,45 @@ pub fn vimO(ctx: *anyopaque) !void {
     try self.insertChars(&self.cursor, "\n");
 }
 
+///////////////////////////// Move cursor to mouse position
+
+pub fn moveCursorToMouse(ctx: *anyopaque) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.moveCursorToMouse()", 0x5555FF);
+    defer zone.End();
+
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const mouse_x, const mouse_y = self.render_callbacks.?.getMousePositionOnScreen(self.render_callbacks.?.camera);
+
+    for (self.cached.line_infos.items, 0..) |lif, i| {
+        if (!mouseInsideRectangle(
+            .{ .x = mouse_x, .y = mouse_y },
+            .{ .x = lif.x, .y = lif.y, .width = lif.width, .height = lif.height },
+        )) continue;
+
+        for (self.cached.displays.items[i], 0..) |d, j| {
+            if (mouseInsideRectangle(
+                .{ .x = mouse_x, .y = mouse_y },
+                .{ .x = d.position.x, .y = d.position.y, .width = d.size.width, .height = d.size.height },
+            )) {
+                self.cursor.set(lif.linenr, j);
+            }
+        }
+    }
+}
+
+const Point = struct { x: f32, y: f32 };
+const Rectangle = struct { x: f32, y: f32, width: f32, height: f32 };
+
+fn mouseInsideRectangle(mouse: Point, rec: Rectangle) bool {
+    const rec_end_y = rec.y + rec.height;
+    const rec_end_x = rec.x + rec.width;
+    if (mouse.y < rec.y) return false;
+    if (mouse.y > rec_end_y) return false;
+    if (mouse.x < rec.x) return false;
+    if (mouse.x > rec_end_x) return false;
+    return true;
+}
+
 ///////////////////////////// Directional Cursor Movement
 
 pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {

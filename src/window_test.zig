@@ -137,7 +137,7 @@ pub fn main() !void {
     try council.map("insert", &.{.escape}, .{ .f = Window.exitInsertMode, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
     try council.map("insert", &.{.backspace}, .{ .f = Window.backspace, .ctx = window });
 
-    try council.map("normal", &.{.mouse_button_left}, .{ .f = DummyCtx.dummy_print, .ctx = &dummy_ctx });
+    try council.map("normal", &.{.mouse_button_left}, .{ .f = Window.moveCursorToMouse, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
