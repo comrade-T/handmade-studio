@@ -1390,10 +1390,26 @@ pub fn moveCursorToMouse(ctx: *anyopaque) !void {
     const mouse_x, const mouse_y = self.render_callbacks.?.getMousePositionOnScreen(self.render_callbacks.?.camera);
 
     for (self.cached.line_infos.items, 0..) |lif, i| {
-        if (!mouseInsideRectangle(
-            .{ .x = mouse_x, .y = mouse_y },
-            .{ .x = lif.x, .y = lif.y, .width = lif.width, .height = lif.height },
-        )) continue;
+        const lif_end_y = lif.y + lif.height;
+        const lif_end_x = lif.x + lif.width;
+        if (mouse_y < lif.y) continue;
+        if (mouse_y > lif_end_y) continue;
+
+        if (self.cached.displays.items[i].len == 0) {
+            self.cursor.set(lif.linenr, 0);
+            return;
+        }
+
+        if (mouse_x < lif.x) {
+            self.cursor.set(lif.linenr, 0);
+            return;
+        }
+
+        if (mouse_x > lif_end_x) {
+            assert(self.cached.displays.items[i].len > 0);
+            self.cursor.set(lif.linenr, self.cached.displays.items[i].len - 1);
+            return;
+        }
 
         for (self.cached.displays.items[i], 0..) |d, j| {
             if (mouseInsideRectangle(
