@@ -16,6 +16,7 @@ const ManagedFont = struct {
         const self = try a.create(@This());
         const character_set = null;
         const font = rl.loadFontEx(path, size, character_set);
+        rl.setTextureFilter(font.texture, .texture_filter_trilinear);
         self.* = ManagedFont{
             .a = a,
             .font = font,
