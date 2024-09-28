@@ -28,6 +28,16 @@ pub fn updateOnNewFrame(self: *@This()) void {
     self.dampTarget();
 }
 
+pub fn changeTargetXBy(ctx: *anyopaque, by: f32) void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.target_camera.target.x += by;
+}
+
+pub fn changeTargetYBy(ctx: *anyopaque, by: f32) void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.target_camera.target.y += by;
+}
+
 pub fn setTarget(ctx: *anyopaque, x: f32, y: f32) void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.target_camera.target.x = x;
@@ -35,11 +45,12 @@ pub fn setTarget(ctx: *anyopaque, x: f32, y: f32) void {
 }
 
 fn dampTarget(self: *@This()) void {
-    self.camera.target.y = self.y_damper.damp(
-        self.camera.target.y,
-        self.target_camera.target.y,
-        rl.getFrameTime(),
-    );
+    // self.camera.target.y = self.y_damper.damp(
+    //     self.camera.target.y,
+    //     self.target_camera.target.y,
+    //     rl.getFrameTime(),
+    // );
+    self.camera.target.y = rl.math.lerp(self.camera.target.y, self.target_camera.target.y, 0.25);
     self.camera.target.x = self.x_damper.damp(
         self.camera.target.x,
         self.target_camera.target.x,

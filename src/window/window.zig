@@ -86,13 +86,19 @@ pub fn render(self: *@This(), screen_view: ScreenView) void {
     self.renderCursor(&self.cursor);
     self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
     self.renderVisualSelection();
-    // self.adjustCameraToCursor(&self.cursor);
+    self.adjustCameraToCursorIfNeeded(&self.cursor, screen_view);
 }
 
 ///////////////////////////// Adjust Camera
 
-fn adjustCameraToCursor(self: *@This(), cursor: *const Cursor) void {
-    self.render_callbacks.?.setSmoothCamTarget(self.render_callbacks.?.smooth_cam, cursor.x, cursor.y);
+fn adjustCameraToCursorIfNeeded(self: *@This(), cursor: *Cursor, view: ScreenView) void {
+    if (!cursor.just_moved) return;
+    const cbs = self.render_callbacks orelse return;
+    if (cursor.x + cursor.width > view.end.x) cbs.changeTargetXBy(cbs.smooth_cam, cursor.x + cursor.width - view.end.x);
+    if (cursor.x < view.start.x) cbs.changeTargetXBy(cbs.smooth_cam, -(view.start.x - cursor.x));
+    if (cursor.y + cursor.height > view.end.y) cbs.changeTargetYBy(cbs.smooth_cam, cursor.y + cursor.height - view.end.y);
+    if (cursor.y < view.start.y) cbs.changeTargetYBy(cbs.smooth_cam, -(view.start.y - cursor.y));
+    cursor.just_moved = false;
 }
 
 ///////////////////////////// Render Visual Selection
@@ -144,7 +150,7 @@ fn renderVisualSelection(self: *@This()) void {
 fn renderCursor(self: *@This(), cursor: *Cursor) void {
     const cursor_color = 0xF5F5F5F5;
     const x, const y, const width, const height = self.getCursorRectangle(cursor);
-    cursor.setRenderPosition(x, y);
+    cursor.setRenderInfo(x, y, width, height);
     self.render_callbacks.?.drawRectangle(x, y, width, height, cursor_color);
 }
 
@@ -225,6 +231,7 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     self.cached.calculateAllDisplayPositions();
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
+    cursor.just_moved = true;
 }
 
 test insertChars {
@@ -1408,6 +1415,7 @@ pub fn mapInsertModeCharacters(self: *@This(), council: *ip.MappingCouncil) !voi
 pub fn backspace(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.backspace_internal(&self.cursor);
+    self.cursor.just_moved = true;
 }
 
 ///////////////////////////// Enter / Exit Insert Mode
@@ -1466,6 +1474,7 @@ pub fn deleteVisualRange(ctx: *anyopaque) !void {
         self.cursor.set(start.line, start.col);
         self.cursor.endVisualSelection();
     }
+    self.cursor.just_moved = true;
 }
 
 ///////////////////////////// Move cursor to mouse position
@@ -1508,6 +1517,8 @@ pub fn moveCursorToMouse(ctx: *anyopaque) !void {
             }
         }
     }
+
+    self.cursor.cacheColumnNumber();
 }
 
 const Point = struct { x: f32, y: f32 };
@@ -1529,6 +1540,7 @@ pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.col = 0;
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
@@ -1536,16 +1548,18 @@ pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
     self.cursor.col = self.cached.lines.items[self.cursor.line].len;
     self.restrictCursorInView(&self.cursor);
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 pub fn moveCursorToFirstNonBlankChar(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    defer self.cursor.cacheColumnNumber();
+    defer self.cursor.just_moved = true;
     self.cursor.col = 0;
     if (self.cached.lines.items[self.cursor.line].len == 0) return;
     const first_char = self.cached.lines.items[self.cursor.line][0];
     if (!neo_cell.isSpace(first_char)) return;
     try vimForwardStart(self);
-    self.cursor.cacheColumnNumber();
 }
 
 pub fn moveCursorLeft(ctx: *anyopaque) !void {
@@ -1553,6 +1567,7 @@ pub fn moveCursorLeft(ctx: *anyopaque) !void {
     self.cursor.col -|= 1;
     self.restrictCursorInView(&self.cursor);
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 pub fn moveCursorRight(ctx: *anyopaque) !void {
@@ -1560,6 +1575,7 @@ pub fn moveCursorRight(ctx: *anyopaque) !void {
     self.cursor.col += 1;
     self.restrictCursorInView(&self.cursor);
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 pub fn moveCursorUp(ctx: *anyopaque) !void {
@@ -1568,6 +1584,7 @@ pub fn moveCursorUp(ctx: *anyopaque) !void {
     self.restrictCursorInView(&self.cursor);
 
     self.setCursorColumnToCachedColumnIfPossible(&self.cursor);
+    self.cursor.just_moved = true;
 }
 
 pub fn moveCursorDown(ctx: *anyopaque) !void {
@@ -1576,6 +1593,7 @@ pub fn moveCursorDown(ctx: *anyopaque) !void {
     self.restrictCursorInView(&self.cursor);
 
     self.setCursorColumnToCachedColumnIfPossible(&self.cursor);
+    self.cursor.just_moved = true;
 }
 
 fn setCursorColumnToCachedColumnIfPossible(self: *@This(), cursor: *Cursor) void {
@@ -1613,18 +1631,21 @@ pub fn vimForwardStart(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.vimForward(.start, &self.cursor);
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 pub fn vimForwardEnd(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.vimForward(.end, &self.cursor);
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 pub fn vimBackwardsStart(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.vimBackwards(.start, &self.cursor);
     self.cursor.cacheColumnNumber();
+    self.cursor.just_moved = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
@@ -1655,6 +1676,8 @@ const RenderCallbacks = struct {
 
     smooth_cam: *anyopaque,
     setSmoothCamTarget: *const fn (ctx: *anyopaque, x: f32, y: f32) void,
+    changeTargetXBy: *const fn (ctx: *anyopaque, by: f32) void,
+    changeTargetYBy: *const fn (ctx: *anyopaque, by: f32) void,
 };
 
 const AssetsCallbacks = struct {
@@ -1696,15 +1719,23 @@ const Cursor = struct {
     /// until you actively move your cursor horizontally, then Vim will remember that column position.
     cached_colnr: usize = 0,
 
+    /// if this is true, on `Window.render()`,
+    /// it'll try to adjust the camera so that this cursor stays in view
+    just_moved: bool = false,
+
     x: f32 = 0,
     y: f32 = 0,
+    width: f32 = 0,
+    height: f32 = 0,
 
     visual_selection_anchor: ?VisualSelectionAnchor = null,
     const VisualSelectionAnchor = struct { line: usize, col: usize };
 
-    fn setRenderPosition(self: *@This(), x: f32, y: f32) void {
+    fn setRenderInfo(self: *@This(), x: f32, y: f32, width: f32, height: f32) void {
         self.x = x;
         self.y = y;
+        self.width = width;
+        self.height = height;
     }
 
     fn swapPlacesWithVisualSelectionAnchor(self: *@This()) void {

@@ -85,6 +85,8 @@ pub fn main() !void {
 
             .smooth_cam = &smooth_cam,
             .setSmoothCamTarget = Smooth2DCamera.setTarget,
+            .changeTargetXBy = Smooth2DCamera.changeTargetXBy,
+            .changeTargetYBy = Smooth2DCamera.changeTargetYBy,
         },
         .assets_callbacks = .{
             .font_manager = font_manager,
