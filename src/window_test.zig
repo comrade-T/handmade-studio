@@ -157,6 +157,9 @@ pub fn main() !void {
     try council.map("visual", &.{.d}, .{ .f = Window.deleteVisualRange, .ctx = window });
     try council.map("visual", &.{.c}, .{ .f = Window.deleteVisualRange, .ctx = window, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
 
+    try council.map("visual", &.{.mouse_button_left}, .{ .f = Window.moveCursorToMouse, .ctx = window });
+    try council.map("visual", &.{.o}, .{ .f = Window.swapCursorWithVisualAnchor, .ctx = window });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {

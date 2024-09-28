@@ -1436,6 +1436,11 @@ pub fn exitVisualMode(ctx: *anyopaque) !void {
     self.cursor.endVisualSelection();
 }
 
+pub fn swapCursorWithVisualAnchor(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.swapPlacesWithVisualSelectionAnchor();
+}
+
 pub fn deleteVisualRange(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     if (self.cursor.getVisualSelectionRange()) |result| {
@@ -1677,6 +1682,14 @@ const Cursor = struct {
 
     visual_selection_anchor: ?VisualSelectionAnchor = null,
     const VisualSelectionAnchor = struct { line: usize, col: usize };
+
+    fn swapPlacesWithVisualSelectionAnchor(self: *@This()) void {
+        if (self.visual_selection_anchor) |anchor| {
+            const new_anchor = VisualSelectionAnchor{ .line = self.line, .col = self.col };
+            self.set(anchor.line, anchor.col);
+            self.visual_selection_anchor = new_anchor;
+        }
+    }
 
     fn cacheColumnNumber(self: *@This()) void {
         self.cached_colnr = self.col;
