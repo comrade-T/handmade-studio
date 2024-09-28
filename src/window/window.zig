@@ -91,11 +91,14 @@ pub fn render(self: *@This(), screen_view: ScreenView) void {
 fn renderVisualSelectionLine(self: *@This(), line_index: usize, start_col: usize, end_col: usize) void {
     assert(start_col <= end_col);
 
-    if (start_col == 0 and end_col == 0) return;
-
     const visual_selection_color = 0xFFFFFF44;
     const lif = self.cached.line_infos.items[line_index];
     const displays = self.cached.displays.items[line_index];
+
+    if (displays.len == 0) {
+        self.render_callbacks.?.drawRectangle(lif.x, lif.y, lif.width, lif.height, visual_selection_color);
+        return;
+    }
 
     const x = displays[start_col].position.x;
     const y = lif.y;
