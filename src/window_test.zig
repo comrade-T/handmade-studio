@@ -79,8 +79,12 @@ pub fn main() !void {
         .render_callbacks = .{
             .drawCodePoint = drawCodePoint,
             .drawRectangle = drawRectangle,
+
             .camera = &smooth_cam.camera,
             .getMousePositionOnScreen = getMousePositionOnScreen,
+
+            .smooth_cam = &smooth_cam,
+            .setSmoothCamTarget = Smooth2DCamera.setTarget,
         },
         .assets_callbacks = .{
             .font_manager = font_manager,
@@ -170,7 +174,7 @@ pub fn main() !void {
         try input_repeat_manager.updateInputState();
 
         // Smooth Camera
-        smooth_cam.update();
+        smooth_cam.updateOnNewFrame();
         screen_view.update(smooth_cam.camera);
 
         ///////////////////////////// Draw

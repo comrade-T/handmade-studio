@@ -19,12 +19,35 @@ target_camera: rl.Camera2D = .{
 
 zoom_damper: SmoothDamper = .{},
 
-pub fn update(self: *@This()) void {
-    self.updateTarget();
+x_damper: SmoothDamper = .{ .smooth_time = 0.1, .max_speed = 8000 },
+y_damper: SmoothDamper = .{ .smooth_time = 0.1, .max_speed = 8000 },
+
+pub fn updateOnNewFrame(self: *@This()) void {
+    self.updateOnMouseBtnRight();
     self.updateZoom();
+    self.dampTarget();
 }
 
-fn updateTarget(self: *@This()) void {
+pub fn setTarget(ctx: *anyopaque, x: f32, y: f32) void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.target_camera.target.x = x;
+    self.target_camera.target.y = y;
+}
+
+fn dampTarget(self: *@This()) void {
+    self.camera.target.y = self.y_damper.damp(
+        self.camera.target.y,
+        self.target_camera.target.y,
+        rl.getFrameTime(),
+    );
+    self.camera.target.x = self.x_damper.damp(
+        self.camera.target.x,
+        self.target_camera.target.x,
+        rl.getFrameTime(),
+    );
+}
+
+fn updateOnMouseBtnRight(self: *@This()) void {
     if (rl.isMouseButtonDown(.mouse_button_right)) {
         var delta = rl.getMouseDelta();
         delta = delta.scale(-1 / self.camera.zoom);

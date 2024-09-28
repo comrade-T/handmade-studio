@@ -259,7 +259,7 @@ pub fn main() !void {
         try input_repeat_manager.updateInputState();
 
         // Smooth Camera
-        smooth_cam.update();
+        smooth_cam.updateOnNewFrame();
         screen_view.update(smooth_cam.camera);
         dummy_ctx.updateCamY();
 

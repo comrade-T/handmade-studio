@@ -83,9 +83,16 @@ pub fn destroy(self: *@This()) void {
 pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
-    self.renderCursor(&self.cursor, self.render_callbacks.?);
+    self.renderCursor(&self.cursor);
     self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
     self.renderVisualSelection();
+    self.adjustCameraToCursor(&self.cursor);
+}
+
+///////////////////////////// Adjust Camera
+
+fn adjustCameraToCursor(self: *@This(), cursor: *const Cursor) void {
+    self.render_callbacks.?.setSmoothCamTarget(self.render_callbacks.?.smooth_cam, cursor.x, cursor.y);
 }
 
 ///////////////////////////// Render Visual Selection
@@ -134,11 +141,11 @@ fn renderVisualSelection(self: *@This()) void {
 
 ///////////////////////////// Render Cursor
 
-fn renderCursor(self: *@This(), cursor: *Cursor, cbs: RenderCallbacks) void {
+fn renderCursor(self: *@This(), cursor: *Cursor) void {
     const cursor_color = 0xF5F5F5F5;
     const x, const y, const width, const height = self.getCursorRectangle(cursor);
     cursor.setRenderPosition(x, y);
-    cbs.drawRectangle(x, y, width, height, cursor_color);
+    self.render_callbacks.?.drawRectangle(x, y, width, height, cursor_color);
 }
 
 fn getCursorRectangle(self: *@This(), cursor: *Cursor) struct { f32, f32, f32, f32 } {
@@ -1645,6 +1652,9 @@ const RenderCallbacks = struct {
 
     camera: *anyopaque,
     getMousePositionOnScreen: *const fn (camera: *anyopaque) struct { f32, f32 },
+
+    smooth_cam: *anyopaque,
+    setSmoothCamTarget: *const fn (ctx: *anyopaque, x: f32, y: f32) void,
 };
 
 const AssetsCallbacks = struct {
