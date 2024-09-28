@@ -106,11 +106,9 @@ fn renderVisualSelectionLine(self: *@This(), line_index: usize, start_col: usize
 }
 
 fn renderVisualSelection(self: *@This()) void {
-    const VISUAL_SELECTION_DISPLAY_COL_OFFSET = 1;
-
     const start, const end = self.cursor.getVisualSelectionRange() orelse return;
     if (start.line == end.line) {
-        self.renderVisualSelectionLine(start.line, start.col, end.col - VISUAL_SELECTION_DISPLAY_COL_OFFSET);
+        self.renderVisualSelectionLine(start.line, start.col, end.col);
         return;
     }
 
@@ -126,7 +124,7 @@ fn renderVisualSelection(self: *@This()) void {
             self.renderVisualSelectionLine(line_index, 0, self.cached.displays.items[line_index].len -| 1);
         }
     }
-    self.renderVisualSelectionLine(end_line_index, 0, end.col - VISUAL_SELECTION_DISPLAY_COL_OFFSET);
+    self.renderVisualSelectionLine(end_line_index, 0, end.col);
 }
 
 fn renderCursor(self: *@This(), cbs: RenderCallbacks) void {
@@ -1438,7 +1436,11 @@ pub fn deleteVisualRange(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     if (self.cursor.getVisualSelectionRange()) |result| {
         const start, const end = result;
-        try self.deleteRange(.{ start.line, start.col }, .{ end.line, end.col });
+
+        var end_col = end.col;
+        if (self.cached.displays.items[end.line].len > 0) end_col += 1;
+
+        try self.deleteRange(.{ start.line, start.col }, .{ end.line, end_col });
         self.cursor.set(start.line, start.col);
         self.cursor.endVisualSelection();
     }
@@ -1657,8 +1659,7 @@ const Cursor = struct {
 
     fn getVisualSelectionRange(self: *@This()) ?struct { VisualSelectionAnchor, VisualSelectionAnchor } {
         const anchor = self.visual_selection_anchor orelse return null;
-        const start, var end = sortRanges(.{ anchor.line, anchor.col }, .{ self.line, self.col });
-        end[1] += 1;
+        const start, const end = sortRanges(.{ anchor.line, anchor.col }, .{ self.line, self.col });
         assert(end[0] >= start[0]);
         return .{ .{ .line = start[0], .col = start[1] }, .{ .line = end[0], .col = end[1] } };
     }
