@@ -691,7 +691,7 @@ fn endLineNr(self: *const @This()) u32 {
     return self.bols() -| 1;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Supporting Structs
+////////////////////////////////////////////////////////////////////////////////////////////// CachedContents
 
 const CachedContents = struct {
     const LineInfo = struct {
@@ -1380,6 +1380,19 @@ pub fn vimO(ctx: *anyopaque) !void {
     try self.insertChars(&self.cursor, "\n");
 }
 
+///////////////////////////// VisualMode
+
+pub fn enterVisualMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+    if (self.cursor.hasVisualSelection()) {
+        self.cursor.endVisualSelection();
+        return;
+    }
+
+    self.cursor.startVisualSelection();
+}
+
 ///////////////////////////// Move cursor to mouse position
 
 pub fn moveCursorToMouse(ctx: *anyopaque) !void {
@@ -1575,6 +1588,28 @@ pub const Bounds = struct {
 const Cursor = struct {
     line: usize = 0,
     col: usize = 0,
+
+    visual_selection_anchor: ?VisualSelectionAnchor = null,
+    const VisualSelectionAnchor = struct { line: usize, col: usize };
+
+    fn hasVisualSelection(self: *@This()) bool {
+        return !(self.visual_selection_anchor == null);
+    }
+
+    fn startVisualSelection(self: *@This()) void {
+        self.visual_selection_anchor = .{ .line = self.line, .col = self.col };
+    }
+
+    fn endVisualSelection(self: *@This()) void {
+        self.visual_selection_anchor = null;
+    }
+
+    fn getVisualSelectionRange(self: *@This()) ?struct { VisualSelectionAnchor, VisualSelectionAnchor } {
+        const anchor = self.visual_selection_anchor orelse return null;
+        const start, var end = sortRanges(.{ anchor.line, anchor.col }, .{ self.line, self.col });
+        end[1] += 1;
+        return .{ start, end };
+    }
 
     fn set(self: *@This(), line: usize, col: usize) void {
         self.line = line;

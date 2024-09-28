@@ -139,6 +139,10 @@ pub fn main() !void {
 
     try council.map("normal", &.{.mouse_button_left}, .{ .f = Window.moveCursorToMouse, .ctx = window });
 
+    // Visual Mode
+    try council.map("normal", &.{.v}, .{ .f = Window.enterVisualMode, .ctx = window, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
+    try council.map("visual", &.{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
