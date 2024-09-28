@@ -141,7 +141,17 @@ pub fn main() !void {
 
     // Visual Mode
     try council.map("normal", &.{.v}, .{ .f = Window.enterVisualMode, .ctx = window, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
-    try council.map("visual", &.{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
+    try council.map("visual", &.{.escape}, .{ .f = Window.exitVisualMode, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
+    try council.map("visual", &.{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
+    try council.map("visual", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
+    try council.map("visual", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
+    try council.map("visual", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+    try council.map("visual", &.{ .left_shift, .six }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("visual", &.{.zero}, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window });
+    try council.map("visual", &.{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
+    try council.map("visual", &.{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
+    try council.map("visual", &.{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
+    try council.map("visual", &.{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

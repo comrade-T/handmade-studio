@@ -83,8 +83,50 @@ pub fn destroy(self: *@This()) void {
 pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
-    self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
     self.renderCursor(self.render_callbacks.?);
+    self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
+    self.renderVisualSelection();
+}
+
+fn renderVisualSelectionLine(self: *@This(), line_index: usize, start_col: usize, end_col: usize) void {
+    assert(start_col <= end_col);
+
+    if (start_col == 0 and end_col == 0) return;
+
+    const visual_selection_color = 0xFFFFFF44;
+    const lif = self.cached.line_infos.items[line_index];
+    const displays = self.cached.displays.items[line_index];
+
+    const x = displays[start_col].position.x;
+    const y = lif.y;
+    const width = displays[end_col].position.x + displays[end_col].size.width - displays[start_col].position.x;
+    const height = lif.height;
+
+    self.render_callbacks.?.drawRectangle(x, y, width, height, visual_selection_color);
+}
+
+fn renderVisualSelection(self: *@This()) void {
+    const VISUAL_SELECTION_DISPLAY_COL_OFFSET = 1;
+
+    const start, const end = self.cursor.getVisualSelectionRange() orelse return;
+    if (start.line == end.line) {
+        self.renderVisualSelectionLine(start.line, start.col, end.col - VISUAL_SELECTION_DISPLAY_COL_OFFSET);
+        return;
+    }
+
+    assert(end.line > start.line);
+    assert(start.line >= self.cached.start_line);
+    assert(end.line >= self.cached.start_line);
+    const start_line_index = start.line - self.cached.start_line;
+    const end_line_index = end.line - self.cached.start_line;
+
+    self.renderVisualSelectionLine(start_line_index, start.col, self.cached.displays.items[start.line].len -| 1);
+    if (end.line - start.line >= 2) {
+        for (start_line_index + 1..end_line_index) |line_index| {
+            self.renderVisualSelectionLine(line_index, 0, self.cached.displays.items[line_index].len -| 1);
+        }
+    }
+    self.renderVisualSelectionLine(end_line_index, 0, end.col - VISUAL_SELECTION_DISPLAY_COL_OFFSET);
 }
 
 fn renderCursor(self: *@This(), cbs: RenderCallbacks) void {
@@ -1384,13 +1426,12 @@ pub fn vimO(ctx: *anyopaque) !void {
 
 pub fn enterVisualMode(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-
-    if (self.cursor.hasVisualSelection()) {
-        self.cursor.endVisualSelection();
-        return;
-    }
-
     self.cursor.startVisualSelection();
+}
+
+pub fn exitVisualMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.endVisualSelection();
 }
 
 ///////////////////////////// Move cursor to mouse position
@@ -1608,7 +1649,8 @@ const Cursor = struct {
         const anchor = self.visual_selection_anchor orelse return null;
         const start, var end = sortRanges(.{ anchor.line, anchor.col }, .{ self.line, self.col });
         end[1] += 1;
-        return .{ start, end };
+        assert(end[0] >= start[0]);
+        return .{ .{ .line = start[0], .col = start[1] }, .{ .line = end[0], .col = end[1] } };
     }
 
     fn set(self: *@This(), line: usize, col: usize) void {
