@@ -110,12 +110,32 @@ pub fn main() !void {
     try council.setActiveContext("normal");
 
     const DummyCtx = struct {
+        smooth_cam: *Smooth2DCamera,
+
         fn nop(_: *anyopaque) !void {}
         fn dummy_print(_: *anyopaque) !void {
             std.debug.print("Dumb Dumb\n", .{});
         }
+
+        fn moveCameraTargetUp(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.smooth_cam.target_camera.target.y -= 400;
+        }
+        fn moveCameraTargetDown(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.smooth_cam.target_camera.target.y += 400;
+        }
+
+        fn moveCameraOffsetUp(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.smooth_cam.camera.offset.y -= 400;
+        }
+        fn moveCameraOffsetDown(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.smooth_cam.camera.offset.y += 400;
+        }
     };
-    var dummy_ctx = DummyCtx{};
+    var dummy_ctx = DummyCtx{ .smooth_cam = &smooth_cam };
     try council.map("dummy", &.{.p}, .{ .f = DummyCtx.dummy_print, .ctx = &dummy_ctx });
 
     try council.map("normal", &.{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
@@ -163,6 +183,12 @@ pub fn main() !void {
 
     try council.map("visual", &.{.mouse_button_left}, .{ .f = Window.moveCursorToMouse, .ctx = window });
     try council.map("visual", &.{.o}, .{ .f = Window.swapCursorWithVisualAnchor, .ctx = window });
+
+    // Experimental
+    try council.map("normal", &.{ .left_control, .u }, .{ .f = DummyCtx.moveCameraTargetUp, .ctx = &dummy_ctx });
+    try council.map("normal", &.{ .left_control, .d }, .{ .f = DummyCtx.moveCameraTargetDown, .ctx = &dummy_ctx });
+    try council.map("normal", &.{ .left_control, .e }, .{ .f = DummyCtx.moveCameraOffsetUp, .ctx = &dummy_ctx });
+    try council.map("normal", &.{ .left_control, .y }, .{ .f = DummyCtx.moveCameraOffsetDown, .ctx = &dummy_ctx });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 

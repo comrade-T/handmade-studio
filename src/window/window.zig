@@ -86,7 +86,7 @@ pub fn render(self: *@This(), screen_view: ScreenView) void {
     self.renderCursor(&self.cursor);
     self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
     self.renderVisualSelection();
-    self.adjustCameraToCursor(&self.cursor);
+    // self.adjustCameraToCursor(&self.cursor);
 }
 
 ///////////////////////////// Adjust Camera
