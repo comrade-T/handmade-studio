@@ -1409,6 +1409,7 @@ pub fn exitInsertMode(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.is_in_AFTER_insert_mode = false;
     try moveCursorLeft(self);
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn capitalA(ctx: *anyopaque) !void {
@@ -1509,12 +1510,14 @@ fn mouseInsideRectangle(mouse: Point, rec: Rectangle) bool {
 pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.col = 0;
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.col = self.cached.lines.items[self.cursor.line].len;
     self.restrictCursorInView(&self.cursor);
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn moveCursorToFirstNonBlankChar(ctx: *anyopaque) !void {
@@ -1524,30 +1527,45 @@ pub fn moveCursorToFirstNonBlankChar(ctx: *anyopaque) !void {
     const first_char = self.cached.lines.items[self.cursor.line][0];
     if (!neo_cell.isSpace(first_char)) return;
     try vimForwardStart(self);
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn moveCursorLeft(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.col -|= 1;
     self.restrictCursorInView(&self.cursor);
-}
-
-pub fn moveCursorUp(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor.line -|= 1;
-    self.restrictCursorInView(&self.cursor);
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn moveCursorRight(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.col += 1;
     self.restrictCursorInView(&self.cursor);
+    self.cursor.cacheColumnNumber();
+}
+
+pub fn moveCursorUp(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.line -|= 1;
+    self.restrictCursorInView(&self.cursor);
+
+    self.setCursorColumnToCachedColumnIfPossible(&self.cursor);
 }
 
 pub fn moveCursorDown(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor.line += 1;
     self.restrictCursorInView(&self.cursor);
+
+    self.setCursorColumnToCachedColumnIfPossible(&self.cursor);
+}
+
+fn setCursorColumnToCachedColumnIfPossible(self: *@This(), cursor: *Cursor) void {
+    const line_index = cursor.line - self.cached.start_line;
+    const line = self.cached.lines.items[line_index];
+    if (cursor.cached_colnr < line.len -| 1) {
+        cursor.set(cursor.line, cursor.cached_colnr);
+    }
 }
 
 fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
@@ -1576,16 +1594,19 @@ fn vimForward(self: *@This(), boundary_type: neo_cell.WordBoundaryType, cursor: 
 pub fn vimForwardStart(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.vimForward(.start, &self.cursor);
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn vimForwardEnd(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.vimForward(.end, &self.cursor);
+    self.cursor.cacheColumnNumber();
 }
 
 pub fn vimBackwardsStart(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.vimBackwards(.start, &self.cursor);
+    self.cursor.cacheColumnNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
@@ -1645,8 +1666,21 @@ const Cursor = struct {
     line: usize = 0,
     col: usize = 0,
 
+    /// in Vim, let's say your cursor is at column 5,
+    /// move press 'k' move up a line,
+    /// if that line has > 5 characters, your cursor will end up at column 5,
+    /// if that line has < 5 characters, your cursor will end up at the last character of that line,
+    /// if you press 'k' again, and the line has > 5 characters, your cursor will end up at column 5.
+    /// and so on....
+    /// until you actively move your cursor horizontally, then Vim will remember that column position.
+    cached_colnr: usize = 0,
+
     visual_selection_anchor: ?VisualSelectionAnchor = null,
     const VisualSelectionAnchor = struct { line: usize, col: usize };
+
+    fn cacheColumnNumber(self: *@This()) void {
+        self.cached_colnr = self.col;
+    }
 
     fn hasVisualSelection(self: *@This()) bool {
         return !(self.visual_selection_anchor == null);
