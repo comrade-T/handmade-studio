@@ -1434,6 +1434,16 @@ pub fn exitVisualMode(ctx: *anyopaque) !void {
     self.cursor.endVisualSelection();
 }
 
+pub fn deleteVisualRange(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.cursor.getVisualSelectionRange()) |result| {
+        const start, const end = result;
+        try self.deleteRange(.{ start.line, start.col }, .{ end.line, end.col });
+        self.cursor.set(start.line, start.col);
+        self.cursor.endVisualSelection();
+    }
+}
+
 ///////////////////////////// Move cursor to mouse position
 
 pub fn moveCursorToMouse(ctx: *anyopaque) !void {
