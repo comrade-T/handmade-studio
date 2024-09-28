@@ -83,10 +83,12 @@ pub fn destroy(self: *@This()) void {
 pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
-    self.renderCursor(self.render_callbacks.?);
+    self.renderCursor(&self.cursor, self.render_callbacks.?);
     self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
     self.renderVisualSelection();
 }
+
+///////////////////////////// Render Visual Selection
 
 fn renderVisualSelectionLine(self: *@This(), line_index: usize, start_col: usize, end_col: usize) void {
     assert(start_col <= end_col);
@@ -130,27 +132,31 @@ fn renderVisualSelection(self: *@This()) void {
     self.renderVisualSelectionLine(end_line_index, 0, end.col);
 }
 
-fn renderCursor(self: *@This(), cbs: RenderCallbacks) void {
-    assert(self.cursor.line >= self.cached.start_line);
-    const line_index = self.cursor.line - self.cached.start_line;
-    const cursor_color = 0xF5F5F5F5;
+///////////////////////////// Render Cursor
 
+fn renderCursor(self: *@This(), cursor: *Cursor, cbs: RenderCallbacks) void {
+    const cursor_color = 0xF5F5F5F5;
+    const x, const y, const width, const height = self.getCursorRectangle(cursor);
+    cursor.setRenderPosition(x, y);
+    cbs.drawRectangle(x, y, width, height, cursor_color);
+}
+
+fn getCursorRectangle(self: *@This(), cursor: *Cursor) struct { f32, f32, f32, f32 } {
+    assert(cursor.line >= self.cached.start_line);
+    const line_index = cursor.line - self.cached.start_line;
     const lif = self.cached.line_infos.items[line_index];
     const displays = self.cached.displays.items[line_index];
-    if (displays.len == 0) {
-        cbs.drawRectangle(lif.x, lif.y, self.default_display.size.width, self.default_display.size.height, cursor_color);
-        return;
-    }
 
-    if (self.cursor.col == displays.len) {
-        cbs.drawRectangle(lif.x + lif.width, lif.y, self.default_display.size.width, self.default_display.size.height, cursor_color);
-        return;
-    }
+    if (displays.len == 0) return .{ lif.x, lif.y, self.default_display.size.width, self.default_display.size.height };
 
-    assert(self.cursor.col < displays.len);
-    const d = displays[self.cursor.col];
-    cbs.drawRectangle(d.position.x, d.position.y, d.size.width, d.size.height, cursor_color);
+    if (cursor.col == displays.len) return .{ lif.x + lif.width, lif.y, self.default_display.size.width, self.default_display.size.height };
+
+    assert(cursor.col < displays.len);
+    const d = displays[cursor.col];
+    return .{ d.position.x, d.position.y, d.size.width, d.size.height };
 }
+
+///////////////////////////// Render Characters
 
 fn renderCharacters(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
     for (self.cached.line_infos.items, 0..) |lif, i| {
@@ -187,7 +193,7 @@ fn getFirstCellPosition(self: *const @This()) struct { f32, f32 } {
     return .{ current_x, current_y };
 }
 
-///////////////////////////// Insert
+////////////////////////////////////////////////////////////////////////////////////////////// insertChars & deleteRange
 
 pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0xFF00AA);
@@ -1680,8 +1686,16 @@ const Cursor = struct {
     /// until you actively move your cursor horizontally, then Vim will remember that column position.
     cached_colnr: usize = 0,
 
+    x: f32 = 0,
+    y: f32 = 0,
+
     visual_selection_anchor: ?VisualSelectionAnchor = null,
     const VisualSelectionAnchor = struct { line: usize, col: usize };
+
+    fn setRenderPosition(self: *@This(), x: f32, y: f32) void {
+        self.x = x;
+        self.y = y;
+    }
 
     fn swapPlacesWithVisualSelectionAnchor(self: *@This()) void {
         if (self.visual_selection_anchor) |anchor| {
