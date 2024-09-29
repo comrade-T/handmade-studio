@@ -47,12 +47,13 @@ pub const LangSuite = struct {
     }
 
     pub fn destroy(self: *@This()) void {
+        if (self.queries) |queries| for (queries.values()) |sq| sq.filter.deinit();
         if (self.queries_arena) |_| self.queries_arena.?.deinit();
         if (self.filter) |filter| filter.deinit();
         if (self.highlight_map) |_| self.highlight_map.?.deinit();
     }
 
-    pub fn initializeQueryMap(self: *@This()) !void {
+    pub fn initializeQueryMap(self: *@This(), a: Allocator) !void {
         const zone = ztracy.ZoneNC(@src(), "LangSuite.initializeDefaultQuery()", 0x00AAFF);
         defer zone.End();
 
@@ -62,17 +63,17 @@ pub const LangSuite = struct {
 
         self.queries_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         self.queries = std.StringArrayHashMap(*StoredQuery).init(self.queries_arena.?.allocator());
-        try self.addQuery(DEFAULT_QUERY_ID, patterns);
+        try self.addQuery(a, DEFAULT_QUERY_ID, patterns);
     }
 
-    pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
+    pub fn addQuery(self: *@This(), a: Allocator, id: []const u8, patterns: []const u8) !void {
         const query = try b.Query.create(self.language, patterns);
         if (self.queries) |_| {
             const sq = try self.queries_arena.?.allocator().create(StoredQuery);
             sq.* = StoredQuery{
                 .query = query,
                 .patterns = try self.queries_arena.?.allocator().dupe(u8, patterns),
-                .filter = try PredicatesFilter.init(self.queries_arena.?.allocator(), query),
+                .filter = try PredicatesFilter.init(a, query),
             };
             try self.queries.?.put(id, sq);
         }

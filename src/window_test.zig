@@ -56,7 +56,7 @@ pub fn main() !void {
 
     var zig_langsuite = try sitter.LangSuite.create(.zig);
     defer zig_langsuite.destroy();
-    try zig_langsuite.initializeQueryMap();
+    try zig_langsuite.initializeQueryMap(gpa);
     try zig_langsuite.initializeNightflyColorscheme(gpa);
 
     ///////////////////////////// Window
