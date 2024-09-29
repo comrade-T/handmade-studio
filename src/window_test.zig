@@ -186,6 +186,9 @@ pub fn main() !void {
     try council.map("visual", &.{.mouse_button_left}, .{ .f = Window.moveCursorToMouse, .ctx = window });
     try council.map("visual", &.{.o}, .{ .f = Window.swapCursorWithVisualAnchor, .ctx = window });
 
+    // Window Offset Toggle
+    try council.map("normal", &.{ .left_shift, .b }, .{ .f = Window.toggleBounds, .ctx = window });
+
     // Experimental
     try council.map("normal", &.{ .left_control, .u }, .{ .f = DummyCtx.moveCameraTargetUp, .ctx = &dummy_ctx });
     try council.map("normal", &.{ .left_control, .d }, .{ .f = DummyCtx.moveCameraTargetDown, .ctx = &dummy_ctx });

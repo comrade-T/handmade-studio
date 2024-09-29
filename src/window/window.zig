@@ -172,6 +172,52 @@ fn getCursorRectangle(self: *@This(), cursor: *Cursor) struct { f32, f32, f32, f
 ///////////////////////////// Render Characters
 
 fn renderCharacters(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
+    if (self.bounded) return self.renderCharactersForBoundedWindow(cbs, font_manager, view);
+    self.renderCharactersForUnboundWindow(cbs, font_manager, view);
+}
+
+fn renderCharactersForBoundedWindow(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
+    if (self.x > view.end.x) return;
+    if (self.y > view.end.y) return;
+
+    if (self.x + self.bounds.width < view.start.x) return;
+    if (self.y + self.bounds.height < view.start.y) return;
+
+    const bound_start_x = @max(view.start.x, self.x);
+    const bound_end_x = @min(view.end.x, self.x + self.bounds.width);
+    const bound_start_y = @max(view.start.y, self.y);
+    const bound_end_y = @min(view.end.y, self.y + self.bounds.width);
+
+    for (self.cached.line_infos.items, 0..) |lif, i| {
+        const translated_lif_x = lif.x + self.bounds.offset.x;
+        const translated_lif_y = lif.y + self.bounds.offset.y;
+
+        if (translated_lif_y > bound_end_y) return;
+        if (translated_lif_y + lif.height < bound_start_y) continue;
+
+        if (translated_lif_x > bound_end_x) continue;
+        if (translated_lif_x + lif.width < bound_start_x) continue;
+
+        for (self.cached.displays.items[i], 0..) |d, j| {
+            const translated_d_x = d.position.x + self.bounds.offset.x;
+            if (translated_d_x > bound_end_x) break;
+            if (translated_d_x + d.size.width < bound_start_x) continue;
+
+            renderDisplay(cbs, font_manager, self.cached.lines.items[i][j], d);
+        }
+    }
+}
+
+fn renderDisplay(cbs: RenderCallbacks, font_manager: *anyopaque, code_point: u21, d: CachedContents.Display) void {
+    switch (d.variant) {
+        .char => |char| {
+            cbs.drawCodePoint(font_manager, code_point, char.font_face, char.font_size, char.color, d.position.x, d.position.y);
+        },
+        else => {},
+    }
+}
+
+fn renderCharactersForUnboundWindow(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaque, view: ScreenView) void {
     for (self.cached.line_infos.items, 0..) |lif, i| {
         if (lif.y > view.end.y) return;
         if (lif.y + lif.height < view.start.y) continue;
@@ -183,27 +229,9 @@ fn renderCharacters(self: *@This(), cbs: RenderCallbacks, font_manager: *anyopaq
             if (d.position.x > view.end.x) break;
             if (d.position.x + d.size.width < view.start.x) continue;
 
-            switch (d.variant) {
-                .char => |char| {
-                    const code_point = self.cached.lines.items[i][j];
-                    cbs.drawCodePoint(font_manager, code_point, char.font_face, char.font_size, char.color, d.position.x, d.position.y);
-                },
-                else => {},
-            }
+            renderDisplay(cbs, font_manager, self.cached.lines.items[i][j], d);
         }
     }
-}
-
-fn getFirstCellPosition(self: *const @This()) struct { f32, f32 } {
-    var current_x: f32 = self.x;
-    var current_y: f32 = self.y;
-    if (self.bounded) {
-        current_x -= self.bounds.offset.x;
-        current_y -= self.bounds.offset.y;
-        current_x += self.bounds.padding.left;
-        current_y += self.bounds.padding.top;
-    }
-    return .{ current_x, current_y };
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars & deleteRange
@@ -1340,15 +1368,14 @@ const CachedContents = struct {
         const zone = ztracy.ZoneNC(@src(), "CachedContents.calculateAllDisplayPositions()", 0xAAAA66);
         defer zone.End();
 
-        const initial_x, const initial_y = self.win.getFirstCellPosition();
-        var current_x = initial_x;
-        var current_y = initial_y;
+        var current_x = self.win.x;
+        var current_y = self.win.y;
 
         for (self.displays.items, 0..) |displays, i| {
             var max_height: f32 = 0;
             self.line_infos.items[i].x = current_x;
             self.line_infos.items[i].y = current_y;
-            defer current_x = initial_x;
+            defer current_x = self.win.x;
             defer current_y += max_height;
             if (displays.len == 0) max_height = self.win.default_display.size.height;
             for (displays, 0..) |d, j| {
@@ -1362,6 +1389,13 @@ const CachedContents = struct {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Interactions
+
+///////////////////////////// Toggle Window Bounds
+
+pub fn toggleBounds(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.bounded = !self.bounded;
+}
 
 ///////////////////////////// Insert Chars
 
