@@ -22,6 +22,7 @@ pub const DEFAULT_QUERY_ID = "DEFAULT";
 
 pub const StoredQuery = struct {
     query: *b.Query,
+    filter: *PredicatesFilter,
     patterns: []const u8,
 };
 
@@ -71,6 +72,7 @@ pub const LangSuite = struct {
             sq.* = StoredQuery{
                 .query = query,
                 .patterns = try self.queries_arena.?.allocator().dupe(u8, patterns),
+                .filter = try PredicatesFilter.init(self.queries_arena.?.allocator(), query),
             };
             try self.queries.?.put(id, sq);
         }

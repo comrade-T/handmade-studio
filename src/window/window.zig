@@ -1002,11 +1002,8 @@ const CachedContents = struct {
             );
             cursor.execute(query, self.win.buf.tstree.?.getRootNode());
 
-            const filter = try sitter.PredicatesFilter.init(self.a, query);
-            defer filter.deinit();
-
             while (true) {
-                const result = switch (filter.nextMatchInLines(query, cursor, Buffer.contentCallback, self.win.buf, self.start_line, self.end_line)) {
+                const result = switch (sq.filter.nextMatchInLines(query, cursor, Buffer.contentCallback, self.win.buf, self.start_line, self.end_line)) {
                     .match => |result| result,
                     .stop => break,
                 };
