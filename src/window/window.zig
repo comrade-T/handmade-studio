@@ -215,20 +215,17 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
 
     const new_pos, const may_ts_ranges = try self.buf.insertChars(chars, cursor.line, cursor.col);
 
-    const change_start = cursor.line;
-    const change_end = new_pos.line;
-    assert(change_start <= change_end);
+    const cstart = cursor.line;
+    const cend = new_pos.line;
+    assert(cstart <= cend);
 
-    const len_diff = try self.cached.updateObsoleteLines(change_start, change_start, change_start, change_end);
-    self.cached.updateEndLine(len_diff);
-
-    try self.cached.updateObsoleteDisplays(change_start, change_start, change_start, change_end);
-    assert(self.cached.lines.items.len == self.cached.displays.items.len);
-
-    try self.cached.updateObsoleteTreeSitterToDisplays(change_start, change_end, may_ts_ranges);
-    try self.cached.updateObsoleteLineInfoList(change_start, change_start, change_start, change_end);
-    self.cached.calculateDisplaySizes(change_start, change_end);
-    self.cached.calculateAllDisplayPositions();
+    try self.update(.{
+        .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
+        .displ = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
+        .infos = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
+        .ts = .{ .base_start = cstart, .base_end = cend, .ranges = may_ts_ranges },
+        .sizes = .{ .start = cstart, .end = cend },
+    });
 
     cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
     cursor.just_moved = true;
@@ -470,6 +467,33 @@ test "insert / delete crash check" {
 //     std.debug.print("{s}\n", .{try self.buf.roperoot.debugPrint()});
 // }
 
+///////////////////////////// Update Cache
+
+const UpdateCacheParameters = struct {
+    const LinesParams = struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize };
+    const TreeSitterParams = struct { base_start: usize, base_end: usize, ranges: ?[]const ts.Range };
+    const DisplaySizesParams = struct { start: usize, end: usize };
+
+    lines: LinesParams,
+    displ: LinesParams,
+    ts: TreeSitterParams,
+    infos: LinesParams,
+    sizes: DisplaySizesParams,
+};
+
+fn update(self: *@This(), p: UpdateCacheParameters) !void {
+    const len_diff = try self.cached.updateObsoleteLines(p.lines.old_start, p.lines.old_end, p.lines.new_start, p.lines.new_end);
+    self.cached.updateEndLine(len_diff);
+
+    try self.cached.updateObsoleteDisplays(p.displ.old_start, p.displ.old_end, p.displ.new_start, p.displ.new_end);
+    assert(self.cached.lines.items.len == self.cached.displays.items.len);
+
+    try self.cached.updateObsoleteTreeSitterToDisplays(p.ts.base_start, p.ts.base_end, p.ts.ranges);
+    try self.cached.updateObsoleteLineInfoList(p.infos.old_start, p.infos.old_end, p.infos.new_start, p.infos.new_end);
+    self.cached.calculateDisplaySizes(p.sizes.start, p.sizes.end);
+    self.cached.calculateAllDisplayPositions();
+}
+
 ///////////////////////////// Delete
 
 fn backspace_internal(self: *@This(), cursor: *Cursor) !void {
@@ -644,20 +668,16 @@ fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, us
     const zone = ztracy.ZoneNC(@src(), "Window.deleteRange()", 0x00000F);
     defer zone.End();
 
-    const start_range, const end_range = sortRanges(a, b);
+    const start, const end = sortRanges(a, b);
+    const may_ts_ranges = try self.buf.deleteRange(start, end);
 
-    const may_ts_ranges = try self.buf.deleteRange(start_range, end_range);
-
-    const len_diff = try self.cached.updateObsoleteLines(start_range[0], end_range[0], start_range[0], start_range[0]);
-    self.cached.updateEndLine(len_diff);
-
-    try self.cached.updateObsoleteDisplays(start_range[0], end_range[0], start_range[0], start_range[0]);
-    assert(self.cached.lines.items.len == self.cached.displays.items.len);
-
-    try self.cached.updateObsoleteTreeSitterToDisplays(start_range[0], start_range[0], may_ts_ranges);
-    try self.cached.updateObsoleteLineInfoList(start_range[0], end_range[0], start_range[0], start_range[0]);
-    self.cached.calculateDisplaySizes(start_range[0], end_range[0]);
-    self.cached.calculateAllDisplayPositions();
+    try self.update(.{
+        .lines = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
+        .displ = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
+        .infos = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
+        .ts = .{ .base_start = start[0], .base_end = start[0], .ranges = may_ts_ranges },
+        .sizes = .{ .start = start[0], .end = end[0] },
+    });
 }
 
 test deleteRange {
@@ -1112,6 +1132,9 @@ const CachedContents = struct {
 
     const UpdateLinesError = error{ OutOfMemory, LineOutOfBounds };
     fn updateObsoleteLines(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) UpdateLinesError!i128 {
+        const zone = ztracy.ZoneNC(@src(), "CachedContents.updateObsoleteLines()", 0xFF000F);
+        defer zone.End();
+
         assert(new_start <= new_end);
         assert(new_start >= self.start_line);
 
@@ -1201,6 +1224,9 @@ const CachedContents = struct {
     }
 
     fn updateObsoleteDisplays(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) !void {
+        const zone = ztracy.ZoneNC(@src(), "CachedContents.updateObsoleteDisplays()", 0xAAAAA0);
+        defer zone.End();
+
         var new_displays_list = try self.createDefaultDisplays(new_start, new_end);
         const new_displays = try new_displays_list.toOwnedSlice();
         defer self.a.free(new_displays);
@@ -1274,12 +1300,18 @@ const CachedContents = struct {
     }
 
     fn updateObsoleteLineInfoList(self: *@This(), old_start: usize, old_end: usize, new_start: usize, new_end: usize) !void {
+        const zone = ztracy.ZoneNC(@src(), "CachedContents.updateObsoleteLineInfoList()", 0xCCCCCC);
+        defer zone.End();
+
         var new_list = try self.createLineInfoList(new_start, new_end);
         defer new_list.deinit();
         try self.line_infos.replaceRange(new_start, old_end - old_start + 1, new_list.items);
     }
 
     fn calculateDisplaySizes(self: *@This(), start: usize, end: usize) void {
+        const zone = ztracy.ZoneNC(@src(), "CachedContents.calculateDisplaySizes()", 0xABABAB);
+        defer zone.End();
+
         const cbs = self.win.assets_callbacks orelse return;
         for (start..end + 1) |i| {
             const line_index = self.start_line + i;
@@ -2022,7 +2054,7 @@ const TSWin = struct {
             .langsuite = try sitter.LangSuite.create(.zig),
             .buf = try Buffer.create(idc_if_it_leaks, .string, source),
         };
-        try self.langsuite.initializeQueryMap();
+        try self.langsuite.initializeQueryMap(testing_allocator);
         try self.langsuite.initializeNightflyColorscheme(testing_allocator);
         self.hl = self.langsuite.highlight_map.?;
         try self.addCustomQueries();
@@ -2045,7 +2077,7 @@ const TSWin = struct {
     }
 
     fn addCustomQueries(self: *@This()) !void {
-        try self.langsuite.addQuery("std_60_inter",
+        try self.langsuite.addQuery(testing_allocator, "std_60_inter",
             \\ (
             \\   (IDENTIFIER) @variable
             \\   (#eq? @variable "std")
@@ -2054,7 +2086,7 @@ const TSWin = struct {
             \\ )
         );
 
-        try self.langsuite.addQuery("trimed_down_highlights",
+        try self.langsuite.addQuery(testing_allocator, "trimed_down_highlights",
             \\ [
             \\   "const"
             \\   "var"
