@@ -225,12 +225,24 @@ pub fn main() !void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
+                const scissor_pos = rl.getWorldToScreen2D(.{
+                    .x = window.x,
+                    .y = window.y,
+                }, smooth_cam.camera);
+
+                if (window.bounded) rl.beginScissorMode(
+                    @intFromFloat(scissor_pos.x),
+                    @intFromFloat(scissor_pos.y),
+                    @intFromFloat(window.bounds.width * smooth_cam.camera.zoom),
+                    @intFromFloat(window.bounds.height * smooth_cam.camera.zoom),
+                );
                 window.render(.{
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });
+                if (window.bounded) rl.endScissorMode();
 
-                rl.drawCircle(400, 100, 10, rl.Color.sky_blue);
+                rl.drawCircle(@intFromFloat(window.x), @intFromFloat(window.y), 10, rl.Color.sky_blue);
             }
         }
     }
