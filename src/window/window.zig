@@ -1673,6 +1673,61 @@ fn mouseInsideRectangle(mouse: Point, rec: Rectangle) bool {
     return true;
 }
 
+///////////////////////////// <C-d> <C-u> Half Page
+
+fn getViewHeight(self: *@This()) f32 {
+    const view = self.render_callbacks.?.getScreenView(self.render_callbacks.?.screen_view);
+    return view.end.y - view.start.y;
+}
+
+// up
+
+pub fn moveCursorHalfPageUp(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const half_view_height = self.getViewHeight() / 2;
+
+    const target_line = if (!self.bounded) self.moveCursorUpHalfScreen(half_view_height) else 0;
+
+    self.cursor.line = target_line;
+    self.restrictCursorInView(&self.cursor);
+    self.cursor.just_moved = true;
+}
+
+fn moveCursorUpHalfScreen(self: *@This(), half_view_height: f32) usize {
+    var i: usize = self.cursor.line;
+    var accu_height: f32 = 0;
+    while (i >= 0) {
+        accu_height += self.cached.line_infos.items[i].height;
+        if (accu_height >= half_view_height) return i;
+        i -|= 1;
+    }
+    return i;
+}
+
+// down
+
+pub fn moveCursorHalfPageDown(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const half_view_height = self.getViewHeight() / 2;
+
+    const target_line = if (!self.bounded) self.moveCursorDownHalfScreen(half_view_height) else 0;
+
+    self.cursor.line = target_line;
+    self.restrictCursorInView(&self.cursor);
+    self.cursor.just_moved = true;
+}
+
+fn moveCursorDownHalfScreen(self: *@This(), half_view_height: f32) usize {
+    var i: usize = self.cursor.line;
+    var accu_height: f32 = 0;
+    while (i < self.cached.line_infos.items.len) {
+        accu_height += self.cached.line_infos.items[i].height;
+        if (accu_height >= half_view_height) return i;
+        i += 1;
+    }
+    return i;
+}
+
 ///////////////////////////// Directional Cursor Movement
 
 pub fn moveCursorToFirstLine(ctx: *anyopaque) !void {
@@ -1815,7 +1870,7 @@ pub const SpawnOptions = struct {
     assets_callbacks: ?AssetsCallbacks = null,
 };
 
-const ScreenView = struct {
+pub const ScreenView = struct {
     start: struct { x: f32 = 0, y: f32 = 0 },
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
@@ -1831,6 +1886,9 @@ const RenderCallbacks = struct {
     setSmoothCamTarget: *const fn (ctx: *anyopaque, x: f32, y: f32) void,
     changeTargetXBy: *const fn (ctx: *anyopaque, by: f32) void,
     changeTargetYBy: *const fn (ctx: *anyopaque, by: f32) void,
+
+    screen_view: *anyopaque,
+    getScreenView: *const fn (ctx: *anyopaque) ScreenView,
 };
 
 const AssetsCallbacks = struct {

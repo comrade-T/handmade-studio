@@ -87,6 +87,9 @@ pub fn main() !void {
             .setSmoothCamTarget = Smooth2DCamera.setTarget,
             .changeTargetXBy = Smooth2DCamera.changeTargetXBy,
             .changeTargetYBy = Smooth2DCamera.changeTargetYBy,
+
+            .screen_view = &screen_view,
+            .getScreenView = getScreenView,
         },
         .assets_callbacks = .{
             .font_manager = font_manager,
@@ -95,8 +98,8 @@ pub fn main() !void {
             .image_callback = ImageManager.getImageSize,
         },
         .bounds = .{
-            .width = 300,
-            .height = 300,
+            .width = 1000,
+            .height = 500,
             .offset = .{ .x = 0, .y = 0 },
         },
     });
@@ -123,24 +126,6 @@ pub fn main() !void {
         fn dummy_print(_: *anyopaque) !void {
             std.debug.print("Dumb Dumb\n", .{});
         }
-
-        fn moveCameraTargetUp(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.smooth_cam.target_camera.target.y -= 400;
-        }
-        fn moveCameraTargetDown(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.smooth_cam.target_camera.target.y += 400;
-        }
-
-        fn moveCameraOffsetUp(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.smooth_cam.camera.offset.y -= 400;
-        }
-        fn moveCameraOffsetDown(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.smooth_cam.camera.offset.y += 400;
-        }
     };
     var dummy_ctx = DummyCtx{ .smooth_cam = &smooth_cam };
     try council.map("dummy", &.{.p}, .{ .f = DummyCtx.dummy_print, .ctx = &dummy_ctx });
@@ -150,6 +135,7 @@ pub fn main() !void {
     try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
     try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
     try council.map("normal", &.{ .left_shift, .six }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .zero }, .{ .f = Window.moveCursorToBeginningOfLine, .ctx = window });
     try council.map("normal", &.{.zero}, .{ .f = Window.moveCursorToFirstNonBlankChar, .ctx = window });
     try council.map("normal", &.{ .left_shift, .four }, .{ .f = Window.moveCursorToEndOfLine, .ctx = window });
     try council.map("normal", &.{.w}, .{ .f = Window.vimForwardStart, .ctx = window });
@@ -200,10 +186,8 @@ pub fn main() !void {
     try council.map("normal", &.{ .left_shift, .b }, .{ .f = Window.toggleBounds, .ctx = window });
 
     // Experimental
-    try council.map("normal", &.{ .left_control, .u }, .{ .f = DummyCtx.moveCameraTargetUp, .ctx = &dummy_ctx });
-    try council.map("normal", &.{ .left_control, .d }, .{ .f = DummyCtx.moveCameraTargetDown, .ctx = &dummy_ctx });
-    try council.map("normal", &.{ .left_control, .e }, .{ .f = DummyCtx.moveCameraOffsetUp, .ctx = &dummy_ctx });
-    try council.map("normal", &.{ .left_control, .y }, .{ .f = DummyCtx.moveCameraOffsetDown, .ctx = &dummy_ctx });
+    try council.map("normal", &.{ .left_control, .u }, .{ .f = Window.moveCursorHalfPageUp, .ctx = window });
+    try council.map("normal", &.{ .left_control, .d }, .{ .f = Window.moveCursorHalfPageDown, .ctx = window });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -254,6 +238,14 @@ pub fn main() !void {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+fn getScreenView(ctx: *anyopaque) Window.ScreenView {
+    const screen_view = @as(*ScreenView, @ptrCast(@alignCast(ctx)));
+    return .{
+        .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+        .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
+    };
+}
 
 fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
     rl.drawRectangle(
