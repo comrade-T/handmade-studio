@@ -208,6 +208,11 @@ fn renderCursor(self: *@This(), cursor: *Cursor) void {
         y += self.bounds.offset.y;
     }
     const cursor_color = 0xF5F5F5F5;
+
+    const view = self.render_callbacks.?.getScreenView(self.render_callbacks.?.screen_view);
+    if (y + cursor.height > view.end.y) y = view.end.y - cursor.height;
+    if (y < view.start.y) y = view.start.y;
+
     self.render_callbacks.?.drawRectangle(x, y, width, height, cursor_color);
 }
 

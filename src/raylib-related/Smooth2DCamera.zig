@@ -50,7 +50,7 @@ fn dampTarget(self: *@This()) void {
     //     self.target_camera.target.y,
     //     rl.getFrameTime(),
     // );
-    self.camera.target.y = rl.math.lerp(self.camera.target.y, self.target_camera.target.y, 0.25);
+    self.camera.target.y = rl.math.lerp(self.camera.target.y, self.target_camera.target.y, 0.125);
     self.camera.target.x = self.x_damper.damp(
         self.camera.target.x,
         self.target_camera.target.x,
