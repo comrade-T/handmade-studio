@@ -1583,16 +1583,24 @@ pub fn deleteVisualRange(ctx: *anyopaque) !void {
 ///////////////////////////// Move cursor to mouse position
 
 pub fn moveCursorToMouse(ctx: *anyopaque) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.moveCursorToMouse()", 0x5555FF);
-    defer zone.End();
+    // const zone = ztracy.ZoneNC(@src(), "Window.moveCursorToMouse()", 0x5555FF);
+    // defer zone.End();
 
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const mouse_x, const mouse_y = self.render_callbacks.?.getMousePositionOnScreen(self.render_callbacks.?.camera);
+    defer self.cursor.cacheColumnNumber();
 
     for (self.cached.line_infos.items, 0..) |lif, i| {
-        const lif_end_y = lif.y + lif.height;
-        const lif_end_x = lif.x + lif.width;
-        if (mouse_y < lif.y) continue;
+        var lif_start_y = lif.y;
+        var lif_end_y = lif.y + lif.height;
+        var lif_end_x = lif.x + lif.width;
+        if (self.bounded) {
+            lif_start_y += self.bounds.offset.y;
+            lif_end_y += self.bounds.offset.y;
+            lif_end_x += self.bounds.offset.x;
+        }
+
+        if (mouse_y < lif_start_y) continue;
         if (mouse_y > lif_end_y) continue;
 
         if (self.cached.displays.items[i].len == 0) {
@@ -1605,23 +1613,29 @@ pub fn moveCursorToMouse(ctx: *anyopaque) !void {
             return;
         }
 
-        if (mouse_x > lif_end_x) {
+        if ((mouse_x > lif_end_x) or (self.bounded and mouse_x > (self.x + self.bounds.width))) {
             assert(self.cached.displays.items[i].len > 0);
             self.cursor.set(lif.linenr, self.cached.displays.items[i].len - 1);
             return;
         }
 
         for (self.cached.displays.items[i], 0..) |d, j| {
+            var dx = d.position.x;
+            var dy = d.position.y;
+            if (self.bounded) {
+                dx += self.bounds.offset.x;
+                dy += self.bounds.offset.y;
+            }
+
             if (mouseInsideRectangle(
                 .{ .x = mouse_x, .y = mouse_y },
-                .{ .x = d.position.x, .y = d.position.y, .width = d.size.width, .height = d.size.height },
+                .{ .x = dx, .y = dy, .width = d.size.width, .height = d.size.height },
             )) {
                 self.cursor.set(lif.linenr, j);
+                return;
             }
         }
     }
-
-    self.cursor.cacheColumnNumber();
 }
 
 const Point = struct { x: f32, y: f32 };
