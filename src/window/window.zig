@@ -1159,6 +1159,11 @@ const CachedContents = struct {
                     const line_index = linenr - self.start_line;
                     const start_col = if (linenr == node_start.row) node_start.column else 0;
                     const end_col = if (linenr == node_end.row) node_end.column else self.lines.items[line_index].len;
+
+                    if (start_col > end_col) continue;
+                    const limit = self.displays.items[line_index].len;
+                    if (start_col > limit or end_col > limit) continue;
+
                     @memset(self.displays.items[line_index][start_col..end_col], display);
                 }
             }

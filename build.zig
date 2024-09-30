@@ -71,25 +71,21 @@ pub fn build(b: *std.Build) void {
     const ts_predicates = addTestableModule(&bops, "src/tree-sitter/predicates.zig", &.{
         .{ .name = "regex", .module = regex },
         .{ .name = "ztracy", .module = ztracy.module("root") },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     ts_predicates.compile.linkLibrary(tree_sitter);
-    ts_predicates.compile.linkLibrary(ztracy.artifact("tracy"));
 
     const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
         .{ .name = "regex", .module = regex },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
-    ts.compile.linkLibrary(tree_sitter);
-    ts.compile.linkLibrary(ztracy.artifact("tracy"));
+    ts.module.linkLibrary(tree_sitter);
 
     const neo_buffer = addTestableModule(&bops, "src/buffer/neo_buffer.zig", &.{
         .{ .name = "rope", .module = rope.module },
         .{ .name = "ts", .module = ts.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
-    neo_buffer.compile.linkLibrary(tree_sitter);
 
     const virtuous_window = addTestableModule(&bops, "src/window/virtuous_window.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
@@ -98,7 +94,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
-    virtuous_window.compile.linkLibrary(tree_sitter);
 
     const window = addTestableModule(&bops, "src/window/window.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
@@ -108,13 +103,11 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
-    window.compile.linkLibrary(tree_sitter);
 
     const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
         .{ .name = "window", .module = window.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
-    window_manager.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 
@@ -129,12 +122,13 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         exe.root_module.addImport("window", window.module);
-        exe.root_module.addImport("ts", ts.module);
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.root_module.addImport("input_processor", input_processor.module);
-        exe.linkLibrary(tree_sitter);
-        exe.linkLibrary(ztracy.artifact("tracy"));
+        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
+        exe.root_module.addImport("ts", ts.module);
         addRunnableRaylibFile(b, exe, raylib, path);
+
+        b.installArtifact(exe);
     }
 
     {

@@ -25,6 +25,9 @@ pub const Buffer = struct {
     tsparser: ?*ts.Parser = null,
     tstree: ?*ts.Tree = null,
 
+    parse_buf: [PARSE_BUFFER_SIZE + 1]u8 = undefined,
+    const PARSE_BUFFER_SIZE = 1023; // leave 1 for potential \n
+
     pub fn create(external_allocator: Allocator, from: enum { string, file }, source: []const u8) !*@This() {
         const zone = ztracy.ZoneNC(@src(), "Buffer.create()", 0xFFAAFF);
         defer zone.End();
@@ -289,8 +292,6 @@ pub const Buffer = struct {
 
     ///////////////////////////// Tree Sitter Parsing
 
-    const PARSE_BUFFER_SIZE = 1024;
-
     fn parse(self: *@This()) !?[]const ts.Range {
         const zone = ztracy.ZoneNC(@src(), "Buffer.parse()", 0xFFFFFF);
         defer zone.End();
@@ -304,12 +305,11 @@ pub const Buffer = struct {
             .payload = self,
             .read = struct {
                 fn read(payload: ?*anyopaque, start_byte: u32, _: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
-                    var buf: [PARSE_BUFFER_SIZE + 1]u8 = undefined;
                     const ctx: *Buffer = @ptrCast(@alignCast(payload orelse return ""));
-                    var result, const eol = ctx.roperoot.getRestOfLine(start_byte, &buf, PARSE_BUFFER_SIZE);
+                    var result, const eol = ctx.roperoot.getRestOfLine(start_byte, &ctx.parse_buf, PARSE_BUFFER_SIZE);
                     if (eol) {
-                        buf[result.len] = '\n';
-                        result = buf[0 .. result.len + 1];
+                        ctx.parse_buf[result.len] = '\n';
+                        result = ctx.parse_buf[0 .. result.len + 1];
                     }
                     bytes_read.* = @intCast(result.len);
                     return @ptrCast(result.ptr);
