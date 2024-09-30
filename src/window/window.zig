@@ -1673,6 +1673,22 @@ fn mouseInsideRectangle(mouse: Point, rec: Rectangle) bool {
     return true;
 }
 
+///////////////////////////// zz
+
+pub fn zz(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const cursor = self.cursor;
+
+    if (self.bounded) {
+        const window_mid_y = self.y + (self.bounds.height / 2);
+        const cursor_start_y = cursor.y + self.bounds.offset.y;
+        const cursor_mid_y = cursor_start_y + (cursor.height / 2);
+
+        const diff = cursor_mid_y - window_mid_y;
+        self.bounds.offset.y -= diff;
+    }
+}
+
 ///////////////////////////// <C-d> <C-u> Half Page
 
 fn getViewHeight(self: *@This()) f32 {

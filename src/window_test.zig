@@ -189,6 +189,10 @@ pub fn main() !void {
     try council.map("normal", &.{ .left_control, .u }, .{ .f = Window.moveCursorHalfPageUp, .ctx = window });
     try council.map("normal", &.{ .left_control, .d }, .{ .f = Window.moveCursorHalfPageDown, .ctx = window });
 
+    try council.map("normal", &.{.z}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{ .add = &.{"z prefix"}, .remove = &.{"normal"} } });
+    try council.map("z prefix", &.{.escape}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{ .add = &.{"normal"}, .remove = &.{"z prefix"} } });
+    try council.map("z prefix", &.{.z}, .{ .f = Window.zz, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"z prefix"} } });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -232,6 +236,7 @@ pub fn main() !void {
                 if (window.bounded) rl.endScissorMode();
 
                 rl.drawCircle(@intFromFloat(window.x), @intFromFloat(window.y), 10, rl.Color.sky_blue);
+                // rl.drawCircle(@intFromFloat(window.x), @intFromFloat(window.y + (window.bounds.height / 2)), 10, rl.Color.sky_blue);
             }
         }
     }
