@@ -83,10 +83,37 @@ pub fn destroy(self: *@This()) void {
 pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
+
+    if (self.bounded) self.render_callbacks.?.drawRectangle(self.x, self.y, self.bounds.width, self.bounds.height, 0xFFFFFF22);
+
+    self.setCursorRenderInfo(&self.cursor);
+    if (self.bounded) self.adjustOffsetToCursorIfNeeded(&self.cursor);
     self.renderCursor(&self.cursor);
+
     self.renderCharacters(self.render_callbacks.?, self.assets_callbacks.?.font_manager, screen_view);
     self.renderVisualSelection();
-    self.adjustCameraToCursorIfNeeded(&self.cursor, screen_view);
+
+    if (!self.bounded) self.adjustCameraToCursorIfNeeded(&self.cursor, screen_view);
+}
+
+///////////////////////////// Adjust Offset
+
+fn adjustOffsetToCursorIfNeeded(self: *@This(), cursor: *Cursor) void {
+    const cursor_start_x = cursor.x + self.bounds.offset.x;
+    const cursor_start_y = cursor.y + self.bounds.offset.y;
+    const cursor_end_x = cursor_start_x + cursor.width;
+    const cursor_end_y = cursor_start_y + cursor.height;
+
+    const window_start_x = self.x;
+    const window_start_y = self.y;
+    const window_end_x = window_start_x + self.bounds.width;
+    const window_end_y = window_start_y + self.bounds.height;
+
+    if (cursor_end_x > window_end_x) self.bounds.offset.x -= cursor_end_x - window_end_x;
+    if (cursor_end_y > window_end_y) self.bounds.offset.y -= cursor_end_y - window_end_y;
+
+    if (cursor_start_x < window_start_x) self.bounds.offset.x += window_start_x - cursor_start_x;
+    if (cursor_start_y < window_start_y) self.bounds.offset.y += window_start_y - cursor_start_y;
 }
 
 ///////////////////////////// Adjust Camera
@@ -147,10 +174,18 @@ fn renderVisualSelection(self: *@This()) void {
 
 ///////////////////////////// Render Cursor
 
-fn renderCursor(self: *@This(), cursor: *Cursor) void {
-    const cursor_color = 0xF5F5F5F5;
+fn setCursorRenderInfo(self: *@This(), cursor: *Cursor) void {
     const x, const y, const width, const height = self.getCursorRectangle(cursor);
     cursor.setRenderInfo(x, y, width, height);
+}
+
+fn renderCursor(self: *@This(), cursor: *Cursor) void {
+    var x, var y, const width, const height = .{ cursor.x, cursor.y, cursor.width, cursor.height };
+    if (self.bounded) {
+        x += self.bounds.offset.x;
+        y += self.bounds.offset.y;
+    }
+    const cursor_color = 0xF5F5F5F5;
     self.render_callbacks.?.drawRectangle(x, y, width, height, cursor_color);
 }
 
@@ -186,7 +221,7 @@ fn renderCharactersForBoundedWindow(self: *@This(), cbs: RenderCallbacks, font_m
     const bound_start_x = @max(view.start.x, self.x);
     const bound_end_x = @min(view.end.x, self.x + self.bounds.width);
     const bound_start_y = @max(view.start.y, self.y);
-    const bound_end_y = @min(view.end.y, self.y + self.bounds.width);
+    const bound_end_y = @min(view.end.y, self.y + self.bounds.height);
 
     for (self.cached.line_infos.items, 0..) |lif, i| {
         const translated_lif_x = lif.x + self.bounds.offset.x;
@@ -200,20 +235,19 @@ fn renderCharactersForBoundedWindow(self: *@This(), cbs: RenderCallbacks, font_m
 
         for (self.cached.displays.items[i], 0..) |d, j| {
             const translated_d_x = d.position.x + self.bounds.offset.x;
+            const translated_d_y = d.position.y + self.bounds.offset.y;
+
             if (translated_d_x > bound_end_x) break;
             if (translated_d_x + d.size.width < bound_start_x) continue;
 
-            renderDisplay(cbs, font_manager, self.cached.lines.items[i][j], d);
+            switch (d.variant) {
+                .char => |char| {
+                    const code_point = self.cached.lines.items[i][j];
+                    cbs.drawCodePoint(font_manager, code_point, char.font_face, char.font_size, char.color, translated_d_x, translated_d_y);
+                },
+                else => {},
+            }
         }
-    }
-}
-
-fn renderDisplay(cbs: RenderCallbacks, font_manager: *anyopaque, code_point: u21, d: CachedContents.Display) void {
-    switch (d.variant) {
-        .char => |char| {
-            cbs.drawCodePoint(font_manager, code_point, char.font_face, char.font_size, char.color, d.position.x, d.position.y);
-        },
-        else => {},
     }
 }
 
@@ -229,7 +263,13 @@ fn renderCharactersForUnboundWindow(self: *@This(), cbs: RenderCallbacks, font_m
             if (d.position.x > view.end.x) break;
             if (d.position.x + d.size.width < view.start.x) continue;
 
-            renderDisplay(cbs, font_manager, self.cached.lines.items[i][j], d);
+            switch (d.variant) {
+                .char => |char| {
+                    const code_point = self.cached.lines.items[i][j];
+                    cbs.drawCodePoint(font_manager, code_point, char.font_face, char.font_size, char.color, d.position.x, d.position.y);
+                },
+                else => {},
+            }
         }
     }
 }

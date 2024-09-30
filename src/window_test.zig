@@ -94,6 +94,11 @@ pub fn main() !void {
             .image_manager = &image_manager,
             .image_callback = ImageManager.getImageSize,
         },
+        .bounds = .{
+            .width = 300,
+            .height = 300,
+            .offset = .{ .x = 0, .y = 0 },
+        },
     });
     defer window.destroy();
 
@@ -224,6 +229,8 @@ pub fn main() !void {
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });
+
+                rl.drawCircle(400, 100, 10, rl.Color.sky_blue);
             }
         }
     }
