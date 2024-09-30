@@ -1845,7 +1845,9 @@ fn setCursorColumnToCachedColumnIfPossible(self: *@This(), cursor: *Cursor) void
     const line = self.cached.lines.items[line_index];
     if (cursor.cached_colnr < line.len -| 1) {
         cursor.set(cursor.line, cursor.cached_colnr);
+        return;
     }
+    cursor.set(cursor.line, line.len -| 1);
 }
 
 fn restrictCursorInView(self: *@This(), cursor: *Cursor) void {
