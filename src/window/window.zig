@@ -84,6 +84,7 @@ pub fn render(self: *@This(), screen_view: ScreenView) void {
     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0xFFAAFF);
     defer zone.End();
 
+    // only temporary
     if (self.bounded) self.render_callbacks.?.drawRectangle(self.x, self.y, self.bounds.width, self.bounds.height, 0xFFFFFF22);
 
     self.setCursorRenderInfo(&self.cursor);
@@ -94,6 +95,27 @@ pub fn render(self: *@This(), screen_view: ScreenView) void {
     self.renderVisualSelection();
 
     if (!self.bounded) self.adjustCameraToCursorIfNeeded(&self.cursor, screen_view);
+
+    // TODO:
+    if (self.bounded) self.renderBoundedWindowHandle();
+}
+
+///////////////////////////// Bounded Window Handle
+
+fn renderBoundedWindowHandle(self: *@This()) void {
+    const handle_width = 10;
+    const handle_height = 40;
+    const handle_x = self.x + self.bounds.width - handle_width;
+
+    assert(self.cached.line_infos.items.len > 0);
+    const first_lif = self.cached.line_infos.items[0];
+    const last_lif = self.cached.line_infos.items[self.cached.line_infos.items.len - 1];
+    const total_height = last_lif.y + last_lif.height - first_lif.y;
+
+    const ratio = -(self.bounds.offset.y) / total_height;
+    const handle_y = self.y - (ratio * handle_height) + (ratio * self.bounds.height);
+
+    self.render_callbacks.?.drawRectangle(handle_x, handle_y, handle_width, handle_height, 0xFFFFFF88);
 }
 
 ///////////////////////////// Adjust Offset
@@ -1652,6 +1674,20 @@ fn mouseInsideRectangle(mouse: Point, rec: Rectangle) bool {
 }
 
 ///////////////////////////// Directional Cursor Movement
+
+pub fn moveCursorToFirstLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.line = 0;
+    self.restrictCursorInView(&self.cursor);
+    self.cursor.just_moved = true;
+}
+
+pub fn moveCursorToLastLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor.line = self.cached.lines.items.len - 1;
+    self.restrictCursorInView(&self.cursor);
+    self.cursor.just_moved = true;
+}
 
 pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));

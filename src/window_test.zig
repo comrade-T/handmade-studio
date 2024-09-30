@@ -156,6 +156,11 @@ pub fn main() !void {
     try council.map("normal", &.{.e}, .{ .f = Window.vimForwardEnd, .ctx = window });
     try council.map("normal", &.{.b}, .{ .f = Window.vimBackwardsStart, .ctx = window });
 
+    try council.map("normal", &.{ .left_shift, .g }, .{ .f = Window.moveCursorToLastLine, .ctx = window });
+    try council.map("normal", &.{ .right_shift, .g }, .{ .f = Window.moveCursorToLastLine, .ctx = window });
+    try council.map("normal", &.{.g}, .{ .f = DummyCtx.nop, .ctx = window, .contexts = .{ .add = &.{"g prefix"}, .remove = &.{"normal"} } });
+    try council.map("g prefix", &.{.g}, .{ .f = Window.moveCursorToFirstLine, .ctx = window, .contexts = .{ .add = &.{"normal"}, .remove = &.{"g prefix"} } });
+
     // Insert Mode
     try window.mapInsertModeCharacters(council);
     try council.map("normal", &.{.i}, .{ .f = DummyCtx.nop, .ctx = &dummy_ctx, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
