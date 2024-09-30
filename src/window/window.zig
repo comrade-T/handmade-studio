@@ -1679,6 +1679,17 @@ pub fn zz(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const cursor = self.cursor;
 
+    if (!self.bounded) {
+        const cbs = self.render_callbacks orelse return;
+        const view = self.getView();
+        const view_height = self.getViewHeight();
+        const view_mid_y = view.start.y + (view_height / 2);
+        const cursor_mid_y = cursor.y + (cursor.height / 2);
+        const diff = cursor_mid_y - view_mid_y;
+        cbs.changeTargetYBy(cbs.smooth_cam, diff);
+        return;
+    }
+
     if (self.bounded) {
         const window_mid_y = self.y + (self.bounds.height / 2);
         const cursor_start_y = cursor.y + self.bounds.offset.y;
@@ -1694,6 +1705,10 @@ pub fn zz(ctx: *anyopaque) !void {
 fn getViewHeight(self: *@This()) f32 {
     const view = self.render_callbacks.?.getScreenView(self.render_callbacks.?.screen_view);
     return view.end.y - view.start.y;
+}
+
+fn getView(self: *@This()) ScreenView {
+    return self.render_callbacks.?.getScreenView(self.render_callbacks.?.screen_view);
 }
 
 // up
