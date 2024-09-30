@@ -1913,7 +1913,7 @@ pub const ScreenView = struct {
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
 
-const RenderCallbacks = struct {
+pub const RenderCallbacks = struct {
     drawCodePoint: *const fn (ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void,
     drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
 
@@ -1929,7 +1929,7 @@ const RenderCallbacks = struct {
     getScreenView: *const fn (ctx: *anyopaque) ScreenView,
 };
 
-const AssetsCallbacks = struct {
+pub const AssetsCallbacks = struct {
     font_manager: *anyopaque,
     glyph_callback: GetGlyphSizeCallback,
     image_manager: *anyopaque,

@@ -111,7 +111,7 @@ pub fn build(b: *std.Build) void {
     window.compile.linkLibrary(tree_sitter);
 
     const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
-        .{ .name = "virtuous_window", .module = virtuous_window.module },
+        .{ .name = "window", .module = window.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     window_manager.compile.linkLibrary(tree_sitter);
