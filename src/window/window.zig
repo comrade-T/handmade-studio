@@ -1684,21 +1684,21 @@ fn getViewHeight(self: *@This()) f32 {
 
 pub fn moveCursorHalfPageUp(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const half_view_height = self.getViewHeight() / 2;
+    const target_height = if (self.bounded) self.bounds.height / 2 else self.getViewHeight() / 2;
 
-    const target_line = if (!self.bounded) self.moveCursorUpHalfScreen(half_view_height) else 0;
+    const target_line = self.moveCursorUpHalfScreen(target_height);
 
     self.cursor.line = target_line;
     self.restrictCursorInView(&self.cursor);
     self.cursor.just_moved = true;
 }
 
-fn moveCursorUpHalfScreen(self: *@This(), half_view_height: f32) usize {
+fn moveCursorUpHalfScreen(self: *@This(), target_height: f32) usize {
     var i: usize = self.cursor.line;
     var accu_height: f32 = 0;
     while (i >= 0) {
         accu_height += self.cached.line_infos.items[i].height;
-        if (accu_height >= half_view_height) return i;
+        if (accu_height >= target_height) return i;
         i -|= 1;
     }
     return i;
@@ -1708,21 +1708,21 @@ fn moveCursorUpHalfScreen(self: *@This(), half_view_height: f32) usize {
 
 pub fn moveCursorHalfPageDown(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const half_view_height = self.getViewHeight() / 2;
+    const target_height = if (self.bounded) self.bounds.height / 2 else self.getViewHeight() / 2;
 
-    const target_line = if (!self.bounded) self.moveCursorDownHalfScreen(half_view_height) else 0;
+    const target_line = self.moveCursorDownHalfScreen(target_height);
 
     self.cursor.line = target_line;
     self.restrictCursorInView(&self.cursor);
     self.cursor.just_moved = true;
 }
 
-fn moveCursorDownHalfScreen(self: *@This(), half_view_height: f32) usize {
+fn moveCursorDownHalfScreen(self: *@This(), target_height: f32) usize {
     var i: usize = self.cursor.line;
     var accu_height: f32 = 0;
     while (i < self.cached.line_infos.items.len) {
         accu_height += self.cached.line_infos.items[i].height;
-        if (accu_height >= half_view_height) return i;
+        if (accu_height >= target_height) return i;
         i += 1;
     }
     return i;
