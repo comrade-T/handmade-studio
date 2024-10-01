@@ -303,7 +303,7 @@ fn renderCharactersForUnboundWindow(self: *@This(), cbs: RenderCallbacks, font_m
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars & deleteRange
 
-pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
+pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !UpdateCacheParameters {
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0xFF00AA);
     zone.Text(chars);
     defer zone.End();
@@ -314,16 +314,19 @@ pub fn insertChars(self: *@This(), cursor: *Cursor, chars: []const u8) !void {
     const cend = new_pos.line;
     assert(cstart <= cend);
 
-    try self.update(.{
+    const update_params = .{
         .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
         .displ = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
         .infos = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
         .ts = .{ .base_start = cstart, .base_end = cend, .ranges = may_ts_ranges },
         .sizes = .{ .start = cstart, .end = cend },
-    });
+    };
+    try self.update(update_params);
 
-    cursor.* = .{ .line = new_pos.line, .col = new_pos.col };
+    cursor.set(new_pos.line, new_pos.col);
     cursor.just_moved = true;
+
+    return update_params;
 }
 
 test insertChars {
@@ -331,30 +334,30 @@ test insertChars {
         var tswin = try TSWin.init("", .{ .disable_default_queries = true, .enabled_queries = &.{"trimed_down_highlights"} });
         defer tswin.deinit();
         try eqStrU21Slice(&.{""}, tswin.win.cached.lines.items);
-        try tswin.win.insertChars(&tswin.win.cursor, "h");
+        _ = try tswin.win.insertChars(&tswin.win.cursor, "h");
         try eqStrU21Slice(&.{"h"}, tswin.win.cached.lines.items);
-        try tswin.win.insertChars(&tswin.win.cursor, "ello");
+        _ = try tswin.win.insertChars(&tswin.win.cursor, "ello");
         try eqStrU21Slice(&.{"hello"}, tswin.win.cached.lines.items);
-        try tswin.win.insertChars(&tswin.win.cursor, "\n");
+        _ = try tswin.win.insertChars(&tswin.win.cursor, "\n");
         try eqStrU21Slice(&.{ "hello", "" }, tswin.win.cached.lines.items);
-        try tswin.win.insertChars(&tswin.win.cursor, "\nworld");
+        _ = try tswin.win.insertChars(&tswin.win.cursor, "\nworld");
         try eqStrU21Slice(&.{ "hello", "", "world" }, tswin.win.cached.lines.items);
     }
     {
         var tswin = try TSWin.init("", .{ .disable_default_queries = true, .enabled_queries = &.{"trimed_down_highlights"} });
         defer tswin.deinit();
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "v");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "v");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "v", .default);
         }
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "ar");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "ar");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
         }
         {
-            try tswin.win.insertChars(&tswin.win.cursor, " not_false = true;");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, " not_false = true;");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
@@ -363,7 +366,7 @@ test insertChars {
             try eqStrU21Slice(&.{"var not_false = true;"}, tswin.win.cached.lines.items);
         }
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "\n");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "\n");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
@@ -372,7 +375,7 @@ test insertChars {
             try eqStrU21Slice(&.{ "var not_false = true;", "" }, tswin.win.cached.lines.items);
         }
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "const eleven = 11;");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "const eleven = 11;");
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "var", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
@@ -433,7 +436,7 @@ test "insert / delete crash check" {
             }, tswin.win.cached.lines.items);
         }
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "a");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "a");
             try eqStrU21Slice(&.{
                 "const ten = 10;",
                 "fn dummy() void {",
@@ -496,7 +499,7 @@ test "insert / delete crash check" {
         }
 
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "\n");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "\n");
             try eqStrU21Slice(&.{
                 "const ten = 10;",
                 "fn dummy() void {",
@@ -508,7 +511,7 @@ test "insert / delete crash check" {
         }
 
         {
-            try tswin.win.insertChars(&tswin.win.cursor, "f");
+            _ = try tswin.win.insertChars(&tswin.win.cursor, "f");
             try eqStrU21Slice(&.{
                 "const ten = 10;",
                 "fn dummy() void {",
@@ -522,7 +525,7 @@ test "insert / delete crash check" {
                 try Window.backspace(tswin.win);
                 for (0..10) |_| {
                     try Window.backspace(tswin.win);
-                    try tswin.win.insertChars(&tswin.win.cursor, "\n");
+                    _ = try tswin.win.insertChars(&tswin.win.cursor, "\n");
                 }
                 try Window.backspace(tswin.win);
                 try eqStr(
@@ -606,9 +609,7 @@ fn backspace_internal(self: *@This(), cursor: *Cursor) !void {
         start_col = self.cached.lines.items[line_index].len;
     }
 
-    try self.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
-
-    cursor.set(start_line, start_col);
+    _ = try self.deleteRange(.{ start_line, start_col }, .{ end_line, end_col });
 }
 
 test backspace_internal {
@@ -655,11 +656,11 @@ test backspace_internal {
             try test_iter.next(0, "onst not_false = t", .default);
         }
 
-        try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
+        try eq(Cursor{ .line = 0, .col = 0, .just_moved = true }, tswin.win.cursor);
         try tswin.win.backspace_internal(&tswin.win.cursor);
-        try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
+        try eq(Cursor{ .line = 0, .col = 0, .just_moved = true }, tswin.win.cursor);
         try tswin.win.backspace_internal(&tswin.win.cursor);
-        try eq(Cursor{ .line = 0, .col = 0 }, tswin.win.cursor);
+        try eq(Cursor{ .line = 0, .col = 0, .just_moved = true }, tswin.win.cursor);
         try tswin.win.backspace_internal(&tswin.win.cursor);
     }
 
@@ -759,20 +760,26 @@ test sortRanges {
     }
 }
 
-fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !void {
+fn deleteRange(self: *@This(), a: struct { usize, usize }, b: struct { usize, usize }) !UpdateCacheParameters {
     const zone = ztracy.ZoneNC(@src(), "Window.deleteRange()", 0x00000F);
     defer zone.End();
 
     const start, const end = sortRanges(a, b);
     const may_ts_ranges = try self.buf.deleteRange(start, end);
 
-    try self.update(.{
+    const update_params = .{
         .lines = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
         .displ = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
         .infos = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
         .ts = .{ .base_start = start[0], .base_end = start[0], .ranges = may_ts_ranges },
-        .sizes = .{ .start = start[0], .end = end[0] },
-    });
+        .sizes = .{ .start = start[0], .end = start[0] },
+    };
+    try self.update(update_params);
+
+    self.cursor.set(start[0], start[1]);
+    self.cursor.just_moved = true;
+
+    return update_params;
 }
 
 test deleteRange {
@@ -783,13 +790,13 @@ test deleteRange {
         });
         defer tswin.deinit();
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
-        try tswin.win.deleteRange(.{ 0, 4 }, .{ 0, 5 });
+        _ = try tswin.win.deleteRange(.{ 0, 4 }, .{ 0, 5 });
         try eqStrU21Slice(&.{ "hell", "world", "venus" }, tswin.win.cached.lines.items);
-        try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+        _ = try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 1 });
         try eqStrU21Slice(&.{ "ell", "world", "venus" }, tswin.win.cached.lines.items);
-        try tswin.win.deleteRange(.{ 1, 0 }, .{ 0, 3 });
+        _ = try tswin.win.deleteRange(.{ 1, 0 }, .{ 0, 3 });
         try eqStrU21Slice(&.{ "ellworld", "venus" }, tswin.win.cached.lines.items);
-        try tswin.win.deleteRange(.{ 0, 2 }, .{ 1, 3 });
+        _ = try tswin.win.deleteRange(.{ 0, 2 }, .{ 1, 3 });
         try eqStrU21Slice(&.{"elus"}, tswin.win.cached.lines.items);
     }
     {
@@ -799,7 +806,7 @@ test deleteRange {
         });
         defer tswin.deinit();
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
-        try tswin.win.deleteRange(.{ 0, 3 }, .{ 1, 2 });
+        _ = try tswin.win.deleteRange(.{ 0, 3 }, .{ 1, 2 });
         try eqStrU21Slice(&.{ "helrld", "venus" }, tswin.win.cached.lines.items);
     }
     {
@@ -809,7 +816,7 @@ test deleteRange {
         });
         defer tswin.deinit();
         try eqStrU21Slice(&.{ "hello", "world", "venus" }, tswin.win.cached.lines.items);
-        try tswin.win.deleteRange(.{ 0, 3 }, .{ 2, 2 });
+        _ = try tswin.win.deleteRange(.{ 0, 3 }, .{ 2, 2 });
         try eqStrU21Slice(&.{"helnus"}, tswin.win.cached.lines.items);
     }
 
@@ -824,20 +831,20 @@ test deleteRange {
             try test_iter.next(0, "xconst not_false = ", .default);
             try test_iter.next(0, "true", .{ .hl_group = "boolean" });
         }
-        try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 1 });
+        _ = try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 1 });
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = ", .default);
             try test_iter.next(0, "true", .{ .hl_group = "boolean" });
         }
-        try tswin.win.deleteRange(.{ 0, 22 }, .{ 0, 21 });
+        _ = try tswin.win.deleteRange(.{ 0, 22 }, .{ 0, 21 });
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "const", .{ .hl_group = "type.qualifier" });
             try test_iter.next(0, " not_false = tru", .default);
         }
-        try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 2 });
+        _ = try tswin.win.deleteRange(.{ 0, 0 }, .{ 0, 2 });
         {
             var test_iter = DisplayChunkTester{ .cc = tswin.win.cached };
             try test_iter.next(0, "nst not_false = tru", .default);
@@ -1412,6 +1419,9 @@ const CachedContents = struct {
         const zone = ztracy.ZoneNC(@src(), "CachedContents.calculateDisplaySizes()", 0xABABAB);
         defer zone.End();
 
+        assert(start < self.line_infos.items.len);
+        assert(end < self.line_infos.items.len);
+
         const cbs = self.win.assets_callbacks orelse return;
         for (start..end + 1) |i| {
             const line_index = self.start_line + i;
@@ -1476,7 +1486,7 @@ pub const InsertCharsCb = struct {
     target: *Window,
     fn f(ctx: *anyopaque) !void {
         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-        try self.target.insertChars(&self.target.cursor, self.chars);
+        _ = try self.target.insertChars(&self.target.cursor, self.chars);
     }
     pub fn init(allocator: Allocator, target: *Window, chars: []const u8) !ip.Callback {
         const self = try allocator.create(@This());
@@ -1577,7 +1587,7 @@ pub fn vimO(ctx: *anyopaque) !void {
     try moveCursorToEndOfLine(ctx);
     try enterAFTERInsertMode(ctx);
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.insertChars(&self.cursor, "\n");
+    _ = try self.insertChars(&self.cursor, "\n");
 }
 
 ///////////////////////////// VisualMode
@@ -1605,11 +1615,9 @@ pub fn deleteVisualRange(ctx: *anyopaque) !void {
         var end_col = end.col;
         if (self.cached.displays.items[end.line].len > 0) end_col += 1;
 
-        try self.deleteRange(.{ start.line, start.col }, .{ end.line, end_col });
-        self.cursor.set(start.line, start.col);
+        _ = try self.deleteRange(.{ start.line, start.col }, .{ end.line, end_col });
         self.cursor.endVisualSelection();
     }
-    self.cursor.just_moved = true;
 }
 
 ///////////////////////////// Move cursor to mouse position

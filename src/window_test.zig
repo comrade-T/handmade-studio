@@ -54,7 +54,7 @@ pub fn main() !void {
 
     ///////////////////////////// LangSuite
 
-    var zig_langsuite = try sitter.LangSuite.create(.zig);
+    var zig_langsuite = try sitter.LangSuite.create(gpa, .zig);
     defer zig_langsuite.destroy();
     try zig_langsuite.initializeQueryMap(gpa);
     try zig_langsuite.initializeNightflyColorscheme(gpa);
