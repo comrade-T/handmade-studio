@@ -23,8 +23,9 @@ const assert = std.debug.assert;
 a: Allocator,
 buf: *Buffer,
 
-start_line: usize = 0,
-end_line: usize = 0,
+start_line: usize,
+end_line: usize,
+cached_lines: ArrayList(Line),
 
 const InitError = error{OutOfMemory};
 pub fn init(a: Allocator, buf: *Buffer) InitError!*DisplayCachePool {
@@ -42,10 +43,23 @@ pub fn deinit(self: *@This()) void {
 
 ///////////////////////////// requestLines
 
+fn sortCachedLines(self: *@This()) !void {
+    std.mem.sort(Line, self.lines.items, {}, Line.cmpByLinenr);
+}
+
+fn cachedLinesAreSorted(self: *@This()) bool {
+    return std.sort.isSorted(Line, self.lines.items, {}, Line.cmpByLinenr);
+}
+
+// TODO: return RequestLinesIterator instead
+
 const RequestLinesError = error{ OutOfMemory, EndLineOutOfBounds };
 const RequestLinesResult = struct { []u21, []Display };
 pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!RequestLinesResult {
-    if (end > self.lastLineNumber()) return RequestLinesError.EndLineOutOfBounds;
+    if (end > self.getLastLineNumberOfBuffer()) return RequestLinesError.EndLineOutOfBounds;
+
+    assert(self.cachedLinesAreSorted());
+
     _ = start;
     return .{ &.{}, &.{} };
 }
@@ -58,6 +72,10 @@ test requestLines {
     defer dcp.deinit();
 
     try shouldErr(RequestLinesError.EndLineOutOfBounds, dcp.requestLines(0, 1));
+
+    // TODO: add dummy zig file (>20 lines) for testing purposes
+    // TODO: init DisplayCachePool from only 5 lines from that file
+    // TODO: request lines that are outside from that 5 lines
 }
 
 ///////////////////////////// updateLines
@@ -66,11 +84,11 @@ test requestLines {
 
 ///////////////////////////// infos
 
-fn lastLineNumber(self: *@This()) usize {
-    return self.numberOfLines() - 1;
+fn getLastLineNumberOfBuffer(self: *@This()) usize {
+    return self.getNumberOfLinesFromBuffer() - 1;
 }
 
-fn numberOfLines(self: *@This()) usize {
+fn getNumberOfLinesFromBuffer(self: *@This()) usize {
     return self.buf.roperoot.weights().bols;
 }
 
@@ -87,6 +105,15 @@ fn getHeight(self: *@This()) f32 {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const CellIndex = struct { line: usize, col: usize };
+
+const Line = struct {
+    linenr: usize,
+    contents: []u21,
+    displays: []Display,
+    fn cmpByLinenr(ctx: void, a: Line, b: Line) bool {
+        return std.sort.asc(usize)(ctx, a.linenr, b.linenr);
+    }
+};
 
 const Display = struct {
     width: f32,
@@ -162,11 +189,9 @@ test "custom type sort" {
     try eqStr("one", ct_list.items[1].ptr.*);
     try eqStr("two", ct_list.items[2].ptr.*);
 
-    const ct_slice = try ct_list.toOwnedSlice();
-    defer testing_allocator.free(ct_slice);
-    std.mem.sort(CustomType, ct_slice, {}, CustomType.cmpByIndex);
+    std.mem.sort(CustomType, ct_list.items, {}, CustomType.cmpByIndex);
 
-    try eqStr("one", ct_slice[0].ptr.*);
-    try eqStr("two", ct_slice[1].ptr.*);
-    try eqStr("three", ct_slice[2].ptr.*);
+    try eqStr("one", ct_list.items[0].ptr.*);
+    try eqStr("two", ct_list.items[1].ptr.*);
+    try eqStr("three", ct_list.items[2].ptr.*);
 }
