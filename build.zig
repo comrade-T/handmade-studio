@@ -106,6 +106,7 @@ pub fn build(b: *std.Build) void {
 
     const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
         .{ .name = "window", .module = window.module },
+        .{ .name = "ts", .module = ts.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
 
