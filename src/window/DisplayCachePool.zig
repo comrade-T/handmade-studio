@@ -87,6 +87,7 @@ fn getHeight(self: *@This()) f32 {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const CellIndex = struct { line: usize, col: usize };
+
 const Display = struct {
     width: f32,
     height: f32,
@@ -99,18 +100,73 @@ const Display = struct {
         const Image = struct {
             path: []const u8,
         };
-        const Conceal = struct {
-            start: CellIndex,
-            end: CellIndex,
-            variant: union(enum) {
-                char: Char,
-                image: Image,
-            },
-        };
         char: Char,
         image: Image,
-        conceal: Conceal,
+        char_conceal: Char,
+        image_conceal: Image,
+        being_concealed,
     },
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+test "ArrayList swap remove" {
+    var list = ArrayList(u8).init(testing_allocator);
+    defer list.deinit();
+
+    try list.append(1);
+    try list.append(2);
+    try list.append(3);
+
+    try eq(true, eql(u8, &.{ 1, 2, 3 }, list.items));
+
+    const removed_element = list.swapRemove(0);
+    _ = removed_element;
+    try eq(true, eql(u8, &.{ 3, 2 }, list.items));
+
+    try list.append(4);
+    try eq(true, eql(u8, &.{ 3, 2, 4 }, list.items));
+
+    list.items[0] = 100;
+    try eq(true, eql(u8, &.{ 100, 2, 4 }, list.items));
+
+    const slice = try list.toOwnedSlice();
+    defer testing_allocator.free(slice);
+    std.mem.sort(u8, slice, {}, comptime std.sort.asc(u8));
+    try eq(true, eql(u8, &.{ 2, 4, 100 }, slice));
+}
+
+const CustomType = struct {
+    index: usize,
+    ptr: *[]const u8,
+    fn cmpByIndex(ctx: void, a: CustomType, b: CustomType) bool {
+        return std.sort.asc(usize)(ctx, a.index, b.index);
+    }
+};
+
+test "custom type sort" {
+    var str_list = ArrayList([]const u8).init(testing_allocator);
+    defer str_list.deinit();
+    try str_list.append("one");
+    try str_list.append("two");
+    try str_list.append("three");
+
+    var ct_list = ArrayList(CustomType).init(testing_allocator);
+    defer ct_list.deinit();
+
+    try ct_list.append(CustomType{ .index = 2, .ptr = &str_list.items[2] });
+    try ct_list.append(CustomType{ .index = 0, .ptr = &str_list.items[0] });
+    try ct_list.append(CustomType{ .index = 1, .ptr = &str_list.items[1] });
+
+    try eqStr("three", ct_list.items[0].ptr.*);
+    try eqStr("one", ct_list.items[1].ptr.*);
+    try eqStr("two", ct_list.items[2].ptr.*);
+
+    const ct_slice = try ct_list.toOwnedSlice();
+    defer testing_allocator.free(ct_slice);
+    std.mem.sort(CustomType, ct_slice, {}, CustomType.cmpByIndex);
+
+    try eqStr("one", ct_slice[0].ptr.*);
+    try eqStr("two", ct_slice[1].ptr.*);
+    try eqStr("three", ct_slice[2].ptr.*);
+}
