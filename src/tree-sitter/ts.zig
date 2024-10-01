@@ -27,6 +27,8 @@ pub const StoredQuery = struct {
 };
 
 pub const LangSuite = struct {
+    a: Allocator,
+
     lang_choice: SupportedLanguages,
     language: *const Language,
 
@@ -36,14 +38,16 @@ pub const LangSuite = struct {
     filter: ?*PredicatesFilter = null,
     highlight_map: ?std.StringHashMap(u32) = null,
 
-    pub fn create(lang_choice: SupportedLanguages) !LangSuite {
+    pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
         const zone = ztracy.ZoneNC(@src(), "LangSuite.create()", 0xFF00FF);
         defer zone.End();
 
+        const self = try a.create(@This());
         const language = switch (lang_choice) {
             .zig => try Language.get("zig"),
         };
-        return .{ .lang_choice = lang_choice, .language = language };
+        self.* = LangSuite{ .a = a, .lang_choice = lang_choice, .language = language };
+        return self;
     }
 
     pub fn destroy(self: *@This()) void {
@@ -51,6 +55,7 @@ pub const LangSuite = struct {
         if (self.queries_arena) |_| self.queries_arena.?.deinit();
         if (self.filter) |filter| filter.deinit();
         if (self.highlight_map) |_| self.highlight_map.?.deinit();
+        self.a.destroy(self);
     }
 
     pub fn initializeQueryMap(self: *@This(), a: Allocator) !void {

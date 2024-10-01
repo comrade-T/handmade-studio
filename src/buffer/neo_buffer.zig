@@ -21,7 +21,7 @@ pub const Buffer = struct {
 
     roperoot: *const rope.Node,
 
-    langsuite: ?sitter.LangSuite = null,
+    langsuite: ?*sitter.LangSuite = null,
     tsparser: ?*ts.Parser = null,
     tstree: ?*ts.Tree = null,
 
@@ -141,7 +141,8 @@ pub const Buffer = struct {
 
         // Insert + Tree Sitter update
         {
-            const langsuite = try sitter.LangSuite.create(.zig);
+            const langsuite = try sitter.LangSuite.create(testing_allocator, .zig);
+            defer langsuite.destroy();
             {
                 const buf = try Buffer.create(testing_allocator, .string, "const");
                 defer buf.destroy();
@@ -238,7 +239,8 @@ pub const Buffer = struct {
         return null;
     }
     test deleteRange {
-        const langsuite = try sitter.LangSuite.create(.zig);
+        const langsuite = try sitter.LangSuite.create(testing_allocator, .zig);
+        defer langsuite.destroy();
         { // content only
             {
                 var buf = try Buffer.create(testing_allocator, .string, "const");
@@ -325,7 +327,8 @@ pub const Buffer = struct {
         return null;
     }
     test parse {
-        const langsuite = try sitter.LangSuite.create(.zig);
+        const langsuite = try sitter.LangSuite.create(testing_allocator, .zig);
+        defer langsuite.destroy();
         {
             const source = "const a = 10;\nconst b = true;";
             var buf = try Buffer.create(testing_allocator, .string, source);
@@ -355,7 +358,7 @@ pub const Buffer = struct {
         }
     }
 
-    pub fn initiateTreeSitter(self: *@This(), langsuite: sitter.LangSuite) !void {
+    pub fn initiateTreeSitter(self: *@This(), langsuite: *sitter.LangSuite) !void {
         self.langsuite = langsuite;
         self.tsparser = try self.langsuite.?.newParser();
         _ = try self.parse();

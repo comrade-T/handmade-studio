@@ -2265,7 +2265,7 @@ const MockManager = struct {
 };
 
 const TSWin = struct {
-    langsuite: sitter.LangSuite = undefined,
+    langsuite: *sitter.LangSuite = undefined,
     buf: *Buffer = undefined,
     win: *Window = undefined,
     hl: std.StringHashMap(u32) = undefined,
@@ -2276,7 +2276,7 @@ const TSWin = struct {
         spawn_opts: SpawnOptions,
     ) !@This() {
         var self = TSWin{
-            .langsuite = try sitter.LangSuite.create(.zig),
+            .langsuite = try sitter.LangSuite.create(testing_allocator, .zig),
             .buf = try Buffer.create(idc_if_it_leaks, .string, source),
         };
         try self.langsuite.initializeQueryMap(testing_allocator);
