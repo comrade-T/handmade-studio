@@ -20,10 +20,11 @@ const idc_if_it_leaks = std.heap.page_allocator;
 
 /// Represents the result of a walk operation on a Leaf where new Nodes might be created.
 /// Used to create a new version of the document (insert, delete).
+const WalkMutError = error{OutOfMemory};
 const WalkMutResult = struct {
     keep_walking: bool = false,
     found: bool = false,
-    err: ?anyerror = null,
+    err: ?WalkMutError = null,
 
     replace: ?*const Node = null,
     removed: bool = false,
@@ -176,7 +177,8 @@ pub const Node = union(enum) {
         return try mergeLeaves(a, leaves);
     }
 
-    fn createLeavesByNewLine(a: std.mem.Allocator, buf: []const u8) ![]Node {
+    const CreateLeavesByNewLineError = error{ OutOfMemory, Unexpected };
+    fn createLeavesByNewLine(a: std.mem.Allocator, buf: []const u8) CreateLeavesByNewLineError![]Node {
         if (std.mem.eql(u8, buf, "\n")) {
             var leaves = try a.alloc(Node, 1);
             leaves[0] = .{ .leaf = .{ .buf = "", .noc = 0, .bol = false, .eol = true } };
@@ -1569,12 +1571,13 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Insert Chars
 
+    const InsertCharsError = error{ OutOfMemory, EmptyStringNotAllowed, InsertIndexOutOfBounds };
     pub fn insertChars(
         self: *const Node,
         a: Allocator,
         start_byte: usize,
         chars: []const u8,
-    ) !struct { *const Node, usize, usize } {
+    ) InsertCharsError!struct { *const Node, usize, usize } {
         const InsertCharsCtx = struct {
             a: Allocator,
             buf: []const u8,
@@ -1616,7 +1619,10 @@ pub const Node = union(enum) {
             }
 
             fn walker(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
-                var new_leaves = try createLeavesByNewLine(cx.a, cx.buf);
+                var new_leaves = createLeavesByNewLine(cx.a, cx.buf) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.Unexpected => @panic("got Unexpected error from createLeavesByNewLine()"),
+                };
                 if (new_leaves.len > 1) cx.num_of_new_lines = new_leaves.len - 1;
                 if (new_leaves.len > 0) cx.last_new_leaf_noc = new_leaves[new_leaves.len - 1].weights().noc;
 
@@ -1706,7 +1712,7 @@ pub const Node = union(enum) {
         };
 
         if (chars.len == 0) return error.EmptyStringNotAllowed;
-        if (start_byte > self.weights().len) return error.IndexOutOfBounds;
+        if (start_byte > self.weights().len) return error.InsertIndexOutOfBounds;
         const buf = try a.dupe(u8, chars);
         var ctx = InsertCharsCtx{
             .a = a,
@@ -2526,7 +2532,8 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Get Byte Offset from Position
 
-    pub fn getByteOffsetOfPosition(self: *const Node, line: usize, col: usize) !usize {
+    const GetByteOffsetOfPositionError = error{ OutOfMemory, LineOutOfBounds, ColOutOfBounds };
+    pub fn getByteOffsetOfPosition(self: *const Node, line: usize, col: usize) GetByteOffsetOfPositionError!usize {
         const GetByteOffsetCtx = struct {
             target_line: usize,
             target_col: usize,

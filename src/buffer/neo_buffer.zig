@@ -14,6 +14,7 @@ const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
+const assert = std.debug.assert;
 
 pub const Buffer = struct {
     exa: Allocator,
@@ -60,15 +61,23 @@ pub const Buffer = struct {
     ///////////////////////////// Insert
 
     const NewCursorPosition = struct { line: usize, col: usize };
-    pub fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) !struct { NewCursorPosition, ?[]const ts.Range } {
+    const InsertCharsError = error{ OutOfMemory, LineOutOfBounds, ColOutOfBounds };
+    pub fn insertChars(self: *@This(), chars: []const u8, line: usize, col: usize) InsertCharsError!struct { NewCursorPosition, ?[]const ts.Range } {
         const zone = ztracy.ZoneNC(@src(), "Buffer.insertChars()", 0xFFFFFF);
         defer zone.End();
 
         const start_point = ts.Point{ .row = @intCast(line), .column = @intCast(col) };
         const start_byte = try self.roperoot.getByteOffsetOfPosition(line, col);
 
+        assert(chars.len > 0);
+        assert(start_byte <= self.roperoot.weights().len);
+
         self.roperoot, const num_of_new_lines, const last_new_leaf_noc =
-            try self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars);
+            self.roperoot.insertChars(self.rope_arena.allocator(), start_byte, chars) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.EmptyStringNotAllowed => unreachable,
+            error.InsertIndexOutOfBounds => unreachable,
+        };
         self.roperoot = try self.roperoot.balance(self.rope_arena.allocator());
 
         var new_col = last_new_leaf_noc;
@@ -91,7 +100,7 @@ pub const Buffer = struct {
             .new_end_point = new_end_point,
         };
         self.tstree.?.edit(&edit);
-        const ranges = try self.parse();
+        const ranges = self.parse();
         return .{ NewCursorPosition{ .line = line + num_of_new_lines, .col = new_col }, ranges };
     }
     test insertChars {
@@ -233,7 +242,7 @@ pub const Buffer = struct {
                 .new_end_point = new_end_point,
             };
             self.tstree.?.edit(&edit);
-            return try self.parse();
+            return self.parse();
         }
 
         return null;
@@ -294,10 +303,11 @@ pub const Buffer = struct {
 
     ///////////////////////////// Tree Sitter Parsing
 
-    fn parse(self: *@This()) !?[]const ts.Range {
+    fn parse(self: *@This()) ?[]const ts.Range {
         const zone = ztracy.ZoneNC(@src(), "Buffer.parse()", 0xFFFFFF);
         defer zone.End();
 
+        assert(self.tsparser != null);
         if (self.tsparser == null) @panic("parse() is called on a Buffer with no parser!");
 
         const may_old_tree = self.tstree;
@@ -320,8 +330,22 @@ pub const Buffer = struct {
             .encoding = .utf_8,
         };
 
-        const new_tree = try self.tsparser.?.parse(may_old_tree, input);
-        defer self.tstree = new_tree;
+        const new_tree = self.tsparser.?.parse(may_old_tree, input) catch |err| switch (err) {
+            error.NoLanguage => @panic("got error.NoLanguage despite having a non-null parser"),
+            error.Unknown => {
+                std.log.err("encountered Unknown error in parse(), destroying buffer's tree and parser.\n", .{});
+                if (self.tstree) |tree| {
+                    tree.destroy();
+                    self.tstree = null;
+                }
+                if (self.tsparser) |parser| {
+                    parser.destroy();
+                    self.tsparser = null;
+                }
+                return null;
+            },
+        };
+        self.tstree = new_tree;
 
         if (may_old_tree) |old_tree| return old_tree.getChangedRanges(new_tree);
         return null;
@@ -361,7 +385,7 @@ pub const Buffer = struct {
     pub fn initiateTreeSitter(self: *@This(), langsuite: *sitter.LangSuite) !void {
         self.langsuite = langsuite;
         self.tsparser = try self.langsuite.?.newParser();
-        _ = try self.parse();
+        _ = self.parse();
     }
 
     ///////////////////////////// Content Callback for PredicatesFilter
