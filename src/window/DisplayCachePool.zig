@@ -254,6 +254,7 @@ test "insertChars - no tree sitter" {
     var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
     defer buf.destroy();
 
+    // changes happen only in 1 line
     {
         var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
         defer dcp.deinit();
@@ -275,8 +276,23 @@ test "insertChars - no tree sitter" {
 
 const UpdateError = error{OutOfMemory};
 fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
-    _ = self;
-    _ = params;
+    if (params.affectsOnlyOneLine()) {
+        try self.updateSingleLine(params.lines.old_start);
+        return;
+    }
+    unreachable;
+}
+
+fn updateSingleLine(self: *@This(), linenr: usize) !void {
+    assert(linenr >= self.start_line and linenr <= self.end_line);
+
+    var line = &self.cached_lines.items[linenr + self.start_line];
+    self.a.free(line.contents);
+    self.a.free(line.displays);
+
+    line.contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
+    line.displays = try self.a.alloc(Display, line.contents.len);
+    @memset(line.displays, self.default_display);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
@@ -314,6 +330,11 @@ const Line = struct {
 
 const UpdateParameters = struct {
     lines: struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize },
+    fn affectsOnlyOneLine(self: *const @This()) bool {
+        return self.lines.old_start == self.lines.old_end and
+            self.lines.new_start == self.lines.new_end and
+            self.lines.old_start == self.lines.new_start;
+    }
 };
 
 const Display = struct {
