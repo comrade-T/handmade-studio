@@ -18,7 +18,7 @@ const eqStr = std.testing.expectEqualStrings;
 const shouldErr = std.testing.expectError;
 const assert = std.debug.assert;
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// DisplayCachePool
 
 a: Allocator,
 buf: *Buffer,
@@ -49,20 +49,7 @@ pub fn deinit(self: *@This()) void {
     self.a.destroy(self);
 }
 
-///////////////////////////// requestLines
-
-fn sortCachedLines(self: *@This()) void {
-    std.mem.sort(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
-}
-
-fn cachedLinesAreSorted(self: *@This()) bool {
-    return std.sort.isSorted(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
-}
-
-fn setStartAndEndLine(self: *@This(), start: usize, end: usize) void {
-    self.start_line = start;
-    self.end_line = end;
-}
+////////////////////////////////////////////////////////////////////////////////////////////// requestLines
 
 const RequestLinesError = error{ OutOfMemory, EndLineOutOfBounds };
 pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError![]Line {
@@ -225,7 +212,74 @@ fn createAndAppendLinesWithDefaultDisplays(self: *@This(), start: usize, end: us
     }
 }
 
-///////////////////////////// infos
+fn sortCachedLines(self: *@This()) void {
+    std.mem.sort(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
+}
+
+fn cachedLinesAreSorted(self: *@This()) bool {
+    return std.sort.isSorted(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
+}
+
+fn setStartAndEndLine(self: *@This(), start: usize, end: usize) void {
+    self.start_line = start;
+    self.end_line = end;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Insert
+
+const InsertCharsError = error{OutOfMemory};
+pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) InsertCharsError!void {
+    assert(line <= self.getLastLineNumberOfBuffer());
+    assert(col <= self.buf.roperoot.getNumOfCharsOfLine(line) catch unreachable);
+
+    const new_pos, const may_ts_ranges = self.buf.insertChars(chars, line, col) catch |err| switch (err) {
+        error.LineOutOfBounds => @panic("encountered error.LineOutOfBounds despite `line <= getLastLineNumberOfBuffer()` assertion"),
+        error.ColOutOfBounds => @panic("encountered error.ColOutOfBounds despite `col <= try getNumOfCharsOfLine(line)` assertion"),
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
+    const cstart = line;
+    const cend = new_pos.line;
+    assert(cstart <= cend);
+
+    const update_params = .{
+        .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
+    };
+    try self.update(update_params);
+
+    _ = may_ts_ranges;
+}
+
+test "insertChars - no tree sitter" {
+    var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
+    defer buf.destroy();
+
+    {
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        defer dcp.deinit();
+
+        try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+            \\const std = @import("std"); // 0
+            \\ddddd ddd d ddddddddddddddd dddd
+        );
+
+        try dcp.insertChars(0, 0, "// ");
+        try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+            \\// const std = @import("std"); // 0
+            \\dd ddddd ddd d ddddddddddddddd dddd
+        );
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Update
+
+const UpdateError = error{OutOfMemory};
+fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
+    _ = self;
+    _ = params;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Get Info
 
 fn getLastLineNumberOfBuffer(self: *@This()) usize {
     return self.getNumberOfLinesFromBuffer() - 1;
@@ -245,7 +299,7 @@ fn getHeight(self: *@This()) f32 {
     unreachable;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Types
 
 const CellIndex = struct { line: usize, col: usize };
 
@@ -256,6 +310,10 @@ const Line = struct {
     fn cmpByLinenr(ctx: void, a: Line, b: Line) bool {
         return std.sort.asc(usize)(ctx, a.linenr, b.linenr);
     }
+};
+
+const UpdateParameters = struct {
+    lines: struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize },
 };
 
 const Display = struct {
