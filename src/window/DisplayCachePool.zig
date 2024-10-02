@@ -23,64 +23,93 @@ const assert = std.debug.assert;
 a: Allocator,
 buf: *Buffer,
 
-start_line: usize,
-end_line: usize,
+start_line: usize = 0,
+end_line: usize = 0,
 cached_lines: ArrayList(Line),
+default_display: Display,
 
 const InitError = error{OutOfMemory};
-pub fn init(a: Allocator, buf: *Buffer) InitError!*DisplayCachePool {
+pub fn init(a: Allocator, buf: *Buffer, default_display: Display) InitError!*DisplayCachePool {
     const self = try a.create(@This());
     self.* = DisplayCachePool{
         .a = a,
         .buf = buf,
+        .cached_lines = ArrayList(Line).init(a),
+        .default_display = default_display,
     };
     return self;
 }
 
 pub fn deinit(self: *@This()) void {
+    for (self.cached_lines.items) |line| {
+        self.a.free(line.contents);
+        self.a.free(line.displays);
+    }
+    self.cached_lines.deinit();
     self.a.destroy(self);
 }
 
 ///////////////////////////// requestLines
 
-fn sortCachedLines(self: *@This()) !void {
-    std.mem.sort(Line, self.lines.items, {}, Line.cmpByLinenr);
+fn sortCachedLines(self: *@This()) void {
+    std.mem.sort(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
 }
 
 fn cachedLinesAreSorted(self: *@This()) bool {
-    return std.sort.isSorted(Line, self.lines.items, {}, Line.cmpByLinenr);
+    return std.sort.isSorted(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
 }
-
-// TODO: return RequestLinesIterator instead
 
 const RequestLinesError = error{ OutOfMemory, EndLineOutOfBounds };
-const RequestLinesResult = struct { []u21, []Display };
-pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!RequestLinesResult {
+pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError![]Line {
     if (end > self.getLastLineNumberOfBuffer()) return RequestLinesError.EndLineOutOfBounds;
-
     assert(self.cachedLinesAreSorted());
 
-    _ = start;
-    return .{ &.{}, &.{} };
+    if (self.cached_lines.items.len == 0) {
+        self.cached_lines = try self.createCachedLinesWithDefaultDisplays(start, end);
+        return self.cached_lines.items;
+    }
+
+    unreachable;
 }
 
-test requestLines {
-    var buf = try Buffer.create(testing_allocator, .string, "hello world");
+test "requestLines - no tree sitter " {
+    var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
+    assert(buf.roperoot.weights().bols < 20);
     defer buf.destroy();
 
-    var dcp = try DisplayCachePool.init(testing_allocator, buf);
+    var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
     defer dcp.deinit();
 
-    try shouldErr(RequestLinesError.EndLineOutOfBounds, dcp.requestLines(0, 1));
+    try shouldErr(RequestLinesError.EndLineOutOfBounds, dcp.requestLines(0, 20));
 
-    // TODO: add dummy zig file (>20 lines) for testing purposes
-    // TODO: init DisplayCachePool from only 5 lines from that file
-    // TODO: request lines that are outside from that 5 lines
+    // request first 5 lines
+    {
+        const lines = try dcp.requestLines(0, 4);
+        try testLinesContents(lines,
+            \\const std = @import("std"); // 0
+            \\const Allocator = std.mem.Allocator; // 1
+            \\// 2
+            \\fn add(x: f32, y: f32) void { // 3
+            \\    return x + y; // 4
+        );
+    }
+
+    // TODO: request line 10 to last line
 }
 
-///////////////////////////// updateLines
-
-// TODO:
+fn createCachedLinesWithDefaultDisplays(self: *@This(), start_line: usize, end_line: usize) !ArrayList(Line) {
+    assert(start_line <= end_line);
+    assert(start_line <= self.getLastLineNumberOfBuffer() and end_line <= self.getLastLineNumberOfBuffer());
+    var lines = try ArrayList(Line).initCapacity(self.a, end_line - start_line + 1);
+    for (start_line..end_line + 1) |linenr| {
+        assert(linenr <= self.getLastLineNumberOfBuffer());
+        const contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
+        const displays = try self.a.alloc(Display, contents.len);
+        @memset(displays, self.default_display);
+        try lines.append(Line{ .linenr = linenr, .contents = contents, .displays = displays });
+    }
+    return lines;
+}
 
 ///////////////////////////// infos
 
@@ -135,7 +164,39 @@ const Display = struct {
     },
 };
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+const __dummy_default_display = Display{
+    .width = 15,
+    .height = 40,
+    .variant = .{
+        .char = .{
+            .font_size = 40,
+            .font_face = "Meslo",
+            .color = 0xF5F5F5F5,
+        },
+    },
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////// Helpers
+
+fn eqStrU21(expected: []const u8, got: []u21) !void {
+    var slice = try testing_allocator.alloc(u8, got.len);
+    defer testing_allocator.free(slice);
+    for (got, 0..) |cp, i| slice[i] = @intCast(cp);
+    try eqStr(expected, slice);
+}
+
+fn testLinesContents(lines: []Line, expected_str: []const u8) !void {
+    var split_iter = std.mem.split(u8, expected_str, "\n");
+    var i: usize = 0;
+    while (split_iter.next()) |expected| {
+        defer i += 1;
+        try eqStrU21(expected, lines[i].contents);
+        try eq(lines[i].contents.len, lines[i].displays.len);
+    }
+    try eq(i, lines.len);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Experiments
 
 test "ArrayList swap remove" {
     var list = ArrayList(u8).init(testing_allocator);
