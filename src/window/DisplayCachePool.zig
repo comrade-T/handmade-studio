@@ -59,28 +59,45 @@ fn cachedLinesAreSorted(self: *@This()) bool {
     return std.sort.isSorted(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
 }
 
+fn setStartAndEndLine(self: *@This(), start: usize, end: usize) void {
+    self.start_line = start;
+    self.end_line = end;
+}
+
 const RequestLinesError = error{ OutOfMemory, EndLineOutOfBounds };
 pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError![]Line {
     if (end > self.getLastLineNumberOfBuffer()) return RequestLinesError.EndLineOutOfBounds;
+
+    assert(start <= end);
     assert(self.cachedLinesAreSorted());
 
+    // cache empty
     if (self.cached_lines.items.len == 0) {
         self.cached_lines = try self.createCachedLinesWithDefaultDisplays(start, end);
+        self.setStartAndEndLine(start, end);
         return self.cached_lines.items;
+    }
+
+    // requested range already cached
+    if (start <= self.start_line and end <= self.end_line) {
+        return self.cached_lines.items[start .. end + 1];
     }
 
     unreachable;
 }
 
-test "requestLines - no tree sitter " {
+test "requestLines - no tree sitter" {
     var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
-    assert(buf.roperoot.weights().bols < 20);
     defer buf.destroy();
 
     var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
     defer dcp.deinit();
 
-    try shouldErr(RequestLinesError.EndLineOutOfBounds, dcp.requestLines(0, 20));
+    // can return error
+    {
+        assert(buf.roperoot.weights().bols < 20);
+        try shouldErr(RequestLinesError.EndLineOutOfBounds, dcp.requestLines(0, 20));
+    }
 
     // request first 5 lines
     {
@@ -99,17 +116,27 @@ test "requestLines - no tree sitter " {
         );
     }
 
-    // TODO: request line 10 to last line
+    // request lines that are already cached (> 0 and <= 4)
+    {
+        const lines = try dcp.requestLines(0, 1);
+        try testLines(lines,
+            \\const std = @import("std"); // 0
+            \\ddddd ddd d ddddddddddddddd dddd
+            \\const Allocator = std.mem.Allocator; // 1
+            \\ddddd ddddddddd d dddddddddddddddddd dd d
+        );
+    }
 
-    //////////////////////// example of testing lines & their displays
-    // const example =
-    //     \\const std = @import("std"); // 0
-    //     \\qqqqq 000 0 bbbbbbb0sssss00 cc c
-    //     \\const Allocator = std.mem.Allocator; // 1
-    //     \\// 2
-    //     \\fn add(x: f32, y: f32) void { // 3
-    //     \\    return x + y; // 4
-    // ;
+    // // request line 11 to last line
+    // {
+    //     const lines = try dcp.requestLines(11, dcp.getLastLineNumberOfBuffer());
+    //     try testLinesContents(lines,
+    //         \\pub const not_false = true; // 11
+    //         \\// 12
+    //         \\var xxx = 0; // 13
+    //         \\var yyy = 0; // 14
+    //     );
+    // }
 }
 
 fn createCachedLinesWithDefaultDisplays(self: *@This(), start_line: usize, end_line: usize) !ArrayList(Line) {
@@ -227,6 +254,17 @@ fn testLines(lines: []Line, expected_str: []const u8) !void {
         }
     }
 
+    try eq(i, lines.len);
+}
+
+fn testLinesContents(lines: []Line, expected_str: []const u8) !void {
+    var split_iter = std.mem.split(u8, expected_str, "\n");
+    var i: usize = 0;
+    while (split_iter.next()) |expected| {
+        defer i += 1;
+        try eqStrU21(expected, lines[i].contents);
+        try eq(lines[i].contents.len, lines[i].displays.len);
+    }
     try eq(i, lines.len);
 }
 
