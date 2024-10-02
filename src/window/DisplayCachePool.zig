@@ -85,16 +85,31 @@ test "requestLines - no tree sitter " {
     // request first 5 lines
     {
         const lines = try dcp.requestLines(0, 4);
-        try testLinesContents(lines,
+        try testLines(lines,
             \\const std = @import("std"); // 0
+            \\ddddd ddd d ddddddddddddddd dddd
             \\const Allocator = std.mem.Allocator; // 1
+            \\ddddd ddddddddd d dddddddddddddddddd dd d
             \\// 2
+            \\dd d
             \\fn add(x: f32, y: f32) void { // 3
+            \\dd dddddd dddd dd dddd dddd d dd d
             \\    return x + y; // 4
+            \\    dddddd d d dd dd d
         );
     }
 
     // TODO: request line 10 to last line
+
+    //////////////////////// example of testing lines & their displays
+    // const example =
+    //     \\const std = @import("std"); // 0
+    //     \\qqqqq 000 0 bbbbbbb0sssss00 cc c
+    //     \\const Allocator = std.mem.Allocator; // 1
+    //     \\// 2
+    //     \\fn add(x: f32, y: f32) void { // 3
+    //     \\    return x + y; // 4
+    // ;
 }
 
 fn createCachedLinesWithDefaultDisplays(self: *@This(), start_line: usize, end_line: usize) !ArrayList(Line) {
@@ -145,8 +160,8 @@ const Line = struct {
 };
 
 const Display = struct {
-    width: f32,
-    height: f32,
+    width: f32 = 0,
+    height: f32 = 0,
     variant: union(enum) {
         const Char = struct {
             font_size: f32,
@@ -165,8 +180,6 @@ const Display = struct {
 };
 
 const __dummy_default_display = Display{
-    .width = 15,
-    .height = 40,
     .variant = .{
         .char = .{
             .font_size = 40,
@@ -178,22 +191,64 @@ const __dummy_default_display = Display{
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Helpers
 
+const ExpectedDisplayMap = std.AutoHashMap(u8, Display);
+fn createExpectedDisplayMap() !ExpectedDisplayMap {
+    var map = ExpectedDisplayMap.init(testing_allocator);
+
+    try map.put('d', __dummy_default_display);
+
+    return map;
+}
+
+fn testLines(lines: []Line, expected_str: []const u8) !void {
+    var display_map = try createExpectedDisplayMap();
+    defer display_map.deinit();
+
+    var split_iter = std.mem.split(u8, expected_str, "\n");
+    var tracker: usize = 0;
+    var i: usize = 0;
+    var expected_contents: []const u8 = undefined;
+    var expected_displays: []const u8 = undefined;
+    while (split_iter.next()) |test_line| {
+        defer tracker += 1;
+        if (tracker % 2 == 0) {
+            expected_contents = test_line;
+            continue;
+        }
+
+        defer i += 1;
+        expected_displays = test_line;
+
+        try eqStrU21(expected_contents, lines[i].contents);
+        for (expected_displays, 0..) |key, j| {
+            if (lines[i].contents[j] == ' ') continue; // skip ' ' for less clutter
+            const expected = display_map.get(key) orelse @panic("can't find expected display");
+            try eqDisplay(expected, lines[i].displays[j]);
+        }
+    }
+
+    try eq(i, lines.len);
+}
+
+fn eqDisplay(expected: Display, got: Display) !void {
+    switch (expected.variant) {
+        .char => |char| {
+            try eq(char.font_size, got.variant.char.font_size);
+            try eqStr(char.font_face, got.variant.char.font_face);
+            try eq(char.color, got.variant.char.color);
+        },
+        .image => |image| {
+            try eq(image.path, got.variant.image.path);
+        },
+        else => unreachable,
+    }
+}
+
 fn eqStrU21(expected: []const u8, got: []u21) !void {
     var slice = try testing_allocator.alloc(u8, got.len);
     defer testing_allocator.free(slice);
     for (got, 0..) |cp, i| slice[i] = @intCast(cp);
     try eqStr(expected, slice);
-}
-
-fn testLinesContents(lines: []Line, expected_str: []const u8) !void {
-    var split_iter = std.mem.split(u8, expected_str, "\n");
-    var i: usize = 0;
-    while (split_iter.next()) |expected| {
-        defer i += 1;
-        try eqStrU21(expected, lines[i].contents);
-        try eq(lines[i].contents.len, lines[i].displays.len);
-    }
-    try eq(i, lines.len);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Experiments
