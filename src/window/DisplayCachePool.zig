@@ -79,12 +79,14 @@ pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!
     }
 
     // requested range already cached
-    if (start <= self.start_line and end <= self.end_line) {
+    if (start >= self.start_line and end <= self.end_line) {
         return self.cached_lines.items[start .. end + 1];
     }
 
     if (start < self.start_line) {
-        // TODO:
+        try self.createAndAppendLinesWithDefaultDisplays(start, self.start_line - 1);
+        self.setStartAndEndLine(start, self.end_line);
+        self.sortCachedLines();
     }
 
     if (end > self.end_line) {
@@ -150,7 +152,7 @@ test "requestLines - no tree sitter" {
         }
     }
 
-    // TODO: create tests that exposes `start < self.start_line`
+    // request start < DisplayCachePool.start_line
     {
         var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
         defer dcp.deinit();
@@ -168,17 +170,45 @@ test "requestLines - no tree sitter" {
         }
 
         // request line 0 - 1, which is not cached, and before `DisplayCachePool.start_line`
-        // {
-        //     const lines = try dcp.requestLines(3, 5);
-        //     try testLines(lines,
-        //         \\const std = @import("std"); // 0
-        //         \\ddddd ddd d ddddddddddddddd dd d
-        //         \\const Allocator = std.mem.Allocator; // 1
-        //         \\ddddd ddddddddd d dddddddddddddddddd dd d
-        //     );
-        //     try eq(0, dcp.start_line);
-        //     try eq(1, dcp.end_line);
-        // }
+        {
+            try requestAndTestLines(.{ 0, 1 }, dcp, .{ 0, 5 },
+                \\const std = @import("std"); // 0
+                \\ddddd ddd d ddddddddddddddd dd d
+                \\const Allocator = std.mem.Allocator; // 1
+                \\ddddd ddddddddd d dddddddddddddddddd dd d
+            );
+        }
+    }
+
+    // request covers beyond cache range in both start and end
+    {
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        defer dcp.deinit();
+        _ = try dcp.requestLines(3, 5); // already tested on previous test
+        {
+            try requestAndTestLines(.{ 0, 9 }, dcp, .{ 0, 9 },
+                \\const std = @import("std"); // 0
+                \\ddddd ddd d ddddddddddddddd dd d
+                \\const Allocator = std.mem.Allocator; // 1
+                \\ddddd ddddddddd d dddddddddddddddddd dd d
+                \\// 2
+                \\dd d
+                \\fn add(x: f32, y: f32) void { // 3
+                \\dd dddddd dddd dd dddd dddd d dd d
+                \\    return x + y; // 4
+                \\    dddddd d d dd dd d
+                \\} // 5
+                \\d dd d
+                \\// six
+                \\dd ddd
+                \\fn sub(a: f32, b: f32) void { // seven
+                \\dd dddddd dddd dd dddd dddd d dd ddddd
+                \\    return a - b; // eight
+                \\    dddddd d d dd dd ddddd
+                \\} // nine
+                \\d dd dddd
+            );
+        }
     }
 }
 
@@ -292,9 +322,11 @@ fn requestAndTestLines(request_range: Range, dcp: *DisplayCachePool, cache_range
         }
 
         defer i += 1;
-        expected_displays = test_line;
 
+        try eq(i + request_range[0], lines[i].linenr);
         try eqStrU21(expected_contents, lines[i].contents);
+
+        expected_displays = test_line;
         for (expected_displays, 0..) |key, j| {
             if (lines[i].contents[j] == ' ') continue; // skip ' ' for less clutter
             const expected = display_map.get(key) orelse @panic("can't find expected display");
@@ -303,6 +335,7 @@ fn requestAndTestLines(request_range: Range, dcp: *DisplayCachePool, cache_range
     }
 
     try eq(i, lines.len);
+    try eq(true, dcp.cachedLinesAreSorted());
 }
 
 fn testLinesContents(lines: []Line, expected_str: []const u8) !void {
