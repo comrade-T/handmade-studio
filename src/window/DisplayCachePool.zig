@@ -56,7 +56,6 @@ pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!
     if (end > self.getLastLineNumberOfBuffer()) return RequestLinesError.EndLineOutOfBounds;
 
     assert(start <= end);
-    assert(self.cachedLinesAreSorted());
 
     // cache empty
     if (self.cached_lines.items.len == 0) {
@@ -71,9 +70,10 @@ pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!
     }
 
     if (start < self.start_line) {
-        try self.createAndAppendLinesWithDefaultDisplays(start, self.start_line - 1);
+        const new_lines_list = try self.createDefaultLinesList(start, self.start_line - 1);
+        defer new_lines_list.deinit();
+        try self.cached_lines.insertSlice(0, new_lines_list.items);
         self.setStartAndEndLine(start, self.end_line);
-        self.sortCachedLines();
     }
 
     if (end > self.end_line) {
@@ -205,24 +205,42 @@ fn createAndAppendLinesWithDefaultDisplays(self: *@This(), start: usize, end: us
     if (self.cached_lines.items.len == 0) try self.cached_lines.ensureTotalCapacity(end - start + 1);
     for (start..end + 1) |linenr| {
         assert(linenr <= self.getLastLineNumberOfBuffer());
-        const contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
-        const displays = try self.a.alloc(Display, contents.len);
-        @memset(displays, self.default_display);
-        try self.cached_lines.append(Line{ .linenr = linenr, .contents = contents, .displays = displays });
+        const new_line = try self.createDefaultLine(linenr);
+        try self.cached_lines.append(new_line);
     }
 }
 
-fn sortCachedLines(self: *@This()) void {
-    std.mem.sort(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
+fn createDefaultLinesList(self: *@This(), start: usize, end: usize) !ArrayList(Line) {
+    assert(start <= end);
+    assert(start <= self.getLastLineNumberOfBuffer() and end <= self.getLastLineNumberOfBuffer());
+    var list = try ArrayList(Line).initCapacity(self.a, end - start + 1);
+    for (start..end + 1) |linenr| {
+        assert(linenr <= self.getLastLineNumberOfBuffer());
+        const new_line = try self.createDefaultLine(linenr);
+        try list.append(new_line);
+    }
+    return list;
 }
 
-fn cachedLinesAreSorted(self: *@This()) bool {
-    return std.sort.isSorted(Line, self.cached_lines.items, {}, Line.cmpByLinenr);
+fn createDefaultLine(self: *@This(), linenr: usize) !Line {
+    const contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
+    const line = Line{
+        .contents = contents,
+        .displays = try self.a.alloc(Display, contents.len),
+    };
+    @memset(line.displays, self.default_display);
+    return line;
 }
 
 fn setStartAndEndLine(self: *@This(), start: usize, end: usize) void {
     self.start_line = start;
     self.end_line = end;
+}
+
+fn updateEndLine(self: *@This(), len_diff: i128) void {
+    const new_end_line = @as(i128, @intCast(self.end_line)) + len_diff;
+    assert(new_end_line >= 0);
+    self.end_line = @intCast(new_end_line);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert
@@ -245,7 +263,7 @@ pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) I
     const update_params = .{
         .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
     };
-    try self.update(update_params, .insert);
+    try self.update(update_params);
 
     _ = may_ts_ranges;
 }
@@ -329,53 +347,32 @@ test "insertChars - no tree sitter" {
 ////////////////////////////////////////////////////////////////////////////////////////////// Update
 
 const UpdateError = error{OutOfMemory};
-fn update(self: *@This(), params: UpdateParameters, operation: enum { insert, delete }) UpdateError!void {
-    switch (operation) {
-        .insert => {
-            try self.updateSingleLine(params.lines.old_start);
+fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
+    const len_diff = try self.updateObsoleteLinesWithNewContentsAndDefaultDisplays(params.lines);
+    self.updateEndLine(len_diff);
+}
 
-            const num_of_new_lines = params.lines.new_end - params.lines.old_start;
-            if (num_of_new_lines == 0) return;
+fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: UpdateParameters.Lines) !i128 {
+    assert(p.new_start <= p.new_end);
+    assert(p.new_start >= self.start_line);
 
-            // update linenr for the rest of the lines
-            for (params.lines.old_start + 1..self.end_line + 1) |i| {
-                self.cached_lines.items[i].linenr = i + num_of_new_lines;
-            }
+    const old_len: i128 = @intCast(self.cached_lines.items.len);
+    const new_lines_list = try self.createDefaultLinesList(p.new_start, p.new_end);
+    defer new_lines_list.deinit();
 
-            for (0..num_of_new_lines) |i| {
-                const linenr = params.lines.old_start + i + 1;
-                const new_line = try self.createDefaultLine(linenr);
-                try self.cached_lines.append(new_line);
-            }
-
-            self.setStartAndEndLine(self.start_line, self.end_line + num_of_new_lines);
-            self.sortCachedLines();
-        },
-        else => unreachable,
+    const replace_len = p.old_end - p.old_start + 1;
+    for (0..replace_len) |i| {
+        const index = p.new_start + i;
+        const line = self.cached_lines.items[index];
+        self.a.free(line.contents);
+        self.a.free(line.displays);
     }
-}
 
-fn updateSingleLine(self: *@This(), linenr: usize) !void {
-    assert(linenr >= self.start_line and linenr <= self.end_line);
+    try self.cached_lines.replaceRange(p.new_start, p.old_end - p.old_start + 1, new_lines_list.items);
 
-    var line = &self.cached_lines.items[linenr + self.start_line];
-    self.a.free(line.contents);
-    self.a.free(line.displays);
-
-    line.contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
-    line.displays = try self.a.alloc(Display, line.contents.len);
-    @memset(line.displays, self.default_display);
-}
-
-fn createDefaultLine(self: *@This(), linenr: usize) !Line {
-    const contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
-    const line = Line{
-        .linenr = linenr,
-        .contents = contents,
-        .displays = try self.a.alloc(Display, contents.len),
-    };
-    @memset(line.displays, self.default_display);
-    return line;
+    const len_diff: i128 = @as(i128, @intCast(self.cached_lines.items.len)) - old_len;
+    assert(self.end_line + len_diff >= self.start_line);
+    return len_diff;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
@@ -403,21 +400,13 @@ fn getHeight(self: *@This()) f32 {
 const CellIndex = struct { line: usize, col: usize };
 
 const Line = struct {
-    linenr: usize,
     contents: []u21,
     displays: []Display,
-    fn cmpByLinenr(ctx: void, a: Line, b: Line) bool {
-        return std.sort.asc(usize)(ctx, a.linenr, b.linenr);
-    }
 };
 
 const UpdateParameters = struct {
-    lines: struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize },
-    fn affectsOnlyOneLine(self: *const @This()) bool {
-        return self.lines.old_start == self.lines.old_end and
-            self.lines.new_start == self.lines.new_end and
-            self.lines.old_start == self.lines.new_start;
-    }
+    const Lines = struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize };
+    lines: UpdateParameters.Lines,
 };
 
 const Display = struct {
@@ -486,7 +475,6 @@ fn requestAndTestLines(request_range: Range, dcp: *DisplayCachePool, cache_range
 
         defer i += 1;
 
-        try eq(i + request_range[0], lines[i].linenr);
         try eqStrU21(expected_contents, lines[i].contents);
 
         expected_displays = test_line;
@@ -498,7 +486,6 @@ fn requestAndTestLines(request_range: Range, dcp: *DisplayCachePool, cache_range
     }
 
     try eq(i, lines.len);
-    try eq(true, dcp.cachedLinesAreSorted());
 }
 
 fn testLinesContents(lines: []Line, expected_str: []const u8) !void {
@@ -531,65 +518,4 @@ fn eqStrU21(expected: []const u8, got: []u21) !void {
     defer testing_allocator.free(slice);
     for (got, 0..) |cp, i| slice[i] = @intCast(cp);
     try eqStr(expected, slice);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Experiments
-
-test "ArrayList swap remove" {
-    var list = ArrayList(u8).init(testing_allocator);
-    defer list.deinit();
-
-    try list.append(1);
-    try list.append(2);
-    try list.append(3);
-
-    try eq(true, eql(u8, &.{ 1, 2, 3 }, list.items));
-
-    const removed_element = list.swapRemove(0);
-    _ = removed_element;
-    try eq(true, eql(u8, &.{ 3, 2 }, list.items));
-
-    try list.append(4);
-    try eq(true, eql(u8, &.{ 3, 2, 4 }, list.items));
-
-    list.items[0] = 100;
-    try eq(true, eql(u8, &.{ 100, 2, 4 }, list.items));
-
-    const slice = try list.toOwnedSlice();
-    defer testing_allocator.free(slice);
-    std.mem.sort(u8, slice, {}, comptime std.sort.asc(u8));
-    try eq(true, eql(u8, &.{ 2, 4, 100 }, slice));
-}
-
-const CustomType = struct {
-    index: usize,
-    ptr: *[]const u8,
-    fn cmpByIndex(ctx: void, a: CustomType, b: CustomType) bool {
-        return std.sort.asc(usize)(ctx, a.index, b.index);
-    }
-};
-
-test "custom type sort" {
-    var str_list = ArrayList([]const u8).init(testing_allocator);
-    defer str_list.deinit();
-    try str_list.append("one");
-    try str_list.append("two");
-    try str_list.append("three");
-
-    var ct_list = ArrayList(CustomType).init(testing_allocator);
-    defer ct_list.deinit();
-
-    try ct_list.append(CustomType{ .index = 2, .ptr = &str_list.items[2] });
-    try ct_list.append(CustomType{ .index = 0, .ptr = &str_list.items[0] });
-    try ct_list.append(CustomType{ .index = 1, .ptr = &str_list.items[1] });
-
-    try eqStr("three", ct_list.items[0].ptr.*);
-    try eqStr("one", ct_list.items[1].ptr.*);
-    try eqStr("two", ct_list.items[2].ptr.*);
-
-    std.mem.sort(CustomType, ct_list.items, {}, CustomType.cmpByIndex);
-
-    try eqStr("one", ct_list.items[0].ptr.*);
-    try eqStr("two", ct_list.items[1].ptr.*);
-    try eqStr("three", ct_list.items[2].ptr.*);
 }
