@@ -245,7 +245,7 @@ pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) I
     const update_params = .{
         .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
     };
-    try self.update(update_params);
+    try self.update(update_params, .insert);
 
     _ = may_ts_ranges;
 }
@@ -270,17 +270,89 @@ test "insertChars - no tree sitter" {
             \\dd ddddd ddd d ddddddddddddddd dddd
         );
     }
+
+    // changes spans across 2 lines
+    {
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        defer dcp.deinit();
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+            \\// const std = @import("std"); // 0
+            \\dd ddddd ddd d ddddddddddddddd dddd
+            \\const Allocator = std.mem.Allocator; // 1
+            \\ddddd ddddddddd d dddddddddddddddddd dd d
+            \\// 2
+            \\dd d
+            \\fn add(x: f32, y: f32) void { // 3
+            \\dd dddddd dddd dd dddd dddd d dd d
+            \\    return x + y; // 4
+            \\    dddddd d d dd dd d
+            \\} // 5
+            \\d dd d
+        );
+
+        try dcp.insertChars(0, 0, "// new line 0\n");
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 6 },
+            \\// new line 0
+            \\dd ddd dddd d
+            \\// const std = @import("std"); // 0
+            \\dd ddddd ddd d ddddddddddddddd dddd
+            \\const Allocator = std.mem.Allocator; // 1
+            \\ddddd ddddddddd d dddddddddddddddddd dd d
+            \\// 2
+            \\dd d
+            \\fn add(x: f32, y: f32) void { // 3
+            \\dd dddddd dddd dd dddd dddd d dd d
+            \\    return x + y; // 4
+            \\    dddddd d d dd dd d
+        );
+
+        try dcp.insertChars(3, 0, "some\nmore\nlines ");
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 8 },
+            \\// new line 0
+            \\dd ddd dddd d
+            \\// const std = @import("std"); // 0
+            \\dd ddddd ddd d ddddddddddddddd dddd
+            \\const Allocator = std.mem.Allocator; // 1
+            \\ddddd ddddddddd d dddddddddddddddddd dd d
+            \\some
+            \\dddd
+            \\more
+            \\dddd
+            \\lines // 2
+            \\ddddd dd d
+        );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Update
 
 const UpdateError = error{OutOfMemory};
-fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
-    if (params.affectsOnlyOneLine()) {
-        try self.updateSingleLine(params.lines.old_start);
-        return;
+fn update(self: *@This(), params: UpdateParameters, operation: enum { insert, delete }) UpdateError!void {
+    switch (operation) {
+        .insert => {
+            try self.updateSingleLine(params.lines.old_start);
+
+            const num_of_new_lines = params.lines.new_end - params.lines.old_start;
+            if (num_of_new_lines == 0) return;
+
+            // update linenr for the rest of the lines
+            for (params.lines.old_start + 1..self.end_line + 1) |i| {
+                self.cached_lines.items[i].linenr = i + num_of_new_lines;
+            }
+
+            for (0..num_of_new_lines) |i| {
+                const linenr = params.lines.old_start + i + 1;
+                const new_line = try self.createDefaultLine(linenr);
+                try self.cached_lines.append(new_line);
+            }
+
+            self.setStartAndEndLine(self.start_line, self.end_line + num_of_new_lines);
+            self.sortCachedLines();
+        },
+        else => unreachable,
     }
-    unreachable;
 }
 
 fn updateSingleLine(self: *@This(), linenr: usize) !void {
@@ -293,6 +365,17 @@ fn updateSingleLine(self: *@This(), linenr: usize) !void {
     line.contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
     line.displays = try self.a.alloc(Display, line.contents.len);
     @memset(line.displays, self.default_display);
+}
+
+fn createDefaultLine(self: *@This(), linenr: usize) !Line {
+    const contents = self.buf.roperoot.getLineEx(self.a, linenr) catch unreachable;
+    const line = Line{
+        .linenr = linenr,
+        .contents = contents,
+        .displays = try self.a.alloc(Display, contents.len),
+    };
+    @memset(line.displays, self.default_display);
+    return line;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
@@ -387,6 +470,7 @@ fn requestAndTestLines(request_range: Range, dcp: *DisplayCachePool, cache_range
 
     try eq(dcp.start_line, cache_range[0]);
     try eq(dcp.end_line, cache_range[1]);
+    try eq(dcp.cached_lines.items.len, cache_range[1] - cache_range[0] + 1);
 
     var split_iter = std.mem.split(u8, expected_str, "\n");
     var tracker: usize = 0;
