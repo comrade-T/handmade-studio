@@ -92,30 +92,128 @@ pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!
     }
 
     if (start < self.start_line) {
-        const new_lines_list = try self.createDefaultLinesList(start, self.start_line - 1);
+        const edit_end = self.start_line - 1;
+        const new_lines_list = try self.createDefaultLinesList(start, edit_end);
         defer new_lines_list.deinit();
         try self.cached_lines.insertSlice(0, new_lines_list.items);
         self.setStartAndEndLine(start, self.end_line);
+
+        try self.applyTreeSitterToDisplays(start, edit_end);
     }
 
     if (end > self.end_line) {
-        try self.createAndAppendLinesWithDefaultDisplays(self.end_line + 1, end);
+        const edit_start = self.end_line + 1;
+        try self.createAndAppendLinesWithDefaultDisplays(edit_start, end);
         self.setStartAndEndLine(self.start_line, end);
+
+        try self.applyTreeSitterToDisplays(edit_start, end);
     }
 
     return self.cached_lines.items[(start - self.start_line)..(end - self.start_line + 1)];
 }
 
 test "requestLines - with tree sitter" {
-    const lsuite, const buf, const dcp = try setupTestDependencies();
-    defer cleanUpTestDependencies(lsuite, buf, dcp);
+    {
+        const lsuite, const buf, const dcp = try setupTestDependencies();
+        defer cleanUpTestDependencies(lsuite, buf, dcp);
 
-    try requestAndTestLines(.{ 0, 1 }, dcp, .{ 0, 1 },
-        \\const std = @import("std"); // 0
-        \\qqqqq ddd d iiiiiiidsssssdd cccc
-        \\const Allocator = std.mem.Allocator; // 1
-        \\qqqqq ttttttttt d ddddddddtttttttttd cccc
-    );
+        // request first 5 lines
+        try requestAndTestLines(.{ 0, 4 }, dcp, .{ 0, 4 },
+            \\const std = @import("std"); // 0
+            \\qqqqq vvv d iiiiiiipssssspp cc c
+            \\const Allocator = std.mem.Allocator; // 1
+            \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            \\// 2
+            \\cc c
+            \\fn add(x: f32, y: f32) void { // 3
+            \\kk FFFpPp tttp Pp tttp tttt p cc c
+            \\    return x + y; // 4
+            \\    dddddd v o vp cc c
+        );
+
+        // request lines that are already cached (> 0 and <= 4)
+        {
+            try requestAndTestLines(.{ 0, 1 }, dcp, .{ 0, 4 },
+                \\const std = @import("std"); // 0
+                \\qqqqq vvv d iiiiiiipssssspp cc c
+                \\const Allocator = std.mem.Allocator; // 1
+                \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            );
+        }
+
+        // request lines that are not cached - after `DisplayCachePool.end_line` (> 4)
+        {
+            try requestAndTestLines(.{ 11, 14 }, dcp, .{ 0, 14 },
+                \\pub const not_false = true; // 11
+                \\kkk qqqqq vvvvvvvvv d bbbbp cc cc
+                \\// 12
+                \\cc cc
+                \\var xxx = 0; // 13
+                \\qqq vvv d np cc cc
+                \\var yyy = 0; // 14
+                \\qqq vvv d np cc cc
+            );
+        }
+    }
+
+    {
+        const lsuite, const buf, const dcp = try setupTestDependencies();
+        defer cleanUpTestDependencies(lsuite, buf, dcp);
+
+        // request line 3 - 5
+        {
+            try requestAndTestLines(.{ 3, 5 }, dcp, .{ 3, 5 },
+                \\fn add(x: f32, y: f32) void { // 3
+                \\kk FFFpPp tttp Pp tttp tttt p cc c
+                \\    return x + y; // 4
+                \\    dddddd v o vp cc c
+                \\} // 5
+                \\p cc c
+            );
+        }
+
+        // request line 0 - 1, which is not cached, and before `DisplayCachePool.start_line`
+        {
+            try requestAndTestLines(.{ 0, 1 }, dcp, .{ 0, 5 },
+                \\const std = @import("std"); // 0
+                \\qqqqq vvv d iiiiiiipssssspp cc c
+                \\const Allocator = std.mem.Allocator; // 1
+                \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            );
+        }
+    }
+
+    // request covers beyond cache range in both start and end
+    {
+        const lsuite, const buf, const dcp = try setupTestDependencies();
+        defer cleanUpTestDependencies(lsuite, buf, dcp);
+        _ = try dcp.requestLines(3, 5); // already tested on previous test
+        try eq(.{ 3, 5 }, .{ dcp.start_line, dcp.end_line });
+        {
+            try requestAndTestLines(.{ 0, 9 }, dcp, .{ 0, 9 },
+                \\const std = @import("std"); // 0
+                \\qqqqq vvv d iiiiiiipssssspp cc c
+                \\const Allocator = std.mem.Allocator; // 1
+                \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+                \\// 2
+                \\cc c
+                \\fn add(x: f32, y: f32) void { // 3
+                \\kk FFFpPp tttp Pp tttp tttt p cc c
+                \\    return x + y; // 4
+                \\    dddddd v o vp cc c
+                \\} // 5
+                \\p cc c
+                \\// six
+                \\cc ccc
+                \\fn sub(a: f32, b: f32) void { // seven
+                \\kk FFFpPp tttp Pp tttp tttt p cc ccccc
+                \\    return a - b; // eight
+                \\    dddddd v o vp cc ccccc
+                \\} // nine
+                \\p cc cccc
+            );
+        }
+    }
 }
 
 test "requestLines - no tree sitter" {
@@ -688,14 +786,13 @@ const __dummy_default_display = Display{
 fn setupTestDependencies() !struct { *sitter.LangSuite, *Buffer, *DisplayCachePool } {
     var lsuite = try sitter.LangSuite.create(testing_allocator, .zig);
     try lsuite.initializeQueryMap(testing_allocator);
-    try lsuite.addQuery(testing_allocator, "trimmed_down_highlights", trimmed_down_highlights);
     try lsuite.initializeNightflyColorscheme(testing_allocator);
 
     var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
     try buf.initiateTreeSitter(lsuite);
 
     var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
-    try dcp.enableQueries(&.{"trimmed_down_highlights"});
+    try dcp.enableQueries(&.{sitter.DEFAULT_QUERY_ID});
 
     return .{ lsuite, buf, dcp };
 }
@@ -707,24 +804,43 @@ fn cleanUpTestDependencies(lsuite: *sitter.LangSuite, buf: *Buffer, dcp: *Displa
 }
 
 const ExpectedDisplayMap = std.AutoHashMap(u8, Display);
-fn createExpectedDisplayMap() !ExpectedDisplayMap {
+fn createExpectedDisplayMap(dcp: *DisplayCachePool) !ExpectedDisplayMap {
     var map = ExpectedDisplayMap.init(testing_allocator);
 
-    try map.put('d', __dummy_default_display);
-    try map.put('q', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.violet), .font_size = 40, .font_face = "Meslo" } } });
-    try map.put('b', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.watermelon), .font_size = 40, .font_face = "Meslo" } } });
-    try map.put('i', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.red), .font_size = 40, .font_face = "Meslo" } } });
-    try map.put('n', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.orange), .font_size = 40, .font_face = "Meslo" } } });
-    try map.put('t', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.emerald), .font_size = 40, .font_face = "Meslo" } } });
-    try map.put('s', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.peach), .font_size = 40, .font_face = "Meslo" } } });
-    try map.put('c', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.grey_blue), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('d', dcp.default_display);
+    if (dcp.buf.langsuite == null) return map;
+
+    try map.put('q', createDisplayFromHlGroup(dcp, "type.qualifier"));
+    try map.put('c', createDisplayFromHlGroup(dcp, "comment"));
+    try map.put('t', createDisplayFromHlGroup(dcp, "type"));
+    try map.put('v', createDisplayFromHlGroup(dcp, "variable"));
+    try map.put('i', createDisplayFromHlGroup(dcp, "include"));
+    try map.put('k', createDisplayFromHlGroup(dcp, "keyword"));
+    try map.put('s', createDisplayFromHlGroup(dcp, "string"));
+    try map.put('f', createDisplayFromHlGroup(dcp, "field"));
+    try map.put('F', createDisplayFromHlGroup(dcp, "function"));
+    try map.put('b', createDisplayFromHlGroup(dcp, "boolean"));
+    try map.put('n', createDisplayFromHlGroup(dcp, "number"));
+    try map.put('o', createDisplayFromHlGroup(dcp, "operator"));
+    try map.put('p', createDisplayFromHlGroup(dcp, "punctuation.bracket"));
+    try map.put('P', createDisplayFromHlGroup(dcp, "parameter"));
 
     return map;
 }
 
+fn createDisplayFromHlGroup(dcp: *DisplayCachePool, hl_group: []const u8) Display {
+    var display = dcp.default_display;
+    const color = dcp.buf.langsuite.?.highlight_map.?.get(hl_group) orelse {
+        std.debug.print("hl_group: '{s}' not found\n", .{hl_group});
+        unreachable;
+    };
+    display.variant.char.color = color;
+    return display;
+}
+
 const TestRange = struct { usize, usize };
 fn requestAndTestLines(request_range: TestRange, dcp: *DisplayCachePool, cache_range: TestRange, expected_str: []const u8) !void {
-    var display_map = try createExpectedDisplayMap();
+    var display_map = try createExpectedDisplayMap(dcp);
     defer display_map.deinit();
 
     const lines = try dcp.requestLines(request_range[0], request_range[1]);
@@ -795,41 +911,3 @@ fn eqStrU21(expected: []const u8, got: []u21) !void {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Patterns for Testing
-
-const trimmed_down_highlights =
-    \\ [
-    \\   "const"
-    \\   "var"
-    \\ ] @type.qualifier
-    \\
-    \\ [
-    \\  "true"
-    \\  "false"
-    \\ ] @boolean
-    \\
-    \\ (INTEGER) @number
-    \\
-    \\ ((BUILTINIDENTIFIER) @include
-    \\ (#any-of? @include "@import" "@cImport"))
-    \\
-    \\ ;; assume TitleCase is a type
-    \\ (
-    \\   [
-    \\     variable_type_function: (IDENTIFIER)
-    \\     field_access: (IDENTIFIER)
-    \\     parameter: (IDENTIFIER)
-    \\   ] @type
-    \\   (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
-    \\ )
-    \\
-    \\[
-    \\  (LINESTRING)
-    \\  (STRINGLITERALSINGLE)
-    \\] @string
-    \\
-    \\[
-    \\  (container_doc_comment)
-    \\  (doc_comment)
-    \\  (line_comment)
-    \\] @comment @spell
-;

@@ -105,6 +105,7 @@ pub const LangSuite = struct {
         try map.put("string", @intFromEnum(Nightfly.peach));
         try map.put("comment", @intFromEnum(Nightfly.grey_blue));
         try map.put("constant.builtin", @intFromEnum(Nightfly.green));
+        try map.put("parameter", @intFromEnum(Nightfly.orchid));
 
         try map.put("include", @intFromEnum(Nightfly.red));
         try map.put("boolean", @intFromEnum(Nightfly.watermelon));
