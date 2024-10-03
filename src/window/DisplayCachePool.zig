@@ -28,6 +28,8 @@ end_line: usize = 0,
 cached_lines: ArrayList(Line),
 default_display: Display,
 
+query_set: ?QuerySet = null,
+
 const InitError = error{OutOfMemory};
 pub fn init(a: Allocator, buf: *Buffer, default_display: Display) InitError!*DisplayCachePool {
     const self = try a.create(@This());
@@ -45,8 +47,27 @@ pub fn deinit(self: *@This()) void {
         self.a.free(line.contents);
         self.a.free(line.displays);
     }
+    if (self.query_set) |_| self.query_set.?.deinit();
     self.cached_lines.deinit();
     self.a.destroy(self);
+}
+
+pub fn enableQueries(self: *@This(), ids: []const []const u8) !void {
+    const langsuite = self.buf.langsuite orelse return;
+    const queries = langsuite.queries orelse {
+        std.debug.print("hello?\n", .{});
+        return;
+    };
+
+    if (self.query_set == null) self.query_set = try QuerySet.initCapacity(self.a, ids.len);
+
+    for (ids) |query_id| {
+        const sq = queries.get(query_id) orelse {
+            std.log.err("query not found for id '{s}'", .{query_id});
+            continue;
+        };
+        try self.query_set.?.append(sq);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// requestLines
@@ -61,6 +82,7 @@ pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!
     if (self.cached_lines.items.len == 0) {
         try self.createAndAppendLinesWithDefaultDisplays(start, end);
         self.setStartAndEndLine(start, end);
+        try self.applyTreeSitterToDisplays(start, end);
         return self.cached_lines.items;
     }
 
@@ -82,6 +104,18 @@ pub fn requestLines(self: *@This(), start: usize, end: usize) RequestLinesError!
     }
 
     return self.cached_lines.items[(start - self.start_line)..(end - self.start_line + 1)];
+}
+
+test "requestLines - with tree sitter" {
+    const lsuite, const buf, const dcp = try setupTestDependencies();
+    defer cleanUpTestDependencies(lsuite, buf, dcp);
+
+    try requestAndTestLines(.{ 0, 1 }, dcp, .{ 0, 1 },
+        \\const std = @import("std"); // 0
+        \\qqqqq ddd d iiiiiiidsssssdd cccc
+        \\const Allocator = std.mem.Allocator; // 1
+        \\qqqqq ttttttttt d ddddddddtttttttttd cccc
+    );
 }
 
 test "requestLines - no tree sitter" {
@@ -499,6 +533,77 @@ fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: Updat
     try self.cached_lines.replaceRange(p.new_start, p.old_end - p.old_start + 1, new_lines_list.items);
 }
 
+fn applyTreeSitterToDisplays(self: *@This(), start_line: usize, end_line: usize) !void {
+    if (self.buf.tstree == null) return;
+    if (self.query_set == null) return;
+
+    for (self.query_set.?.items) |sq| {
+        const query = sq.query;
+
+        const cursor = ts.Query.Cursor.create() catch continue;
+        defer cursor.destroy();
+        cursor.setPointRange(
+            ts.Point{ .row = @intCast(start_line), .column = 0 },
+            ts.Point{ .row = @intCast(end_line + 1), .column = 0 },
+        );
+        cursor.execute(query, self.buf.tstree.?.getRootNode());
+
+        while (true) {
+            const result = switch (sq.filter.nextMatchInLines(query, cursor, Buffer.contentCallback, self.buf, self.start_line, self.end_line)) {
+                .match => |result| result,
+                .stop => break,
+            };
+
+            var display = self.default_display;
+
+            if (self.buf.langsuite.?.highlight_map) |hl_map| {
+                if (hl_map.get(result.cap_name)) |color| {
+                    if (self.default_display.variant == .char) display.variant.char.color = color;
+                }
+            }
+
+            if (result.directives) |directives| {
+                for (directives) |d| {
+                    switch (d) {
+                        .font => |face| {
+                            if (display.variant == .char) display.variant.char.font_face = face;
+                        },
+                        .size => |size| {
+                            if (display.variant == .char) display.variant.char.font_size = size;
+                        },
+                        .img => |path| {
+                            if (display.variant == .image) {
+                                display.variant.image.path = path;
+                                break;
+                            }
+                        },
+                        else => {},
+                    }
+                }
+            }
+
+            const node_start = result.cap_node.getStartPoint();
+            const node_end = result.cap_node.getEndPoint();
+            for (node_start.row..node_end.row + 1) |linenr| {
+                if (linenr > self.end_line) continue;
+                assert(linenr >= self.start_line);
+                const line_index = linenr - self.start_line;
+                const start_col = if (linenr == node_start.row) node_start.column else 0;
+                const end_col = if (linenr == node_end.row)
+                    node_end.column
+                else
+                    self.cached_lines.items[line_index].contents.len;
+
+                if (start_col > end_col) continue;
+                const limit = self.cached_lines.items[line_index].displays.len;
+                if (start_col > limit or end_col > limit) continue;
+
+                @memset(self.cached_lines.items[line_index].displays[start_col..end_col], display);
+            }
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
 
 fn getLastLineNumberOfBuffer(self: *@This()) usize {
@@ -520,6 +625,8 @@ fn getHeight(self: *@This()) f32 {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
+
+const QuerySet = ArrayList(*sitter.StoredQuery);
 
 const Point = struct {
     usize,
@@ -578,11 +685,39 @@ const __dummy_default_display = Display{
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Helpers
 
+fn setupTestDependencies() !struct { *sitter.LangSuite, *Buffer, *DisplayCachePool } {
+    var lsuite = try sitter.LangSuite.create(testing_allocator, .zig);
+    try lsuite.initializeQueryMap(testing_allocator);
+    try lsuite.addQuery(testing_allocator, "trimmed_down_highlights", trimmed_down_highlights);
+    try lsuite.initializeNightflyColorscheme(testing_allocator);
+
+    var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
+    try buf.initiateTreeSitter(lsuite);
+
+    var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+    try dcp.enableQueries(&.{"trimmed_down_highlights"});
+
+    return .{ lsuite, buf, dcp };
+}
+
+fn cleanUpTestDependencies(lsuite: *sitter.LangSuite, buf: *Buffer, dcp: *DisplayCachePool) void {
+    lsuite.destroy();
+    buf.destroy();
+    dcp.deinit();
+}
+
 const ExpectedDisplayMap = std.AutoHashMap(u8, Display);
 fn createExpectedDisplayMap() !ExpectedDisplayMap {
     var map = ExpectedDisplayMap.init(testing_allocator);
 
     try map.put('d', __dummy_default_display);
+    try map.put('q', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.violet), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('b', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.watermelon), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('i', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.red), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('n', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.orange), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('t', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.emerald), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('s', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.peach), .font_size = 40, .font_face = "Meslo" } } });
+    try map.put('c', Display{ .variant = .{ .char = .{ .color = @intFromEnum(sitter.Nightfly.grey_blue), .font_size = 40, .font_face = "Meslo" } } });
 
     return map;
 }
@@ -618,6 +753,7 @@ fn requestAndTestLines(request_range: TestRange, dcp: *DisplayCachePool, cache_r
         for (expected_displays, 0..) |key, j| {
             if (lines[i].contents[j] == ' ') continue; // skip ' ' for less clutter
             const expected = display_map.get(key) orelse @panic("can't find expected display");
+            errdefer std.debug.print("failed at i: {d} | j: {d}\n", .{ i, j });
             try eqDisplay(expected, lines[i].displays[j]);
         }
     }
@@ -639,6 +775,7 @@ fn testLinesContents(lines: []Line, expected_str: []const u8) !void {
 fn eqDisplay(expected: Display, got: Display) !void {
     switch (expected.variant) {
         .char => |char| {
+            errdefer std.debug.print("wanted 0x{x} got 0x{x}\n", .{ char.color, got.variant.char.color });
             try eq(char.font_size, got.variant.char.font_size);
             try eqStr(char.font_face, got.variant.char.font_face);
             try eq(char.color, got.variant.char.color);
@@ -656,3 +793,43 @@ fn eqStrU21(expected: []const u8, got: []u21) !void {
     for (got, 0..) |cp, i| slice[i] = @intCast(cp);
     try eqStr(expected, slice);
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Patterns for Testing
+
+const trimmed_down_highlights =
+    \\ [
+    \\   "const"
+    \\   "var"
+    \\ ] @type.qualifier
+    \\
+    \\ [
+    \\  "true"
+    \\  "false"
+    \\ ] @boolean
+    \\
+    \\ (INTEGER) @number
+    \\
+    \\ ((BUILTINIDENTIFIER) @include
+    \\ (#any-of? @include "@import" "@cImport"))
+    \\
+    \\ ;; assume TitleCase is a type
+    \\ (
+    \\   [
+    \\     variable_type_function: (IDENTIFIER)
+    \\     field_access: (IDENTIFIER)
+    \\     parameter: (IDENTIFIER)
+    \\   ] @type
+    \\   (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
+    \\ )
+    \\
+    \\[
+    \\  (LINESTRING)
+    \\  (STRINGLITERALSINGLE)
+    \\] @string
+    \\
+    \\[
+    \\  (container_doc_comment)
+    \\  (doc_comment)
+    \\  (line_comment)
+    \\] @comment @spell
+;

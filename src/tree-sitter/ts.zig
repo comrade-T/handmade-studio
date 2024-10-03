@@ -72,16 +72,19 @@ pub const LangSuite = struct {
     }
 
     pub fn addQuery(self: *@This(), a: Allocator, id: []const u8, patterns: []const u8) !void {
-        const query = try b.Query.create(self.language, patterns);
-        if (self.queries) |_| {
-            const sq = try self.queries_arena.?.allocator().create(StoredQuery);
-            sq.* = StoredQuery{
-                .query = query,
-                .patterns = try self.queries_arena.?.allocator().dupe(u8, patterns),
-                .filter = try PredicatesFilter.init(a, query),
-            };
-            try self.queries.?.put(id, sq);
+        if (self.queries == null) {
+            std.debug.print("LangSuite.addQuery() called when LangSuite.initializeQueryMap() hasn't been called\n", .{});
+            return;
         }
+
+        const query = try b.Query.create(self.language, patterns);
+        const sq = try self.queries_arena.?.allocator().create(StoredQuery);
+        sq.* = StoredQuery{
+            .query = query,
+            .patterns = try self.queries_arena.?.allocator().dupe(u8, patterns),
+            .filter = try PredicatesFilter.init(a, query),
+        };
+        try self.queries.?.put(id, sq);
     }
 
     pub fn initializeNightflyColorscheme(self: *@This(), a: Allocator) !void {
@@ -103,7 +106,7 @@ pub const LangSuite = struct {
         try map.put("comment", @intFromEnum(Nightfly.grey_blue));
         try map.put("constant.builtin", @intFromEnum(Nightfly.green));
 
-        try map.put("include", @intFromEnum(Nightfly.watermelon));
+        try map.put("include", @intFromEnum(Nightfly.red));
         try map.put("boolean", @intFromEnum(Nightfly.watermelon));
         try map.put("operator", @intFromEnum(Nightfly.watermelon));
         try map.put("number", @intFromEnum(Nightfly.orange));
@@ -122,7 +125,7 @@ pub const LangSuite = struct {
     }
 };
 
-const Nightfly = enum(u32) {
+pub const Nightfly = enum(u32) {
     none = 0x000000ff,
     black = 0x011627ff,
     white = 0xc3ccdcff,
