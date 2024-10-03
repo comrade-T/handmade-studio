@@ -283,13 +283,15 @@ test "insertChars - no tree sitter" {
         );
 
         try dcp.insertChars(0, 0, "// ");
+        try eq(.{ 0, 0 }, .{ dcp.start_line, dcp.end_line });
+
         try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
             \\// const std = @import("std"); // 0
             \\dd ddddd ddd d ddddddddddddddd dddd
         );
     }
 
-    // changes spans across 2 lines
+    // changes spans across multiple lines
     {
         var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
         defer dcp.deinit();
@@ -310,6 +312,7 @@ test "insertChars - no tree sitter" {
         );
 
         try dcp.insertChars(0, 0, "// new line 0\n");
+        try eq(.{ 0, 6 }, .{ dcp.start_line, dcp.end_line });
 
         try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 6 },
             \\// new line 0
@@ -327,6 +330,8 @@ test "insertChars - no tree sitter" {
         );
 
         try dcp.insertChars(3, 0, "some\nmore\nlines ");
+        try eq(.{ 0, 8 }, .{ dcp.start_line, dcp.end_line });
+
         try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 8 },
             \\// new line 0
             \\dd ddd dddd d
@@ -344,19 +349,142 @@ test "insertChars - no tree sitter" {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Delete
+
+pub fn deleteRange(self: *@This(), a: Point, b: Point) !void {
+    const start, const end = sortPoints(a, b);
+    const may_ts_ranges = try self.buf.deleteRange(start, end);
+
+    const update_params = .{
+        .lines = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
+    };
+    try self.update(update_params);
+
+    _ = may_ts_ranges;
+}
+
+test "deleteRange - no tree sitter" {
+    {
+        var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
+        defer buf.destroy();
+
+        // changes happen only in 1 line
+        {
+            var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+            defer dcp.deinit();
+
+            try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+                \\const std = @import("std"); // 0
+                \\ddddd ddd d ddddddddddddddd dddd
+            );
+
+            try dcp.deleteRange(.{ 0, 0 }, .{ 0, 6 });
+            try eq(.{ 0, 0 }, .{ dcp.start_line, dcp.end_line });
+
+            try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+                \\std = @import("std"); // 0
+                \\ddd d ddddddddddddddd dddd
+            );
+        }
+
+        // changes spans across multiple lines
+        {
+            var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+            defer dcp.deinit();
+
+            try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+                \\std = @import("std"); // 0
+                \\ddd d ddddddddddddddd dddd
+                \\const Allocator = std.mem.Allocator; // 1
+                \\ddddd ddddddddd d dddddddddddddddddd dd d
+                \\// 2
+                \\dd d
+                \\fn add(x: f32, y: f32) void { // 3
+                \\dd dddddd dddd dd dddd dddd d dd d
+                \\    return x + y; // 4
+                \\    dddddd d d dd dd d
+                \\} // 5
+                \\d dd d
+            );
+
+            try dcp.deleteRange(.{ 1, try dcp.buf.roperoot.getNumOfCharsOfLine(1) }, .{ 4, 4 });
+            try eq(.{ 0, 2 }, .{ dcp.start_line, dcp.end_line });
+
+            try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+                \\std = @import("std"); // 0
+                \\ddd d ddddddddddddddd dddd
+                \\const Allocator = std.mem.Allocator; // 1return x + y; // 4
+                \\ddddd ddddddddd d dddddddddddddddddd dd ddddddd d d dd dd d
+                \\} // 5
+                \\d dd d
+                \\// six
+                \\dd ddd
+                \\fn sub(a: f32, b: f32) void { // seven
+                \\dd dddddd dddd dd dddd dddd d dd ddddd
+                \\    return a - b; // eight
+                \\    dddddd d d dd dd ddddd
+            );
+        }
+    }
+
+    // check for rope-related bug
+    {
+        var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
+        defer buf.destroy();
+
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        defer dcp.deinit();
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+            \\const std = @import("std"); // 0
+            \\ddddd ddd d ddddddddddddddd dddd
+            \\const Allocator = std.mem.Allocator; // 1
+            \\ddddd ddddddddd d dddddddddddddddddd dd d
+            \\// 2
+            \\dd d
+            \\fn add(x: f32, y: f32) void { // 3
+            \\dd dddddd dddd dd dddd dddd d dd d
+            \\    return x + y; // 4
+            \\    dddddd d d dd dd d
+            \\} // 5
+            \\d dd d
+        );
+
+        try dcp.deleteRange(.{ 1, try dcp.buf.roperoot.getNumOfCharsOfLine(1) }, .{ 4, 0 });
+        try eq(.{ 0, 2 }, .{ dcp.start_line, dcp.end_line });
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+            \\const std = @import("std"); // 0
+            \\ddddd ddd d ddddddddddddddd dddd
+            \\const Allocator = std.mem.Allocator; // 1    return x + y; // 4
+            \\ddddd ddddddddd d dddddddddddddddddd dd d    dddddd d d dd dd d
+            \\} // 5
+            \\d dd d
+            \\// six
+            \\dd ddd
+            \\fn sub(a: f32, b: f32) void { // seven
+            \\dd dddddd dddd dd dddd dddd d dd ddddd
+            \\    return a - b; // eight
+            \\    dddddd d d dd dd ddddd
+        );
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Update
 
 const UpdateError = error{OutOfMemory};
 fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
-    const len_diff = try self.updateObsoleteLinesWithNewContentsAndDefaultDisplays(params.lines);
+    const old_len: i128 = @intCast(self.cached_lines.items.len);
+    try self.updateObsoleteLinesWithNewContentsAndDefaultDisplays(params.lines);
+    const len_diff: i128 = @as(i128, @intCast(self.cached_lines.items.len)) - old_len;
+
     self.updateEndLine(len_diff);
 }
 
-fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: UpdateParameters.Lines) !i128 {
+fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: UpdateParameters.Lines) !void {
     assert(p.new_start <= p.new_end);
     assert(p.new_start >= self.start_line);
 
-    const old_len: i128 = @intCast(self.cached_lines.items.len);
     const new_lines_list = try self.createDefaultLinesList(p.new_start, p.new_end);
     defer new_lines_list.deinit();
 
@@ -369,10 +497,6 @@ fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: Updat
     }
 
     try self.cached_lines.replaceRange(p.new_start, p.old_end - p.old_start + 1, new_lines_list.items);
-
-    const len_diff: i128 = @as(i128, @intCast(self.cached_lines.items.len)) - old_len;
-    assert(self.end_line + len_diff >= self.start_line);
-    return len_diff;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
@@ -396,6 +520,19 @@ fn getHeight(self: *@This()) f32 {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
+
+const Point = struct {
+    usize,
+    usize,
+};
+fn sortPoints(a: Point, b: Point) struct { Point, Point } {
+    if (a[0] == b[0]) {
+        if (a[1] < b[1]) return .{ a, b };
+        return .{ b, a };
+    }
+    if (a[0] < b[0]) return .{ a, b };
+    return .{ b, a };
+}
 
 const CellIndex = struct { line: usize, col: usize };
 
@@ -450,8 +587,8 @@ fn createExpectedDisplayMap() !ExpectedDisplayMap {
     return map;
 }
 
-const Range = struct { usize, usize };
-fn requestAndTestLines(request_range: Range, dcp: *DisplayCachePool, cache_range: Range, expected_str: []const u8) !void {
+const TestRange = struct { usize, usize };
+fn requestAndTestLines(request_range: TestRange, dcp: *DisplayCachePool, cache_range: TestRange, expected_str: []const u8) !void {
     var display_map = try createExpectedDisplayMap();
     defer display_map.deinit();
 
