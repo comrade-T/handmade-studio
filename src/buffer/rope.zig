@@ -1004,8 +1004,7 @@ pub const Node = union(enum) {
             leaves_encountered: usize = 0,
             should_amend_bols: bool = true,
             first_leaf_bol: ?bool = null,
-            last_node: ?*const Node = null,
-            last_node_with_new_line_removed: ?*const Node = null,
+            last_replacement_eol: ?bool = null,
 
             start_byte: usize,
             num_of_bytes_to_delete: usize,
@@ -1031,13 +1030,12 @@ pub const Node = union(enum) {
 
                         return WalkMutResult.merge(allocator, branch, left_result, right_result);
                     },
-                    .leaf => |leaf| return cx.walker(&leaf, node) catch |err| return .{ .err = err },
+                    .leaf => |leaf| return cx.walker(&leaf) catch |err| return .{ .err = err },
                 }
             }
 
-            fn walker(cx: *@This(), leaf: *const Leaf, node: ?*const Node) !WalkMutResult {
+            fn walker(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 defer cx.leaves_encountered += 1;
-                defer cx.last_node = node;
 
                 const leaf_outside_delete_range = cx.current_index.* >= cx.end_byte;
                 if (leaf_outside_delete_range) return try _amendBol(cx, leaf);
@@ -1053,7 +1051,7 @@ pub const Node = union(enum) {
                 const leaf_covers_delete = start_in_leaf and end_in_leaf;
 
                 if (leaf_covers_delete) return try _trimmedLeftAndTrimmedRight(cx, leaf);
-                if (start_in_leaf) return try _leftSide(cx, leaf, node.?);
+                if (start_in_leaf) return try _leftSide(cx, leaf);
                 if (end_in_leaf) return try _rightSide(cx, leaf);
 
                 unreachable;
@@ -1061,15 +1059,20 @@ pub const Node = union(enum) {
 
             fn _amendBol(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 if (!cx.should_amend_bols) return WalkMutResult.stop;
-                if (cx.last_node == cx.last_node_with_new_line_removed) {
+
+                if (cx.last_replacement_eol != null and cx.last_replacement_eol.? == false) {
                     const replace = try Leaf.new(cx.a, leaf.buf, false, leaf.eol);
+                    cx.last_replacement_eol = leaf.eol;
                     return WalkMutResult{ .replace = replace };
                 }
+
                 if (cx.first_leaf_bol) |bol| {
                     defer cx.should_amend_bols = false;
                     const replace = try Leaf.new(cx.a, leaf.buf, bol, leaf.eol);
+                    cx.last_replacement_eol = leaf.eol;
                     return WalkMutResult{ .replace = replace };
                 }
+
                 return WalkMutResult.stop;
             }
 
@@ -1080,6 +1083,7 @@ pub const Node = union(enum) {
                 if (cx.num_of_bytes_to_delete == 1 and leaf.bol and !leaf.eol) {
                     cx.should_amend_bols = false;
                     const replace = try Leaf.new(cx.a, "", true, false);
+                    cx.last_replacement_eol = false;
                     return WalkMutResult{ .replace = replace };
                 }
 
@@ -1088,12 +1092,14 @@ pub const Node = union(enum) {
                     if (leaf.buf.len == 1 and cx.num_of_bytes_to_delete == 1) {
                         cx.should_amend_bols = false;
                         const replace = try Leaf.new(cx.a, "", leaf.bol, true);
+                        cx.last_replacement_eol = true;
                         return WalkMutResult{ .replace = replace };
                     }
 
                     const eol = if (cx.start_byte + cx.bytes_deleted <= cx.end_byte) false else leaf.eol;
                     const bol = if (cx.leaves_encountered == 0) leaf.bol else false;
                     const replace = try Leaf.new(cx.a, "", bol, eol);
+                    cx.last_replacement_eol = eol;
                     return WalkMutResult{ .replace = replace };
                 }
 
@@ -1108,39 +1114,45 @@ pub const Node = union(enum) {
                 const left_side_wiped_out = left_side_content.len == 0;
                 if (left_side_wiped_out) {
                     const right_side = try Leaf.new(cx.a, right_side_content, leaf.bol, leaf.eol);
+                    cx.last_replacement_eol = leaf.eol;
                     return WalkMutResult{ .replace = right_side };
                 }
 
                 const right_side_wiped_out = right_side_content.len == 0;
                 if (right_side_wiped_out) {
                     const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, leaf.eol);
+                    cx.last_replacement_eol = leaf.eol;
                     return WalkMutResult{ .replace = left_side };
                 }
 
                 const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, false);
                 const right_side = try Leaf.new(cx.a, right_side_content, false, leaf.eol);
                 const replace = try Node.new(cx.a, left_side, right_side);
+                cx.last_replacement_eol = leaf.eol;
                 return WalkMutResult{ .replace = replace };
             }
 
-            fn _leftSide(cx: *@This(), leaf: *const Leaf, node: *const Node) !WalkMutResult {
+            fn _leftSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
                 const split_index = cx.start_byte - cx.current_index.*;
                 const left_side_content = leaf.buf[0..split_index];
                 const left_side = try Leaf.new(cx.a, left_side_content, leaf.bol, false);
                 cx.bytes_deleted += leaf.buf.len - left_side_content.len;
 
-                if (leaf.eol) {
-                    cx.bytes_deleted += 1;
-                    cx.last_node_with_new_line_removed = node;
-                }
+                if (leaf.eol) cx.bytes_deleted += 1;
+
+                cx.last_replacement_eol = false;
                 return WalkMutResult{ .replace = left_side };
             }
 
             fn _rightSide(cx: *@This(), leaf: *const Leaf) !WalkMutResult {
-                const bol = if (cx.start_byte + cx.bytes_deleted <= cx.current_index.*) false else leaf.bol;
+                const bol = if (cx.start_byte + cx.bytes_deleted <= cx.current_index.*)
+                    if (cx.first_leaf_bol) |bol| bol else false
+                else
+                    leaf.bol;
                 const bytes_left_to_delete = cx.num_of_bytes_to_delete - cx.bytes_deleted;
                 const right_side_content = leaf.buf[bytes_left_to_delete..];
                 const right_side = try Leaf.new(cx.a, right_side_content, bol, leaf.eol);
+                cx.last_replacement_eol = leaf.eol;
                 return WalkMutResult{ .replace = right_side };
             }
         };
@@ -1290,9 +1302,9 @@ pub const Node = union(enum) {
                 const new_root = try one_two_three_four.deleteBytes(a, 0, 6);
                 const new_root_debug_str =
                     \\3 1/13/12
-                    \\  1 `o`
-                    \\  2 1/12/11
-                    \\    1 B| `_three`
+                    \\  1 B| `o`
+                    \\  2 0/12/11
+                    \\    1 `_three`
                     \\    1 `_four` |E
                 ;
                 try eqStr(new_root_debug_str, try new_root.debugPrint());
@@ -1564,6 +1576,36 @@ pub const Node = union(enum) {
                 \\  2 2/2/1
                 \\    1 B| `` |E
                 \\    1 B| `c`
+            ;
+            try eqStr(e1d, try e1.debugPrint());
+        }
+        {
+            const root = try Node.fromString(a, "1\n22\n333\n4444\n55555", true);
+            const root_debug_str =
+                \\4 5/19/15
+                \\  2 2/5/3
+                \\    1 B| `1` |E
+                \\    1 B| `22` |E
+                \\  3 3/14/12
+                \\    1 B| `333` |E
+                \\    2 2/10/9
+                \\      1 B| `4444` |E
+                \\      1 B| `55555`
+            ;
+            try eqStr(root_debug_str, try root.debugPrint());
+
+            std.debug.print("*****************************************************\n", .{});
+            const e1 = try root.deleteBytes(a, 3, 6);
+            const e1d =
+                \\4 3/13/11
+                \\  2 2/3/2
+                \\    1 B| `1` |E
+                \\    1 B| `2`
+                \\  3 1/10/9
+                \\    1 ``
+                \\    2 1/10/9
+                \\      1 `4444` |E
+                \\      1 B| `55555`
             ;
             try eqStr(e1d, try e1.debugPrint());
         }
