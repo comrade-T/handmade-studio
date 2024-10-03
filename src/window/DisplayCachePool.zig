@@ -394,10 +394,88 @@ pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) I
 
     const update_params = .{
         .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
+        .ts = .{ .base_start = cstart, .base_end = cend, .ranges = may_ts_ranges },
     };
     try self.update(update_params);
+}
 
-    _ = may_ts_ranges;
+test "insertChars - with tree sitter" {
+
+    // changes happen only in 1 line
+    {
+        const lsuite, const buf, const dcp = try setupTestDependencies();
+        defer cleanUpTestDependencies(lsuite, buf, dcp);
+
+        try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+            \\const std = @import("std"); // 0
+            \\qqqqq vvv d iiiiiiipssssspp cc c
+        );
+
+        try dcp.insertChars(0, 0, "// ");
+        try eq(.{ 0, 0 }, .{ dcp.start_line, dcp.end_line });
+
+        try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+            \\// const std = @import("std"); // 0
+            \\cc ccccc ccc c ccccccccccccccc cc c
+        );
+    }
+
+    // changes spans across multiple lines
+    {
+        const lsuite, const buf, const dcp = try setupTestDependencies();
+        defer cleanUpTestDependencies(lsuite, buf, dcp);
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+            \\const std = @import("std"); // 0
+            \\qqqqq vvv d iiiiiiipssssspp cc c
+            \\const Allocator = std.mem.Allocator; // 1
+            \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            \\// 2
+            \\cc c
+            \\fn add(x: f32, y: f32) void { // 3
+            \\kk FFFpPp tttp Pp tttp tttt p cc c
+            \\    return x + y; // 4
+            \\    dddddd v o vp cc c
+            \\} // 5
+            \\p cc c
+        );
+
+        try dcp.insertChars(0, 0, "// new line 0\n");
+        try eq(.{ 0, 6 }, .{ dcp.start_line, dcp.end_line });
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 6 },
+            \\// new line 0
+            \\cc ccc cccc c
+            \\const std = @import("std"); // 0
+            \\qqqqq vvv d iiiiiiipssssspp cc c
+            \\const Allocator = std.mem.Allocator; // 1
+            \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            \\// 2
+            \\cc c
+            \\fn add(x: f32, y: f32) void { // 3
+            \\kk FFFpPp tttp Pp tttp tttt p cc c
+            \\    return x + y; // 4
+            \\    dddddd v o vp cc c
+        );
+
+        try dcp.insertChars(3, 0, "// some\n// more\n// lines ");
+        try eq(.{ 0, 8 }, .{ dcp.start_line, dcp.end_line });
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 8 },
+            \\// new line 0
+            \\cc ccc cccc c
+            \\const std = @import("std"); // 0
+            \\qqqqq vvv d iiiiiiipssssspp cc c
+            \\const Allocator = std.mem.Allocator; // 1
+            \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            \\// some
+            \\cc cccc
+            \\// more
+            \\cc cccc
+            \\// lines // 2
+            \\cc ccccc cc c
+        );
+    }
 }
 
 test "insertChars - no tree sitter" {
@@ -489,10 +567,66 @@ pub fn deleteRange(self: *@This(), a: Point, b: Point) !void {
 
     const update_params = .{
         .lines = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
+        .ts = .{ .base_start = start[0], .base_end = start[0], .ranges = may_ts_ranges },
     };
     try self.update(update_params);
+}
 
-    _ = may_ts_ranges;
+test "deleteRange - with tree sitter" {
+    const lsuite, const buf, const dcp = try setupTestDependencies();
+    defer cleanUpTestDependencies(lsuite, buf, dcp);
+
+    // changes happen only in 1 line
+    {
+        try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+            \\const std = @import("std"); // 0
+            \\qqqqq vvv d iiiiiiipssssspp cc c
+        );
+
+        try dcp.deleteRange(.{ 0, 0 }, .{ 0, 6 });
+        try eq(.{ 0, 0 }, .{ dcp.start_line, dcp.end_line });
+
+        try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
+            \\std = @import("std"); // 0
+            \\vvv d iiiiiiipssssspp cc c
+        );
+    }
+
+    // changes spans across multiple lines
+    {
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+            \\std = @import("std"); // 0
+            \\vvv d iiiiiiipssssspp cc c
+            \\const Allocator = std.mem.Allocator; // 1
+            \\qqqqq ttttttttt d vvvpfffptttttttttp cc c
+            \\// 2
+            \\cc c
+            \\fn add(x: f32, y: f32) void { // 3
+            \\kk FFFpPp tttp Pp tttp tttt p cc c
+            \\    return x + y; // 4
+            \\    dddddd v o vp cc c
+            \\} // 5
+            \\p cc c
+        );
+
+        try dcp.deleteRange(.{ 1, try dcp.buf.roperoot.getNumOfCharsOfLine(1) }, .{ 4, 4 });
+        try eq(.{ 0, 2 }, .{ dcp.start_line, dcp.end_line });
+
+        try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
+            \\std = @import("std"); // 0
+            \\vvv d iiiiiiipssssspp cc c
+            \\const Allocator = std.mem.Allocator; // 1return x + y; // 4
+            \\qqqqq ttttttttt d vvvpfffptttttttttp cc ccccccc c c cc cc c
+            \\} // 5
+            \\p cc c
+            \\// six
+            \\cc ccc
+            \\fn sub(a: f32, b: f32) void { // seven
+            \\kk FFFpPp tttp Pp tttp tttt p cc ccccc
+            \\    return a - b; // eight
+            \\    dddddd v o vp cc ccccc
+        );
+    }
 }
 
 test "deleteRange - no tree sitter" {
@@ -609,8 +743,9 @@ fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
     const old_len: i128 = @intCast(self.cached_lines.items.len);
     try self.updateObsoleteLinesWithNewContentsAndDefaultDisplays(params.lines);
     const len_diff: i128 = @as(i128, @intCast(self.cached_lines.items.len)) - old_len;
-
     self.updateEndLine(len_diff);
+
+    try self.updateObsoleteTreeSitterToDisplays(params.ts);
 }
 
 fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: UpdateParameters.Lines) !void {
@@ -629,6 +764,18 @@ fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: Updat
     }
 
     try self.cached_lines.replaceRange(p.new_start, p.old_end - p.old_start + 1, new_lines_list.items);
+}
+
+fn updateObsoleteTreeSitterToDisplays(self: *@This(), p: UpdateParameters.TreeSitter) !void {
+    var new_hl_start = p.base_start;
+    var new_hl_end = p.base_end;
+    if (p.ranges) |ts_ranges| {
+        for (ts_ranges) |r| {
+            new_hl_start = @min(new_hl_start, r.start_point.row);
+            new_hl_end = @max(new_hl_end, r.end_point.row);
+        }
+    }
+    try self.applyTreeSitterToDisplays(new_hl_start, new_hl_end);
 }
 
 fn applyTreeSitterToDisplays(self: *@This(), start_line: usize, end_line: usize) !void {
@@ -748,7 +895,9 @@ const Line = struct {
 
 const UpdateParameters = struct {
     const Lines = struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize };
+    const TreeSitter = struct { base_start: usize, base_end: usize, ranges: ?[]const ts.Range };
     lines: UpdateParameters.Lines,
+    ts: UpdateParameters.TreeSitter,
 };
 
 const Display = struct {
