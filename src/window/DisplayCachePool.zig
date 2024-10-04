@@ -938,7 +938,7 @@ fn sortPoints(a: Point, b: Point) struct { Point, Point } {
 
 const CellIndex = struct { line: usize, col: usize };
 
-const Line = struct {
+pub const Line = struct {
     width: f32 = 0,
     height: f32 = 0,
     contents: []u21,
