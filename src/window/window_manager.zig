@@ -1,9 +1,5 @@
+const WindowManager = @This();
 const std = @import("std");
-const Window = @import("window");
-const Buffer = @import("window").Buffer;
-
-const sitter = @import("ts");
-
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
@@ -12,7 +8,12 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
-const WindowManager = @This();
+const DisplayCachePool = @import("DisplayCachePool.zig");
+
+const sitter = @import("ts");
+
+const Window = @import("window");
+const Buffer = @import("window").Buffer;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowManager
 

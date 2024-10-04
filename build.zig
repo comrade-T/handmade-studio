@@ -104,7 +104,7 @@ pub fn build(b: *std.Build) void {
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
 
-    _ = addTestableModule(&bops, "src/window/DisplayCachePool.zig", &.{
+    const display_cache_pool = addTestableModule(&bops, "src/window/DisplayCachePool.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "ts", .module = ts.module },
@@ -112,8 +112,9 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
-        .{ .name = "window", .module = window.module },
         .{ .name = "ts", .module = ts.module },
+        .{ .name = "neo_buffer", .module = neo_buffer.module },
+        .{ .name = "DisplayCachePool", .module = display_cache_pool.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
 
