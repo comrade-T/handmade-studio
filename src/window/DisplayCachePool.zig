@@ -29,15 +29,17 @@ cached_lines: ArrayList(Line),
 default_display: Display,
 
 query_set: ?QuerySet = null,
+assets_callbacks: ?*AssetsCallbacks,
 
 const InitError = error{OutOfMemory};
-pub fn init(a: Allocator, buf: *Buffer, default_display: Display) InitError!*DisplayCachePool {
+pub fn init(a: Allocator, buf: *Buffer, default_display: Display, assets_callbacks: ?*AssetsCallbacks) InitError!*DisplayCachePool {
     const self = try a.create(@This());
     self.* = DisplayCachePool{
         .a = a,
         .buf = buf,
         .cached_lines = ArrayList(Line).init(a),
         .default_display = default_display,
+        .assets_callbacks = assets_callbacks,
     };
     return self;
 }
@@ -221,7 +223,7 @@ test "requestLines - no tree sitter" {
     defer buf.destroy();
 
     {
-        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
         defer dcp.deinit();
 
         // can return error
@@ -273,7 +275,7 @@ test "requestLines - no tree sitter" {
 
     // request start < DisplayCachePool.start_line
     {
-        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
         defer dcp.deinit();
 
         // request line 3 - 5
@@ -301,7 +303,7 @@ test "requestLines - no tree sitter" {
 
     // request covers beyond cache range in both start and end
     {
-        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
         defer dcp.deinit();
         _ = try dcp.requestLines(3, 5); // already tested on previous test
         {
@@ -395,6 +397,7 @@ pub fn insertChars(self: *@This(), line: usize, col: usize, chars: []const u8) I
     const update_params = .{
         .lines = .{ .old_start = cstart, .old_end = cstart, .new_start = cstart, .new_end = cend },
         .ts = .{ .base_start = cstart, .base_end = cend, .ranges = may_ts_ranges },
+        .sizes = .{ .start = cstart, .end = cend },
     };
     try self.update(update_params);
 }
@@ -484,7 +487,7 @@ test "insertChars - no tree sitter" {
 
     // changes happen only in 1 line
     {
-        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
         defer dcp.deinit();
 
         try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
@@ -503,7 +506,7 @@ test "insertChars - no tree sitter" {
 
     // changes spans across multiple lines
     {
-        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
         defer dcp.deinit();
 
         try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
@@ -568,6 +571,7 @@ pub fn deleteRange(self: *@This(), a: Point, b: Point) !void {
     const update_params = .{
         .lines = .{ .old_start = start[0], .old_end = end[0], .new_start = start[0], .new_end = start[0] },
         .ts = .{ .base_start = start[0], .base_end = start[0], .ranges = may_ts_ranges },
+        .sizes = .{ .start = start[0], .end = start[0] },
     };
     try self.update(update_params);
 }
@@ -636,7 +640,7 @@ test "deleteRange - no tree sitter" {
 
         // changes happen only in 1 line
         {
-            var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+            var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
             defer dcp.deinit();
 
             try requestAndTestLines(.{ 0, 0 }, dcp, .{ 0, 0 },
@@ -655,7 +659,7 @@ test "deleteRange - no tree sitter" {
 
         // changes spans across multiple lines
         {
-            var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+            var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
             defer dcp.deinit();
 
             try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
@@ -698,7 +702,7 @@ test "deleteRange - no tree sitter" {
         var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
         defer buf.destroy();
 
-        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+        var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
         defer dcp.deinit();
 
         try requestAndTestLines(.{ 0, 5 }, dcp, .{ 0, 5 },
@@ -746,6 +750,7 @@ fn update(self: *@This(), params: UpdateParameters) UpdateError!void {
     self.updateEndLine(len_diff);
 
     try self.updateObsoleteTreeSitterToDisplays(params.ts);
+    try self.calculateLinesAndDisplaysSizes(params.sizes);
 }
 
 fn updateObsoleteLinesWithNewContentsAndDefaultDisplays(self: *@This(), p: UpdateParameters.Lines) !void {
@@ -849,6 +854,38 @@ fn applyTreeSitterToDisplays(self: *@This(), start_line: usize, end_line: usize)
     }
 }
 
+fn calculateLinesAndDisplaysSizes(self: *@This(), p: UpdateParameters.Sizes) !void {
+    const cbs = self.assets_callbacks orelse return;
+
+    assert(p.start <= p.end);
+    assert(p.start < self.cached_lines.items.len);
+    assert(p.end < self.cached_lines.items.len);
+
+    for (p.start..p.end + 1) |i| {
+        const line_index = self.start_line + i;
+
+        var line_width: f32 = 0;
+        var line_height: f32 = 0;
+        defer self.cached_lines.items[line_index].width = line_width;
+        defer self.cached_lines.items[line_index].height = line_height;
+
+        var line = &self.cached_lines.items[line_index];
+
+        if (line.displays.len == 0) {
+            line_width += self.default_display.width;
+            line_height = @max(line_height, self.default_display.height);
+        }
+
+        for (0..line.displays.len) |j| {
+            const code_point = line.contents[j];
+            var display = &line.displays[j];
+            display.setSize(code_point, cbs);
+            line_width += display.width;
+            line_height = @max(line_height, display.height);
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
 
 fn getLastLineNumberOfBuffer(self: *@This()) usize {
@@ -871,6 +908,19 @@ fn getHeight(self: *@This()) f32 {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
+const AssetsCallbacks = struct {
+    const ImageInfo = struct { width: f32, height: f32 };
+    const GetImageSizeCallback = *const fn (ctx: *anyopaque, path: []const u8) ?ImageInfo;
+
+    const Glyph = struct { advanceX: i32, offsetX: i32, width: f32, base_size: i32 };
+    const GetGlyphSizeCallback = *const fn (ctx: *anyopaque, name: []const u8, char: u21) ?Glyph;
+
+    font_manager: *anyopaque,
+    glyph_callback: GetGlyphSizeCallback,
+    image_manager: *anyopaque,
+    image_callback: GetImageSizeCallback,
+};
+
 const QuerySet = ArrayList(*sitter.StoredQuery);
 
 const Point = struct {
@@ -889,6 +939,8 @@ fn sortPoints(a: Point, b: Point) struct { Point, Point } {
 const CellIndex = struct { line: usize, col: usize };
 
 const Line = struct {
+    width: f32 = 0,
+    height: f32 = 0,
     contents: []u21,
     displays: []Display,
 };
@@ -896,8 +948,10 @@ const Line = struct {
 const UpdateParameters = struct {
     const Lines = struct { old_start: usize, old_end: usize, new_start: usize, new_end: usize };
     const TreeSitter = struct { base_start: usize, base_end: usize, ranges: ?[]const ts.Range };
+    const Sizes = struct { start: usize, end: usize };
     lines: UpdateParameters.Lines,
     ts: UpdateParameters.TreeSitter,
+    sizes: UpdateParameters.Sizes,
 };
 
 const Display = struct {
@@ -918,6 +972,27 @@ const Display = struct {
         image_conceal: Image,
         being_concealed,
     },
+
+    fn setSize(self: *@This(), code_point: u21, cbs: *AssetsCallbacks) void {
+        switch (self.variant) {
+            .char => |char| {
+                if (cbs.glyph_callback(cbs.font_manager, char.font_face, code_point)) |glyph| {
+                    const scale_factor: f32 = char.font_size / @as(f32, @floatFromInt(glyph.base_size));
+                    var width = if (glyph.advanceX != 0) @as(f32, @floatFromInt(glyph.advanceX)) else glyph.width + @as(f32, @floatFromInt(glyph.offsetX));
+                    width = width * scale_factor;
+                    self.width = width;
+                    self.height = char.font_size;
+                }
+            },
+            .image => |image| {
+                if (cbs.image_callback(cbs.image_manager, image.path)) |size| {
+                    self.width = size.width;
+                    self.height = size.height;
+                }
+            },
+            else => unreachable,
+        }
+    }
 };
 
 const __dummy_default_display = Display{
@@ -940,7 +1015,7 @@ fn setupTestDependencies() !struct { *sitter.LangSuite, *Buffer, *DisplayCachePo
     var buf = try Buffer.create(testing_allocator, .file, "dummy.zig");
     try buf.initiateTreeSitter(lsuite);
 
-    var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display);
+    var dcp = try DisplayCachePool.init(testing_allocator, buf, __dummy_default_display, null);
     try dcp.enableQueries(&.{sitter.DEFAULT_QUERY_ID});
 
     return .{ lsuite, buf, dcp };
