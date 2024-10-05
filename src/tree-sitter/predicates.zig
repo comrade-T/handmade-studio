@@ -179,6 +179,10 @@ pub const PredicatesFilter = struct {
         for (match.captures()) |cap| {
             const node = cap.node;
 
+            // FIXME: this is not good enough for complex patterns where there are multiple capture groups
+
+            // TODO: give it the full content range of the lines we're processing, not call content_callback again and again
+
             const buf_size = 1024;
             var buf: [buf_size]u8 = undefined;
             const node_contents = content_callback(ctx, node.getStartByte(), node.getEndByte(), &buf, buf_size);

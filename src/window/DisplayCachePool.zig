@@ -994,7 +994,7 @@ const Display = struct {
     }
 };
 
-const __dummy_default_display = Display{
+pub const __dummy_default_display = Display{
     .variant = .{
         .char = .{
             .font_size = 40,

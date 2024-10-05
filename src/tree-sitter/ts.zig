@@ -14,12 +14,11 @@ const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// LangSuite
 
 pub const SupportedLanguages = enum { zig };
 
 pub const DEFAULT_QUERY_ID = "DEFAULT";
-
 pub const StoredQuery = struct {
     query: *b.Query,
     filter: *PredicatesFilter,
@@ -58,6 +57,8 @@ pub const LangSuite = struct {
         self.a.destroy(self);
     }
 
+    ////////////////////////////////////////////////////////////////////////////////////////////// Query Related
+
     pub fn initializeQueryMap(self: *@This(), a: Allocator) !void {
         const zone = ztracy.ZoneNC(@src(), "LangSuite.initializeDefaultQuery()", 0x00AAFF);
         defer zone.End();
@@ -86,6 +87,8 @@ pub const LangSuite = struct {
         };
         try self.queries.?.put(id, sq);
     }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Highlight Related
 
     pub fn initializeNightflyColorscheme(self: *@This(), a: Allocator) !void {
         var map = std.StringHashMap(u32).init(a);
