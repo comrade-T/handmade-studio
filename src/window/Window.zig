@@ -1,5 +1,6 @@
 const Window = @This();
 const std = @import("std");
+
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;

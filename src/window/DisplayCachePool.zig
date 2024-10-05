@@ -2,11 +2,6 @@ const DisplayCachePool = @This();
 const std = @import("std");
 const ztracy = @import("ztracy");
 
-const Buffer = @import("neo_buffer").Buffer;
-
-const sitter = @import("ts");
-const ts = sitter.b;
-
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
@@ -17,6 +12,10 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const shouldErr = std.testing.expectError;
 const assert = std.debug.assert;
+
+const Buffer = @import("neo_buffer").Buffer;
+const sitter = @import("ts");
+const ts = sitter.b;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// DisplayCachePool
 
@@ -908,7 +907,7 @@ fn getHeight(self: *@This()) f32 {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
-const AssetsCallbacks = struct {
+pub const AssetsCallbacks = struct {
     const ImageInfo = struct { width: f32, height: f32 };
     const GetImageSizeCallback = *const fn (ctx: *anyopaque, path: []const u8) ?ImageInfo;
 
