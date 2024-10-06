@@ -32,7 +32,7 @@ const PredicateStep = ts.Query.PredicateStep;
 
 const Regex = @import("regex").Regex;
 
-////////////////////////////////////////////////////////////////////////////////////////////// @This()
+////////////////////////////////////////////////////////////////////////////////////////////// init()
 
 a: Allocator,
 arena: std.heap.ArenaAllocator,
@@ -79,6 +79,7 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
         try self.directives.put(pattern_index, try directives.toOwnedSlice());
     }
 
+    self.*.patterns = try patterns.toOwnedSlice();
     return self;
 }
 
@@ -92,13 +93,14 @@ pub fn deinit(self: *@This()) void {
 const PredicateError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError, UnsupportedDirective };
 const Predicate = union(enum) {
     eq: EqPredicate,
+    not_eq: NotEqPredicate,
     any_of: AnyOfPredicate,
     match: MatchPredicate,
     unsupported,
 
     fn create(a: Allocator, query: *const Query, name: []const u8, steps: []const PredicateStep) PredicateError!Predicate {
-        if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps, .eq);
-        if (eql(u8, name, "not-eq?")) return EqPredicate.create(query, steps, .not_eq);
+        if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps);
+        if (eql(u8, name, "not-eq?")) return NotEqPredicate.create(a, query, steps);
         if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
         if (eql(u8, name, "match?")) return MatchPredicate.create(a, query, steps, .match);
         if (eql(u8, name, "not-match?")) return MatchPredicate.create(a, query, steps, .not_match);
@@ -108,6 +110,7 @@ const Predicate = union(enum) {
     fn eval(self: *const Predicate, source: []const u8) bool {
         return switch (self.*) {
             .eq => self.eq.eval(source),
+            .not_eq => self.not_eq.eval(source),
             .any_of => self.any_of.eval(source),
             .match => self.match.eval(source),
             .unsupported => true,
@@ -143,29 +146,66 @@ fn checkBodySteps(name: []const u8, subset: []const PredicateStep, types: []cons
     }
 }
 
+fn checkVariedStringSteps(steps: []const PredicateStep) !void {
+    if (steps.len < 4) {
+        std.log.err("Expected steps.len to be > 4, got {d}\n", .{steps.len});
+        return PredicateError.InvalidAmountOfSteps;
+    }
+    if (steps[1].type != .capture) {
+        std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
+        return PredicateError.InvalidArgument;
+    }
+}
+
+fn gatherVariedStringTargets(a: Allocator, query: *const Query, steps: []const PredicateStep) ![][]const u8 {
+    var targets = std.ArrayList([]const u8).init(a);
+    errdefer targets.deinit();
+    for (2..steps.len - 1) |i| {
+        if (steps[i].type != .string) {
+            std.log.err("Arguments second and beyond of #any-of? predicate must be type .string, got {any}", .{steps[i].type});
+            return PredicateError.InvalidArgument;
+        }
+        try targets.append(query.getStringValueForId(steps[i].value_id));
+    }
+    return try targets.toOwnedSlice();
+}
+
 const EqPredicate = struct {
     capture: []const u8,
     target: []const u8,
-    variant: EqPredicateVariant,
 
-    const EqPredicateVariant = enum { eq, not_eq };
-
-    fn create(query: *const Query, steps: []const PredicateStep, variant: EqPredicateVariant) PredicateError!Predicate {
-        checkBodySteps("#eq? / #not-eq?", steps, &.{ .capture, .string }) catch |err| return err;
+    fn create(query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+        checkBodySteps("#eq?", steps, &.{ .capture, .string }) catch |err| return err;
         return Predicate{
             .eq = EqPredicate{
                 .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
                 .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
-                .variant = variant,
             },
         };
     }
 
     fn eval(self: *const EqPredicate, source: []const u8) bool {
-        return switch (self.variant) {
-            .eq => eql(u8, source, self.target),
-            .not_eq => !eql(u8, source, self.target),
+        return eql(u8, source, self.target);
+    }
+};
+
+const NotEqPredicate = struct {
+    capture: []const u8,
+    targets: [][]const u8,
+
+    fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
+        try checkVariedStringSteps(steps);
+        return Predicate{
+            .not_eq = NotEqPredicate{
+                .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
+                .targets = try gatherVariedStringTargets(a, query, steps),
+            },
         };
+    }
+
+    fn eval(self: *const NotEqPredicate, source: []const u8) bool {
+        for (self.targets) |target| if (eql(u8, source, target)) return false;
+        return true;
     }
 };
 
@@ -174,29 +214,11 @@ const AnyOfPredicate = struct {
     targets: [][]const u8,
 
     fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) PredicateError!Predicate {
-        if (steps.len < 4) {
-            std.log.err("Expected steps.len to be > 4, got {d}\n", .{steps.len});
-            return PredicateError.InvalidAmountOfSteps;
-        }
-        if (steps[1].type != .capture) {
-            std.log.err("First argument of #eq? predicate must be type .capture, got {any}", .{steps[1].type});
-            return PredicateError.InvalidArgument;
-        }
-
-        var targets = std.ArrayList([]const u8).init(a);
-        errdefer targets.deinit();
-        for (2..steps.len - 1) |i| {
-            if (steps[i].type != .string) {
-                std.log.err("Arguments second and beyond of #any-of? predicate must be type .string, got {any}", .{steps[i].type});
-                return PredicateError.InvalidArgument;
-            }
-            try targets.append(query.getStringValueForId(steps[i].value_id));
-        }
-
+        try checkVariedStringSteps(steps);
         return Predicate{
             .any_of = AnyOfPredicate{
                 .capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id))),
-                .targets = try targets.toOwnedSlice(),
+                .targets = try gatherVariedStringTargets(a, query, steps),
             },
         };
     }
@@ -287,6 +309,91 @@ const Directive = union(enum) {
     }
 };
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// QueryFilter.nextMatch()
 
-// TODO: fix nextMatch() implementation
+pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
+    while (true) {
+        const match = cursor.nextMatch() orelse return null;
+        if (self.allPredicateMatches(source, match)) return match;
+    }
+}
+
+fn allPredicateMatches(self: *@This(), source: []const u8, match: Query.Match) bool {
+    for (match.captures()) |cap| {
+        const node = cap.node;
+        const node_contents = source[node.getStartByte()..node.getEndByte()];
+        const predicates = self.patterns[match.pattern_index];
+        for (predicates) |predicate| if (!predicate.eval(node_contents)) return false;
+    }
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Tests - Predicates
+
+const predicates_test_dummy = @embedFile("fixtures/predicates_test_dummy.zig");
+
+test "no predicate" {
+    const patterns = "((IDENTIFIER) @variable)";
+    try testFilter(predicates_test_dummy, patterns, &.{
+        "std",       "Allocator", "std", "mem", "Allocator",
+        "add",       "x",         "y",   "x",   "y",
+        "sub",       "a",         "b",   "a",   "b",
+        "not_false", "xxx",       "yyy",
+    });
+}
+
+test "#eq?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#eq? @variable "y"))
+    ;
+    try testFilter(predicates_test_dummy, patterns, &.{ "y", "y" });
+}
+
+test "#not-eq?" {
+    {
+        const patterns =
+            \\ ((IDENTIFIER) @variable (#not-eq? @variable "std"))
+        ;
+        try testFilter(predicates_test_dummy, patterns, &.{
+            "Allocator", "mem", "Allocator", "add", "x", "y",         "x",   "y",
+            "sub",       "a",   "b",         "a",   "b", "not_false", "xxx", "yyy",
+        });
+    }
+    {
+        const patterns =
+            \\ ((IDENTIFIER) @variable (#not-eq? @variable "std" "Allocator"))
+        ;
+        try testFilter(predicates_test_dummy, patterns, &.{
+            "mem", "add", "x", "y", "x",         "y",   "sub",
+            "a",   "b",   "a", "b", "not_false", "xxx", "yyy",
+        });
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
+
+fn testFilter(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
+    var filter = try QueryFilter.init(testing_allocator, query);
+    defer filter.deinit();
+
+    var i: usize = 0;
+    while (filter.nextMatch(source, cursor)) |match| {
+        defer i += 1;
+        const node = match.captures()[0].node;
+        const node_contents = source[node.getStartByte()..node.getEndByte()];
+        try eqStr(expected[i], node_contents);
+    }
+    try eq(expected.len, i);
+}
+
+fn setupTestWithNoCleanUp(source: []const u8, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
+    const language = try ts.Language.get("zig");
+    const query = try ts.Query.create(language, patterns);
+    var parser = try ts.Parser.create();
+    try parser.setLanguage(language);
+    const tree = try parser.parseString(null, source);
+    const cursor = try ts.Query.Cursor.create();
+    cursor.execute(query, tree.getRootNode());
+    return .{ query, cursor };
+}
