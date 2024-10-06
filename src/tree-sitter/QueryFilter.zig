@@ -53,47 +53,28 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
 
     for (0..query.getPatternCount()) |pattern_index| {
         const steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
-        var pmap = PredicateMap.init(self.arena.allocator());
+        var predicates_map = PredicateMap.init(self.arena.allocator());
         var directives = ArrayList(Directive).init(self.arena.allocator());
-
-        if (steps.len == 0) {
-            const cap_name = query.getCaptureNameForId(@as(u32, @intCast(0)));
-            if (pmap.getPtr(cap_name)) |list| try list.append(.capture) else {
-                var list = ArrayList(Predicate).init(self.arena.allocator());
-                try list.append(.capture);
-                try pmap.put(cap_name, list);
-            }
-        }
 
         var start: usize = 0;
         for (steps, 0..) |step, i| {
             if (step.type == .done) {
                 defer start = i + 1;
                 const subset = steps[start .. i + 1];
-
-                if (subset[0].type == .capture and subset[0].type == .done) {
-                    const cap_name = query.getCaptureNameForId(@as(u32, @intCast(subset[0].value_id)));
-                    if (pmap.getPtr(cap_name)) |list| try list.append(.capture) else {
-                        var list = ArrayList(Predicate).init(self.arena.allocator());
-                        try list.append(.capture);
-                        try pmap.put(cap_name, list);
-                    }
-                    continue;
-                }
-
                 const name = Predicate.checkFirstAndLastSteps(query, subset) catch continue;
                 if (name.len == 0) continue;
+
                 if (name[name.len - 1] == '?') {
                     const cap_name, const predicate = try Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]);
-                    if (predicate != .unsupported) {
-                        if (pmap.getPtr(cap_name)) |list| try list.append(predicate) else {
-                            var list = ArrayList(Predicate).init(self.arena.allocator());
-                            try list.append(predicate);
-                            try pmap.put(cap_name, list);
-                        }
+                    if (predicate == .unsupported) continue;
+                    if (predicates_map.getPtr(cap_name)) |list| try list.append(predicate) else {
+                        var list = ArrayList(Predicate).init(self.arena.allocator());
+                        try list.append(predicate);
+                        try predicates_map.put(cap_name, list);
                     }
                     continue;
                 }
+
                 if (name[name.len - 1] == '!') {
                     const directive = Directive.create(name, query, subset) catch continue;
                     try directives.append(directive);
@@ -101,7 +82,7 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
             }
         }
 
-        try patterns.append(pmap);
+        try patterns.append(predicates_map);
 
         if (directives.items.len == 0) directives.deinit();
         try self.directives.put(pattern_index, try directives.toOwnedSlice());
@@ -339,6 +320,7 @@ const Directive = union(enum) {
 const CaptureResult = struct {
     node: ts.Node,
     name: []const u8,
+    // TODO: handle directives
 };
 
 pub fn getCaptures(self: *@This(), a: Allocator, source: []const u8, cursor: *Query.Cursor) ![]CaptureResult {
@@ -375,6 +357,8 @@ pub fn getCaptures(self: *@This(), a: Allocator, source: []const u8, cursor: *Qu
             candidates.deinit();
         }
     }
+
+    // TODO: handle directives
 
     return results.toOwnedSlice();
 }
@@ -491,6 +475,8 @@ test "get return type for functions that are not named 'callAddExample'" {
     ;
     try testFilter(predicates_test_dummy, patterns, &.{ "f32", "f32" });
 }
+
+// TODO: handle directives
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
