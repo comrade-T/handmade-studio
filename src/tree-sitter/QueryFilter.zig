@@ -314,7 +314,7 @@ const Directive = union(enum) {
 pub fn nextMatch(self: *@This(), source: []const u8, cursor: *Query.Cursor) ?Query.Match {
     while (true) {
         const match = cursor.nextMatch() orelse return null;
-        if (self.allPredicateMatches(source, match)) return match;
+        if (self.allPredicateMatches(source, match)) return match; // FIXME: allPredicateMatches is wrong
     }
 }
 
@@ -335,10 +335,10 @@ const predicates_test_dummy = @embedFile("fixtures/predicates_test_dummy.zig");
 test "no predicate" {
     const patterns = "((IDENTIFIER) @variable)";
     try testFilter(predicates_test_dummy, patterns, &.{
-        "std",       "Allocator", "std", "mem", "Allocator",
-        "add",       "x",         "y",   "x",   "y",
-        "sub",       "a",         "b",   "a",   "b",
-        "not_false", "xxx",       "yyy",
+        "std",       "Allocator", "std", "mem",    "Allocator",
+        "add",       "x",         "y",   "x",      "y",
+        "sub",       "a",         "b",   "a",      "b",
+        "not_false", "xxx",       "yyy", "String",
     });
 }
 
@@ -357,6 +357,7 @@ test "#not-eq?" {
         try testFilter(predicates_test_dummy, patterns, &.{
             "Allocator", "mem", "Allocator", "add", "x", "y",         "x",   "y",
             "sub",       "a",   "b",         "a",   "b", "not_false", "xxx", "yyy",
+            "String",
         });
     }
     {
@@ -364,11 +365,55 @@ test "#not-eq?" {
             \\ ((IDENTIFIER) @variable (#not-eq? @variable "std" "Allocator"))
         ;
         try testFilter(predicates_test_dummy, patterns, &.{
-            "mem", "add", "x", "y", "x",         "y",   "sub",
-            "a",   "b",   "a", "b", "not_false", "xxx", "yyy",
+            "mem",    "add", "x", "y", "x",         "y",   "sub",
+            "a",      "b",   "a", "b", "not_false", "xxx", "yyy",
+            "String",
         });
     }
 }
+
+test "#any-of?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "Allocator"))
+    ;
+    try testFilter(predicates_test_dummy, patterns, &.{ "std", "Allocator", "std", "Allocator" });
+}
+
+test "#match?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
+    ;
+    try testFilter(predicates_test_dummy, patterns, &.{ "Allocator", "Allocator", "String" });
+}
+
+test "#not-match?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#not-match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
+    ;
+    try testFilter(predicates_test_dummy, patterns, &.{
+        "std", "std", "mem", "add", "x", "y",         "x",   "y",
+        "sub", "a",   "b",   "a",   "b", "not_false", "xxx", "yyy",
+    });
+}
+
+///////////////////////////// Multiple predicates in single pattern
+
+test "#any-of? + #not-eq?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "Allocator") (#not-eq? @variable "std"))
+    ;
+    try testFilter(predicates_test_dummy, patterns, &.{ "Allocator", "Allocator" });
+}
+
+test "#match? + #not-eq?" {
+    const patterns =
+        \\((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
+        \\                        (#not-eq? @variable "Allocator"))
+    ;
+    try testFilter(predicates_test_dummy, patterns, &.{"String"});
+}
+
+// TODO: add more tests with more complex queries, like matching a function name
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 

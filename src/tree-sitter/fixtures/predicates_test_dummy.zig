@@ -13,3 +13,5 @@ pub const not_false = true;
 
 var xxx = 0;
 var yyy = 0;
+
+const String = []const u8;
