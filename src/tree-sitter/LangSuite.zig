@@ -24,13 +24,71 @@ const QueryFilter = @import("QueryFilter.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub const SupportedLanguages = enum { zig };
+
 a: Allocator,
+lang_choice: SupportedLanguages,
+language: *const ts.Language,
+queries: QueryMap,
+
+pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
+    const self = try a.create(@This());
+    const language = switch (lang_choice) {
+        .zig => try ts.Language.get("zig"),
+    };
+    self.* = LangSuite{
+        .a = a,
+        .lang_choice = lang_choice,
+        .language = language,
+        .queries = QueryMap.init(a),
+    };
+    return self;
+}
+
+pub fn destroy(self: *@This()) void {
+    for (self.queries.values()) |sq| {
+        sq.filter.deinit();
+        sq.query.destroy();
+        self.a.free(sq.patterns);
+        self.a.destroy(sq);
+    }
+    self.queries.deinit();
+    self.a.destroy(self);
+}
+
+pub fn addDefaultHighlightQuery(self: *@This()) !void {
+    const patterns = switch (self.lang_choice) {
+        .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
+    };
+    try self.addQuery(DEFAULT_QUERY_ID, patterns);
+}
+
+pub fn addQuery(self: *@This(), kind: StoredQuery.Kind, id: []const u8, patterns: []const u8) !void {
+    const query = try ts.Query.create(self.language, patterns);
+    const sq = try self.a.create(StoredQuery);
+    sq.* = StoredQuery{
+        .kind = kind,
+        .query = query,
+        .patterns = try self.a.dupe(u8, patterns),
+        .filter = try QueryFilter.init(self.a, query),
+    };
+    try self.queries.put(id, sq);
+}
+
+pub fn createParser(self: *@This()) !*ts.Parser {
+    var parser = try ts.Parser.create();
+    try parser.setLanguage(self.language);
+    return parser;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const SupportedLanguages = enum { zig };
 pub const DEFAULT_QUERY_ID = "DEFAULT";
+
+const QueryMap = std.StringArrayHashMap(*StoredQuery);
 pub const StoredQuery = struct {
+    const Kind = enum { highlight, extra };
+    kind: Kind,
     query: *ts.Query,
     patterns: []const u8,
     filter: *QueryFilter,

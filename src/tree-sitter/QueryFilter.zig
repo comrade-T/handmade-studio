@@ -289,6 +289,4 @@ const Directive = union(enum) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test "example" {
-    try std.testing.expectEqual(1, 1);
-}
+// TODO: fix nextMatch() implementation
