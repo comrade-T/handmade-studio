@@ -64,10 +64,10 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules - New
 
-    const predicates_cluster = addTestableModule(&bops, "src/tree-sitter/PredicateCluster.zig", &.{
+    const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
         .{ .name = "regex", .module = regex },
     }, zig_build_test_step);
-    predicates_cluster.compile.linkLibrary(tree_sitter);
+    query_filter.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 

@@ -13,25 +13,25 @@
 // You should have received a copy of the GNU General Public License
 // along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
 
-const PredicatesCluster = @This();
+const LangSuite = @This();
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const testing_allocator = std.testing.allocator;
-const eql = std.mem.eql;
-const eq = std.testing.expectEqual;
-const eqStr = std.testing.expectEqualStrings;
-const assert = std.debug.assert;
 
 const ts = @import("bindings.zig");
-const Query = ts.Query;
-const PredicateStep = ts.Query.PredicateStep;
-
-const Regex = @import("regex").Regex;
+const QueryFilter = @import("QueryFilter.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test "example" {
-    try std.testing.expectEqual(1, 1);
-}
+a: Allocator,
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const SupportedLanguages = enum { zig };
+pub const DEFAULT_QUERY_ID = "DEFAULT";
+pub const StoredQuery = struct {
+    query: *ts.Query,
+    patterns: []const u8,
+    filter: *QueryFilter,
+};
