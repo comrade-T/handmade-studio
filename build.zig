@@ -1,3 +1,18 @@
+// This file is part of Handmade Studio.
+//
+// Handmade Studio is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// Handmade Studio is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
+
 const std = @import("std");
 
 pub const BuildOpts = struct {
@@ -46,6 +61,13 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(tree_sitter);
     tree_sitter.installHeadersDirectory(b.path("submodules/tree-sitter/lib/include/tree_sitter"), "tree_sitter", .{});
+
+    ////////////////////////////////////////////////////////////////////////////// Local Modules - New
+
+    const predicates_cluster = addTestableModule(&bops, "src/tree-sitter/PredicateCluster.zig", &.{
+        .{ .name = "regex", .module = regex },
+    }, zig_build_test_step);
+    predicates_cluster.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
