@@ -34,7 +34,6 @@ pub const LangSuite = struct {
     queries: ?std.StringArrayHashMap(*StoredQuery) = null,
     queries_arena: ?std.heap.ArenaAllocator = null,
 
-    filter: ?*PredicatesFilter = null,
     highlight_map: ?std.StringHashMap(u32) = null,
 
     pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
@@ -52,7 +51,6 @@ pub const LangSuite = struct {
     pub fn destroy(self: *@This()) void {
         if (self.queries) |queries| for (queries.values()) |sq| sq.filter.deinit();
         if (self.queries_arena) |_| self.queries_arena.?.deinit();
-        if (self.filter) |filter| filter.deinit();
         if (self.highlight_map) |_| self.highlight_map.?.deinit();
         self.a.destroy(self);
     }

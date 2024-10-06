@@ -832,6 +832,7 @@ pub const Query = opaque {
         pub extern fn ts_query_capture_count(?*const Query) u32;
         pub extern fn ts_query_string_count(?*const Query) u32;
         pub extern fn ts_query_start_byte_for_pattern(?*const Query, u32) u32;
+        pub extern fn ts_query_end_byte_for_pattern(?*const Query, u32) u32;
         pub extern fn ts_query_predicates_for_pattern(self: ?*const Query, pattern_index: u32, length: *u32) [*]const PredicateStep;
         pub extern fn ts_query_is_pattern_rooted(self: ?*const Query, pattern_index: u32) bool;
         pub extern fn ts_query_is_pattern_non_local(self: ?*const Query, pattern_index: u32) bool;
