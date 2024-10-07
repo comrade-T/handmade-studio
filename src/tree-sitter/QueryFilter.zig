@@ -430,12 +430,10 @@ pub fn getTargetCaptures(self: *@This(), a: Allocator, source: []const u8, curso
 ////////////////////////////////////////////////////////////////////////////////////////////// Tests - Predicates
 
 const test_source = @embedFile("fixtures/predicates_test_dummy.zig");
-const test_source_num_of_lines = std.mem.count(u8, test_source, "\n") + 1;
-const entire_test_source = MatchLimit{ .start_line = 0, .end_line = test_source_num_of_lines };
 
 test "no predicate" {
     const patterns = "((IDENTIFIER) @variable)";
-    try testFilter(test_source, entire_test_source, patterns, &.{
+    try testFilter(test_source, patterns, &.{
         "std",            "Allocator", "std", "mem",       "Allocator",
         "add",            "x",         "y",   "x",         "y",
         "sub",            "a",         "b",   "a",         "b",
@@ -449,13 +447,13 @@ test "#eq?" {
         const patterns =
             \\ ((IDENTIFIER) @variable (#eq? @variable "add"))
         ;
-        try testFilter(test_source, entire_test_source, patterns, &.{ "add", "add" });
+        try testFilter(test_source, patterns, &.{ "add", "add" });
     }
     {
         const patterns =
             \\ (FnProto (IDENTIFIER) @cap (#eq? @cap "add"))
         ;
-        try testFilter(test_source, entire_test_source, patterns, &.{"add"});
+        try testFilter(test_source, patterns, &.{"add"});
     }
 }
 
@@ -464,7 +462,7 @@ test "#not-eq?" {
         const patterns =
             \\ ((IDENTIFIER) @variable (#not-eq? @variable "std"))
         ;
-        try testFilter(test_source, entire_test_source, patterns, &.{
+        try testFilter(test_source, patterns, &.{
             "Allocator", "mem", "Allocator", "add",    "x", "y",              "x", "y",
             "sub",       "a",   "b",         "a",      "b", "callAddExample", "_", "add",
             "not_false", "xxx", "yyy",       "String",
@@ -474,7 +472,7 @@ test "#not-eq?" {
         const patterns =
             \\ ((IDENTIFIER) @variable (#not-eq? @variable "std" "Allocator"))
         ;
-        try testFilter(test_source, entire_test_source, patterns, &.{
+        try testFilter(test_source, patterns, &.{
             "mem",       "add", "x",   "y",      "x",              "y", "sub",
             "a",         "b",   "a",   "b",      "callAddExample", "_", "add",
             "not_false", "xxx", "yyy", "String",
@@ -486,21 +484,21 @@ test "#any-of?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "Allocator"))
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{ "std", "Allocator", "std", "Allocator" });
+    try testFilter(test_source, patterns, &.{ "std", "Allocator", "std", "Allocator" });
 }
 
 test "#match?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{ "Allocator", "Allocator", "String" });
+    try testFilter(test_source, patterns, &.{ "Allocator", "Allocator", "String" });
 }
 
 test "#not-match?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#not-match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{
+    try testFilter(test_source, patterns, &.{
         "std",       "std", "mem", "add", "x", "y",              "x", "y",
         "sub",       "a",   "b",   "a",   "b", "callAddExample", "_", "add",
         "not_false", "xxx", "yyy",
@@ -513,7 +511,7 @@ test "#any-of? + #not-eq?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "Allocator") (#not-eq? @variable "std"))
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{ "Allocator", "Allocator" });
+    try testFilter(test_source, patterns, &.{ "Allocator", "Allocator" });
 }
 
 test "#match? + #not-eq?" {
@@ -521,7 +519,7 @@ test "#match? + #not-eq?" {
         \\((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
         \\                        (#not-eq? @variable "Allocator"))
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{"String"});
+    try testFilter(test_source, patterns, &.{"String"});
 }
 
 ///////////////////////////// More Complex Patterns
@@ -539,7 +537,7 @@ test "get return type for functions that are not named 'callAddExample'" {
         \\    )
         \\)
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{ "f32", "f64" });
+    try testFilter(test_source, patterns, &.{ "f32", "f64" });
 }
 
 ///////////////////////////// Directives
@@ -558,7 +556,7 @@ test "get directives" {
         \\    )
         \\)
     ;
-    try testFilterWithDirectives(test_source, entire_test_source, patterns, &.{
+    try testFilterWithDirectives(test_source, patterns, &.{
         .{
             .targets = &.{ "fn_name", "return_type" },
             .contents = &.{ "add", "f32" },
@@ -578,32 +576,6 @@ test "get directives" {
     });
 }
 
-///////////////////////////// Source With Offset
-
-test "source with offset" {
-    const lines_to_skip = 2;
-
-    var offset: usize = 0;
-    var i: usize = 0;
-    for (test_source) |char| {
-        offset += 1;
-        if (char == '\n') i += 1;
-        if (i == lines_to_skip) break;
-    }
-    if (i > 0) offset -= 1;
-
-    const limit = MatchLimit{
-        .start_line = lines_to_skip,
-        .end_line = test_source_num_of_lines,
-    };
-    const patterns = "((IDENTIFIER) @variable)";
-    try testFilter(test_source[offset..], limit, patterns, &.{
-        "add", "x",         "y",   "x",   "y",              "sub",
-        "a",   "b",         "a",   "b",   "callAddExample", "_",
-        "add", "not_false", "xxx", "yyy", "String",
-    });
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
 const MatchLimit = struct {
@@ -617,13 +589,8 @@ const Expected = struct {
     directives: []const Directive,
 };
 
-fn testFilterWithDirectives(
-    source: []const u8,
-    limit: MatchLimit,
-    patterns: []const u8,
-    expected: []const Expected,
-) !void {
-    const query, const cursor = try setupTestWithNoCleanUp(source, limit, patterns);
+fn testFilterWithDirectives(source: []const u8, patterns: []const u8, expected: []const Expected) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
@@ -652,8 +619,8 @@ fn testFilterWithDirectives(
     }
 }
 
-fn testFilter(source: []const u8, limit: MatchLimit, patterns: []const u8, expected: []const []const u8) !void {
-    const query, const cursor = try setupTestWithNoCleanUp(source, limit, patterns);
+fn testFilter(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
@@ -673,17 +640,13 @@ fn testFilter(source: []const u8, limit: MatchLimit, patterns: []const u8, expec
     }
 }
 
-fn setupTestWithNoCleanUp(source: []const u8, limit: MatchLimit, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
+fn setupTestWithNoCleanUp(source: []const u8, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
     const language = try ts.Language.get("zig");
     const query = try ts.Query.create(language, patterns);
     var parser = try ts.Parser.create();
     try parser.setLanguage(language);
     const tree = try parser.parseString(null, source);
     const cursor = try ts.Query.Cursor.create();
-    cursor.setPointRange(
-        ts.Point{ .row = @intCast(limit.start_line), .column = 0 },
-        ts.Point{ .row = @intCast(limit.end_line + 1), .column = 0 },
-    );
     cursor.execute(query, tree.getRootNode());
     return .{ query, cursor };
 }
