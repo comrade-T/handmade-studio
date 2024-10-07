@@ -84,7 +84,6 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
 
         try patterns.append(predicates_map);
 
-        if (directives.items.len == 0) directives.deinit();
         try self.directives.put(pattern_index, try directives.toOwnedSlice());
     }
 
@@ -333,10 +332,10 @@ const CapturedTarget = struct {
 
 const MatchResult = struct {
     targets: []CapturedTarget,
-    directives: ?[]Directive,
+    directives: []Directive,
 };
 
-pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, cursor: *Query.Cursor) ![]MatchResult {
+pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: usize, cursor: *Query.Cursor) ![]MatchResult {
     var results = ArrayList(MatchResult).init(a);
     errdefer results.deinit();
 
@@ -348,7 +347,16 @@ pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, cursor: *
         errdefer targets.deinit();
 
         for (match.captures()) |cap| {
-            const node_contents = source[cap.node.getStartByte()..cap.node.getEndByte()];
+            const node_start_byte = cap.node.getStartByte();
+            const node_end_byte = cap.node.getEndByte();
+
+            assert(node_start_byte >= offset);
+            if (node_start_byte < offset) continue;
+
+            const start_byte = node_start_byte - offset;
+            const end_byte = node_end_byte - offset;
+
+            const node_contents = source[start_byte..end_byte];
             const cap_name = self.query.getCaptureNameForId(cap.id);
 
             if (cap_name.len > 0 and cap_name[0] != '_') {
@@ -367,61 +375,10 @@ pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, cursor: *
 
         if (all_predicates_matches) try results.append(MatchResult{
             .targets = try targets.toOwnedSlice(),
-            .directives = self.directives.get(match.pattern_index),
+            .directives = self.directives.get(match.pattern_index) orelse &.{},
         });
 
         targets.deinit();
-    }
-
-    return results.toOwnedSlice();
-}
-
-const CaptureResult = struct {
-    node: ts.Node,
-    name: []const u8,
-    directives: ?[]Directive,
-};
-
-pub fn getTargetCaptures(self: *@This(), a: Allocator, source: []const u8, cursor: *Query.Cursor) ![]CaptureResult {
-    var results = ArrayList(CaptureResult).init(a);
-    errdefer results.deinit();
-
-    while (true) {
-        const match = cursor.nextMatch() orelse break;
-        const pmap = self.patterns[match.pattern_index];
-
-        var all_matched = true;
-        var candidates = ArrayList(CaptureResult).init(a);
-        errdefer candidates.deinit();
-
-        for (match.captures()) |cap| {
-            const node = cap.node;
-
-            const start_byte = node.getStartByte();
-            const end_byte = node.getEndByte();
-            const node_contents = source[start_byte..end_byte];
-            const cap_name = self.query.getCaptureNameForId(cap.id);
-
-            if (cap_name.len > 0 and cap_name[0] != '_') {
-                try candidates.append(CaptureResult{
-                    .name = cap_name,
-                    .node = node,
-                    .directives = self.directives.get(match.pattern_index),
-                });
-            }
-
-            if (pmap.get(cap_name)) |predicates| {
-                for (predicates.items) |p| {
-                    if (!p.eval(node_contents)) {
-                        all_matched = false;
-                        break;
-                    }
-                }
-            }
-
-            if (all_matched) try results.appendSlice(candidates.items);
-            candidates.deinit();
-        }
     }
 
     return results.toOwnedSlice();
@@ -556,7 +513,7 @@ test "get directives" {
         \\    )
         \\)
     ;
-    try testFilterWithDirectives(test_source, patterns, &.{
+    try testFilterWithDirectives(test_source, .{ .offset = 0, .start_line = 0, .end_line = 21 }, patterns, &.{
         .{
             .targets = &.{ "fn_name", "return_type" },
             .contents = &.{ "add", "f32" },
@@ -576,9 +533,72 @@ test "get directives" {
     });
 }
 
+///////////////////////////// Offset
+
+test "get directives within certain range" {
+    {
+        const patterns =
+            \\(
+            \\  FnProto
+            \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#size! @fn_name 60)
+            \\    _?
+            \\    (ErrorUnionExpr
+            \\      (SuffixExpr
+            \\        (BuildinTypeExpr) @return_type
+            \\        (#size! @return_type 80)
+            \\      )
+            \\    )
+            \\)
+        ;
+        try testFilterWithDirectives(test_source, .{
+            .offset = getByteOffsetForSkippingLines(test_source, 6),
+            .start_line = 6,
+            .end_line = 21,
+        }, patterns, &.{
+            .{
+                .targets = &.{ "fn_name", "return_type" },
+                .contents = &.{ "sub", "f64" },
+                .directives = &.{
+                    .{ .size = .{ .capture = "fn_name", .value = 60 } },
+                    .{ .size = .{ .capture = "return_type", .value = 80 } },
+                },
+            },
+        });
+    }
+    {
+        const patterns = "((IDENTIFIER) @variable)";
+        try testFilterWithDirectives(test_source, .{
+            .offset = getByteOffsetForSkippingLines(test_source, 6),
+            .start_line = 6,
+            .end_line = 13,
+        }, patterns, &.{
+            .{ .targets = &.{"variable"}, .contents = &.{"sub"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"_"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"}, .directives = &.{} },
+        });
+    }
+}
+
+fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize {
+    var offset: usize = 0;
+    var i: usize = 0;
+    for (source) |char| {
+        offset += 1;
+        if (char == '\n') i += 1;
+        if (i == lines_to_skip) break;
+    }
+    return offset;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
 const MatchLimit = struct {
+    offset: usize,
     start_line: usize,
     end_line: usize,
 };
@@ -589,12 +609,12 @@ const Expected = struct {
     directives: []const Directive,
 };
 
-fn testFilterWithDirectives(source: []const u8, patterns: []const u8, expected: []const Expected) !void {
-    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
+fn testFilterWithDirectives(og_source: []const u8, limit: MatchLimit, patterns: []const u8, expected: []const Expected) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(og_source, limit, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
-    const results = try filter.getAllMatches(testing_allocator, source, cursor);
+    const results = try filter.getAllMatches(testing_allocator, og_source[limit.offset..], limit.offset, cursor);
     defer {
         for (results) |r| testing_allocator.free(r.targets);
         testing_allocator.free(results);
@@ -606,25 +626,22 @@ fn testFilterWithDirectives(source: []const u8, patterns: []const u8, expected: 
         for (0..expected[i].targets.len) |j| {
             try eqStr(expected[i].targets[j], results[i].targets[j].name);
             const node = results[i].targets[j].node;
-            const node_contents = source[node.getStartByte()..node.getEndByte()];
+            const node_contents = og_source[node.getStartByte()..node.getEndByte()];
             try eqStr(expected[i].contents[j], node_contents);
         }
-        if (expected[i].directives.len == 0) {
-            try eq(null, results[i].directives);
-            continue;
-        }
+        try eq(expected[i].directives.len, results[i].directives.len);
         for (0..expected[i].directives.len) |j| {
-            try std.testing.expectEqualDeep(expected[i].directives[j], results[i].directives.?[j]);
+            try std.testing.expectEqualDeep(expected[i].directives[j], results[i].directives[j]);
         }
     }
 }
 
 fn testFilter(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
-    const query, const cursor = try setupTestWithNoCleanUp(source, patterns);
+    const query, const cursor = try setupTestWithNoCleanUp(source, null, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
-    const results = try filter.getAllMatches(testing_allocator, source, cursor);
+    const results = try filter.getAllMatches(testing_allocator, source, 0, cursor);
     defer {
         for (results) |r| testing_allocator.free(r.targets);
         testing_allocator.free(results);
@@ -640,13 +657,19 @@ fn testFilter(source: []const u8, patterns: []const u8, expected: []const []cons
     }
 }
 
-fn setupTestWithNoCleanUp(source: []const u8, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
+fn setupTestWithNoCleanUp(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
     const language = try ts.Language.get("zig");
     const query = try ts.Query.create(language, patterns);
     var parser = try ts.Parser.create();
     try parser.setLanguage(language);
     const tree = try parser.parseString(null, source);
     const cursor = try ts.Query.Cursor.create();
+    if (may_limit) |limit| {
+        cursor.setPointRange(
+            ts.Point{ .row = @intCast(limit.start_line), .column = 0 },
+            ts.Point{ .row = @intCast(limit.end_line + 1), .column = 0 },
+        );
+    }
     cursor.execute(query, tree.getRootNode());
     return .{ query, cursor };
 }
