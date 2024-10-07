@@ -5,7 +5,7 @@ fn add(x: f32, y: f32) f32 {
     return x + y;
 }
 
-fn sub(a: f32, b: f32) f32 {
+fn sub(a: f64, b: f64) f64 {
     return a - b;
 }
 

@@ -271,56 +271,115 @@ fn isPredicateOfTypeTarget(steps: []const PredicateStep) bool {
 const DirectiveMap = std.AutoArrayHashMap(usize, []Directive);
 
 const Directive = union(enum) {
-    set: struct {
-        property: []const u8,
-        value: []const u8,
+    // set: struct {
+    //     property: []const u8,
+    //     value: []const u8,
+    // },
+
+    size: struct {
+        capture: []const u8,
+        value: f32,
     },
-    size: f32,
-    font: []const u8,
-    img: []const u8,
+
+    // font: []const u8,
+    // img: []const u8,
     // TODO: color: u32 -> not doing right now since I'd have to parse colors
 
     fn create(name: []const u8, query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        if (eql(u8, name, "set!")) return createSetDirective(query, steps);
+        // if (eql(u8, name, "set!")) return createSetDirective(query, steps);
         if (eql(u8, name, "size!")) return createSizeDirective(query, steps);
-        if (eql(u8, name, "font!")) return createFontDirective(query, steps);
-        if (eql(u8, name, "img!")) return createImgDirective(query, steps);
+        // if (eql(u8, name, "font!")) return createFontDirective(query, steps);
+        // if (eql(u8, name, "img!")) return createImgDirective(query, steps);
         return Predicate.CreationError.UnsupportedDirective;
     }
 
     fn createSizeDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("size!", steps, &.{.string}) catch |err| return err;
-        const str_value = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id)));
-        return Directive{ .size = std.fmt.parseFloat(f32, str_value) catch 0 };
+        Predicate.checkBodySteps("size!", steps, &.{ .capture, .string }) catch |err| return err;
+        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
+        const str_value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
+        return Directive{ .size = .{
+            .capture = capture,
+            .value = std.fmt.parseFloat(f32, str_value) catch 0,
+        } };
     }
 
-    fn createFontDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("font!", steps, &.{.string}) catch |err| return err;
-        return Directive{ .font = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
-    }
+    // fn createFontDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+    //     Predicate.checkBodySteps("font!", steps, &.{.string}) catch |err| return err;
+    //     return Directive{ .font = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
+    // }
 
-    fn createImgDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("img!", steps, &.{.string}) catch |err| return err;
-        return Directive{ .img = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
-    }
+    // fn createImgDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+    //     Predicate.checkBodySteps("img!", steps, &.{.string}) catch |err| return err;
+    //     return Directive{ .img = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
+    // }
 
-    fn createSetDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("set!", steps, &.{ .string, .string }) catch |err| return err;
-        return Directive{
-            .set = .{
-                .property = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))),
-                .value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
-            },
-        };
-    }
+    // fn createSetDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+    //     Predicate.checkBodySteps("set!", steps, &.{ .string, .string }) catch |err| return err;
+    //     return Directive{
+    //         .set = .{
+    //             .property = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))),
+    //             .value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
+    //         },
+    //     };
+    // }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// QueryFilter.nextMatch()
 
+const CapturedTarget = struct {
+    node: ts.Node,
+    name: []const u8,
+};
+
+const MatchResult = struct {
+    targets: []CapturedTarget,
+    directives: ?[]Directive,
+};
+
+pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, cursor: *Query.Cursor) ![]MatchResult {
+    var results = ArrayList(MatchResult).init(a);
+    errdefer results.deinit();
+
+    while (cursor.nextMatch()) |match| {
+        const predicates_map = self.patterns[match.pattern_index];
+
+        var all_predicates_matches = true;
+        var targets = ArrayList(CapturedTarget).init(a);
+        errdefer targets.deinit();
+
+        for (match.captures()) |cap| {
+            const node_contents = source[cap.node.getStartByte()..cap.node.getEndByte()];
+            const cap_name = self.query.getCaptureNameForId(cap.id);
+
+            if (cap_name.len > 0 and cap_name[0] != '_') {
+                try targets.append(CapturedTarget{ .name = cap_name, .node = cap.node });
+            }
+
+            if (predicates_map.get(cap_name)) |predicates| {
+                for (predicates.items) |p| {
+                    if (!p.eval(node_contents)) {
+                        all_predicates_matches = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (all_predicates_matches) try results.append(MatchResult{
+            .targets = try targets.toOwnedSlice(),
+            .directives = self.directives.get(match.pattern_index),
+        });
+
+        targets.deinit();
+    }
+
+    return results.toOwnedSlice();
+}
+
 const CaptureResult = struct {
     node: ts.Node,
     name: []const u8,
-    // TODO: handle directives
+    directives: ?[]Directive,
 };
 
 pub fn getTargetCaptures(self: *@This(), a: Allocator, source: []const u8, cursor: *Query.Cursor) ![]CaptureResult {
@@ -344,7 +403,11 @@ pub fn getTargetCaptures(self: *@This(), a: Allocator, source: []const u8, curso
             const cap_name = self.query.getCaptureNameForId(cap.id);
 
             if (cap_name.len > 0 and cap_name[0] != '_') {
-                try candidates.append(.{ .name = cap_name, .node = node });
+                try candidates.append(CaptureResult{
+                    .name = cap_name,
+                    .node = node,
+                    .directives = self.directives.get(match.pattern_index),
+                });
             }
 
             if (pmap.get(cap_name)) |predicates| {
@@ -360,8 +423,6 @@ pub fn getTargetCaptures(self: *@This(), a: Allocator, source: []const u8, curso
             candidates.deinit();
         }
     }
-
-    // TODO: handle directives
 
     return results.toOwnedSlice();
 }
@@ -446,7 +507,7 @@ test "#not-match?" {
     });
 }
 
-// ///////////////////////////// Multiple predicates in single pattern
+///////////////////////////// Multiple predicates in single pattern
 
 test "#any-of? + #not-eq?" {
     const patterns =
@@ -463,7 +524,7 @@ test "#match? + #not-eq?" {
     try testFilter(test_source, entire_test_source, patterns, &.{"String"});
 }
 
-///////////////////////////// Complex Patterns
+///////////////////////////// More Complex Patterns
 
 test "get return type for functions that are not named 'callAddExample'" {
     const patterns =
@@ -478,7 +539,43 @@ test "get return type for functions that are not named 'callAddExample'" {
         \\    )
         \\)
     ;
-    try testFilter(test_source, entire_test_source, patterns, &.{ "f32", "f32" });
+    try testFilter(test_source, entire_test_source, patterns, &.{ "f32", "f64" });
+}
+
+///////////////////////////// Directives
+
+test "get directives" {
+    const patterns =
+        \\(
+        \\  FnProto
+        \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#size! @fn_name 60)
+        \\    _?
+        \\    (ErrorUnionExpr
+        \\      (SuffixExpr
+        \\        (BuildinTypeExpr) @return_type
+        \\        (#size! @return_type 80)
+        \\      )
+        \\    )
+        \\)
+    ;
+    try testFilterWithDirectives(test_source, entire_test_source, patterns, &.{
+        .{
+            .targets = &.{ "fn_name", "return_type" },
+            .contents = &.{ "add", "f32" },
+            .directives = &.{
+                .{ .size = .{ .capture = "fn_name", .value = 60 } },
+                .{ .size = .{ .capture = "return_type", .value = 80 } },
+            },
+        },
+        .{
+            .targets = &.{ "fn_name", "return_type" },
+            .contents = &.{ "sub", "f64" },
+            .directives = &.{
+                .{ .size = .{ .capture = "fn_name", .value = 60 } },
+                .{ .size = .{ .capture = "return_type", .value = 80 } },
+            },
+        },
+    });
 }
 
 ///////////////////////////// Source With Offset
@@ -501,18 +598,11 @@ test "source with offset" {
     };
     const patterns = "((IDENTIFIER) @variable)";
     try testFilter(test_source[offset..], limit, patterns, &.{
-        "add", "x",              "y",
-        "x",   "y",              "sub",
-        "a",   "b",              "a",
-        "b",   "callAddExample", "_",
-        "add", "not_false",      "xxx",
-        "yyy", "String",
+        "add", "x",         "y",   "x",   "y",              "sub",
+        "a",   "b",         "a",   "b",   "callAddExample", "_",
+        "add", "not_false", "xxx", "yyy", "String",
     });
 }
-
-///////////////////////////// Directives
-
-// TODO: handle directives
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
@@ -521,21 +611,64 @@ const MatchLimit = struct {
     end_line: usize,
 };
 
+const Expected = struct {
+    targets: []const []const u8,
+    contents: []const []const u8,
+    directives: []const Directive,
+};
+
+fn testFilterWithDirectives(
+    source: []const u8,
+    limit: MatchLimit,
+    patterns: []const u8,
+    expected: []const Expected,
+) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, limit, patterns);
+    var filter = try QueryFilter.init(testing_allocator, query);
+    defer filter.deinit();
+
+    const results = try filter.getAllMatches(testing_allocator, source, cursor);
+    defer {
+        for (results) |r| testing_allocator.free(r.targets);
+        testing_allocator.free(results);
+    }
+
+    try eq(expected.len, results.len);
+
+    for (0..expected.len) |i| {
+        for (0..expected[i].targets.len) |j| {
+            try eqStr(expected[i].targets[j], results[i].targets[j].name);
+            const node = results[i].targets[j].node;
+            const node_contents = source[node.getStartByte()..node.getEndByte()];
+            try eqStr(expected[i].contents[j], node_contents);
+        }
+        if (expected[i].directives.len == 0) {
+            try eq(null, results[i].directives);
+            continue;
+        }
+        for (0..expected[i].directives.len) |j| {
+            try std.testing.expectEqualDeep(expected[i].directives[j], results[i].directives.?[j]);
+        }
+    }
+}
+
 fn testFilter(source: []const u8, limit: MatchLimit, patterns: []const u8, expected: []const []const u8) !void {
     const query, const cursor = try setupTestWithNoCleanUp(source, limit, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
-    const results = try filter.getTargetCaptures(testing_allocator, source, cursor);
-    defer testing_allocator.free(results);
+    const results = try filter.getAllMatches(testing_allocator, source, cursor);
+    defer {
+        for (results) |r| testing_allocator.free(r.targets);
+        testing_allocator.free(results);
+    }
 
     try eq(expected.len, results.len);
 
     for (0..expected.len) |i| {
-        const node = results[i].node;
-        const start_byte = node.getStartByte();
-        const end_byte = node.getEndByte();
-        const node_contents = source[start_byte..end_byte];
+        try eq(1, results[i].targets.len);
+        const node = results[i].targets[0].node;
+        const node_contents = source[node.getStartByte()..node.getEndByte()];
         try eqStr(expected[i], node_contents);
     }
 }
