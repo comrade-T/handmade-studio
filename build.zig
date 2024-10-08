@@ -75,10 +75,10 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     langsuite.module.linkLibrary(tree_sitter);
 
-    const style_changes = addTestableModule(&bops, "src/tree-sitter/StyleChanges.zig", &.{
+    const style_parser = addTestableModule(&bops, "src/tree-sitter/StyleParser.zig", &.{
         .{ .name = "LangSuite", .module = langsuite.module },
     }, zig_build_test_step);
-    _ = style_changes;
+    _ = style_parser;
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 

@@ -344,6 +344,7 @@ const CapturedTarget = struct {
 pub const MatchResult = struct {
     targets: []CapturedTarget,
     directives: []Directive,
+    pattern_index: u16,
 };
 
 pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: usize, cursor: *Query.Cursor) ![]MatchResult {
@@ -387,6 +388,7 @@ pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: u
         if (all_predicates_matches) try results.append(MatchResult{
             .targets = try targets.toOwnedSlice(),
             .directives = self.directives.get(match.pattern_index) orelse &.{},
+            .pattern_index = @intCast(match.pattern_index),
         });
 
         targets.deinit();
@@ -608,7 +610,7 @@ fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
-const MatchLimit = struct {
+pub const MatchLimit = struct {
     offset: usize,
     start_line: usize,
     end_line: usize,

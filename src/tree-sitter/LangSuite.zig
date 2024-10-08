@@ -20,7 +20,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
 pub const ts = @import("bindings.zig");
-const QueryFilter = @import("QueryFilter.zig");
+pub const QueryFilter = @import("QueryFilter.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -84,7 +84,7 @@ pub fn createParser(self: *@This()) !*ts.Parser {
 
 pub const DEFAULT_QUERY_ID = "DEFAULT";
 
-const QueryMap = std.StringArrayHashMap(*StoredQuery);
+pub const QueryMap = std.StringArrayHashMap(*StoredQuery);
 pub const StoredQuery = struct {
     query: *ts.Query,
     patterns: []const u8,
