@@ -270,57 +270,68 @@ fn isPredicateOfTypeTarget(steps: []const PredicateStep) bool {
 const DirectiveMap = std.AutoArrayHashMap(usize, []Directive);
 
 const Directive = union(enum) {
-    // set: struct {
-    //     property: []const u8,
-    //     value: []const u8,
-    // },
-
-    size: struct {
+    font_size: struct {
         capture: []const u8,
         value: f32,
     },
-
-    // font: []const u8,
-    // img: []const u8,
-    // TODO: color: u32 -> not doing right now since I'd have to parse colors
+    font_face: struct {
+        capture: []const u8,
+        value: []const u8,
+    },
+    font: struct {
+        capture: []const u8,
+        font_face: []const u8,
+        font_size: f32,
+    },
+    img: struct {
+        capture: []const u8,
+        path: []const u8,
+    },
+    // TODO: add color directive
 
     fn create(name: []const u8, query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        // if (eql(u8, name, "set!")) return createSetDirective(query, steps);
-        if (eql(u8, name, "size!")) return createSizeDirective(query, steps);
-        // if (eql(u8, name, "font!")) return createFontDirective(query, steps);
-        // if (eql(u8, name, "img!")) return createImgDirective(query, steps);
+        if (eql(u8, name, "font!")) return createFontDirective(query, steps);
+        if (eql(u8, name, "font-size!")) return createFontSizeDirective(query, steps);
+        if (eql(u8, name, "font-face!")) return createFontFaceDirective(query, steps);
+        if (eql(u8, name, "img!")) return createImgDirective(query, steps);
         return Predicate.CreationError.UnsupportedDirective;
     }
 
-    fn createSizeDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("size!", steps, &.{ .capture, .string }) catch |err| return err;
+    fn createFontSizeDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+        Predicate.checkBodySteps("font-size!", steps, &.{ .capture, .string }) catch |err| return err;
         const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
         const str_value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
-        return Directive{ .size = .{
+        return Directive{ .font_size = .{
             .capture = capture,
             .value = std.fmt.parseFloat(f32, str_value) catch 0,
         } };
     }
 
-    // fn createFontDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-    //     Predicate.checkBodySteps("font!", steps, &.{.string}) catch |err| return err;
-    //     return Directive{ .font = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
-    // }
+    fn createFontFaceDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+        Predicate.checkBodySteps("font-face!", steps, &.{ .capture, .string }) catch |err| return err;
+        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
+        const font_face = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
+        return Directive{ .font_face = .{ .capture = capture, .value = font_face } };
+    }
 
-    // fn createImgDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-    //     Predicate.checkBodySteps("img!", steps, &.{.string}) catch |err| return err;
-    //     return Directive{ .img = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))) };
-    // }
+    fn createFontDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+        Predicate.checkBodySteps("font!", steps, &.{ .capture, .string, .string }) catch |err| return err;
+        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
+        const font_face = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
+        const size_str = query.getStringValueForId(@as(u32, @intCast(steps[3].value_id)));
+        return Directive{ .font = .{
+            .capture = capture,
+            .font_face = font_face,
+            .font_size = std.fmt.parseFloat(f32, size_str) catch 0,
+        } };
+    }
 
-    // fn createSetDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-    //     Predicate.checkBodySteps("set!", steps, &.{ .string, .string }) catch |err| return err;
-    //     return Directive{
-    //         .set = .{
-    //             .property = query.getStringValueForId(@as(u32, @intCast(steps[1].value_id))),
-    //             .value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))),
-    //         },
-    //     };
-    // }
+    fn createImgDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
+        Predicate.checkBodySteps("img!", steps, &.{ .capture, .string }) catch |err| return err;
+        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
+        const path = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
+        return Directive{ .img = .{ .capture = capture, .path = path } };
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// QueryFilter.nextMatch()
@@ -503,12 +514,12 @@ test "get directives" {
     const patterns =
         \\(
         \\  FnProto
-        \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#size! @fn_name 60)
+        \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#font-size! @fn_name 60)
         \\    _?
         \\    (ErrorUnionExpr
         \\      (SuffixExpr
         \\        (BuildinTypeExpr) @return_type
-        \\        (#size! @return_type 80)
+        \\        (#font! @return_type "Inter" 80)
         \\      )
         \\    )
         \\)
@@ -518,16 +529,16 @@ test "get directives" {
             .targets = &.{ "fn_name", "return_type" },
             .contents = &.{ "add", "f32" },
             .directives = &.{
-                .{ .size = .{ .capture = "fn_name", .value = 60 } },
-                .{ .size = .{ .capture = "return_type", .value = 80 } },
+                .{ .font_size = .{ .capture = "fn_name", .value = 60 } },
+                .{ .font = .{ .capture = "return_type", .font_face = "Inter", .font_size = 80 } },
             },
         },
         .{
             .targets = &.{ "fn_name", "return_type" },
             .contents = &.{ "sub", "f64" },
             .directives = &.{
-                .{ .size = .{ .capture = "fn_name", .value = 60 } },
-                .{ .size = .{ .capture = "return_type", .value = 80 } },
+                .{ .font_size = .{ .capture = "fn_name", .value = 60 } },
+                .{ .font = .{ .capture = "return_type", .font_face = "Inter", .font_size = 80 } },
             },
         },
     });
@@ -540,12 +551,12 @@ test "get directives within certain range" {
         const patterns =
             \\(
             \\  FnProto
-            \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#size! @fn_name 60)
+            \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#font-size! @fn_name 60)
             \\    _?
             \\    (ErrorUnionExpr
             \\      (SuffixExpr
             \\        (BuildinTypeExpr) @return_type
-            \\        (#size! @return_type 80)
+            \\        (#font-size! @return_type 80)
             \\      )
             \\    )
             \\)
@@ -559,8 +570,8 @@ test "get directives within certain range" {
                 .targets = &.{ "fn_name", "return_type" },
                 .contents = &.{ "sub", "f64" },
                 .directives = &.{
-                    .{ .size = .{ .capture = "fn_name", .value = 60 } },
-                    .{ .size = .{ .capture = "return_type", .value = 80 } },
+                    .{ .font_size = .{ .capture = "fn_name", .value = 60 } },
+                    .{ .font_size = .{ .capture = "return_type", .value = 80 } },
                 },
             },
         });
