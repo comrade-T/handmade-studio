@@ -57,7 +57,7 @@ pub fn main() !void {
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(screen_height, screen_height);
 
-    const rgb_shader = rl.loadShader(null, "epic_new.frag");
+    const rgb_shader = rl.loadShader(null, "epic_rainbow.frag");
     const resolution = [2]f32{ 512, 512 };
     rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .shader_uniform_float);
     rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "resolution"), &resolution, .shader_uniform_vec2);
@@ -118,7 +118,7 @@ pub fn main() !void {
                 defer render_texture.end();
                 defer did_draw_to_render_texture = true;
 
-                rl.drawRectangle(100, 500, 500, 500, rl.Color.white);
+                rl.drawRectangle(100, 500, 300, 300, rl.Color.white);
 
                 rl.drawText("Super idol", 100, 100, 60, rl.Color.white);
                 rl.drawText("De xiao rong", 100, 200, 60, rl.Color.white);

@@ -2,9 +2,11 @@
 
 uniform float time;
 uniform vec2 resolution;
-uniform sampler2D image;
+uniform sampler2D texture0;
 
-in vec2 out_uv;
+out vec4 finalColor;
+in vec2 fragTexCoord;
+in vec4 fragColor;
 
 vec3 hsl2rgb(vec3 c) {
     vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0);
@@ -12,11 +14,11 @@ vec3 hsl2rgb(vec3 c) {
 }
 
 void main() {
-    vec4 tc = texture(image, out_uv);
+    vec4 tc = texture(texture0, fragTexCoord);
     float d = tc.r;
     float aaf = fwidth(d);
     float alpha = smoothstep(0.5 - aaf, 0.5 + aaf, d);
     vec2 frag_uv = gl_FragCoord.xy / resolution;
-    vec4 rainbow = vec4(hsl2rgb(vec3((time + frag_uv.x + frag_uv.y), 0.5, 0.5)), 1.0);
+    vec4 rainbow = vec4(hsl2rgb(vec3((time + fragTexCoord.x + fragTexCoord.y), 0.5, 0.5)), 1.0);
     gl_FragColor = vec4(rainbow.rgb, alpha);
 }
