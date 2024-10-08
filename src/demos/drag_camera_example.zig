@@ -31,9 +31,6 @@ pub fn main() !void {
     const smooth_time = 0.1;
     const max_speed = 40;
 
-    var did_draw_to_render_texture = false;
-    const render_texture = rl.loadRenderTexture(1920, 1080);
-
     ///////////////////////////// Ball
 
     var ball_position = rl.Vector2{ .x = 0, .y = 0 };
@@ -43,18 +40,27 @@ pub fn main() !void {
 
     ///////////////////////////// Shader
 
-    const imBlank = rl.genImageColor(1023, 1024, rl.Color.blank);
-    const texture = rl.loadTextureFromImage(imBlank);
+    var time: f32 = 0;
+
+    const imBlank = rl.genImageColor(screen_height, screen_height, rl.Color.blank);
+    const blank_texture = rl.loadTextureFromImage(imBlank);
     rl.unloadImage(imBlank);
 
-    // const shader = rl.loadShader(null, "epic.frag");
-    const shader = rl.loadShader(null, "cubes.fs");
-    var time: f32 = 0;
-    const timeLoc: i32 = rl.getShaderLocation(shader, "uTime");
-    rl.setShaderValue(shader, timeLoc, &time, .shader_uniform_float);
+    const cube_shader = rl.loadShader(null, "cubes.fs");
+    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .shader_uniform_float);
 
     var shader_rec_color = [3]f32{ 0, 0.8, 0.8 };
-    rl.setShaderValue(shader, rl.getShaderLocation(shader, "color"), &shader_rec_color, .shader_uniform_vec3);
+    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "color"), &shader_rec_color, .shader_uniform_vec3);
+
+    ///////////////////////////// Render Texture
+
+    var did_draw_to_render_texture = false;
+    const render_texture = rl.loadRenderTexture(screen_height, screen_height);
+
+    const rgb_shader = rl.loadShader(null, "epic_new.frag");
+    const resolution = [2]f32{ 512, 512 };
+    rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .shader_uniform_float);
+    rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "resolution"), &resolution, .shader_uniform_vec2);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -63,8 +69,9 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         { // shader
-            time = @floatCast(rl.getTime());
-            rl.setShaderValue(shader, timeLoc, &time, .shader_uniform_float);
+            time = @floatCast(rl.getTime() / 4);
+            rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .shader_uniform_float);
+            rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .shader_uniform_float);
         }
 
         {
@@ -111,8 +118,12 @@ pub fn main() !void {
                 defer render_texture.end();
                 defer did_draw_to_render_texture = true;
 
-                rl.drawText("super idol", 300, 100, 30, rl.Color.ray_white);
-                rl.drawText("de xiao rong", 300, 200, 30, rl.Color.ray_white);
+                rl.drawRectangle(100, 500, 500, 500, rl.Color.white);
+
+                rl.drawText("Super idol", 100, 100, 60, rl.Color.white);
+                rl.drawText("De xiao rong", 100, 200, 60, rl.Color.white);
+                rl.drawText("Dou mei ni de tian", 100, 300, 60, rl.Color.white);
+                rl.drawText("Ba yue zheng wu de yang guang", 100, 400, 60, rl.Color.white);
             }
 
             {
@@ -120,10 +131,26 @@ pub fn main() !void {
                 defer rl.endMode2D();
 
                 { // shader stuffs
-                    rl.beginShaderMode(shader);
+                    rl.beginShaderMode(cube_shader);
                     defer rl.endShaderMode();
-                    // rl.drawText("hello", 300, 300, 40, rl.Color.ray_white);
-                    rl.drawTexture(texture, 0, 0, rl.Color.white);
+                    rl.drawTexture(blank_texture, 1200, 0, rl.Color.white);
+                }
+
+                {
+                    rl.beginShaderMode(rgb_shader);
+                    defer rl.endShaderMode();
+
+                    rl.drawTextureRec(
+                        render_texture.texture,
+                        rl.Rectangle{
+                            .x = 0,
+                            .y = 0,
+                            .width = @floatFromInt(render_texture.texture.width),
+                            .height = @floatFromInt(-render_texture.texture.height),
+                        },
+                        .{ .x = 100, .y = 100 },
+                        rl.Color.white,
+                    );
                 }
 
                 // // draw ball
@@ -132,20 +159,7 @@ pub fn main() !void {
                 // // normal raylib calls
                 // rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
                 // rl.drawCircle(200, 500, 100, rl.Color.yellow);
-                //
-                // // texture test
-                // rl.drawTextureRec(
-                //     render_texture.texture,
-                //     rl.Rectangle{
-                //         .x = 0,
-                //         .y = 0,
-                //         .width = @floatFromInt(render_texture.texture.width),
-                //         .height = @floatFromInt(-render_texture.texture.height),
-                //     },
-                //     .{ .x = 100, .y = 600 },
-                //     rl.Color.white,
-                // );
-                //
+
                 // // draw border of original view
                 // rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
             }
