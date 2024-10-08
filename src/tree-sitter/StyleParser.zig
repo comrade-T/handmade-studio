@@ -136,39 +136,46 @@ const ChangeMap = struct {
                 if (!pi_to_line_map.contains(match.pattern_index)) {
                     try pi_to_line_map.put(match.pattern_index, LineToCols_FontSize.init(self.arena.allocator()));
                 }
-                var line_to_col_map = pi_to_line_map.getPtr(match.pattern_index) orelse unreachable;
+                const line_to_col_map = pi_to_line_map.getPtr(match.pattern_index) orelse unreachable;
 
                 switch (d) {
-                    .font_size => |font_size_directive| {
-                        for (match.targets) |target| {
-                            if (eql(u8, target.name, font_size_directive.capture)) {
-                                const start_point = target.node.getStartPoint();
-                                const end_point = target.node.getEndPoint();
-                                if (start_point.row > LINE_INDEX_LIMIT or end_point.row > LINE_INDEX_LIMIT or
-                                    end_point.column > COLUMN_INDEX_LIMIT or end_point.column > COLUMN_INDEX_LIMIT) continue;
-
-                                for (start_point.row..end_point.row + 1) |linenr| {
-                                    const casted_linenr: LineIndex = @intCast(linenr);
-
-                                    if (!line_to_col_map.contains(casted_linenr)) {
-                                        try line_to_col_map.put(casted_linenr, ColToChange_FontSize.init(self.arena.allocator()));
-                                    }
-                                    var col_to_change_map = line_to_col_map.getPtr(casted_linenr) orelse unreachable;
-
-                                    const start_col = if (linenr == start_point.row) start_point.column else 0;
-                                    const end_col = if (linenr == end_point.row)
-                                        end_point.column
-                                    else
-                                        noc_map.get(casted_linenr) orelse start_col;
-
-                                    for (start_col..end_col) |colnr| {
-                                        try col_to_change_map.put(@intCast(colnr), font_size_directive.value);
-                                    }
-                                }
-                            }
-                        }
+                    .font_size => |fs| {
+                        try self.addFontSize(match, fs.capture, fs.value, line_to_col_map, ColToChange_FontSize, noc_map);
+                    },
+                    .font => |font| {
+                        try self.addFontSize(match, font.capture, font.font_size, line_to_col_map, ColToChange_FontSize, noc_map);
                     },
                     else => {},
+                }
+            }
+        }
+    }
+
+    fn addFontSize(self: *@This(), match: MatchResult, capture: []const u8, value: f32, line_to_col_map: anytype, ColToChange: type, noc_map: NumOfCharsInLineMap) !void {
+        for (match.targets) |target| {
+            if (eql(u8, target.name, capture)) {
+                const start_point = target.node.getStartPoint();
+                const end_point = target.node.getEndPoint();
+                if (start_point.row > LINE_INDEX_LIMIT or end_point.row > LINE_INDEX_LIMIT or
+                    end_point.column > COLUMN_INDEX_LIMIT or end_point.column > COLUMN_INDEX_LIMIT) continue;
+
+                for (start_point.row..end_point.row + 1) |linenr| {
+                    const casted_linenr: LineIndex = @intCast(linenr);
+
+                    if (!line_to_col_map.contains(casted_linenr)) {
+                        try line_to_col_map.put(casted_linenr, ColToChange.init(self.arena.allocator()));
+                    }
+                    var col_to_change_map = line_to_col_map.getPtr(casted_linenr) orelse unreachable;
+
+                    const start_col = if (linenr == start_point.row) start_point.column else 0;
+                    const end_col = if (linenr == end_point.row)
+                        end_point.column
+                    else
+                        noc_map.get(casted_linenr) orelse start_col;
+
+                    for (start_col..end_col) |colnr| {
+                        try col_to_change_map.put(@intCast(colnr), value);
+                    }
                 }
             }
         }
@@ -267,15 +274,15 @@ test {
     defer noc_map.deinit();
 
     try style_parser.parse(ls, tree, test_source, noc_map, null);
-    const change_map = style_parser.change_map;
+    const cm = style_parser.change_map;
 
-    try eq(true, change_map.font_size.get("extra") != null);
-    try eqSlice(u16, &.{0}, change_map.font_size.get("extra").?.keys());
-    try eqSlice(u16, &.{ 3, 7 }, change_map.font_size.get("extra").?.get(0).?.keys());
-    try eqSlice(u16, &.{ 3, 4, 5 }, change_map.font_size.get("extra").?.get(0).?.get(3).?.keys());
-    try eqSlice(f32, &.{ 60, 60, 60 }, change_map.font_size.get("extra").?.get(0).?.get(3).?.values());
-    try eqSlice(u16, &.{ 3, 4, 5 }, change_map.font_size.get("extra").?.get(0).?.get(7).?.keys());
-    try eqSlice(f32, &.{ 60, 60, 60 }, change_map.font_size.get("extra").?.get(0).?.get(7).?.values());
+    try eq(true, cm.font_size.get("extra") != null);
+    try eqSlice(u16, &.{0}, cm.font_size.get("extra").?.keys()); // pattern index
+    try eqSlice(u16, &.{ 3, 7 }, cm.font_size.get("extra").?.get(0).?.keys()); // lines
+    try eqSlice(u16, &.{ 3, 4, 5, 23, 24, 25 }, cm.font_size.get("extra").?.get(0).?.get(3).?.keys()); // cols
+    try eqSlice(f32, &.{ 60, 60, 60, 80, 80, 80 }, cm.font_size.get("extra").?.get(0).?.get(3).?.values()); // values
+    try eqSlice(u16, &.{ 3, 4, 5, 23, 24, 25 }, cm.font_size.get("extra").?.get(0).?.get(7).?.keys()); // cols
+    try eqSlice(f32, &.{ 60, 60, 60, 80, 80, 80 }, cm.font_size.get("extra").?.get(0).?.get(7).?.values()); // values
 }
 
 fn produceNocMapForTesting(a: Allocator, source: []const u8) !ChangeMap.NumOfCharsInLineMap {
