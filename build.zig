@@ -69,6 +69,17 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     query_filter.compile.linkLibrary(tree_sitter);
 
+    const langsuite = addTestableModule(&bops, "src/tree-sitter/LangSuite.zig", &.{
+        .{ .name = "regex", .module = regex },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    langsuite.module.linkLibrary(tree_sitter);
+
+    const style_changes = addTestableModule(&bops, "src/tree-sitter/StyleChanges.zig", &.{
+        .{ .name = "LangSuite", .module = langsuite.module },
+    }, zig_build_test_step);
+    _ = style_changes;
+
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);

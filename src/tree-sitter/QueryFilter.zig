@@ -341,7 +341,7 @@ const CapturedTarget = struct {
     name: []const u8,
 };
 
-const MatchResult = struct {
+pub const MatchResult = struct {
     targets: []CapturedTarget,
     directives: []Directive,
 };
@@ -395,7 +395,7 @@ pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: u
     return results.toOwnedSlice();
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Tests - Predicates
+////////////////////////////////////////////////////////////////////////////////////////////// Tests
 
 const test_source = @embedFile("fixtures/predicates_test_dummy.zig");
 

@@ -19,7 +19,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
-const ts = @import("bindings.zig");
+pub const ts = @import("bindings.zig");
 const QueryFilter = @import("QueryFilter.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -63,11 +63,10 @@ pub fn addDefaultHighlightQuery(self: *@This()) !void {
     try self.addQuery(DEFAULT_QUERY_ID, patterns);
 }
 
-pub fn addQuery(self: *@This(), kind: StoredQuery.Kind, id: []const u8, patterns: []const u8) !void {
+pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
     const query = try ts.Query.create(self.language, patterns);
     const sq = try self.a.create(StoredQuery);
     sq.* = StoredQuery{
-        .kind = kind,
         .query = query,
         .patterns = try self.a.dupe(u8, patterns),
         .filter = try QueryFilter.init(self.a, query),
@@ -87,8 +86,6 @@ pub const DEFAULT_QUERY_ID = "DEFAULT";
 
 const QueryMap = std.StringArrayHashMap(*StoredQuery);
 pub const StoredQuery = struct {
-    const Kind = enum { highlight, extra };
-    kind: Kind,
     query: *ts.Query,
     patterns: []const u8,
     filter: *QueryFilter,
