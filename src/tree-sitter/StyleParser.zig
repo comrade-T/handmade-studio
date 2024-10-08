@@ -24,6 +24,7 @@ const AutoHashMap = std.AutoHashMap;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
 const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
@@ -87,7 +88,8 @@ pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8,
 const ChangeMap = struct {
     a: Allocator,
     arena: ArenaAllocator,
-    font_size: QueryIdToPatternIndexes_FontSize,
+    font_size: font_size_map_types.QueryIdToPatternIndexes,
+    font_face: font_face_map_types.QueryIdToPatternIndexes,
 
     const NumOfCharsInLineMap = AutoArrayHashMap(LineIndex, ColumnIndex);
 
@@ -98,19 +100,36 @@ const ChangeMap = struct {
     const LINE_INDEX_LIMIT = std.math.maxInt(LineIndex);
     const COLUMN_INDEX_LIMIT = std.math.maxInt(ColumnIndex);
 
-    const QueryIdToPatternIndexes_FontSize = StringHashMap(PatternIndexToLine_FontSize);
-    const PatternIndexToLine_FontSize = AutoArrayHashMap(PatternIndex, LineToCols_FontSize);
-    const LineToCols_FontSize = AutoArrayHashMap(LineIndex, ColToChange_FontSize);
-    const ColToChange_FontSize = AutoArrayHashMap(ColumnIndex, f32);
+    const font_size_map_types = MapTypes.create(f32);
+    const font_face_map_types = MapTypes.create([]const u8);
 
-    // change_map.font_size.get("extra").?.get(pattern_index: 0).?.get(linenr: 0).?.get(colnr: 0);
+    const MapTypes = struct {
+        QueryIdToPatternIndexes: type,
+        PatternIndexToLine: type,
+        LineToCols: type,
+        ColToChange: type,
+
+        fn create(T: type) MapTypes {
+            const ColToChange = AutoArrayHashMap(ColumnIndex, T);
+            const LineToCols = AutoArrayHashMap(LineIndex, ColToChange);
+            const PatternIndexToLine = AutoArrayHashMap(PatternIndex, LineToCols);
+            const QueryIdToPatternIndexes = StringHashMap(PatternIndexToLine);
+            return .{
+                .QueryIdToPatternIndexes = QueryIdToPatternIndexes,
+                .PatternIndexToLine = PatternIndexToLine,
+                .LineToCols = LineToCols,
+                .ColToChange = ColToChange,
+            };
+        }
+    };
 
     fn create(a: Allocator) !*ChangeMap {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
             .arena = ArenaAllocator.init(a),
-            .font_size = QueryIdToPatternIndexes_FontSize.init(self.arena.allocator()),
+            .font_size = font_size_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
+            .font_face = font_face_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
         };
         return self;
     }
@@ -121,11 +140,6 @@ const ChangeMap = struct {
     }
 
     fn addChanges(self: *@This(), query_id: []const u8, matches: []MatchResult, noc_map: NumOfCharsInLineMap) !void {
-        if (!self.font_size.contains(query_id)) {
-            try self.font_size.put(query_id, PatternIndexToLine_FontSize.init(self.arena.allocator()));
-        }
-        var pi_to_line_map = self.font_size.getPtr(query_id) orelse unreachable;
-
         for (matches) |match| {
             // // if there are no directives in the pattern, treat it as highlight
             // if (match.directives.len == 0) {
@@ -133,17 +147,13 @@ const ChangeMap = struct {
             // }
 
             for (match.directives) |d| {
-                if (!pi_to_line_map.contains(match.pattern_index)) {
-                    try pi_to_line_map.put(match.pattern_index, LineToCols_FontSize.init(self.arena.allocator()));
-                }
-                const line_to_col_map = pi_to_line_map.getPtr(match.pattern_index) orelse unreachable;
-
                 switch (d) {
                     .font_size => |fs| {
-                        try self.addFontSize(match, fs.capture, fs.value, line_to_col_map, ColToChange_FontSize, noc_map);
+                        try self.addValues(query_id, &self.font_size, font_size_map_types, match, fs.capture, fs.value, noc_map);
                     },
                     .font => |font| {
-                        try self.addFontSize(match, font.capture, font.font_size, line_to_col_map, ColToChange_FontSize, noc_map);
+                        try self.addValues(query_id, &self.font_size, font_size_map_types, match, font.capture, font.font_size, noc_map);
+                        try self.addValues(query_id, &self.font_face, font_face_map_types, match, font.capture, font.font_face, noc_map);
                     },
                     else => {},
                 }
@@ -151,7 +161,26 @@ const ChangeMap = struct {
         }
     }
 
-    fn addFontSize(self: *@This(), match: MatchResult, capture: []const u8, value: f32, line_to_col_map: anytype, ColToChange: type, noc_map: NumOfCharsInLineMap) !void {
+    fn addValues(
+        self: *@This(),
+        query_id: []const u8,
+        big_map: anytype,
+        map_types: MapTypes,
+        match: MatchResult,
+        capture: []const u8,
+        value: anytype,
+        noc_map: NumOfCharsInLineMap,
+    ) !void {
+        if (!big_map.contains(query_id)) {
+            try big_map.put(query_id, map_types.PatternIndexToLine.init(self.arena.allocator()));
+        }
+        const pi_to_line_map = big_map.getPtr(query_id) orelse unreachable;
+
+        if (!pi_to_line_map.contains(match.pattern_index)) {
+            try pi_to_line_map.put(match.pattern_index, map_types.LineToCols.init(self.arena.allocator()));
+        }
+        const line_to_col_map = pi_to_line_map.getPtr(match.pattern_index) orelse unreachable;
+
         for (match.targets) |target| {
             if (eql(u8, target.name, capture)) {
                 const start_point = target.node.getStartPoint();
@@ -163,7 +192,7 @@ const ChangeMap = struct {
                     const casted_linenr: LineIndex = @intCast(linenr);
 
                     if (!line_to_col_map.contains(casted_linenr)) {
-                        try line_to_col_map.put(casted_linenr, ColToChange.init(self.arena.allocator()));
+                        try line_to_col_map.put(casted_linenr, map_types.ColToChange.init(self.arena.allocator()));
                     }
                     var col_to_change_map = line_to_col_map.getPtr(casted_linenr) orelse unreachable;
 
@@ -283,6 +312,19 @@ test {
     try eqSlice(f32, &.{ 60, 60, 60, 80, 80, 80 }, cm.font_size.get("extra").?.get(0).?.get(3).?.values()); // values
     try eqSlice(u16, &.{ 3, 4, 5, 23, 24, 25 }, cm.font_size.get("extra").?.get(0).?.get(7).?.keys()); // cols
     try eqSlice(f32, &.{ 60, 60, 60, 80, 80, 80 }, cm.font_size.get("extra").?.get(0).?.get(7).?.values()); // values
+
+    try eq(true, cm.font_face.get("extra") != null);
+    try eqSlice(u16, &.{0}, cm.font_face.get("extra").?.keys()); // pattern index
+    try eqSlice(u16, &.{ 3, 7 }, cm.font_face.get("extra").?.get(0).?.keys()); // lines
+    try eqSlice(u16, &.{ 23, 24, 25 }, cm.font_face.get("extra").?.get(0).?.get(3).?.keys()); // cols
+    try eqlStringSlices(&.{ "Inter", "Inter", "Inter" }, cm.font_face.get("extra").?.get(0).?.get(3).?.values()); // values
+    try eqSlice(u16, &.{ 23, 24, 25 }, cm.font_face.get("extra").?.get(0).?.get(7).?.keys()); // cols
+    try eqlStringSlices(&.{ "Inter", "Inter", "Inter" }, cm.font_face.get("extra").?.get(0).?.get(7).?.values()); // values
+}
+
+fn eqlStringSlices(expected: []const []const u8, got: []const []const u8) !void {
+    try eq(expected.len, got.len);
+    for (expected, 0..) |e, i| try eqStr(e, got[i]);
 }
 
 fn produceNocMapForTesting(a: Allocator, source: []const u8) !ChangeMap.NumOfCharsInLineMap {
