@@ -31,9 +31,6 @@ pub fn main() !void {
     const smooth_time = 0.1;
     const max_speed = 40;
 
-    // const font_size = 40;
-    // const font = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", font_size, null);
-
     var did_draw_to_render_texture = false;
     const render_texture = rl.loadRenderTexture(1920, 1080);
 
@@ -44,11 +41,31 @@ pub fn main() !void {
 
     var cam_zoom_target = camera.zoom;
 
+    ///////////////////////////// Shader
+
+    const imBlank = rl.genImageColor(1023, 1024, rl.Color.blank);
+    const texture = rl.loadTextureFromImage(imBlank);
+    rl.unloadImage(imBlank);
+
+    // const shader = rl.loadShader(null, "epic.frag");
+    const shader = rl.loadShader(null, "cubes.fs");
+    var time: f32 = 0;
+    const timeLoc: i32 = rl.getShaderLocation(shader, "uTime");
+    rl.setShaderValue(shader, timeLoc, &time, .shader_uniform_float);
+
+    var shader_rec_color = [3]f32{ 0, 0.8, 0.8 };
+    rl.setShaderValue(shader, rl.getShaderLocation(shader, "color"), &shader_rec_color, .shader_uniform_vec3);
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
+
+        { // shader
+            time = @floatCast(rl.getTime());
+            rl.setShaderValue(shader, timeLoc, &time, .shader_uniform_float);
+        }
 
         {
             if (rl.isMouseButtonPressed(.mouse_button_left)) {
@@ -102,28 +119,35 @@ pub fn main() !void {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
-                // draw ball
-                rl.drawCircle(@intFromFloat(ball_position.x), @intFromFloat(ball_position.y), 40, rl.Color.sky_blue);
+                { // shader stuffs
+                    rl.beginShaderMode(shader);
+                    defer rl.endShaderMode();
+                    // rl.drawText("hello", 300, 300, 40, rl.Color.ray_white);
+                    rl.drawTexture(texture, 0, 0, rl.Color.white);
+                }
 
-                // normal raylib calls
-                rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
-                rl.drawCircle(200, 500, 100, rl.Color.yellow);
-
-                // texture test
-                rl.drawTextureRec(
-                    render_texture.texture,
-                    rl.Rectangle{
-                        .x = 0,
-                        .y = 0,
-                        .width = @floatFromInt(render_texture.texture.width),
-                        .height = @floatFromInt(-render_texture.texture.height),
-                    },
-                    .{ .x = 100, .y = 600 },
-                    rl.Color.white,
-                );
-
-                // draw border of original view
-                rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
+                // // draw ball
+                // rl.drawCircle(@intFromFloat(ball_position.x), @intFromFloat(ball_position.y), 40, rl.Color.sky_blue);
+                //
+                // // normal raylib calls
+                // rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
+                // rl.drawCircle(200, 500, 100, rl.Color.yellow);
+                //
+                // // texture test
+                // rl.drawTextureRec(
+                //     render_texture.texture,
+                //     rl.Rectangle{
+                //         .x = 0,
+                //         .y = 0,
+                //         .width = @floatFromInt(render_texture.texture.width),
+                //         .height = @floatFromInt(-render_texture.texture.height),
+                //     },
+                //     .{ .x = 100, .y = 600 },
+                //     rl.Color.white,
+                // );
+                //
+                // // draw border of original view
+                // rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
             }
         }
     }
@@ -164,93 +188,4 @@ fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32
     const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
     const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
     rl.drawText(text, x, y, font_size, rl.Color.ray_white);
-}
-
-fn printViewInfo(camera: rl.Camera2D) !void {
-    const view_start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
-    const view_end = rl.getScreenToWorld2D(.{ .x = screen_width, .y = screen_height }, camera);
-    const view_width = view_end.x - view_start.x;
-    const view_height = view_end.y - view_start.y;
-
-    try drawTextAtBottomRight(
-        "view_width: {d} | view_height: {d}",
-        .{ view_width, view_height },
-        30,
-        .{ .x = 40, .y = 40 },
-    );
-
-    try drawTextAtBottomRight(
-        "start_x: {d} | start_y: {d}",
-        .{ view_start.x, view_start.y },
-        30,
-        .{ .x = 40, .y = 100 },
-    );
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const GlyphData = struct {
-    value: i32,
-    advanceX: i32,
-    offsetX: i32,
-};
-
-pub const Rectangle = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-};
-
-pub const FontData = struct {
-    base_size: i32,
-    glyph_padding: i32,
-    recs: []Rectangle,
-    glyphs: []GlyphData,
-};
-
-fn saveFontDataToFile(font: rl.Font) !void {
-    const a = std.heap.page_allocator;
-
-    var recs = try a.alloc(Rectangle, @intCast(font.glyphCount));
-    var glyphs = try a.alloc(GlyphData, @intCast(font.glyphCount));
-
-    for (0..@intCast(font.glyphCount)) |i| {
-        recs[i] = Rectangle{
-            .x = font.recs[i].x,
-            .y = font.recs[i].y,
-            .width = font.recs[i].width,
-            .height = font.recs[i].height,
-        };
-
-        glyphs[i] = GlyphData{
-            .advanceX = font.glyphs[i].advanceX,
-            .offsetX = @intCast(font.glyphs[i].offsetX),
-            .value = font.glyphs[i].value,
-        };
-    }
-
-    const font_data = FontData{
-        .base_size = font.baseSize,
-        .glyph_padding = font.glyphPadding,
-        .recs = recs,
-        .glyphs = glyphs,
-    };
-
-    const json_str = try std.json.stringifyAlloc(a, font_data, .{ .whitespace = .indent_4 });
-    {
-        const file = try std.fs.cwd().createFile("src/window/font_data.json", .{
-            .read = true,
-            .truncate = true,
-        });
-        defer file.close();
-
-        _ = try file.writeAll(json_str);
-
-        std.debug.print("\nwritten to font_data.json successfully\n", .{});
-    }
 }

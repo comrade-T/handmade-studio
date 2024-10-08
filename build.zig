@@ -128,14 +128,14 @@ pub fn build(b: *std.Build) void {
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
 
-    const window = addTestableModule(&bops, "src/window/window.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-        .{ .name = "ts", .module = ts.module },
-        .{ .name = "input_processor", .module = input_processor.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
+    // const window = addTestableModule(&bops, "src/window/window.zig", &.{
+    //     .{ .name = "code_point", .module = zg.module("code_point") },
+    //     .{ .name = "neo_buffer", .module = neo_buffer.module },
+    //     .{ .name = "ztracy", .module = ztracy.module("root") },
+    //     .{ .name = "ts", .module = ts.module },
+    //     .{ .name = "input_processor", .module = input_processor.module },
+    //     ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    // }, zig_build_test_step);
 
     const display_cache_pool = addTestableModule(&bops, "src/window/DisplayCachePool.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
@@ -155,23 +155,23 @@ pub fn build(b: *std.Build) void {
 
     ///////////////////////////// Raylib
 
-    {
-        const path = "src/window_test.zig";
-        const exe = b.addExecutable(.{
-            .name = "window_test",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
-        exe.root_module.addImport("window", window.module);
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.root_module.addImport("input_processor", input_processor.module);
-        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
-        exe.root_module.addImport("ts", ts.module);
-        addRunnableRaylibFile(b, exe, raylib, path);
-
-        b.installArtifact(exe);
-    }
+    // {
+    //     const path = "src/window_test.zig";
+    //     const exe = b.addExecutable(.{
+    //         .name = "window_test",
+    //         .root_source_file = b.path(path),
+    //         .target = target,
+    //         .optimize = optimize,
+    //     });
+    //     exe.root_module.addImport("window", window.module);
+    //     exe.root_module.addImport("ztracy", ztracy.module("root"));
+    //     exe.root_module.addImport("input_processor", input_processor.module);
+    //     exe.root_module.linkLibrary(ztracy.artifact("tracy"));
+    //     exe.root_module.addImport("ts", ts.module);
+    //     addRunnableRaylibFile(b, exe, raylib, path);
+    //
+    //     b.installArtifact(exe);
+    // }
 
     {
         const path = "src/new_mapping_methods.zig";
