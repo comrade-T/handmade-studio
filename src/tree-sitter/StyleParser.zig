@@ -90,6 +90,7 @@ const ChangeMap = struct {
     arena: ArenaAllocator,
     font_size: font_size_map_types.QueryIdToPatternIndexes,
     font_face: font_face_map_types.QueryIdToPatternIndexes,
+    highlight_groups: highlight_group_map_types.QueryIdToPatternIndexes,
 
     const NumOfCharsInLineMap = AutoArrayHashMap(LineIndex, ColumnIndex);
 
@@ -100,6 +101,7 @@ const ChangeMap = struct {
     const LINE_INDEX_LIMIT = std.math.maxInt(LineIndex);
     const COLUMN_INDEX_LIMIT = std.math.maxInt(ColumnIndex);
 
+    const highlight_group_map_types = MapTypes.create([]const u8);
     const font_size_map_types = MapTypes.create(f32);
     const font_face_map_types = MapTypes.create([]const u8);
 
@@ -130,6 +132,7 @@ const ChangeMap = struct {
             .arena = ArenaAllocator.init(a),
             .font_size = font_size_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
             .font_face = font_face_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
+            .highlight_groups = highlight_group_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
         };
         return self;
     }
@@ -141,10 +144,12 @@ const ChangeMap = struct {
 
     fn addChanges(self: *@This(), query_id: []const u8, matches: []MatchResult, noc_map: NumOfCharsInLineMap) !void {
         for (matches) |match| {
-            // // if there are no directives in the pattern, treat it as highlight
-            // if (match.directives.len == 0) {
-            //     // TODO:
-            // }
+            if (match.directives.len == 0) {
+                for (match.targets) |target| {
+                    try self.addValues(query_id, &self.highlight_groups, highlight_group_map_types, match, target.name, target.name, noc_map);
+                }
+                continue;
+            }
 
             for (match.directives) |d| {
                 switch (d) {
@@ -164,47 +169,47 @@ const ChangeMap = struct {
     fn addValues(
         self: *@This(),
         query_id: []const u8,
-        big_map: anytype,
-        map_types: MapTypes,
+        root_map: anytype,
+        types: MapTypes,
         match: MatchResult,
         capture: []const u8,
         value: anytype,
         noc_map: NumOfCharsInLineMap,
     ) !void {
-        if (!big_map.contains(query_id)) {
-            try big_map.put(query_id, map_types.PatternIndexToLine.init(self.arena.allocator()));
+        if (!root_map.contains(query_id)) {
+            try root_map.put(query_id, types.PatternIndexToLine.init(self.arena.allocator()));
         }
-        const pi_to_line_map = big_map.getPtr(query_id) orelse unreachable;
+        const pi_to_line_map = root_map.getPtr(query_id) orelse unreachable;
 
         if (!pi_to_line_map.contains(match.pattern_index)) {
-            try pi_to_line_map.put(match.pattern_index, map_types.LineToCols.init(self.arena.allocator()));
+            try pi_to_line_map.put(match.pattern_index, types.LineToCols.init(self.arena.allocator()));
         }
         const line_to_col_map = pi_to_line_map.getPtr(match.pattern_index) orelse unreachable;
 
         for (match.targets) |target| {
-            if (eql(u8, target.name, capture)) {
-                const start_point = target.node.getStartPoint();
-                const end_point = target.node.getEndPoint();
-                if (start_point.row > LINE_INDEX_LIMIT or end_point.row > LINE_INDEX_LIMIT or
-                    end_point.column > COLUMN_INDEX_LIMIT or end_point.column > COLUMN_INDEX_LIMIT) continue;
+            if (!eql(u8, target.name, capture)) continue;
 
-                for (start_point.row..end_point.row + 1) |linenr| {
-                    const casted_linenr: LineIndex = @intCast(linenr);
+            const start_point = target.node.getStartPoint();
+            const end_point = target.node.getEndPoint();
+            if (start_point.row > LINE_INDEX_LIMIT or end_point.row > LINE_INDEX_LIMIT or
+                end_point.column > COLUMN_INDEX_LIMIT or end_point.column > COLUMN_INDEX_LIMIT) continue;
 
-                    if (!line_to_col_map.contains(casted_linenr)) {
-                        try line_to_col_map.put(casted_linenr, map_types.ColToChange.init(self.arena.allocator()));
-                    }
-                    var col_to_change_map = line_to_col_map.getPtr(casted_linenr) orelse unreachable;
+            for (start_point.row..end_point.row + 1) |linenr| {
+                const casted_linenr: LineIndex = @intCast(linenr);
 
-                    const start_col = if (linenr == start_point.row) start_point.column else 0;
-                    const end_col = if (linenr == end_point.row)
-                        end_point.column
-                    else
-                        noc_map.get(casted_linenr) orelse start_col;
+                if (!line_to_col_map.contains(casted_linenr)) {
+                    try line_to_col_map.put(casted_linenr, types.ColToChange.init(self.arena.allocator()));
+                }
+                var col_to_change_map = line_to_col_map.getPtr(casted_linenr) orelse unreachable;
 
-                    for (start_col..end_col) |colnr| {
-                        try col_to_change_map.put(@intCast(colnr), value);
-                    }
+                const start_col = if (linenr == start_point.row) start_point.column else 0;
+                const end_col = if (linenr == end_point.row)
+                    end_point.column
+                else
+                    noc_map.get(casted_linenr) orelse start_col;
+
+                for (start_col..end_col) |colnr| {
+                    try col_to_change_map.put(@intCast(colnr), value);
                 }
             }
         }
@@ -286,6 +291,28 @@ test {
         \\      )
         \\    )
         \\)
+        \\
+        \\(
+        \\  [
+        \\    variable_type_function: (IDENTIFIER)
+        \\    field_access: (IDENTIFIER)
+        \\    parameter: (IDENTIFIER)
+        \\  ] @type
+        \\  (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
+        \\)
+        \\
+        \\((IDENTIFIER) @x_y (#any-of? @x_y "x" "y"))
+        \\
+        \\(
+        \\  FnProto
+        \\    (IDENTIFIER) @fn.name (#eq? @fn.name "callAddExample")
+        \\    _?
+        \\    (ErrorUnionExpr
+        \\      (SuffixExpr
+        \\        (BuildinTypeExpr) @fn.return.type
+        \\      )
+        \\    )
+        \\)
     ;
     try ls.addQuery("extra", extra_patterns);
 
@@ -320,6 +347,46 @@ test {
     try eqlStringSlices(&.{ "Inter", "Inter", "Inter" }, cm.font_face.get("extra").?.get(0).?.get(3).?.values()); // values
     try eqSlice(u16, &.{ 23, 24, 25 }, cm.font_face.get("extra").?.get(0).?.get(7).?.keys()); // cols
     try eqlStringSlices(&.{ "Inter", "Inter", "Inter" }, cm.font_face.get("extra").?.get(0).?.get(7).?.values()); // values
+
+    try eq(true, cm.highlight_groups.get("extra") != null);
+    try eqSlice(u16, &.{ 1, 2, 3 }, cm.highlight_groups.get("extra").?.keys()); // pattern index
+
+    // matched 'Allocator' 2 times at line 1
+    try eqSlice(u16, &.{ 1, 20 }, cm.highlight_groups.get("extra").?.get(1).?.keys()); // lines
+    try eqSlice(u16, &.{
+        6,  7,  8,  9,  10, 11, 12, 13, 14,
+        26, 27, 28, 29, 30, 31, 32, 33, 34,
+    }, cm.highlight_groups.get("extra").?.get(1).?.get(1).?.keys()); // cols
+    try eqlStringSlices(&.{
+        "type", "type", "type", "type", "type", "type", "type", "type", "type",
+        "type", "type", "type", "type", "type", "type", "type", "type", "type",
+    }, cm.highlight_groups.get("extra").?.get(1).?.get(1).?.values()); // values
+
+    // matched 'String' 1 time at line 20
+    try eqSlice(u16, &.{
+        6, 7, 8, 9, 10, 11,
+    }, cm.highlight_groups.get("extra").?.get(1).?.get(20).?.keys()); // cols
+    try eqlStringSlices(&.{
+        "type", "type", "type", "type", "type", "type",
+    }, cm.highlight_groups.get("extra").?.get(1).?.get(20).?.values()); // values
+
+    // match 'x' and 'y'
+    try eqSlice(u16, &.{ 3, 4 }, cm.highlight_groups.get("extra").?.get(2).?.keys()); // lines
+    try eqSlice(u16, &.{ 7, 15 }, cm.highlight_groups.get("extra").?.get(2).?.get(3).?.keys()); // cols
+    try eqlStringSlices(&.{ "x_y", "x_y" }, cm.highlight_groups.get("extra").?.get(2).?.get(3).?.values()); // values
+    try eqSlice(u16, &.{ 11, 15 }, cm.highlight_groups.get("extra").?.get(2).?.get(4).?.keys()); // cols
+    try eqlStringSlices(&.{ "x_y", "x_y" }, cm.highlight_groups.get("extra").?.get(2).?.get(4).?.values()); // values
+
+    // match 'callAddExample' and 'void'
+    try eqSlice(u16, &.{11}, cm.highlight_groups.get("extra").?.get(3).?.keys()); // lines
+    try eqSlice(u16, &.{
+        3,  4,  5,  6,  7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        20, 21, 22, 23,
+    }, cm.highlight_groups.get("extra").?.get(3).?.get(11).?.keys()); // cols
+    try eqlStringSlices(&.{
+        "fn.name",        "fn.name",        "fn.name",        "fn.name",        "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name",
+        "fn.return.type", "fn.return.type", "fn.return.type", "fn.return.type",
+    }, cm.highlight_groups.get("extra").?.get(3).?.get(11).?.values()); // values
 }
 
 fn eqlStringSlices(expected: []const []const u8, got: []const []const u8) !void {
