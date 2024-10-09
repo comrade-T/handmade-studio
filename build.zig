@@ -71,14 +71,16 @@ pub fn build(b: *std.Build) void {
 
     const langsuite = addTestableModule(&bops, "src/tree-sitter/LangSuite.zig", &.{
         .{ .name = "regex", .module = regex },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     langsuite.module.linkLibrary(tree_sitter);
 
     const style_parser = addTestableModule(&bops, "src/tree-sitter/StyleParser.zig", &.{
-        .{ .name = "LangSuite", .module = langsuite.module },
+        .{ .name = "regex", .module = regex },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
-    _ = style_parser;
+    style_parser.compile.linkLibrary(tree_sitter);
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
@@ -154,6 +156,20 @@ pub fn build(b: *std.Build) void {
     ////////////////////////////////////////////////////////////////////////////// Executable
 
     ///////////////////////////// Raylib
+
+    {
+        const path = "src/style_parser_test.zig";
+        const exe = b.addExecutable(.{
+            .name = "style_parser_test",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.root_module.addImport("LangSuite", langsuite.module);
+        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
+        addRunnableRaylibFile(b, exe, raylib, path);
+    }
 
     // {
     //     const path = "src/window_test.zig";

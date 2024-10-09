@@ -14,6 +14,7 @@
 // along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
 
 const QueryFilter = @This();
+const ztracy = @import("ztracy");
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -348,10 +349,16 @@ pub const MatchResult = struct {
 };
 
 pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: usize, cursor: *Query.Cursor) ![]MatchResult {
+    const zone = ztracy.ZoneNC(@src(), "QueryFilter.getAllMatches()", 0x00000F);
+    defer zone.End();
+
     var results = ArrayList(MatchResult).init(a);
     errdefer results.deinit();
 
     while (cursor.nextMatch()) |match| {
+        const next_match_zone = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0x5555FF);
+        defer next_match_zone.End();
+
         const predicates_map = self.patterns[match.pattern_index];
 
         var all_predicates_matches = true;

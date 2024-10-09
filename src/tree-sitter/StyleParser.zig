@@ -16,6 +16,7 @@
 const StyleParser = @This();
 
 const std = @import("std");
+const ztracy = @import("ztracy");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const StringHashMap = std.StringHashMap;
@@ -29,7 +30,7 @@ const eqStr = std.testing.expectEqualStrings;
 const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
-const LangSuite = @import("LangSuite");
+const LangSuite = @import("LangSuite.zig");
 const ts = LangSuite.ts;
 const MatchResult = LangSuite.QueryFilter.MatchResult;
 const MatchLimit = LangSuite.QueryFilter.MatchLimit;
@@ -61,6 +62,9 @@ pub fn addQuery(self: *@This(), query_id: []const u8) !void {
 }
 
 pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8, noc_map: NumOfCharsInLineMap, may_limit: ?MatchLimit) !void {
+    const zone = ztracy.ZoneNC(@src(), "StyleParser.parse()", 0x00AAFF);
+    defer zone.End();
+
     var iter = ls.queries.iterator();
     while (iter.next()) |entry| {
         const query_id = entry.key_ptr.*;
@@ -77,7 +81,7 @@ pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8,
         const matches = try sq.filter.getAllMatches(self.a, source, offset, cursor);
         defer {
             for (matches) |m| self.a.free(m.targets);
-            testing_allocator.free(matches);
+            self.a.free(matches);
         }
 
         try self.coor_based_change_map.addChanges(query_id, matches, noc_map);
@@ -140,6 +144,9 @@ const CoorBasedChangeMap = struct {
     }
 
     fn addChanges(self: *@This(), query_id: []const u8, matches: []MatchResult, noc_map: NumOfCharsInLineMap) !void {
+        const zone = ztracy.ZoneNC(@src(), "CoorBasedChangeMap.addChanges()", 0xFFFF0F);
+        defer zone.End();
+
         for (matches) |match| {
             if (match.directives.len == 0) {
                 for (match.targets) |target| {
@@ -320,7 +327,7 @@ fn checkKeys(T: type, expected: []const T, map: anytype) !void {
     try eqSlice(T, expected, keys);
 }
 
-fn produceNocMapForTesting(a: Allocator, source: []const u8) !NumOfCharsInLineMap {
+pub fn produceNocMapForTesting(a: Allocator, source: []const u8) !NumOfCharsInLineMap {
     var map = NumOfCharsInLineMap.init(a);
     var split_iter = std.mem.split(u8, source, "\n");
     var i: usize = 0;
