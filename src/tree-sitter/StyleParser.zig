@@ -21,8 +21,9 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const StringHashMap = std.StringHashMap;
 const AutoArrayHashMap = std.AutoArrayHashMap;
 const AutoHashMap = std.AutoHashMap;
-const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
+
+const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const eqSlice = std.testing.expectEqualSlices;
@@ -37,20 +38,20 @@ const MatchLimit = LangSuite.QueryFilter.MatchLimit;
 
 a: Allocator,
 query_ids_to_parse: StringHashMap(void),
-change_map: *ChangeMap,
+coor_based_change_map: *CoorBasedChangeMap,
 
 pub fn create(a: Allocator) !*StyleParser {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
         .query_ids_to_parse = StringHashMap(void).init(a),
-        .change_map = try ChangeMap.create(a),
+        .coor_based_change_map = try CoorBasedChangeMap.create(a),
     };
     return self;
 }
 
 pub fn destroy(self: *@This()) void {
-    self.change_map.destroy();
+    self.coor_based_change_map.destroy();
     self.query_ids_to_parse.deinit();
     self.a.destroy(self);
 }
@@ -59,7 +60,7 @@ pub fn addQuery(self: *@This(), query_id: []const u8) !void {
     try self.query_ids_to_parse.put(query_id, {});
 }
 
-pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8, noc_map: ChangeMap.NumOfCharsInLineMap, may_limit: ?MatchLimit) !void {
+pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8, noc_map: NumOfCharsInLineMap, may_limit: ?MatchLimit) !void {
     var iter = ls.queries.iterator();
     while (iter.next()) |entry| {
         const query_id = entry.key_ptr.*;
@@ -79,60 +80,56 @@ pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8,
             testing_allocator.free(matches);
         }
 
-        try self.change_map.addChanges(query_id, matches, noc_map);
+        try self.coor_based_change_map.addChanges(query_id, matches, noc_map);
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// ChangeMap
+////////////////////////////////////////////////////////////////////////////////////////////// CoorBasedChangeMap
 
-const ChangeMap = struct {
+const NumOfCharsInLineMap = AutoArrayHashMap(LineIndex, ColumnIndex);
+
+const PatternIndex = u16;
+const LineIndex = u16;
+const ColumnIndex = u16;
+const PATTERN_INDEX_LIMIT = std.math.maxInt(PatternIndex);
+const LINE_INDEX_LIMIT = std.math.maxInt(LineIndex);
+const COLUMN_INDEX_LIMIT = std.math.maxInt(ColumnIndex);
+
+const CoorBasedChangeMap = struct {
     a: Allocator,
     arena: ArenaAllocator,
-    font_size: font_size_map_types.QueryIdToPatternIndexes,
-    font_face: font_face_map_types.QueryIdToPatternIndexes,
-    highlight_groups: highlight_group_map_types.QueryIdToPatternIndexes,
-
-    const NumOfCharsInLineMap = AutoArrayHashMap(LineIndex, ColumnIndex);
-
-    const PatternIndex = u16;
-    const LineIndex = u16;
-    const ColumnIndex = u16;
-    const PATTERN_INDEX_LIMIT = std.math.maxInt(PatternIndex);
-    const LINE_INDEX_LIMIT = std.math.maxInt(LineIndex);
-    const COLUMN_INDEX_LIMIT = std.math.maxInt(ColumnIndex);
-
-    const highlight_group_map_types = MapTypes.create([]const u8);
-    const font_size_map_types = MapTypes.create(f32);
-    const font_face_map_types = MapTypes.create([]const u8);
+    font_size: font_size_map_types.LineToCols,
+    font_face: font_face_map_types.LineToCols,
+    highlight_groups: highlight_group_map_types.LineToCols,
 
     const MapTypes = struct {
-        QueryIdToPatternIndexes: type,
-        PatternIndexToLine: type,
-        LineToCols: type,
-        ColToChange: type,
+        LineToCols: type = undefined,
+        ColToQueryIds: type = undefined,
+        QueryIdToPatternIndexes: type = undefined,
+        PatternIndexToChange: type = undefined,
 
         fn create(T: type) MapTypes {
-            const ColToChange = AutoArrayHashMap(ColumnIndex, T);
-            const LineToCols = AutoArrayHashMap(LineIndex, ColToChange);
-            const PatternIndexToLine = AutoArrayHashMap(PatternIndex, LineToCols);
-            const QueryIdToPatternIndexes = StringHashMap(PatternIndexToLine);
-            return .{
-                .QueryIdToPatternIndexes = QueryIdToPatternIndexes,
-                .PatternIndexToLine = PatternIndexToLine,
-                .LineToCols = LineToCols,
-                .ColToChange = ColToChange,
-            };
+            var self = MapTypes{};
+            self.PatternIndexToChange = AutoHashMap(PatternIndex, T);
+            self.QueryIdToPatternIndexes = StringHashMap(self.PatternIndexToChange);
+            self.ColToQueryIds = AutoHashMap(ColumnIndex, self.QueryIdToPatternIndexes);
+            self.LineToCols = AutoHashMap(LineIndex, self.ColToQueryIds);
+            return self;
         }
     };
 
-    fn create(a: Allocator) !*ChangeMap {
+    const font_size_map_types = MapTypes.create(f32);
+    const font_face_map_types = MapTypes.create([]const u8);
+    const highlight_group_map_types = MapTypes.create([]const u8);
+
+    fn create(a: Allocator) !*CoorBasedChangeMap {
         const self = try a.create(@This());
         self.* = .{
             .a = a,
             .arena = ArenaAllocator.init(a),
-            .font_size = font_size_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
-            .font_face = font_face_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
-            .highlight_groups = highlight_group_map_types.QueryIdToPatternIndexes.init(self.arena.allocator()),
+            .font_size = font_size_map_types.LineToCols.init(self.arena.allocator()),
+            .font_face = font_face_map_types.LineToCols.init(self.arena.allocator()),
+            .highlight_groups = highlight_group_map_types.LineToCols.init(self.arena.allocator()),
         };
         return self;
     }
@@ -176,31 +173,24 @@ const ChangeMap = struct {
         value: anytype,
         noc_map: NumOfCharsInLineMap,
     ) !void {
-        if (!root_map.contains(query_id)) {
-            try root_map.put(query_id, types.PatternIndexToLine.init(self.arena.allocator()));
-        }
-        const pi_to_line_map = root_map.getPtr(query_id) orelse unreachable;
-
-        if (!pi_to_line_map.contains(match.pattern_index)) {
-            try pi_to_line_map.put(match.pattern_index, types.LineToCols.init(self.arena.allocator()));
-        }
-        const line_to_col_map = pi_to_line_map.getPtr(match.pattern_index) orelse unreachable;
+        const a = self.arena.allocator();
 
         for (match.targets) |target| {
             if (!eql(u8, target.name, capture)) continue;
 
             const start_point = target.node.getStartPoint();
             const end_point = target.node.getEndPoint();
+
             if (start_point.row > LINE_INDEX_LIMIT or end_point.row > LINE_INDEX_LIMIT or
                 end_point.column > COLUMN_INDEX_LIMIT or end_point.column > COLUMN_INDEX_LIMIT) continue;
 
             for (start_point.row..end_point.row + 1) |linenr| {
                 const casted_linenr: LineIndex = @intCast(linenr);
 
-                if (!line_to_col_map.contains(casted_linenr)) {
-                    try line_to_col_map.put(casted_linenr, types.ColToChange.init(self.arena.allocator()));
+                if (!root_map.contains(casted_linenr)) {
+                    try root_map.put(casted_linenr, types.ColToQueryIds.init(a));
                 }
-                var col_to_change_map = line_to_col_map.getPtr(casted_linenr) orelse unreachable;
+                const col_to_qids_map = root_map.getPtr(casted_linenr) orelse unreachable;
 
                 const start_col = if (linenr == start_point.row) start_point.column else 0;
                 const end_col = if (linenr == end_point.row)
@@ -209,12 +199,141 @@ const ChangeMap = struct {
                     noc_map.get(casted_linenr) orelse start_col;
 
                 for (start_col..end_col) |colnr| {
-                    try col_to_change_map.put(@intCast(colnr), value);
+                    const casted_colnr: ColumnIndex = @intCast(colnr);
+
+                    if (!col_to_qids_map.contains(casted_colnr)) {
+                        try col_to_qids_map.put(casted_colnr, types.QueryIdToPatternIndexes.init(a));
+                    }
+                    const qid_to_pidxs_map = col_to_qids_map.getPtr(casted_colnr) orelse unreachable;
+
+                    if (!qid_to_pidxs_map.contains(query_id)) {
+                        try qid_to_pidxs_map.put(query_id, types.PatternIndexToChange.init(a));
+                    }
+                    const pidx_to_change_map = qid_to_pidxs_map.getPtr(query_id) orelse unreachable;
+
+                    try pidx_to_change_map.put(match.pattern_index, value);
                 }
             }
         }
     }
 };
+
+test CoorBasedChangeMap {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    // try ls.addDefaultHighlightQuery();
+    defer ls.destroy();
+
+    try ls.addQuery("extra", extra_patterns_for_testing);
+
+    var parser = try ls.createParser();
+    defer parser.destroy();
+    const tree = try parser.parseString(null, test_source);
+
+    /////////////////////////////
+
+    var style_parser = try StyleParser.create(testing_allocator);
+    defer style_parser.destroy();
+    try style_parser.addQuery("extra");
+
+    var noc_map = try produceNocMapForTesting(testing_allocator, test_source);
+    defer noc_map.deinit();
+
+    try style_parser.parse(ls, tree, test_source, noc_map, null);
+    const hl = style_parser.coor_based_change_map.highlight_groups;
+
+    ///////////////////////////// Highlights
+
+    { // line 1: `const Allocator = std.mem.Allocator;`
+        try checkKeys(u16, &.{
+            6,  7,  8,  9,  10, 11, 12, 13, 14,
+            26, 27, 28, 29, 30, 31, 32, 33, 34,
+        }, hl.get(1).?);
+        try checkKeys(u16, &.{1}, hl.get(1).?.get(6).?.get("extra").?);
+        try checkKeys(u16, &.{1}, hl.get(1).?.get(34).?.get("extra").?);
+        try eqStr("type", hl.get(1).?.get(6).?.get("extra").?.get(1).?);
+        try eqStr("type", hl.get(1).?.get(34).?.get("extra").?.get(1).?);
+    }
+
+    { // line 11: `fn callAddExample() void {`
+        try checkKeys(u16, &.{
+            3,  4,  5,  6,  7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+            20, 21, 22, 23,
+        }, hl.get(11).?);
+        try checkKeys(u16, &.{3}, hl.get(11).?.get(3).?.get("extra").?);
+        try eqStr("fn.name", hl.get(11).?.get(3).?.get("extra").?.get(3).?);
+        try checkKeys(u16, &.{3}, hl.get(11).?.get(23).?.get("extra").?);
+        try eqStr("fn.return.type", hl.get(11).?.get(23).?.get("extra").?.get(3).?);
+    }
+}
+
+fn checkKeys(T: type, expected: []const T, map: anytype) !void {
+    var keys_list = std.ArrayList(T).init(testing_allocator);
+    var iter = map.keyIterator();
+    while (iter.next()) |key| try keys_list.append(key.*);
+
+    const keys = try keys_list.toOwnedSlice();
+    defer testing_allocator.free(keys);
+    std.mem.sort(T, keys, {}, std.sort.asc(T));
+
+    try eqSlice(T, expected, keys);
+}
+
+const test_source = @embedFile("fixtures/predicates_test_dummy.zig");
+const extra_patterns_for_testing =
+    \\(
+    \\  FnProto
+    \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#font-size! @fn_name 60)
+    \\    _?
+    \\    (ErrorUnionExpr
+    \\      (SuffixExpr
+    \\        (BuildinTypeExpr) @return_type
+    \\        (#font! @return_type "Inter" 80)
+    \\      )
+    \\    )
+    \\)
+    \\
+    \\(
+    \\  [
+    \\    variable_type_function: (IDENTIFIER)
+    \\    field_access: (IDENTIFIER)
+    \\    parameter: (IDENTIFIER)
+    \\  ] @type
+    \\  (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
+    \\)
+    \\
+    \\((IDENTIFIER) @x_y (#any-of? @x_y "x" "y"))
+    \\
+    \\(
+    \\  FnProto
+    \\    (IDENTIFIER) @fn.name (#eq? @fn.name "callAddExample")
+    \\    _?
+    \\    (ErrorUnionExpr
+    \\      (SuffixExpr
+    \\        (BuildinTypeExpr) @fn.return.type
+    \\      )
+    \\    )
+    \\)
+;
+
+fn eqlStringSlices(expected: []const []const u8, got: []const []const u8) !void {
+    try eq(expected.len, got.len);
+    for (expected, 0..) |e, i| try eqStr(e, got[i]);
+}
+
+fn produceNocMapForTesting(a: Allocator, source: []const u8) !NumOfCharsInLineMap {
+    var map = NumOfCharsInLineMap.init(a);
+    var split_iter = std.mem.split(u8, source, "\n");
+    var i: usize = 0;
+    while (split_iter.next()) |line| {
+        defer i += 1;
+        try map.put(@intCast(i), @intCast(line.len));
+    }
+    return map;
+}
+
+test {
+    std.testing.refAllDeclsRecursive(StyleParser);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ExcludeMap
 
@@ -269,142 +388,3 @@ pub const ExcludeMap = struct {
         try eq(null, exclude_map.map.get("extra").?.some.get(0));
     }
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////// Tests
-
-const test_source = @embedFile("fixtures/predicates_test_dummy.zig");
-
-test {
-    var ls = try LangSuite.create(testing_allocator, .zig);
-    // try ls.addDefaultHighlightQuery();
-    defer ls.destroy();
-
-    const extra_patterns =
-        \\(
-        \\  FnProto
-        \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#font-size! @fn_name 60)
-        \\    _?
-        \\    (ErrorUnionExpr
-        \\      (SuffixExpr
-        \\        (BuildinTypeExpr) @return_type
-        \\        (#font! @return_type "Inter" 80)
-        \\      )
-        \\    )
-        \\)
-        \\
-        \\(
-        \\  [
-        \\    variable_type_function: (IDENTIFIER)
-        \\    field_access: (IDENTIFIER)
-        \\    parameter: (IDENTIFIER)
-        \\  ] @type
-        \\  (#match? @type "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
-        \\)
-        \\
-        \\((IDENTIFIER) @x_y (#any-of? @x_y "x" "y"))
-        \\
-        \\(
-        \\  FnProto
-        \\    (IDENTIFIER) @fn.name (#eq? @fn.name "callAddExample")
-        \\    _?
-        \\    (ErrorUnionExpr
-        \\      (SuffixExpr
-        \\        (BuildinTypeExpr) @fn.return.type
-        \\      )
-        \\    )
-        \\)
-    ;
-    try ls.addQuery("extra", extra_patterns);
-
-    var parser = try ls.createParser();
-    defer parser.destroy();
-    const tree = try parser.parseString(null, test_source);
-
-    /////////////////////////////
-
-    var style_parser = try StyleParser.create(testing_allocator);
-    defer style_parser.destroy();
-    try style_parser.addQuery("extra");
-
-    var noc_map = try produceNocMapForTesting(testing_allocator, test_source);
-    defer noc_map.deinit();
-
-    try style_parser.parse(ls, tree, test_source, noc_map, null);
-    const cm = style_parser.change_map;
-
-    try eq(true, cm.font_size.get("extra") != null);
-    try eqSlice(u16, &.{0}, cm.font_size.get("extra").?.keys()); // pattern index
-    try eqSlice(u16, &.{ 3, 7 }, cm.font_size.get("extra").?.get(0).?.keys()); // lines
-    try eqSlice(u16, &.{ 3, 4, 5, 23, 24, 25 }, cm.font_size.get("extra").?.get(0).?.get(3).?.keys()); // cols
-    try eqSlice(f32, &.{ 60, 60, 60, 80, 80, 80 }, cm.font_size.get("extra").?.get(0).?.get(3).?.values()); // values
-    try eqSlice(u16, &.{ 3, 4, 5, 23, 24, 25 }, cm.font_size.get("extra").?.get(0).?.get(7).?.keys()); // cols
-    try eqSlice(f32, &.{ 60, 60, 60, 80, 80, 80 }, cm.font_size.get("extra").?.get(0).?.get(7).?.values()); // values
-
-    try eq(true, cm.font_face.get("extra") != null);
-    try eqSlice(u16, &.{0}, cm.font_face.get("extra").?.keys()); // pattern index
-    try eqSlice(u16, &.{ 3, 7 }, cm.font_face.get("extra").?.get(0).?.keys()); // lines
-    try eqSlice(u16, &.{ 23, 24, 25 }, cm.font_face.get("extra").?.get(0).?.get(3).?.keys()); // cols
-    try eqlStringSlices(&.{ "Inter", "Inter", "Inter" }, cm.font_face.get("extra").?.get(0).?.get(3).?.values()); // values
-    try eqSlice(u16, &.{ 23, 24, 25 }, cm.font_face.get("extra").?.get(0).?.get(7).?.keys()); // cols
-    try eqlStringSlices(&.{ "Inter", "Inter", "Inter" }, cm.font_face.get("extra").?.get(0).?.get(7).?.values()); // values
-
-    try eq(true, cm.highlight_groups.get("extra") != null);
-    try eqSlice(u16, &.{ 1, 2, 3 }, cm.highlight_groups.get("extra").?.keys()); // pattern index
-
-    // matched 'Allocator' 2 times at line 1
-    try eqSlice(u16, &.{ 1, 20 }, cm.highlight_groups.get("extra").?.get(1).?.keys()); // lines
-    try eqSlice(u16, &.{
-        6,  7,  8,  9,  10, 11, 12, 13, 14,
-        26, 27, 28, 29, 30, 31, 32, 33, 34,
-    }, cm.highlight_groups.get("extra").?.get(1).?.get(1).?.keys()); // cols
-    try eqlStringSlices(&.{
-        "type", "type", "type", "type", "type", "type", "type", "type", "type",
-        "type", "type", "type", "type", "type", "type", "type", "type", "type",
-    }, cm.highlight_groups.get("extra").?.get(1).?.get(1).?.values()); // values
-
-    // matched 'String' 1 time at line 20
-    try eqSlice(u16, &.{
-        6, 7, 8, 9, 10, 11,
-    }, cm.highlight_groups.get("extra").?.get(1).?.get(20).?.keys()); // cols
-    try eqlStringSlices(&.{
-        "type", "type", "type", "type", "type", "type",
-    }, cm.highlight_groups.get("extra").?.get(1).?.get(20).?.values()); // values
-
-    // match 'x' and 'y'
-    try eqSlice(u16, &.{ 3, 4 }, cm.highlight_groups.get("extra").?.get(2).?.keys()); // lines
-    try eqSlice(u16, &.{ 7, 15 }, cm.highlight_groups.get("extra").?.get(2).?.get(3).?.keys()); // cols
-    try eqlStringSlices(&.{ "x_y", "x_y" }, cm.highlight_groups.get("extra").?.get(2).?.get(3).?.values()); // values
-    try eqSlice(u16, &.{ 11, 15 }, cm.highlight_groups.get("extra").?.get(2).?.get(4).?.keys()); // cols
-    try eqlStringSlices(&.{ "x_y", "x_y" }, cm.highlight_groups.get("extra").?.get(2).?.get(4).?.values()); // values
-
-    // match 'callAddExample' and 'void'
-    try eqSlice(u16, &.{11}, cm.highlight_groups.get("extra").?.get(3).?.keys()); // lines
-    try eqSlice(u16, &.{
-        3,  4,  5,  6,  7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        20, 21, 22, 23,
-    }, cm.highlight_groups.get("extra").?.get(3).?.get(11).?.keys()); // cols
-    try eqlStringSlices(&.{
-        "fn.name",        "fn.name",        "fn.name",        "fn.name",        "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name", "fn.name",
-        "fn.return.type", "fn.return.type", "fn.return.type", "fn.return.type",
-    }, cm.highlight_groups.get("extra").?.get(3).?.get(11).?.values()); // values
-}
-
-fn eqlStringSlices(expected: []const []const u8, got: []const []const u8) !void {
-    try eq(expected.len, got.len);
-    for (expected, 0..) |e, i| try eqStr(e, got[i]);
-}
-
-fn produceNocMapForTesting(a: Allocator, source: []const u8) !ChangeMap.NumOfCharsInLineMap {
-    var map = ChangeMap.NumOfCharsInLineMap.init(a);
-    var split_iter = std.mem.split(u8, source, "\n");
-    var i: usize = 0;
-    while (split_iter.next()) |line| {
-        defer i += 1;
-        try map.put(@intCast(i), @intCast(line.len));
-    }
-    return map;
-}
-
-test {
-    std.testing.refAllDeclsRecursive(StyleParser);
-}

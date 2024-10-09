@@ -58,7 +58,7 @@ pub fn main() !void {
     const render_texture = rl.loadRenderTexture(screen_height, screen_height);
 
     const rgb_shader = rl.loadShader(null, "epic_rainbow.frag");
-    const resolution = [2]f32{ 512, 512 };
+    const resolution = [2]f32{ screen_width, screen_height };
     rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .shader_uniform_float);
     rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "resolution"), &resolution, .shader_uniform_vec2);
 
