@@ -110,7 +110,7 @@ const CoorBasedChangeMap = struct {
 
         fn create(T: type) MapTypes {
             var self = MapTypes{};
-            self.PatternIndexToChange = AutoHashMap(PatternIndex, T);
+            self.PatternIndexToChange = AutoArrayHashMap(PatternIndex, T);
             self.QueryIdToPatternIndexes = StringHashMap(self.PatternIndexToChange);
             self.ColToQueryIds = AutoHashMap(ColumnIndex, self.QueryIdToPatternIndexes);
             self.LineToCols = AutoHashMap(LineIndex, self.ColToQueryIds);
@@ -248,8 +248,8 @@ test CoorBasedChangeMap {
             6,  7,  8,  9,  10, 11, 12, 13, 14,
             26, 27, 28, 29, 30, 31, 32, 33, 34,
         }, hl.get(1).?);
-        try checkKeys(u16, &.{1}, hl.get(1).?.get(6).?.get("extra").?);
-        try checkKeys(u16, &.{1}, hl.get(1).?.get(34).?.get("extra").?);
+        try eqSlice(u16, &.{1}, hl.get(1).?.get(6).?.get("extra").?.keys());
+        try eqSlice(u16, &.{1}, hl.get(1).?.get(34).?.get("extra").?.keys());
         try eqStr("type", hl.get(1).?.get(6).?.get("extra").?.get(1).?);
         try eqStr("type", hl.get(1).?.get(34).?.get("extra").?.get(1).?);
     }
@@ -259,23 +259,11 @@ test CoorBasedChangeMap {
             3,  4,  5,  6,  7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
             20, 21, 22, 23,
         }, hl.get(11).?);
-        try checkKeys(u16, &.{3}, hl.get(11).?.get(3).?.get("extra").?);
+        try eqSlice(u16, &.{3}, hl.get(11).?.get(3).?.get("extra").?.keys());
         try eqStr("fn.name", hl.get(11).?.get(3).?.get("extra").?.get(3).?);
-        try checkKeys(u16, &.{3}, hl.get(11).?.get(23).?.get("extra").?);
+        try eqSlice(u16, &.{3}, hl.get(11).?.get(23).?.get("extra").?.keys());
         try eqStr("fn.return.type", hl.get(11).?.get(23).?.get("extra").?.get(3).?);
     }
-}
-
-fn checkKeys(T: type, expected: []const T, map: anytype) !void {
-    var keys_list = std.ArrayList(T).init(testing_allocator);
-    var iter = map.keyIterator();
-    while (iter.next()) |key| try keys_list.append(key.*);
-
-    const keys = try keys_list.toOwnedSlice();
-    defer testing_allocator.free(keys);
-    std.mem.sort(T, keys, {}, std.sort.asc(T));
-
-    try eqSlice(T, expected, keys);
 }
 
 const test_source = @embedFile("fixtures/predicates_test_dummy.zig");
@@ -318,6 +306,18 @@ const extra_patterns_for_testing =
 fn eqlStringSlices(expected: []const []const u8, got: []const []const u8) !void {
     try eq(expected.len, got.len);
     for (expected, 0..) |e, i| try eqStr(e, got[i]);
+}
+
+fn checkKeys(T: type, expected: []const T, map: anytype) !void {
+    var keys_list = std.ArrayList(T).init(testing_allocator);
+    var iter = map.keyIterator();
+    while (iter.next()) |key| try keys_list.append(key.*);
+
+    const keys = try keys_list.toOwnedSlice();
+    defer testing_allocator.free(keys);
+    std.mem.sort(T, keys, {}, std.sort.asc(T));
+
+    try eqSlice(T, expected, keys);
 }
 
 fn produceNocMapForTesting(a: Allocator, source: []const u8) !NumOfCharsInLineMap {
