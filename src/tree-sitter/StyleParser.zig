@@ -32,6 +32,7 @@ const assert = std.debug.assert;
 
 const LangSuite = @import("LangSuite.zig");
 const ts = LangSuite.ts;
+const CapturedTarget = LangSuite.QueryFilter.CapturedTarget;
 const MatchResult = LangSuite.QueryFilter.MatchResult;
 const MatchLimit = LangSuite.QueryFilter.MatchLimit;
 
@@ -78,13 +79,12 @@ pub fn parse(self: *@This(), ls: *LangSuite, tree: *ts.Tree, source: []const u8,
             ts.Point{ .row = @intCast(limit.end_line + 1), .column = 0 },
         );
         cursor.execute(sq.query, tree.getRootNode());
-        const matches = try sq.filter.getAllMatches(self.a, source, offset, cursor);
-        defer {
-            for (matches) |m| self.a.free(m.targets);
-            self.a.free(matches);
-        }
 
-        try self.coor_based_change_map.addChanges(query_id, matches, noc_map);
+        var targets_buf: [8]CapturedTarget = undefined;
+        while (sq.filter.nextMatch(source, offset, &targets_buf, cursor)) |match| {
+            if (!match.all_predicates_matched) continue;
+            try self.coor_based_change_map.addSingleMatch(query_id, match, noc_map);
+        }
     }
 }
 
@@ -143,29 +143,29 @@ const CoorBasedChangeMap = struct {
         self.a.destroy(self);
     }
 
-    fn addChanges(self: *@This(), query_id: []const u8, matches: []MatchResult, noc_map: NumOfCharsInLineMap) !void {
+    ///////////////////////////// New
+
+    fn addSingleMatch(self: *@This(), query_id: []const u8, match: MatchResult, noc_map: NumOfCharsInLineMap) !void {
         const zone = ztracy.ZoneNC(@src(), "CoorBasedChangeMap.addChanges()", 0xFFFF0F);
         defer zone.End();
 
-        for (matches) |match| {
-            if (match.directives.len == 0) {
-                for (match.targets) |target| {
-                    try self.addValues(query_id, &self.highlight_groups, highlight_group_map_types, match, target.name, target.name, noc_map);
-                }
-                continue;
+        if (match.directives.len == 0) {
+            for (match.targets) |target| {
+                try self.addValues(query_id, &self.highlight_groups, highlight_group_map_types, match, target.name, target.name, noc_map);
             }
+            return;
+        }
 
-            for (match.directives) |d| {
-                switch (d) {
-                    .font_size => |fs| {
-                        try self.addValues(query_id, &self.font_size, font_size_map_types, match, fs.capture, fs.value, noc_map);
-                    },
-                    .font => |font| {
-                        try self.addValues(query_id, &self.font_size, font_size_map_types, match, font.capture, font.font_size, noc_map);
-                        try self.addValues(query_id, &self.font_face, font_face_map_types, match, font.capture, font.font_face, noc_map);
-                    },
-                    else => {},
-                }
+        for (match.directives) |d| {
+            switch (d) {
+                .font_size => |fs| {
+                    try self.addValues(query_id, &self.font_size, font_size_map_types, match, fs.capture, fs.value, noc_map);
+                },
+                .font => |font| {
+                    try self.addValues(query_id, &self.font_size, font_size_map_types, match, font.capture, font.font_size, noc_map);
+                    try self.addValues(query_id, &self.font_face, font_face_map_types, match, font.capture, font.font_face, noc_map);
+                },
+                else => {},
             }
         }
     }

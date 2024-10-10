@@ -337,12 +337,13 @@ const Directive = union(enum) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// QueryFilter.nextMatch()
 
-const CapturedTarget = struct {
+pub const CapturedTarget = struct {
     node: ts.Node,
     name: []const u8,
 };
 
 pub const MatchResult = struct {
+    all_predicates_matched: bool,
     targets: []CapturedTarget,
     directives: []Directive,
     pattern_index: u16,
@@ -353,7 +354,7 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
 
     const predicates_map = self.patterns[match.pattern_index];
     var target_index: usize = 0;
-    var all_predicates_matches = true;
+    var all_predicates_matched = true;
 
     for (match.captures()) |cap| {
         const node_start_byte = cap.node.getStartByte();
@@ -371,7 +372,7 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
         if (predicates_map.get(cap_name)) |predicates| {
             for (predicates.items) |p| {
                 if (!p.eval(node_contents)) {
-                    all_predicates_matches = false;
+                    all_predicates_matched = false;
                     break;
                 }
             }
@@ -383,15 +384,12 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
         }
     }
 
-    if (all_predicates_matches) {
-        return MatchResult{
-            .targets = targets_buf[0..target_index],
-            .directives = self.directives.get(match.pattern_index) orelse &.{},
-            .pattern_index = @intCast(match.pattern_index),
-        };
-    }
-
-    return null;
+    return MatchResult{
+        .all_predicates_matched = all_predicates_matched,
+        .targets = targets_buf[0..target_index],
+        .directives = self.directives.get(match.pattern_index) orelse &.{},
+        .pattern_index = @intCast(match.pattern_index),
+    };
 }
 
 pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: usize, cursor: *Query.Cursor) ![]MatchResult {
@@ -439,6 +437,7 @@ pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: u
         }
 
         if (all_predicates_matches) try results.append(MatchResult{
+            .all_predicates_matched = all_predicates_matches,
             .targets = try targets.toOwnedSlice(),
             .directives = self.directives.get(match.pattern_index) orelse &.{},
             .pattern_index = @intCast(match.pattern_index),
