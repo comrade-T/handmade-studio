@@ -122,6 +122,9 @@ const Predicate = union(enum) {
     }
 
     fn eval(self: *const Predicate, source: []const u8) bool {
+        const zone = ztracy.ZoneNC(@src(), "Predicate.eval()", 0x00AAFF);
+        defer zone.End();
+
         return switch (self.*) {
             .eq => self.eq.eval(source),
             .not_eq => self.not_eq.eval(source),
@@ -350,7 +353,15 @@ pub const MatchResult = struct {
 };
 
 pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
-    const match = cursor.nextMatch() orelse return null;
+    const zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
+    defer zone.End();
+
+    var match: ts.Query.Match = undefined;
+    {
+        const cursor_match = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0xFF9999);
+        defer cursor_match.End();
+        match = cursor.nextMatch() orelse return null;
+    }
 
     const predicates_map = self.patterns[match.pattern_index];
     var target_index: usize = 0;
@@ -360,11 +371,19 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
         const node_start_byte = cap.node.getStartByte();
         const node_end_byte = cap.node.getEndByte();
 
-        assert(node_start_byte >= offset);
-        if (node_start_byte < offset) continue;
+        if (node_start_byte < offset or node_end_byte < offset) {
+            all_predicates_matched = false;
+            break;
+        }
 
         const start_byte = node_start_byte - offset;
         const end_byte = node_end_byte - offset;
+
+        assert(end_byte <= source.len);
+        if (end_byte > source.len) {
+            all_predicates_matched = false;
+            break;
+        }
 
         const node_contents = source[start_byte..end_byte];
         const cap_name = self.query.getCaptureNameForId(cap.id);
@@ -649,7 +668,7 @@ test "get directives within certain range" {
     }
 }
 
-fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize {
+pub fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize {
     var offset: usize = 0;
     var i: usize = 0;
     for (source) |char| {

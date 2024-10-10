@@ -146,7 +146,7 @@ const CoorBasedChangeMap = struct {
     ///////////////////////////// New
 
     fn addSingleMatch(self: *@This(), query_id: []const u8, match: MatchResult, noc_map: NumOfCharsInLineMap) !void {
-        const zone = ztracy.ZoneNC(@src(), "CoorBasedChangeMap.addChanges()", 0xFFFF0F);
+        const zone = ztracy.ZoneNC(@src(), "CoorBasedChangeMap.addSingleMatch()", 0xFFFF00);
         defer zone.End();
 
         if (match.directives.len == 0) {
@@ -340,4 +340,83 @@ pub fn produceNocMapForTesting(a: Allocator, source: []const u8) !NumOfCharsInLi
 
 test {
     std.testing.refAllDeclsRecursive(StyleParser);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Experimental
+
+const experimental_patterns =
+    \\(Decl
+    \\  (FnProto
+    \\    (IDENTIFIER) @_fn_name (#eq? @_fn_name "add"))
+    \\) @cap
+;
+
+test "experiment" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    try ls.addQuery("experimental", experimental_patterns);
+
+    var parser = try ls.createParser();
+    defer parser.destroy();
+    const tree = try parser.parseString(null, test_source);
+
+    /////////////////////////////
+
+    var noc_map = try produceNocMapForTesting(testing_allocator, test_source);
+    defer noc_map.deinit();
+
+    { // range covers match
+        var style_parser = try StyleParser.create(testing_allocator);
+        defer style_parser.destroy();
+        try style_parser.addQuery("experimental");
+
+        const offset = LangSuite.QueryFilter.getByteOffsetForSkippingLines(test_source, 3);
+        try style_parser.parse(
+            ls,
+            tree,
+            test_source[offset..],
+            noc_map,
+            .{ .offset = offset, .start_line = 3, .end_line = 10 },
+        );
+
+        const hl = style_parser.coor_based_change_map.highlight_groups;
+        try checkKeys(u16, &.{ 3, 4, 5 }, hl);
+    }
+
+    { // range starts at match start
+        var style_parser = try StyleParser.create(testing_allocator);
+        defer style_parser.destroy();
+        try style_parser.addQuery("experimental");
+
+        const offset = LangSuite.QueryFilter.getByteOffsetForSkippingLines(test_source, 3);
+        try style_parser.parse(
+            ls,
+            tree,
+            test_source[offset..],
+            noc_map,
+            .{ .offset = offset, .start_line = 3, .end_line = 3 },
+        );
+
+        const hl = style_parser.coor_based_change_map.highlight_groups;
+        try checkKeys(u16, &.{ 3, 4, 5 }, hl);
+    }
+
+    { // range start at line `4` after match, match starts at line `3`
+        var style_parser = try StyleParser.create(testing_allocator);
+        defer style_parser.destroy();
+        try style_parser.addQuery("experimental");
+
+        const offset = LangSuite.QueryFilter.getByteOffsetForSkippingLines(test_source, 4);
+        try style_parser.parse(
+            ls,
+            tree,
+            test_source[offset..],
+            noc_map,
+            .{ .offset = offset, .start_line = 4, .end_line = 10 },
+        );
+
+        const hl = style_parser.coor_based_change_map.highlight_groups;
+        try checkKeys(u16, &.{}, hl);
+    }
 }
