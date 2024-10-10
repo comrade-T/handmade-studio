@@ -348,6 +348,52 @@ pub const MatchResult = struct {
     pattern_index: u16,
 };
 
+pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
+    const match = cursor.nextMatch() orelse return null;
+
+    const predicates_map = self.patterns[match.pattern_index];
+    var target_index: usize = 0;
+    var all_predicates_matches = true;
+
+    for (match.captures()) |cap| {
+        const node_start_byte = cap.node.getStartByte();
+        const node_end_byte = cap.node.getEndByte();
+
+        assert(node_start_byte >= offset);
+        if (node_start_byte < offset) continue;
+
+        const start_byte = node_start_byte - offset;
+        const end_byte = node_end_byte - offset;
+
+        const node_contents = source[start_byte..end_byte];
+        const cap_name = self.query.getCaptureNameForId(cap.id);
+
+        if (predicates_map.get(cap_name)) |predicates| {
+            for (predicates.items) |p| {
+                if (!p.eval(node_contents)) {
+                    all_predicates_matches = false;
+                    break;
+                }
+            }
+        }
+
+        if (cap_name[0] != '_') {
+            targets_buf[target_index] = CapturedTarget{ .name = cap_name, .node = cap.node };
+            target_index += 1;
+        }
+    }
+
+    if (all_predicates_matches) {
+        return MatchResult{
+            .targets = targets_buf[0..target_index],
+            .directives = self.directives.get(match.pattern_index) orelse &.{},
+            .pattern_index = @intCast(match.pattern_index),
+        };
+    }
+
+    return null;
+}
+
 pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: usize, cursor: *Query.Cursor) ![]MatchResult {
     const zone = ztracy.ZoneNC(@src(), "QueryFilter.getAllMatches()", 0x00000F);
     defer zone.End();
