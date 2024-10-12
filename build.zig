@@ -43,6 +43,9 @@ pub fn build(b: *std.Build) void {
         .enable_fibers = true,
     });
 
+    const zigrc_dep = b.dependency("zigrc", .{});
+    const zigrc_mod = &zigrc_dep.artifact("zig-rc").root_module;
+
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
     const tree_sitter = b.addStaticLibrary(.{
@@ -99,6 +102,7 @@ pub fn build(b: *std.Build) void {
     const rope = addTestableModule(&bops, "src/buffer/rope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "zigrc", .module = zigrc_mod },
     }, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);

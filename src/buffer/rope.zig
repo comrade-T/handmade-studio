@@ -1,4 +1,5 @@
 const std = @import("std");
+const rc = @import("zigrc");
 pub const code_point = @import("code_point");
 const ztracy = @import("ztracy");
 
@@ -9,6 +10,7 @@ const eq = std.testing.expectEqual;
 const eqDeep = std.testing.expectEqualDeep;
 const eqStr = std.testing.expectEqualStrings;
 const shouldErr = std.testing.expectError;
+const testing_allocator = std.testing.allocator;
 const idc_if_it_leaks = std.heap.page_allocator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -2982,4 +2984,27 @@ test getNumOfChars {
 
 test {
     std.testing.refAllDeclsRecursive(Node);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test "basic rc" {
+    var five = try rc.Rc(i32).init(testing_allocator, 5);
+    errdefer five.release();
+
+    five.value.* += 1;
+    try eq(6, five.value.*);
+
+    try eq(1, five.strongCount());
+    try eq(0, five.weakCount());
+
+    var next_five = five.retain();
+    try eq(2, five.strongCount());
+    try eq(0, five.weakCount());
+    next_five.release();
+
+    try eq(1, five.strongCount());
+    try eq(0, five.weakCount());
+
+    try eq(true, five.tryUnwrap() != null);
 }
