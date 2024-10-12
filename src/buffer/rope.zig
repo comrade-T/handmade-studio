@@ -1596,7 +1596,6 @@ pub const Node = union(enum) {
             ;
             try eqStr(root_debug_str, try root.debugPrint());
 
-            std.debug.print("*****************************************************\n", .{});
             const e1 = try root.deleteBytes(a, 3, 6);
             const e1d =
                 \\4 3/13/11
@@ -2987,6 +2986,99 @@ test {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+test "measuring contest" {
+
+    ///////////////////////////// No Rc
+
+    // Leaf
+    {
+        try eq(1, @sizeOf(bool));
+        try eq(16, @sizeOf([]const u8));
+        try eq(24, @sizeOf(Leaf));
+    }
+
+    // Weights
+    {
+        try eq(4, @sizeOf(u32));
+        try eq(16, @sizeOf(Weights));
+    }
+
+    // Branch
+    {
+        try eq(8, @sizeOf(*const Node));
+        try eq(32, @sizeOf(Branch));
+    }
+
+    // Node
+    {
+        try eq(40, @sizeOf(Node));
+    }
+
+    ///////////////////////////// Rc
+
+    // Rc
+    {
+        try eq(16, @sizeOf(std.mem.Allocator));
+        try eq(8, @sizeOf(*void));
+
+        // 'outer' part of an Rc
+        try eq(24, @sizeOf(rc.Rc(void)));
+        try eq(24, @sizeOf(rc.Rc(bool)));
+        try eq(24, @sizeOf(rc.Rc(u8)));
+        try eq(24, @sizeOf(rc.Rc(u16)));
+        try eq(24, @sizeOf(rc.Rc(u32)));
+        try eq(24, @sizeOf(rc.Rc(u64)));
+
+        try eq(24, @sizeOf(rc.Rc(Leaf)));
+        try eq(24, @sizeOf(rc.Rc(Branch)));
+        try eq(24, @sizeOf(rc.Rc(Node)));
+
+        // 'inner' part of an Rc
+        try eq(16, rc.Rc(void).innerSize());
+        try eq(24, rc.Rc(bool).innerSize());
+        try eq(24, rc.Rc(u64).innerSize());
+        try eq(24, rc.Rc(usize).innerSize());
+
+        try eq(40, rc.Rc(Leaf).innerSize());
+        try eq(56, rc.Rc(Node).innerSize());
+
+        // both 'inner' & 'outer'
+        try eq(80, @sizeOf(rc.Rc(Node)) + rc.Rc(Node).innerSize());
+    }
+
+    ///////////////////////////// Arc
+
+    // Arc
+    {
+        try eq(16, @sizeOf(std.mem.Allocator));
+        try eq(8, @sizeOf(*void));
+
+        // 'outer' part of an Arc
+        try eq(24, @sizeOf(rc.Arc(void)));
+        try eq(24, @sizeOf(rc.Arc(bool)));
+        try eq(24, @sizeOf(rc.Arc(u8)));
+        try eq(24, @sizeOf(rc.Arc(u16)));
+        try eq(24, @sizeOf(rc.Arc(u32)));
+        try eq(24, @sizeOf(rc.Arc(u64)));
+
+        try eq(24, @sizeOf(rc.Arc(Leaf)));
+        try eq(24, @sizeOf(rc.Arc(Branch)));
+        try eq(24, @sizeOf(rc.Arc(Node)));
+
+        // 'inner' part of an Arc
+        try eq(256, rc.Arc(void).innerSize());
+        try eq(256, rc.Arc(bool).innerSize());
+        try eq(256, rc.Arc(u64).innerSize());
+        try eq(256, rc.Arc(usize).innerSize());
+
+        try eq(256, rc.Arc(Leaf).innerSize());
+        try eq(256, rc.Arc(Node).innerSize());
+
+        // both 'inner' & 'outer'
+        try eq(280, @sizeOf(rc.Arc(Node)) + rc.Arc(Node).innerSize());
+    }
+}
 
 test "basic rc" {
     var five = try rc.Rc(i32).init(testing_allocator, 5);
