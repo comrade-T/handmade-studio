@@ -3100,3 +3100,54 @@ test "basic rc" {
 
     try eq(true, five.tryUnwrap() != null);
 }
+
+test "weak rc" {
+    var five = try rc.Rc(i32).init(testing_allocator, 5);
+    try eq(1, five.strongCount());
+    try eq(0, five.weakCount());
+
+    // Creates weak reference
+    var weak_five = five.downgrade();
+    // defer weak_five.release(); // QUESTION: this line is irrelevant?
+    try eq(1, weak_five.strongCount());
+    try eq(1, weak_five.weakCount());
+
+    // First upgrade - strong ref still exists
+    const first_upgrade = weak_five.upgrade().?;
+    try eq(2, first_upgrade.strongCount());
+    try eq(1, first_upgrade.weakCount());
+
+    // Release upgrade
+    first_upgrade.release();
+    try eq(1, first_upgrade.strongCount());
+    try eq(1, first_upgrade.weakCount());
+
+    // Release strong ref
+    five.release();
+    try eq(0, weak_five.strongCount());
+    try eq(1, weak_five.weakCount());
+
+    // Second upgrade - strong ref no longer exists
+    try eq(null, weak_five.upgrade());
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test "rc with Weights" {
+    var w = try rc.Rc(Weights).init(testing_allocator, Weights{});
+    defer w.release();
+
+    try eq(0, w.value.len);
+
+    w.value.add(Weights{ .bols = 1, .len = 5, .depth = 1, .noc = 4 });
+    try eq(5, w.value.len);
+
+    try eq(1, w.strongCount());
+    try eq(0, w.weakCount());
+}
+
+test {
+    // TODO: add new module called `Bope` (Buffer + Rope), since a Rope shouldn't know anything about undo states, but Buffer does.
+    // QUESTION: separate modules (RcRope & Bope)?
+    // TODO: construct Nodes using Rcs in `RcRope`.
+}
