@@ -31,17 +31,26 @@ pub const WalkMutResult = struct {
     pub fn merge(branch: *const Branch, a: Allocator, left: WalkMutResult, right: WalkMutResult) WalkMutError!WalkMutResult {
         var result = WalkMutResult{};
         result.err = if (left.err) |_| left.err else right.err;
+
         if (left.replace != null or right.replace != null) {
             var new_left: RcNode = undefined;
-            if (left.replace) |replacement| new_left = replacement else {
-                var branch_left_clone = branch.left;
-                new_left = branch_left_clone.retain();
+            if (left.replace) |replacement| new_left = replacement else blk: {
+                if (!branch.left.value.isEmpty()) {
+                    var branch_left_clone = branch.left;
+                    new_left = branch_left_clone.retain();
+                    break :blk;
+                }
+                new_left = branch.left;
             }
 
             var new_right: RcNode = undefined;
-            if (right.replace) |replacement| new_right = replacement else {
-                var branch_right_clone = branch.right;
-                new_right = branch_right_clone.retain();
+            if (right.replace) |replacement| new_right = replacement else blk: {
+                if (!branch.right.value.isEmpty()) {
+                    var branch_right_clone = branch.right;
+                    new_right = branch_right_clone.retain();
+                    break :blk;
+                }
+                new_right = branch.right;
             }
 
             result.replace = if (new_left.value.isEmpty())
@@ -51,6 +60,7 @@ pub const WalkMutResult = struct {
             else
                 try Node.new(a, new_left, new_right);
         }
+
         result.keep_walking = left.keep_walking and right.keep_walking;
         result.found = left.found or right.found;
         return result;
@@ -69,7 +79,7 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
                     result.found = right_result.found;
                     result.keep_walking = right_result.keep_walking;
                     result.replace = if (replacement.value.isEmpty())
-                        branch.left
+                        branch.left.retain()
                     else
                         try Node.new(a, branch.left.retain(), right_result.replace.?);
                     return result;
@@ -147,11 +157,11 @@ const Node = union(enum) {
         // without bol
         {
             var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            defer content_arena.deinit();
             const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", false);
             defer {
                 root.value.releaseChildrenRecursive();
                 root.release();
-                content_arena.deinit();
             }
             try eqStr(
                 \\2 1/11
@@ -342,15 +352,16 @@ const Node = union(enum) {
         return .{ line, col, self };
     }
 
-    test insertChars {
+    test "insertChars - single insertion" {
         // freeing last history first
         {
             var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            defer content_arena.deinit();
+
             const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
             defer {
                 old_root.value.releaseChildrenRecursive();
                 old_root.release();
-                content_arena.deinit();
             }
             try eqStr(
                 \\2 2/11
@@ -431,6 +442,61 @@ const Node = union(enum) {
             new_root.value.releaseChildrenRecursive();
             new_root.release();
         }
+    }
+
+    test "insertChars - multiple insertions from empty string" {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+        const a = testing_allocator;
+
+        // original
+        const r0 = try Node.fromString(a, &content_arena, "", true);
+        try eqStr(
+            \\1 B| ``
+        , try debugStr(idc_if_it_leaks, r0));
+
+        // 1st edit
+        const l1, const c1, const r1 = try insertChars(r0, a, &content_arena, "h", .{ .line = 0, .col = 0 });
+        {
+            try eqStr(
+                \\1 B| ``
+            , try debugStr(idc_if_it_leaks, r0));
+
+            try eq(.{ 0, 1 }, .{ l1, c1 });
+            try eqStr(
+                \\2 1/1
+                \\  1 B| `h`
+                \\  1 ``
+            , try debugStr(idc_if_it_leaks, r1));
+        }
+
+        // 2st edit
+        const l2, const c2, const r2 = try insertChars(r1, a, &content_arena, "e", .{ .line = l1, .col = c1 });
+        {
+            try eqStr(
+                \\1 B| ``
+            , try debugStr(idc_if_it_leaks, r0));
+
+            try eqStr(
+                \\2 1/1
+                \\  1 B| `h`
+                \\  1 ``
+            , try debugStr(idc_if_it_leaks, r1));
+
+            try eq(.{ 0, 2 }, .{ l2, c2 });
+            try eqStr(
+                \\2 1/2
+                \\  1 B| `h`
+                \\  1 `e`
+            , try debugStr(idc_if_it_leaks, r2));
+        }
+
+        r0.value.releaseChildrenRecursive();
+        r0.release();
+        r1.value.releaseChildrenRecursive();
+        r1.release();
+        r2.value.releaseChildrenRecursive();
+        r2.release();
     }
 
     ///////////////////////////// Debug Print
