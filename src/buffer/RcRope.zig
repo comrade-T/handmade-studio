@@ -157,16 +157,11 @@ const Node = union(enum) {
                 root.release();
                 content_arena.deinit();
             }
-
-            try eq(1, root.strongCount());
-            try eq(1, root.value.branch.left.strongCount());
-            try eq(1, root.value.branch.right.strongCount());
-
             try eqStr(
                 \\2 1/11
                 \\  1 `hello` |E
                 \\  1 B| `world`
-            , try root.value.debugStr(idc_if_it_leaks));
+            , try debugStr(idc_if_it_leaks, root));
         }
     }
 
@@ -355,75 +350,119 @@ const Node = union(enum) {
     }
 
     test insertChars {
-        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
-        const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
-        defer {
-            old_root.value.releaseChildrenRecursive();
-            old_root.release();
-            content_arena.deinit();
-        }
-        try eqStr(
-            \\2 2/11
-            \\  1 B| `hello` |E
-            \\  1 B| `world`
-        , try old_root.value.debugStr(idc_if_it_leaks));
-
-        try eq(1, old_root.strongCount());
-        try eq(1, old_root.value.branch.left.strongCount());
-        try eq(1, old_root.value.branch.right.strongCount());
-
+        // freeing last history first
         {
-            const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
+            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
             defer {
-                new_root.value.releaseChildrenRecursive();
-                new_root.release();
+                old_root.value.releaseChildrenRecursive();
+                old_root.release();
+                content_arena.deinit();
             }
+            try eqStr(
+                \\2 2/11
+                \\  1 B| `hello` |E
+                \\  1 B| `world`
+            , try debugStr(idc_if_it_leaks, old_root));
 
-            try eq(1, old_root.strongCount());
-            try eq(1, old_root.value.branch.left.strongCount());
-            try eq(2, old_root.value.branch.right.strongCount()); // <-- shared node
+            {
+                const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
+                defer {
+                    new_root.value.releaseChildrenRecursive();
+                    new_root.release();
+                }
 
-            try eq(1, new_root.strongCount());
-            try eq(1, new_root.value.branch.left.strongCount());
-            try eq(1, new_root.value.branch.left.value.branch.left.strongCount());
-            try eq(1, new_root.value.branch.left.value.branch.right.strongCount());
-            try eq(2, new_root.value.branch.right.strongCount()); // <-- shared node
+                try eqStr(
+                    \\2 2/11
+                    \\  1 B| `hello` |E
+                    \\  1 B| `world` Rc:2
+                , try debugStr(idc_if_it_leaks, old_root));
 
+                try eq(.{ 0, 3 }, .{ line, col });
+                try eqStr(
+                    \\3 2/14
+                    \\  2 1/9
+                    \\    1 B| `ok `
+                    \\    1 `hello` |E
+                    \\  1 B| `world` Rc:2
+                , try debugStr(idc_if_it_leaks, new_root));
+            }
+        }
+
+        // freeing first history first
+        {
+            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            defer content_arena.deinit();
+
+            // init
+            const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
+            try eqStr(
+                \\2 2/11
+                \\  1 B| `hello` |E
+                \\  1 B| `world`
+            , try debugStr(idc_if_it_leaks, old_root));
+
+            // after insertChars()
+            const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
+            try eqStr(
+                \\2 2/11
+                \\  1 B| `hello` |E
+                \\  1 B| `world` Rc:2
+            , try debugStr(idc_if_it_leaks, old_root));
             try eq(.{ 0, 3 }, .{ line, col });
             try eqStr(
                 \\3 2/14
                 \\  2 1/9
                 \\    1 B| `ok `
                 \\    1 `hello` |E
-                \\  1 B| `world`
-            , try new_root.value.debugStr(idc_if_it_leaks));
+                \\  1 B| `world` Rc:2
+            , try debugStr(idc_if_it_leaks, new_root));
+
+            // freeing old_root first
+            {
+                old_root.value.releaseChildrenRecursive();
+                old_root.release();
+                try eqStr(
+                    \\3 2/14
+                    \\  2 1/9
+                    \\    1 B| `ok `
+                    \\    1 `hello` |E
+                    \\  1 B| `world`
+                , try debugStr(idc_if_it_leaks, new_root));
+            }
+
+            // freeing new_root later
+            new_root.value.releaseChildrenRecursive();
+            new_root.release();
         }
     }
 
     ///////////////////////////// Debug Print
 
-    fn debugStr(self: *const Node, a: Allocator) ![]const u8 {
+    fn debugStr(a: Allocator, node: RcNode) ![]const u8 {
         var result = std.ArrayList(u8).init(a);
-        try self._buildDebugStr(a, &result, 0);
+        try _buildDebugStr(a, node, &result, 0);
         return try result.toOwnedSlice();
     }
 
-    fn _buildDebugStr(self: *const Node, a: Allocator, result: *std.ArrayList(u8), indent_level: usize) !void {
+    fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent_level: usize) !void {
         if (indent_level > 0) try result.append('\n');
         for (0..indent_level) |_| try result.append(' ');
-        switch (self.*) {
+        switch (node.value.*) {
             .branch => |branch| {
-                const content = try std.fmt.allocPrint(a, "{d} {d}/{d}", .{ branch.weights.depth, branch.weights.bols, branch.weights.len });
+                const strong_count = if (node.strongCount() == 1) "" else try std.fmt.allocPrint(a, " Rc:{d}", .{node.strongCount()});
+                const content = try std.fmt.allocPrint(a, "{d} {d}/{d}{s}", .{ branch.weights.depth, branch.weights.bols, branch.weights.len, strong_count });
                 defer a.free(content);
                 try result.appendSlice(content);
-                try branch.left.value._buildDebugStr(a, result, indent_level + 2);
-                try branch.right.value._buildDebugStr(a, result, indent_level + 2);
+                try _buildDebugStr(a, branch.left, result, indent_level + 2);
+                try _buildDebugStr(a, branch.right, result, indent_level + 2);
             },
             .leaf => |leaf| {
                 const bol = if (leaf.bol) "B| " else "";
                 const eol = if (leaf.eol) " |E" else "";
+                const strong_count = if (node.strongCount() == 1) "" else try std.fmt.allocPrint(a, " Rc:{d}", .{node.strongCount()});
                 const leaf_content = if (leaf.buf.len > 0) leaf.buf else "";
-                const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}", .{ bol, leaf_content, eol });
+                const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}{s}", .{ bol, leaf_content, eol, strong_count });
                 defer a.free(content);
                 try result.appendSlice(content);
             },
