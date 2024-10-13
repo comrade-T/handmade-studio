@@ -1,5 +1,6 @@
 const std = @import("std");
 const rc = @import("zigrc");
+const code_point = @import("code_point");
 
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -11,6 +12,78 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const eqDeep = std.testing.expectEqualDeep;
 const assert = std.debug.assert;
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const WalkMutError = error{OutOfMemory};
+const WalkMutCallback = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult;
+
+pub const WalkMutResult = struct {
+    keep_walking: bool = false,
+    found: bool = false,
+    replace: ?RcNode = null,
+    err: ?WalkMutError = null,
+
+    pub const keep_walking = WalkMutResult{ .keep_walking = true };
+    pub const stop = WalkMutResult{ .keep_walking = false };
+    pub const found = WalkMutResult{ .found = true };
+
+    pub fn merge(branch: *const Branch, a: Allocator, left: WalkMutResult, right: WalkMutResult) WalkMutError!WalkMutResult {
+        var result = WalkMutResult{};
+        result.err = if (left.err) |_| left.err else right.err;
+        if (left.replace != null or right.replace != null) {
+            const new_left = left.replace orelse branch.left;
+            const new_right = right.replace orelse branch.right;
+            result.replace = if (new_left.value.isEmpty())
+                new_right
+            else if (new_right.value.isEmpty())
+                new_left
+            else
+                try Node.new(a, new_left, new_right);
+        }
+        result.keep_walking = left.keep_walking and right.keep_walking;
+        result.found = left.found or right.found;
+        return result;
+    }
+};
+
+fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallback, ctx: *anyopaque) WalkMutError!WalkMutResult {
+    switch (node.value.*) {
+        .branch => |*branch| {
+            const left_bols = node.value.weights().bols;
+            if (line < left_bols) {
+                const right_result = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
+                if (right_result.replace) |replacement| {
+                    var result = WalkMutResult{};
+                    result.err = right_result.err;
+                    result.found = right_result.found;
+                    result.keep_walking = right_result.keep_walking;
+                    result.replace = if (replacement.value.isEmpty())
+                        branch.left
+                    else
+                        try Node.new(a, branch.left, replacement);
+                    return result;
+                }
+                return right_result;
+            }
+            const left_result = try walkMutFromLineBegin(a, branch.left, line, f, ctx);
+            const right_result = if (left_result.found and left_result.keep_walking) try walkMutFromLineBegin(a, branch.right, line, f, ctx) else WalkMutResult{};
+            return WalkMutResult.merge(branch, a, left_result, right_result);
+        },
+        .leaf => |*leaf| {
+            if (line == 0) {
+                var result = try f(ctx, leaf);
+                if (result.err) |_| {
+                    result.replace = null;
+                    return result;
+                }
+                result.found = true;
+                return result;
+            }
+            return WalkMutResult.keep_walking;
+        },
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +106,13 @@ const Node = union(enum) {
         return switch (self.*) {
             .branch => |*b| b.weights,
             .leaf => |*l| l.weights(),
+        };
+    }
+
+    fn isEmpty(self: *const Node) bool {
+        return switch (self.*) {
+            .branch => |*branch| branch.left.value.isEmpty() and branch.right.value.isEmpty(),
+            .leaf => |*leaf| leaf.isEmpty(),
         };
     }
 
@@ -87,8 +167,8 @@ const Node = union(enum) {
         }
     }
 
-    fn fromReader(a: Allocator, arena: *ArenaAllocator, reader: anytype, buffer_size: usize, first_bol: bool) !RcNode {
-        const buf = try arena.allocator().alloc(u8, buffer_size);
+    fn fromReader(a: Allocator, content_arena: *ArenaAllocator, reader: anytype, buffer_size: usize, first_bol: bool) !RcNode {
+        const buf = try content_arena.allocator().alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
         if (read_size != buffer_size) return error.BufferUnderrun;
@@ -159,6 +239,142 @@ const Node = union(enum) {
         if (leaves.len == 2) return Node.new(a, leaves[0], leaves[1]);
         const mid = leaves.len / 2;
         return Node.new(a, try mergeLeaves(a, leaves[0..mid]), try mergeLeaves(a, leaves[mid..]));
+    }
+
+    ///////////////////////////// Insert
+
+    const CursorPoint = struct { line: usize, col: usize };
+
+    const InsertCharsCtx = struct {
+        a: Allocator,
+        col: usize,
+        abs_col: usize = 0,
+        chars: []const u8,
+        eol: bool,
+
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            const leaf_noc = getNumOfChars(leaf.buf);
+            const base_col = ctx.abs_col;
+            ctx.abs_col += leaf_noc;
+
+            if (ctx.col == 0) {
+                const left = try Leaf.new(ctx.a, ctx.chars, leaf.bol, ctx.eol);
+                const right = try Leaf.new(ctx.a, leaf.buf, ctx.eol, leaf.eol);
+                return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+            }
+
+            if (leaf_noc == ctx.col) {
+                if (leaf.eol and ctx.eol and ctx.chars.len == 0) {
+                    const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, true);
+                    const right = try Leaf.new(ctx.a, ctx.chars, true, true);
+                    return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                }
+
+                const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, false);
+
+                if (ctx.eol) {
+                    const middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
+                    const right = try Leaf.new(ctx.a, "", ctx.eol, leaf.eol);
+                    const mid_right = try Node.new(ctx.a, middle, right);
+                    return WalkMutResult{ .replace = try Node.new(ctx.a, left, mid_right) };
+                }
+
+                const right = try Leaf.new(ctx.a, ctx.chars, false, leaf.eol);
+                return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+            }
+
+            if (leaf_noc > ctx.col) {
+                const pos = getNumOfBytesTillCol(leaf.buf, base_col);
+                if (ctx.eol and ctx.chars.len == 0) {
+                    const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol);
+                    const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
+                    return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                }
+
+                const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, false);
+                const middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
+                const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
+                const mid_right = try Node.new(ctx.a, middle, right);
+                return WalkMutResult{ .replace = try Node.new(ctx.a, left, mid_right) };
+            }
+
+            ctx.col -= leaf_noc;
+            return if (leaf.eol) WalkMutResult.stop else WalkMutResult.keep_walking;
+        }
+    };
+
+    const InsertCharsError = error{ OutOfMemory, InputLenZero, ColumnOutOfBounds };
+    fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, chars: []const u8, destination: CursorPoint) InsertCharsError!struct { usize, usize, RcNode } {
+        if (chars.len == 0) return error.InputLenZero;
+        var self = self_;
+
+        var rest = try content_arena.allocator().dupe(u8, chars);
+        var chunk = rest;
+        var line = destination.line;
+        var col = destination.col;
+        var need_eol = false;
+
+        while (rest.len > 0) {
+            chunk_blk: {
+                if (std.mem.indexOfScalar(u8, rest, '\n')) |eol| {
+                    chunk = rest[0..eol];
+                    rest = rest[eol + 1 ..];
+                    need_eol = true;
+                    break :chunk_blk;
+                }
+
+                chunk = rest;
+                rest = &[_]u8{};
+                need_eol = false;
+            }
+
+            var ctx: InsertCharsCtx = .{ .a = a, .col = destination.col, .chars = chunk, .eol = need_eol };
+            const result = try walkMutFromLineBegin(a, self, destination.line, InsertCharsCtx.walker, &ctx);
+
+            if (!result.found) return error.ColumnOutOfBounds;
+            if (result.replace) |root| self = root;
+
+            eol_blk: {
+                if (need_eol) {
+                    line += 1;
+                    col = 0;
+                    break :eol_blk;
+                }
+                col += getNumOfChars(chunk);
+            }
+        }
+
+        return .{ line, col, self };
+    }
+
+    test insertChars {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
+        defer {
+            root.value.releaseChildrenRecursive();
+            root.release();
+            content_arena.deinit();
+        }
+        try eqStr(
+            \\2 2/11
+            \\  1 B| `hello` |E
+            \\  1 B| `world`
+        , try root.value.debugStr(idc_if_it_leaks));
+
+        {
+            const line, const col, const new_root = try insertChars(root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
+            defer {
+                new_root.value.releaseChildrenRecursive();
+                new_root.release();
+            }
+            try eq(.{ 0, 3 }, .{ line, col });
+            try eqStr(
+                \\2 2/14
+                \\  1 B| `ok hello` |E
+                \\  1 B| `world`
+            , try new_root.value.debugStr(idc_if_it_leaks));
+        }
     }
 
     ///////////////////////////// Debug Print
@@ -244,7 +460,38 @@ const Weights = struct {
         self.len += other.len;
         self.depth = @max(self.depth, other.depth);
     }
+
+    fn isEmpty(self: *const Leaf) bool {
+        return self.buf.len == 0 and !self.bol and !self.eol;
+    }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn getNumOfBytesTillCol(str: []const u8, col: usize) usize {
+    var iter = code_point.Iterator{ .bytes = str };
+    var num_of_bytes: usize = 0;
+    var num_chars: u32 = 0;
+    while (iter.next()) |cp| {
+        defer num_chars += 1;
+        if (num_chars == col) break;
+        num_of_bytes += cp.len;
+    }
+    return num_chars;
+}
+
+fn getNumOfChars(str: []const u8) u32 {
+    var iter = code_point.Iterator{ .bytes = str };
+    var num_chars: u32 = 0;
+    while (iter.next()) |_| num_chars += 1;
+    return num_chars;
+}
+
+test getNumOfChars {
+    try eq(5, getNumOfChars("hello"));
+    try eq(7, getNumOfChars("hello 👋"));
+    try eq(2, getNumOfChars("안녕"));
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
