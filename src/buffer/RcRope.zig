@@ -4,9 +4,11 @@ const rc = @import("zigrc");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
+const idc_if_it_leaks = std.heap.page_allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
+const eqDeep = std.testing.expectEqualDeep;
 const assert = std.debug.assert;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -35,9 +37,18 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn fromString(a: Allocator, source: []const u8, first_bol: bool) !RcNode {
+    fn fromString(a: Allocator, source: []const u8, first_bol: bool) !RcNode {
         var stream = std.io.fixedBufferStream(source);
         return Node.fromReader(a, stream.reader(), source.len, first_bol);
+    }
+
+    test fromString {
+        const root = try Node.fromString(testing_allocator, "hello\nworld", false);
+        try eqStr(
+            \\2 1/11
+            \\  1 `hello` |E
+            \\  1 B| `world`
+        , try root.value.debugStr(idc_if_it_leaks));
     }
 
     fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, first_bol: bool) !RcNode {
@@ -87,11 +98,60 @@ const Node = union(enum) {
         return leaves;
     }
 
+    test createLeavesByNewLine {
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "");
+            try eq(1, leaves.len);
+            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "" }, leaves[0].value.leaf);
+        }
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "\n");
+            try eq(1, leaves.len);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "" }, leaves[0].value.leaf);
+        }
+        {
+            const leaves = try createLeavesByNewLine(idc_if_it_leaks, "hello\nworld");
+            try eq(2, leaves.len);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, leaves[0].value.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, leaves[1].value.leaf);
+        }
+    }
+
     fn mergeLeaves(a: Allocator, leaves: []RcNode) !RcNode {
         if (leaves.len == 1) return leaves[0];
         if (leaves.len == 2) return Node.new(a, leaves[0], leaves[1]);
         const mid = leaves.len / 2;
         return Node.new(a, try mergeLeaves(a, leaves[0..mid]), try mergeLeaves(a, leaves[mid..]));
+    }
+
+    ///////////////////////////// Debug Print
+
+    fn debugStr(self: *const Node, a: Allocator) ![]const u8 {
+        var result = std.ArrayList(u8).init(a);
+        try self._buildDebugStr(a, &result, 0);
+        return try result.toOwnedSlice();
+    }
+
+    fn _buildDebugStr(self: *const Node, a: Allocator, result: *std.ArrayList(u8), indent_level: usize) !void {
+        if (indent_level > 0) try result.append('\n');
+        for (0..indent_level) |_| try result.append(' ');
+        switch (self.*) {
+            .branch => |branch| {
+                const content = try std.fmt.allocPrint(a, "{d} {d}/{d}", .{ branch.weights.depth, branch.weights.bols, branch.weights.len });
+                defer a.free(content);
+                try result.appendSlice(content);
+                try branch.left.value._buildDebugStr(a, result, indent_level + 2);
+                try branch.right.value._buildDebugStr(a, result, indent_level + 2);
+            },
+            .leaf => |leaf| {
+                const bol = if (leaf.bol) "B| " else "";
+                const eol = if (leaf.eol) " |E" else "";
+                const leaf_content = if (leaf.buf.len > 0) leaf.buf else "";
+                const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}", .{ bol, leaf_content, eol });
+                defer a.free(content);
+                try result.appendSlice(content);
+            },
+        }
     }
 };
 
