@@ -76,7 +76,7 @@ pub const WalkMutResult = struct {
 fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallback, ctx: *anyopaque) WalkMutError!WalkMutResult {
     switch (node.value.*) {
         .branch => |*branch| {
-            const left_bols = node.value.weights().bols;
+            const left_bols = branch.left.value.weights().bols;
             if (line >= left_bols) {
                 const right = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
                 if (right.replace) |replacement| {
@@ -680,6 +680,117 @@ const Node = union(enum) {
         , try debugStr(idc_if_it_leaks, r6c));
         r6c.value.releaseChildrenRecursive();
         r6c.release();
+    }
+
+    test "insertChars - with newline \n" {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+        const a = testing_allocator;
+
+        // original
+        const r0 = try Node.fromString(a, &content_arena, "hello venus", true);
+        try eqStr(
+            \\1 B| `hello venus`
+        , try debugStr(idc_if_it_leaks, r0));
+
+        // 1st edit
+        const l1, const c1, const r1 = try insertChars(r0, a, &content_arena, "\n", .{ .line = 0, .col = 11 });
+        {
+            try eqStr(
+                \\1 B| `hello venus`
+            , try debugStr(idc_if_it_leaks, r0));
+
+            try eq(.{ 1, 0 }, .{ l1, c1 });
+            try eqStr(
+                \\3 2/12
+                \\  1 B| `hello venus`
+                \\  2 1/1
+                \\    1 `` |E
+                \\    1 B| ``
+            , try debugStr(idc_if_it_leaks, r1));
+        }
+
+        // 2nd edit
+        const l2, const c2, const r2 = try insertChars(r1, a, &content_arena, "h", .{ .line = 1, .col = 0 });
+        {
+            try eqStr(
+                \\3 2/12
+                \\  1 B| `hello venus` Rc:2
+                \\  2 1/1
+                \\    1 `` |E Rc:2
+                \\    1 B| ``
+            , try debugStr(idc_if_it_leaks, r1));
+
+            try eq(.{ 1, 1 }, .{ l2, c2 });
+            try eqStr(
+                \\4 2/13
+                \\  1 B| `hello venus` Rc:2
+                \\  3 1/2
+                \\    1 `` |E Rc:2
+                \\    2 1/1
+                \\      1 B| `h`
+                \\      1 ``
+            , try debugStr(idc_if_it_leaks, r2));
+        }
+
+        r0.value.releaseChildrenRecursive();
+        r0.release();
+        r1.value.releaseChildrenRecursive();
+        r1.release();
+        r2.value.releaseChildrenRecursive();
+        r2.release();
+    }
+
+    test "insertChars - one character after another - different free orders" {
+        try freeBackAndForth("h");
+        try freeBackAndForth("hi");
+        try freeBackAndForth("hello");
+
+        try freeBackAndForth("hello venus");
+        try freeBackAndForth("hello\nvenus");
+
+        try freeBackAndForth("hello venus and mars");
+        try freeBackAndForth("hello venus\nand mars");
+    }
+
+    fn insertCharOneAfterAnother(a: Allocator, content_arena: *ArenaAllocator, str: []const u8) !ArrayList(RcNode) {
+        var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
+        var node = try Node.fromString(a, content_arena, "", true);
+        try list.append(node);
+        var line: usize = 0;
+        var col: usize = 0;
+        for (str) |char| {
+            line, col, node = try insertChars(node, a, content_arena, &.{char}, .{ .line = line, .col = col });
+            try list.append(node);
+        }
+        return list;
+    }
+
+    fn freeBackAndForth(str: []const u8) !void {
+        {
+            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            defer content_arena.deinit();
+            var iterations = try insertCharOneAfterAnother(testing_allocator, &content_arena, str);
+            defer iterations.deinit();
+
+            for (0..iterations.items.len) |i| {
+                iterations.items[i].value.releaseChildrenRecursive();
+                iterations.items[i].release();
+            }
+        }
+
+        {
+            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            defer content_arena.deinit();
+            var iterations = try insertCharOneAfterAnother(testing_allocator, &content_arena, str);
+            defer iterations.deinit();
+
+            for (0..iterations.items.len) |i_| {
+                const i = iterations.items.len - 1 - i_;
+                iterations.items[i].value.releaseChildrenRecursive();
+                iterations.items[i].release();
+            }
+        }
     }
 
     ///////////////////////////// Debug Print
