@@ -34,23 +34,31 @@ pub const WalkMutResult = struct {
 
         if (left.replace != null or right.replace != null) {
             var new_left: RcNode = undefined;
-            if (left.replace) |replacement| new_left = replacement else blk: {
-                if (!branch.left.value.isEmpty()) {
-                    var branch_left_clone = branch.left;
-                    new_left = branch_left_clone.retain();
-                    break :blk;
+            pick_left: {
+                if (left.replace) |r| {
+                    new_left = r;
+                    break :pick_left;
                 }
-                new_left = branch.left;
+                if (branch.left.value.isEmpty()) {
+                    new_left = branch.left;
+                    break :pick_left;
+                }
+                var clone = branch.left;
+                new_left = clone.retain();
             }
 
             var new_right: RcNode = undefined;
-            if (right.replace) |replacement| new_right = replacement else blk: {
-                if (!branch.right.value.isEmpty()) {
-                    var branch_right_clone = branch.right;
-                    new_right = branch_right_clone.retain();
-                    break :blk;
+            pick_right: {
+                if (right.replace) |r| {
+                    new_right = r;
+                    break :pick_right;
                 }
-                new_right = branch.right;
+                if (branch.right.value.isEmpty()) {
+                    new_right = branch.right;
+                    break :pick_right;
+                }
+                var clone = branch.right;
+                new_right = clone.retain();
             }
 
             result.replace = if (new_left.value.isEmpty())
