@@ -85,6 +85,13 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     style_parser.compile.linkLibrary(tree_sitter);
 
+    const rc_rope = addTestableModule(&bops, "src/buffer/RcRope.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "zigrc", .module = zigrc_mod },
+    }, zig_build_test_step);
+    _ = rc_rope;
+
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
