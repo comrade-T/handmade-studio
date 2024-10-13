@@ -22,7 +22,6 @@ pub const WalkMutResult = struct {
     keep_walking: bool = false,
     found: bool = false,
     replace: ?RcNode = null,
-    err: ?WalkMutError = null,
 
     pub const keep_walking = WalkMutResult{ .keep_walking = true };
     pub const stop = WalkMutResult{ .keep_walking = false };
@@ -30,7 +29,6 @@ pub const WalkMutResult = struct {
 
     pub fn merge(branch: *const Branch, a: Allocator, left: WalkMutResult, right: WalkMutResult) WalkMutError!WalkMutResult {
         var result = WalkMutResult{};
-        result.err = if (left.err) |_| left.err else right.err;
 
         if (left.replace != null or right.replace != null) {
             var new_left: RcNode = undefined;
@@ -80,37 +78,49 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
         .branch => |*branch| {
             const left_bols = node.value.weights().bols;
             if (line >= left_bols) {
-                const right_result = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
-                if (right_result.replace) |replacement| {
+                const right = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
+                if (right.replace) |replacement| {
                     var result = WalkMutResult{};
-                    result.err = right_result.err;
-                    result.found = right_result.found;
-                    result.keep_walking = right_result.keep_walking;
+                    result.found = right.found;
+                    result.keep_walking = right.keep_walking;
                     result.replace = if (replacement.value.isEmpty())
                         branch.left.retain()
                     else
-                        try Node.new(a, branch.left.retain(), right_result.replace.?);
+                        try Node.new(a, branch.left.retain(), right.replace.?);
                     return result;
                 }
-                return right_result;
+                return right;
             }
-            const left_result = try walkMutFromLineBegin(a, branch.left, line, f, ctx);
-            const right_result = if (left_result.found and left_result.keep_walking) try walkMutFromLineBegin(a, branch.right, line, f, ctx) else WalkMutResult{};
+            const left = try walkMutFromLineBegin(a, branch.left, line, f, ctx);
+            const right = if (left.found and left.keep_walking) try walkMut(a, branch.right, f, ctx) else WalkMutResult{};
 
-            return WalkMutResult.merge(branch, a, left_result, right_result);
+            return WalkMutResult.merge(branch, a, left, right);
         },
         .leaf => |*leaf| {
             if (line == 0) {
                 var result = try f(ctx, leaf);
-                if (result.err) |_| {
-                    result.replace = null;
-                    return result;
-                }
                 result.found = true;
                 return result;
             }
             return WalkMutResult.keep_walking;
         },
+    }
+}
+
+fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) WalkMutError!WalkMutResult {
+    switch (node.value.*) {
+        .branch => |*branch| {
+            const left = try walkMut(a, branch.left, f, ctx);
+            if (!left.keep_walking) {
+                var result = WalkMutResult{};
+                result.found = left.found;
+                if (left.replace) |r| result.replace = try Node.new(a, r, branch.right.retain());
+                return result;
+            }
+            const right_result = try walkMut(a, branch.right, f, ctx);
+            return WalkMutResult.merge(branch, a, left, right_result);
+        },
+        .leaf => |*leaf| return f(ctx, leaf),
     }
 }
 
@@ -568,6 +578,76 @@ const Node = union(enum) {
             , try debugStr(idc_if_it_leaks, r4));
         }
 
+        const l5, const c5, const r5 = try insertChars(r4, a, &content_arena, "// ", .{ .line = 0, .col = 0 });
+        {
+            try eq(.{ 0, 3 }, .{ l5, c5 });
+            try eqStr(
+                \\4 1/7
+                \\  3 1/5
+                \\    2 1/4
+                \\      1 B| `// `
+                \\      1 `h`
+                \\    1 `3` Rc:2
+                \\  2 0/2 Rc:3
+                \\    1 `e`
+                \\    1 `l`
+            , try debugStr(idc_if_it_leaks, r5));
+        }
+
+        const l6a, const c6a, const r6a = try insertChars(r5, a, &content_arena, "o", .{ .line = 0, .col = 7 });
+        {
+            try eq(.{ 0, 8 }, .{ l6a, c6a });
+            try eqStr( // h3elo
+                \\4 1/8
+                \\  3 1/5 Rc:2
+                \\    2 1/4
+                \\      1 B| `// `
+                \\      1 `h`
+                \\    1 `3` Rc:2
+                \\  3 0/3
+                \\    1 `e` Rc:2
+                \\    2 0/2
+                \\      1 `l`
+                \\      1 `o`
+            , try debugStr(idc_if_it_leaks, r6a));
+        }
+
+        const l6b, const c6b, const r6b = try insertChars(r5, a, &content_arena, "x", .{ .line = 0, .col = 6 });
+        {
+            try eq(.{ 0, 7 }, .{ l6b, c6b });
+            try eqStr( // h3exl
+                \\4 1/8
+                \\  3 1/5 Rc:3
+                \\    2 1/4
+                \\      1 B| `// `
+                \\      1 `h`
+                \\    1 `3` Rc:2
+                \\  3 0/3
+                \\    2 0/2
+                \\      1 `e`
+                \\      1 `x`
+                \\    1 `l` Rc:2
+            , try debugStr(idc_if_it_leaks, r6b));
+        }
+
+        const l6c, const c6c, const r6c = try insertChars(r5, a, &content_arena, "x", .{ .line = 0, .col = 5 });
+        {
+            try eq(.{ 0, 6 }, .{ l6c, c6c });
+            try eqStr( // h3xel
+                \\4 1/8
+                \\  3 1/6
+                \\    2 1/4 Rc:2
+                \\      1 B| `// `
+                \\      1 `h`
+                \\    2 0/2
+                \\      1 `3`
+                \\      1 `x`
+                \\  2 0/2 Rc:4
+                \\    1 `e` Rc:2
+                \\    1 `l` Rc:2
+            , try debugStr(idc_if_it_leaks, r6c));
+        }
+
         r0.value.releaseChildrenRecursive();
         r0.release();
         r1.value.releaseChildrenRecursive();
@@ -578,6 +658,28 @@ const Node = union(enum) {
         r3.release();
         r4.value.releaseChildrenRecursive();
         r4.release();
+        r5.value.releaseChildrenRecursive();
+        r5.release();
+        r6a.value.releaseChildrenRecursive();
+        r6a.release();
+        r6b.value.releaseChildrenRecursive();
+        r6b.release();
+
+        try eqStr( // h3xel
+            \\4 1/8
+            \\  3 1/6
+            \\    2 1/4
+            \\      1 B| `// `
+            \\      1 `h`
+            \\    2 0/2
+            \\      1 `3`
+            \\      1 `x`
+            \\  2 0/2
+            \\    1 `e`
+            \\    1 `l`
+        , try debugStr(idc_if_it_leaks, r6c));
+        r6c.value.releaseChildrenRecursive();
+        r6c.release();
     }
 
     ///////////////////////////// Debug Print
