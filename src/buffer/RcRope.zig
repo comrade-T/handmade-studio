@@ -2,6 +2,7 @@ const std = @import("std");
 const rc = @import("zigrc");
 
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
 const idc_if_it_leaks = std.heap.page_allocator;
@@ -35,24 +36,59 @@ const Node = union(enum) {
         };
     }
 
+    ///////////////////////////// Release
+
+    fn releaseChildrenRecursive(self: *const Node) void {
+        if (self.* == .leaf) return;
+        self.branch.left.value.releaseChildrenRecursive();
+        self.branch.left.release();
+        self.branch.right.value.releaseChildrenRecursive();
+        self.branch.right.release();
+    }
+
     ///////////////////////////// Load
 
-    fn fromString(a: Allocator, source: []const u8, first_bol: bool) !RcNode {
+    fn fromString(a: Allocator, arena: *ArenaAllocator, source: []const u8, first_bol: bool) !RcNode {
         var stream = std.io.fixedBufferStream(source);
-        return Node.fromReader(a, stream.reader(), source.len, first_bol);
+        return Node.fromReader(a, arena, stream.reader(), source.len, first_bol);
     }
 
     test fromString {
-        const root = try Node.fromString(testing_allocator, "hello\nworld", false);
-        try eqStr(
-            \\2 1/11
-            \\  1 `hello` |E
-            \\  1 B| `world`
-        , try root.value.debugStr(idc_if_it_leaks));
+        // without bol
+        {
+            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", false);
+            defer {
+                root.value.releaseChildrenRecursive();
+                root.release();
+                content_arena.deinit();
+            }
+            try eqStr(
+                \\2 1/11
+                \\  1 `hello` |E
+                \\  1 B| `world`
+            , try root.value.debugStr(idc_if_it_leaks));
+        }
+
+        // with bol
+        {
+            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+            const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
+            defer {
+                root.value.releaseChildrenRecursive();
+                root.release();
+                content_arena.deinit();
+            }
+            try eqStr(
+                \\2 2/11
+                \\  1 B| `hello` |E
+                \\  1 B| `world`
+            , try root.value.debugStr(idc_if_it_leaks));
+        }
     }
 
-    fn fromReader(a: Allocator, reader: anytype, buffer_size: usize, first_bol: bool) !RcNode {
-        const buf = try a.alloc(u8, buffer_size);
+    fn fromReader(a: Allocator, arena: *ArenaAllocator, reader: anytype, buffer_size: usize, first_bol: bool) !RcNode {
+        const buf = try arena.allocator().alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
         if (read_size != buffer_size) return error.BufferUnderrun;
@@ -61,6 +97,7 @@ const Node = union(enum) {
         if (final_read != 0) return error.Unexpected;
 
         var leaves = try createLeavesByNewLine(a, buf);
+        defer a.free(leaves);
         leaves[0].value.leaf.bol = first_bol;
         return try mergeLeaves(a, leaves);
     }
