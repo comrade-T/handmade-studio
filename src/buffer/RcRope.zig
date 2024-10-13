@@ -96,6 +96,7 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
             }
             const left_result = try walkMutFromLineBegin(a, branch.left, line, f, ctx);
             const right_result = if (left_result.found and left_result.keep_walking) try walkMutFromLineBegin(a, branch.right, line, f, ctx) else WalkMutResult{};
+
             return WalkMutResult.merge(branch, a, left_result, right_result);
         },
         .leaf => |*leaf| {
@@ -148,9 +149,9 @@ const Node = union(enum) {
 
     fn releaseChildrenRecursive(self: *const Node) void {
         if (self.* == .leaf) return;
-        self.branch.left.value.releaseChildrenRecursive();
+        if (self.branch.left.strongCount() == 1) self.branch.left.value.releaseChildrenRecursive();
         self.branch.left.release();
-        self.branch.right.value.releaseChildrenRecursive();
+        if (self.branch.right.strongCount() == 1) self.branch.right.value.releaseChildrenRecursive();
         self.branch.right.release();
     }
 
@@ -499,12 +500,84 @@ const Node = union(enum) {
             , try debugStr(idc_if_it_leaks, r2));
         }
 
+        const l3, const c3, const r3 = try insertChars(r2, a, &content_arena, "l", .{ .line = l2, .col = c2 });
+        // 3rd edit
+        {
+            try eqStr(
+                \\1 B| ``
+            , try debugStr(idc_if_it_leaks, r0));
+
+            try eqStr(
+                \\2 1/1
+                \\  1 B| `h`
+                \\  1 ``
+            , try debugStr(idc_if_it_leaks, r1));
+
+            try eqStr(
+                \\2 1/2
+                \\  1 B| `h` Rc:2
+                \\  1 `e`
+            , try debugStr(idc_if_it_leaks, r2));
+
+            try eq(.{ 0, 3 }, .{ l3, c3 });
+            try eqStr(
+                \\3 1/3
+                \\  1 B| `h` Rc:2
+                \\  2 0/2
+                \\    1 `e`
+                \\    1 `l`
+            , try debugStr(idc_if_it_leaks, r3));
+        }
+
+        const l4, const c4, const r4 = try insertChars(r3, a, &content_arena, "3", .{ .line = 0, .col = 1 });
+        // 4rd edit
+        {
+            try eqStr(
+                \\1 B| ``
+            , try debugStr(idc_if_it_leaks, r0));
+
+            try eqStr(
+                \\2 1/1
+                \\  1 B| `h`
+                \\  1 ``
+            , try debugStr(idc_if_it_leaks, r1));
+
+            try eqStr(
+                \\2 1/2
+                \\  1 B| `h` Rc:2
+                \\  1 `e`
+            , try debugStr(idc_if_it_leaks, r2));
+
+            try eqStr(
+                \\3 1/3
+                \\  1 B| `h` Rc:2
+                \\  2 0/2 Rc:2
+                \\    1 `e`
+                \\    1 `l`
+            , try debugStr(idc_if_it_leaks, r3));
+
+            try eq(.{ 0, 2 }, .{ l4, c4 });
+            try eqStr(
+                \\3 1/4
+                \\  2 1/2
+                \\    1 B| `h`
+                \\    1 `3`
+                \\  2 0/2 Rc:2
+                \\    1 `e`
+                \\    1 `l`
+            , try debugStr(idc_if_it_leaks, r4));
+        }
+
         r0.value.releaseChildrenRecursive();
         r0.release();
         r1.value.releaseChildrenRecursive();
         r1.release();
         r2.value.releaseChildrenRecursive();
         r2.release();
+        r3.value.releaseChildrenRecursive();
+        r3.release();
+        r4.value.releaseChildrenRecursive();
+        r4.release();
     }
 
     ///////////////////////////// Debug Print
