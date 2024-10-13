@@ -32,14 +32,26 @@ pub const WalkMutResult = struct {
         var result = WalkMutResult{};
         result.err = if (left.err) |_| left.err else right.err;
         if (left.replace != null or right.replace != null) {
-            const new_left = left.replace orelse branch.left;
-            const new_right = right.replace orelse branch.right;
+            var new_left = branch.left;
+            var retain_left = true;
+            if (left.replace) |replacement| {
+                new_left = replacement;
+                retain_left = false;
+            }
+
+            var new_right = branch.right;
+            var retain_right = true;
+            if (right.replace) |replacement| {
+                new_right = replacement;
+                retain_right = false;
+            }
+
             result.replace = if (new_left.value.isEmpty())
                 new_right
             else if (new_right.value.isEmpty())
                 new_left
             else
-                try Node.new(a, new_left, new_right);
+                try Node.new(a, &new_left, retain_left, &new_right, retain_right);
         }
         result.keep_walking = left.keep_walking and right.keep_walking;
         result.found = left.found or right.found;
@@ -51,8 +63,8 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
     switch (node.value.*) {
         .branch => |*branch| {
             const left_bols = node.value.weights().bols;
-            if (line < left_bols) {
-                const right_result = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
+            if (line >= left_bols) {
+                var right_result = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
                 if (right_result.replace) |replacement| {
                     var result = WalkMutResult{};
                     result.err = right_result.err;
@@ -61,7 +73,7 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
                     result.replace = if (replacement.value.isEmpty())
                         branch.left
                     else
-                        try Node.new(a, branch.left, replacement);
+                        try Node.new(a, &branch.left, true, &right_result.replace.?, false);
                     return result;
                 }
                 return right_result;
@@ -92,11 +104,13 @@ const Node = union(enum) {
     branch: Branch,
     leaf: Leaf,
 
-    fn new(a: Allocator, left: RcNode, right: RcNode) !RcNode {
+    fn new(a: Allocator, left_: *RcNode, retain_left: bool, right_: *RcNode, retain_right: bool) !RcNode {
         var w = Weights{};
-        w.add(left.value.weights());
-        w.add(right.value.weights());
+        w.add(left_.value.weights());
+        w.add(right_.value.weights());
         w.depth += 1;
+        const left = if (retain_left) left_.retain() else left_.*;
+        const right = if (retain_right) right_.retain() else right_.*;
         return try RcNode.init(a, .{
             .branch = .{ .left = left, .right = right, .weights = w },
         });
@@ -143,25 +157,14 @@ const Node = union(enum) {
                 root.release();
                 content_arena.deinit();
             }
+
+            try eq(1, root.strongCount());
+            try eq(1, root.value.branch.left.strongCount());
+            try eq(1, root.value.branch.right.strongCount());
+
             try eqStr(
                 \\2 1/11
                 \\  1 `hello` |E
-                \\  1 B| `world`
-            , try root.value.debugStr(idc_if_it_leaks));
-        }
-
-        // with bol
-        {
-            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
-            const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
-            defer {
-                root.value.releaseChildrenRecursive();
-                root.release();
-                content_arena.deinit();
-            }
-            try eqStr(
-                \\2 2/11
-                \\  1 B| `hello` |E
                 \\  1 B| `world`
             , try root.value.debugStr(idc_if_it_leaks));
         }
@@ -236,9 +239,12 @@ const Node = union(enum) {
 
     fn mergeLeaves(a: Allocator, leaves: []RcNode) !RcNode {
         if (leaves.len == 1) return leaves[0];
-        if (leaves.len == 2) return Node.new(a, leaves[0], leaves[1]);
+        if (leaves.len == 2) return Node.new(a, &leaves[0], false, &leaves[1], false);
+
         const mid = leaves.len / 2;
-        return Node.new(a, try mergeLeaves(a, leaves[0..mid]), try mergeLeaves(a, leaves[mid..]));
+        var left = try mergeLeaves(a, leaves[0..mid]);
+        var right = try mergeLeaves(a, leaves[mid..]);
+        return Node.new(a, &left, false, &right, false);
     }
 
     ///////////////////////////// Insert
@@ -259,44 +265,44 @@ const Node = union(enum) {
             ctx.abs_col += leaf_noc;
 
             if (ctx.col == 0) {
-                const left = try Leaf.new(ctx.a, ctx.chars, leaf.bol, ctx.eol);
-                const right = try Leaf.new(ctx.a, leaf.buf, ctx.eol, leaf.eol);
-                return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                var left = try Leaf.new(ctx.a, ctx.chars, leaf.bol, ctx.eol);
+                var right = try Leaf.new(ctx.a, leaf.buf, ctx.eol, leaf.eol);
+                return WalkMutResult{ .replace = try Node.new(ctx.a, &left, false, &right, false) };
             }
 
             if (leaf_noc == ctx.col) {
                 if (leaf.eol and ctx.eol and ctx.chars.len == 0) {
-                    const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, true);
-                    const right = try Leaf.new(ctx.a, ctx.chars, true, true);
-                    return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                    var left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, true);
+                    var right = try Leaf.new(ctx.a, ctx.chars, true, true);
+                    return WalkMutResult{ .replace = try Node.new(ctx.a, &left, false, &right, false) };
                 }
 
-                const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, false);
+                var left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, false);
 
                 if (ctx.eol) {
-                    const middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
-                    const right = try Leaf.new(ctx.a, "", ctx.eol, leaf.eol);
-                    const mid_right = try Node.new(ctx.a, middle, right);
-                    return WalkMutResult{ .replace = try Node.new(ctx.a, left, mid_right) };
+                    var middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
+                    var right = try Leaf.new(ctx.a, "", ctx.eol, leaf.eol);
+                    var mid_right = try Node.new(ctx.a, &middle, false, &right, false);
+                    return WalkMutResult{ .replace = try Node.new(ctx.a, &left, false, &mid_right, false) };
                 }
 
-                const right = try Leaf.new(ctx.a, ctx.chars, false, leaf.eol);
-                return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                var right = try Leaf.new(ctx.a, ctx.chars, false, leaf.eol);
+                return WalkMutResult{ .replace = try Node.new(ctx.a, &left, false, &right, false) };
             }
 
             if (leaf_noc > ctx.col) {
                 const pos = getNumOfBytesTillCol(leaf.buf, base_col);
                 if (ctx.eol and ctx.chars.len == 0) {
-                    const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol);
-                    const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
-                    return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                    var left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol);
+                    var right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
+                    return WalkMutResult{ .replace = try Node.new(ctx.a, &left, false, &right, false) };
                 }
 
-                const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, false);
-                const middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
-                const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
-                const mid_right = try Node.new(ctx.a, middle, right);
-                return WalkMutResult{ .replace = try Node.new(ctx.a, left, mid_right) };
+                var left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, false);
+                var middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
+                var right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
+                var mid_right = try Node.new(ctx.a, &middle, false, &right, false);
+                return WalkMutResult{ .replace = try Node.new(ctx.a, &left, false, &mid_right, false) };
             }
 
             ctx.col -= leaf_noc;
@@ -350,28 +356,45 @@ const Node = union(enum) {
 
     test insertChars {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
-        const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
+        const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
         defer {
-            root.value.releaseChildrenRecursive();
-            root.release();
+            old_root.value.releaseChildrenRecursive();
+            old_root.release();
             content_arena.deinit();
         }
         try eqStr(
             \\2 2/11
             \\  1 B| `hello` |E
             \\  1 B| `world`
-        , try root.value.debugStr(idc_if_it_leaks));
+        , try old_root.value.debugStr(idc_if_it_leaks));
+
+        try eq(1, old_root.strongCount());
+        try eq(1, old_root.value.branch.left.strongCount());
+        try eq(1, old_root.value.branch.right.strongCount());
 
         {
-            const line, const col, const new_root = try insertChars(root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
+            const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
             defer {
                 new_root.value.releaseChildrenRecursive();
                 new_root.release();
             }
+
+            try eq(1, old_root.strongCount());
+            try eq(1, old_root.value.branch.left.strongCount());
+            try eq(2, old_root.value.branch.right.strongCount()); // <-- shared node
+
+            try eq(1, new_root.strongCount());
+            try eq(1, new_root.value.branch.left.strongCount());
+            try eq(1, new_root.value.branch.left.value.branch.left.strongCount());
+            try eq(1, new_root.value.branch.left.value.branch.right.strongCount());
+            try eq(2, new_root.value.branch.right.strongCount()); // <-- shared node
+
             try eq(.{ 0, 3 }, .{ line, col });
             try eqStr(
-                \\2 2/14
-                \\  1 B| `ok hello` |E
+                \\3 2/14
+                \\  2 1/9
+                \\    1 B| `ok `
+                \\    1 `hello` |E
                 \\  1 B| `world`
             , try new_root.value.debugStr(idc_if_it_leaks));
         }
