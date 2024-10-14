@@ -511,14 +511,7 @@ const Node = union(enum) {
             \\        1 `o`
         , try debugStr(idc_if_it_leaks, e3));
 
-        original.value.releaseChildrenRecursive();
-        original.release();
-        e1.value.releaseChildrenRecursive();
-        e1.release();
-        e2.value.releaseChildrenRecursive();
-        e2.release();
-        e3.value.releaseChildrenRecursive();
-        e3.release();
+        freeRcNodes(&.{ original, e1, e2, e3 });
     }
 
     test "insertChars - multiple insertions from empty string" {
@@ -706,22 +699,7 @@ const Node = union(enum) {
             , try debugStr(idc_if_it_leaks, r6c));
         }
 
-        r0.value.releaseChildrenRecursive();
-        r0.release();
-        r1.value.releaseChildrenRecursive();
-        r1.release();
-        r2.value.releaseChildrenRecursive();
-        r2.release();
-        r3.value.releaseChildrenRecursive();
-        r3.release();
-        r4.value.releaseChildrenRecursive();
-        r4.release();
-        r5.value.releaseChildrenRecursive();
-        r5.release();
-        r6a.value.releaseChildrenRecursive();
-        r6a.release();
-        r6b.value.releaseChildrenRecursive();
-        r6b.release();
+        freeRcNodes(&.{ r0, r1, r2, r3, r4, r5, r6a, r6b });
 
         try eqStr( // h3xel
             \\4 1/8
@@ -736,8 +714,8 @@ const Node = union(enum) {
             \\    1 `e`
             \\    1 `l`
         , try debugStr(idc_if_it_leaks, r6c));
-        r6c.value.releaseChildrenRecursive();
-        r6c.release();
+
+        freeRcNode(r6c);
     }
 
     test "insertChars - with newline \n" {
@@ -791,15 +769,10 @@ const Node = union(enum) {
             , try debugStr(idc_if_it_leaks, r2));
         }
 
-        r0.value.releaseChildrenRecursive();
-        r0.release();
-        r1.value.releaseChildrenRecursive();
-        r1.release();
-        r2.value.releaseChildrenRecursive();
-        r2.release();
+        freeRcNodes(&.{ r0, r1, r2 });
     }
 
-    test "insertChars - one character after another - different free orders" {
+    test "insertChars - testing free order after inserting one character after another" {
         try freeBackAndForth("h");
         try freeBackAndForth("hi");
         try freeBackAndForth("hello");
@@ -972,4 +945,15 @@ test getNumOfChars {
 test {
     std.testing.refAllDecls(Node);
     std.testing.refAllDecls(Leaf);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn freeRcNodes(nodes: []const RcNode) void {
+    for (nodes) |node| freeRcNode(node);
+}
+
+fn freeRcNode(node: RcNode) void {
+    node.value.releaseChildrenRecursive();
+    node.release();
 }
