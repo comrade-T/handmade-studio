@@ -271,15 +271,12 @@ const Node = union(enum) {
     const InsertCharsCtx = struct {
         a: Allocator,
         col: usize,
-        abs_col: usize = 0,
         chars: []const u8,
         eol: bool,
 
         fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult {
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
             const leaf_noc = getNumOfChars(leaf.buf);
-            const base_col = ctx.abs_col;
-            ctx.abs_col += leaf_noc;
 
             if (ctx.col == 0) {
                 const left = try Leaf.new(ctx.a, ctx.chars, leaf.bol, ctx.eol);
@@ -308,7 +305,7 @@ const Node = union(enum) {
             }
 
             if (leaf_noc > ctx.col) {
-                const pos = getNumOfBytesTillCol(leaf.buf, base_col);
+                const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
                 if (ctx.eol and ctx.chars.len == 0) {
                     const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol);
                     const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
@@ -371,7 +368,7 @@ const Node = union(enum) {
         return .{ line, col, self };
     }
 
-    test "insertChars - single insertion" {
+    test "insertChars - single insertion at beginning" {
         // freeing last history first
         {
             var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
@@ -461,6 +458,67 @@ const Node = union(enum) {
             new_root.value.releaseChildrenRecursive();
             new_root.release();
         }
+    }
+
+    test "insertChars - insert in middle of leaf" {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+
+        const original = try Node.fromString(testing_allocator, &content_arena, "hello", true);
+
+        // `hello` -> `he3llo`
+        const l1, const c1, const e1 = try insertChars(original, testing_allocator, &content_arena, "3", .{ .line = 0, .col = 2 });
+        try eq(.{ 0, 3 }, .{ l1, c1 });
+        try eqStr(
+            \\3 1/6
+            \\  1 B| `he`
+            \\  2 0/4
+            \\    1 `3`
+            \\    1 `llo`
+        , try debugStr(idc_if_it_leaks, e1));
+
+        // `he3llo` -> `he3ll0o`
+        const l2, const c2, const e2 = try insertChars(e1, testing_allocator, &content_arena, "0", .{ .line = 0, .col = 5 });
+        try eq(.{ 0, 6 }, .{ l2, c2 });
+        try eqStr(
+            \\5 1/7
+            \\  1 B| `he` Rc:2
+            \\  4 0/5
+            \\    1 `3` Rc:2
+            \\    3 0/4
+            \\      1 `ll`
+            \\      2 0/2
+            \\        1 `0`
+            \\        1 `o`
+        , try debugStr(idc_if_it_leaks, e2));
+
+        // `he3ll0o` -> `he3ll\n0o`
+        const l3, const c3, const e3 = try insertChars(e2, testing_allocator, &content_arena, "\n", .{ .line = 0, .col = 5 });
+        try eq(.{ 1, 0 }, .{ l3, c3 });
+        try eqStr(
+            \\6 2/8
+            \\  1 B| `he` Rc:3
+            \\  5 1/6
+            \\    1 `3` Rc:3
+            \\    4 1/5
+            \\      3 1/3
+            \\        1 `ll`
+            \\        2 1/1
+            \\          1 `` |E
+            \\          1 B| ``
+            \\      2 0/2 Rc:2
+            \\        1 `0`
+            \\        1 `o`
+        , try debugStr(idc_if_it_leaks, e3));
+
+        original.value.releaseChildrenRecursive();
+        original.release();
+        e1.value.releaseChildrenRecursive();
+        e1.release();
+        e2.value.releaseChildrenRecursive();
+        e2.release();
+        e3.value.releaseChildrenRecursive();
+        e3.release();
     }
 
     test "insertChars - multiple insertions from empty string" {
@@ -889,13 +947,11 @@ const Weights = struct {
 fn getNumOfBytesTillCol(str: []const u8, col: usize) usize {
     var iter = code_point.Iterator{ .bytes = str };
     var num_of_bytes: usize = 0;
-    var num_chars: u32 = 0;
     while (iter.next()) |cp| {
-        defer num_chars += 1;
-        if (num_chars == col) break;
         num_of_bytes += cp.len;
+        if (iter.i == col) break;
     }
-    return num_chars;
+    return num_of_bytes;
 }
 
 fn getNumOfChars(str: []const u8) u32 {
