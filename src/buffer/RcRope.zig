@@ -1059,9 +1059,53 @@ const Node = union(enum) {
         ;
         try eqStr(abcde_rotated_dbg, try debugStr(idc_if_it_leaks, abcde_rotated));
 
-        // IMPORTANT: the `abcde` before roation is no longer available
+        // IMPORTANT: the `abcde` before roation is no longer available, accessing it will cause segfault
 
         freeRcNodes(&.{ acd, abcd, abcde_rotated });
+    }
+
+    fn rotateRight(allocator: Allocator, self: RcNode) !RcNode {
+        assert(self.value.* == .branch);
+        defer self.release();
+
+        const other = self.value.branch.left;
+        defer other.release();
+        assert(other.value.* == .branch);
+
+        const a = try Node.new(allocator, self.value.branch.right, other.value.branch.right);
+        const b = try Node.new(allocator, other.value.branch.left, a);
+        return b;
+    }
+
+    test rotateRight {
+        var content_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer content_arena.deinit();
+
+        const abc = try Node.fromString(testing_allocator, &content_arena, "ABC");
+        _, _, const abcd = try insertChars(abc, testing_allocator, &content_arena, "D", .{ .line = 0, .col = 3 });
+        _, _, const _abcd = try insertChars(abcd, testing_allocator, &content_arena, "_", .{ .line = 0, .col = 0 });
+        const _abcd_dbg =
+            \\3 1/5
+            \\  2 1/4
+            \\    1 B| `_`
+            \\    1 `ABC`
+            \\  1 `D` Rc:2
+        ;
+        try eqStr(_abcd_dbg, try debugStr(idc_if_it_leaks, _abcd));
+
+        const _abcd_rotated = try rotateRight(testing_allocator, _abcd);
+        const _abcd_rotated_dbg =
+            \\3 1/5
+            \\  1 B| `_`
+            \\  2 0/4
+            \\    1 `D` Rc:2
+            \\    1 `ABC`
+        ;
+        try eqStr(_abcd_rotated_dbg, try debugStr(idc_if_it_leaks, _abcd_rotated));
+
+        // IMPORTANT: the `_abcd` before roation is no longer available, accessing it will cause segfault
+
+        freeRcNodes(&.{ abc, abcd, _abcd_rotated });
     }
 
     ///////////////////////////// Debug Print
