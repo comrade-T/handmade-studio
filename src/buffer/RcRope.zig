@@ -824,6 +824,106 @@ const Node = union(enum) {
         }
     }
 
+    ///////////////////////////// Delete
+
+    const DeleteCharsCtx = struct {
+        a: Allocator,
+        col: usize,
+        count: usize,
+        delete_next_bol: bool = false,
+
+        fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+            var result = WalkMutResult.keep_walking;
+
+            if (ctx.delete_next_bol and ctx.count == 0) {
+                result.replace = try Leaf.new(ctx.a, leaf.buf, false, leaf.eol);
+                result.keep_walking = false;
+                result.delete_next_bol = false;
+                return result;
+            }
+
+            const leaf_noc = getNumOfChars(leaf.buf);
+            const leaf_bol = leaf.bol and !ctx.delete_next_bol;
+            ctx.delete_next_bol = false;
+
+            blk: {
+                // next node
+                if (ctx.col > leaf_noc) {
+                    ctx.count -= leaf_noc;
+                    if (leaf.eol) ctx.col -= 1;
+                    break :blk;
+                }
+
+                // this node
+                defer {
+                    if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+                }
+
+                if (ctx.col == 0) {
+                    if (ctx.count > leaf_noc) {
+                        ctx.count -= leaf_noc;
+                        result.replace = try Leaf.new(ctx.a, "", leaf_bol, false);
+                        if (leaf.eol) {
+                            ctx.count -= 1;
+                            ctx.delete_next_bol = true;
+                        }
+                        break :blk;
+                    }
+
+                    if (ctx.count == leaf_noc) {
+                        result.replace = Leaf.new(ctx.a, "", leaf_bol, leaf.eol);
+                        ctx.count = 0;
+                        break :blk;
+                    }
+
+                    const pos = getNumOfBytesTillCol(leaf.buf, ctx.count);
+                    result.replace = try leaf.new(ctx.a, leaf.buf[pos..], leaf_bol, leaf.eol);
+                    ctx.count = 0;
+                    break :blk;
+                }
+
+                if (ctx.col == leaf_noc) {
+                    if (leaf.eol) {
+                        ctx.count -= 1;
+                        result.replace = try Leaf.new(ctx.a, leaf.buf, leaf_bol, false);
+                        ctx.delete_next_bol = true;
+                    }
+                    ctx.col -= leaf_noc;
+                    break :blk;
+                }
+
+                if (ctx.col + ctx.count >= leaf_noc) {
+                    ctx.count -= leaf_noc - ctx.count;
+                    const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
+                    const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
+                        ctx.count -= 1;
+                        ctx.delete_next_bol = true;
+                        break :leaf_eol false;
+                    } else leaf.eol;
+                    result.replace = Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, leaf_eol);
+                    ctx.col = 0;
+                    break :blk;
+                }
+
+                const pos_start = getNumOfBytesTillCol(leaf.buf, ctx.col);
+                const pos_end = getNumOfBytesTillCol(leaf.buf, ctx.col + ctx.count);
+                const left = try Leaf.new(ctx.a, leaf.buf[0..pos_start], leaf_bol, false);
+                const right = try Leaf.new(ctx.a, leaf.buf[pos_end..], false, leaf.eol);
+                result.replace = try Node.new(ctx.a, left, right);
+                ctx.count = 0;
+            }
+
+            return result;
+        }
+    };
+
+    fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) !void {
+        var ctx = DeleteCharsCtx{ .a = a, .col = destination.col, .count = count };
+        const found, const root = try walkMutFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
+        return if (found) (root orelse error.Stop) else error.NotFound;
+    }
+
     ///////////////////////////// Debug Print
 
     fn debugStr(a: Allocator, node: RcNode) ![]const u8 {
