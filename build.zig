@@ -88,7 +88,11 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = rc_rope;
 
-    _ = addTestableModule(&bops, "src/buffer/UndoTree.zig", &.{}, zig_build_test_step);
+    const undo_tree = addTestableModule(&bops, "src/buffer/UndoTree.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+    }, zig_build_test_step);
+    _ = undo_tree;
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 

@@ -174,7 +174,7 @@ fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) Walk
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const RcNode = TrimmedRc(Node, u16);
+pub const RcNode = TrimmedRc(Node, u16);
 
 const Node = union(enum) {
     branch: Branch,
