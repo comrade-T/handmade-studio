@@ -167,9 +167,9 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    fn fromString(a: Allocator, arena: *ArenaAllocator, source: []const u8, first_bol: bool) !RcNode {
+    fn fromString(a: Allocator, arena: *ArenaAllocator, source: []const u8) !RcNode {
         var stream = std.io.fixedBufferStream(source);
-        return Node.fromReader(a, arena, stream.reader(), source.len, first_bol);
+        return Node.fromReader(a, arena, stream.reader(), source.len);
     }
 
     test fromString {
@@ -177,20 +177,20 @@ const Node = union(enum) {
         {
             var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
             defer content_arena.deinit();
-            const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", false);
+            const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
             defer {
                 root.value.releaseChildrenRecursive();
                 root.release();
             }
             try eqStr(
-                \\2 1/11
-                \\  1 `hello` |E
+                \\2 2/11
+                \\  1 B| `hello` |E
                 \\  1 B| `world`
             , try debugStr(idc_if_it_leaks, root));
         }
     }
 
-    fn fromReader(a: Allocator, content_arena: *ArenaAllocator, reader: anytype, buffer_size: usize, first_bol: bool) !RcNode {
+    fn fromReader(a: Allocator, content_arena: *ArenaAllocator, reader: anytype, buffer_size: usize) !RcNode {
         const buf = try content_arena.allocator().alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
@@ -199,9 +199,8 @@ const Node = union(enum) {
         const final_read = try reader.read(buf);
         if (final_read != 0) return error.Unexpected;
 
-        var leaves = try createLeavesByNewLine(a, buf);
+        const leaves = try createLeavesByNewLine(a, buf);
         defer a.free(leaves);
-        leaves[0].value.leaf.bol = first_bol;
         return try mergeLeaves(a, leaves);
     }
 
@@ -232,8 +231,6 @@ const Node = union(enum) {
         const rest = buf[b..];
         leaves[cur_leaf] = try Leaf.new(a, rest, true, false);
 
-        leaves[0].value.leaf.bol = false; // always make first Leaf NOT a .bol
-
         if (leaves.len != cur_leaf + 1) return error.Unexpected;
         return leaves;
     }
@@ -242,7 +239,7 @@ const Node = union(enum) {
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "");
             try eq(1, leaves.len);
-            try eqDeep(Leaf{ .bol = false, .eol = false, .buf = "" }, leaves[0].value.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "" }, leaves[0].value.leaf);
         }
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "\n");
@@ -252,7 +249,7 @@ const Node = union(enum) {
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "hello\nworld");
             try eq(2, leaves.len);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "hello" }, leaves[0].value.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "hello" }, leaves[0].value.leaf);
             try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, leaves[1].value.leaf);
         }
     }
@@ -374,7 +371,7 @@ const Node = union(enum) {
             var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
             defer content_arena.deinit();
 
-            const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
+            const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
             defer {
                 old_root.value.releaseChildrenRecursive();
                 old_root.release();
@@ -415,7 +412,7 @@ const Node = union(enum) {
             defer content_arena.deinit();
 
             // before
-            const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld", true);
+            const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
             try eqStr(
                 \\2 2/11
                 \\  1 B| `hello` |E
@@ -464,7 +461,7 @@ const Node = union(enum) {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
 
-        const original = try Node.fromString(testing_allocator, &content_arena, "hello", true);
+        const original = try Node.fromString(testing_allocator, &content_arena, "hello");
 
         // `hello` -> `he3llo`
         const l1, const c1, const e1 = try insertChars(original, testing_allocator, &content_arena, "3", .{ .line = 0, .col = 2 });
@@ -520,7 +517,7 @@ const Node = union(enum) {
         const a = testing_allocator;
 
         // original
-        const r0 = try Node.fromString(a, &content_arena, "", true);
+        const r0 = try Node.fromString(a, &content_arena, "");
         try eqStr(
             \\1 B| ``
         , try debugStr(idc_if_it_leaks, r0));
@@ -718,13 +715,62 @@ const Node = union(enum) {
         freeRcNode(r6c);
     }
 
+    test "insertChars - abcd" {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+
+        const acd = try Node.fromString(testing_allocator, &content_arena, "ACD");
+        defer freeRcNode(acd);
+
+        _, _, const abcd = try insertChars(acd, testing_allocator, &content_arena, "B", .{ .line = 0, .col = 1 });
+        defer freeRcNode(abcd);
+        const abcd_dbg =
+            \\3 1/4
+            \\  1 B| `A`
+            \\  2 0/3
+            \\    1 `B`
+            \\    1 `CD`
+        ;
+        try eqStr(abcd_dbg, try debugStr(idc_if_it_leaks, abcd));
+
+        {
+            _, _, const eabcd = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 0 });
+            defer freeRcNode(eabcd);
+            const eabcd_dbg =
+                \\3 1/5
+                \\  2 1/2
+                \\    1 B| `E`
+                \\    1 `A`
+                \\  2 0/3 Rc:2
+                \\    1 `B`
+                \\    1 `CD`
+            ;
+            try eqStr(eabcd_dbg, try debugStr(idc_if_it_leaks, eabcd));
+        }
+
+        {
+            _, _, const abcde = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 4 });
+            defer freeRcNode(abcde);
+            const abcde_dbg =
+                \\4 1/5
+                \\  1 B| `A` Rc:2
+                \\  3 0/4
+                \\    1 `B` Rc:2
+                \\    2 0/3
+                \\      1 `CD`
+                \\      1 `E`
+            ;
+            try eqStr(abcde_dbg, try debugStr(idc_if_it_leaks, abcde));
+        }
+    }
+
     test "insertChars - with newline \n" {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
         const a = testing_allocator;
 
         // original
-        const r0 = try Node.fromString(a, &content_arena, "hello venus", true);
+        const r0 = try Node.fromString(a, &content_arena, "hello venus");
         try eqStr(
             \\1 B| `hello venus`
         , try debugStr(idc_if_it_leaks, r0));
@@ -786,7 +832,7 @@ const Node = union(enum) {
 
     fn insertCharOneAfterAnother(a: Allocator, content_arena: *ArenaAllocator, str: []const u8) !ArrayList(RcNode) {
         var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
-        var node = try Node.fromString(a, content_arena, "", true);
+        var node = try Node.fromString(a, content_arena, "");
         try list.append(node);
         var line: usize = 0;
         var col: usize = 0;
@@ -927,7 +973,7 @@ const Node = union(enum) {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
 
-        const original = try Node.fromString(testing_allocator, &content_arena, "1234567", true);
+        const original = try Node.fromString(testing_allocator, &content_arena, "1234567");
         defer freeRcNode(original);
 
         {
@@ -965,6 +1011,57 @@ const Node = union(enum) {
                 \\1 B| `123456`
             , try debugStr(idc_if_it_leaks, edit));
         }
+    }
+
+    ///////////////////////////// Balancing
+
+    fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
+        assert(self.value.* == .branch);
+        defer self.release();
+
+        const other = self.value.branch.right;
+        defer other.release();
+        assert(other.value.* == .branch);
+
+        const a = try Node.new(allocator, self.value.branch.left, other.value.branch.left);
+        const b = try Node.new(allocator, a, other.value.branch.right);
+        return b;
+    }
+
+    test rotateLeft {
+        var content_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer content_arena.deinit();
+
+        const acd = try Node.fromString(testing_allocator, &content_arena, "ACD");
+        _, _, const abcd = try insertChars(acd, testing_allocator, &content_arena, "B", .{ .line = 0, .col = 1 });
+        _, _, const abcde = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 4 });
+
+        const abcde_dbg =
+            \\4 1/5
+            \\  1 B| `A` Rc:2
+            \\  3 0/4
+            \\    1 `B` Rc:2
+            \\    2 0/3
+            \\      1 `CD`
+            \\      1 `E`
+        ;
+        try eqStr(abcde_dbg, try debugStr(idc_if_it_leaks, abcde));
+
+        const abcde_rotated = try rotateLeft(testing_allocator, abcde);
+        const abcde_rotated_dbg =
+            \\3 1/5
+            \\  2 1/2
+            \\    1 B| `A` Rc:2
+            \\    1 `B` Rc:2
+            \\  2 0/3
+            \\    1 `CD`
+            \\    1 `E`
+        ;
+        try eqStr(abcde_rotated_dbg, try debugStr(idc_if_it_leaks, abcde_rotated));
+
+        // IMPORTANT: the `abcde` before roation is no longer available
+
+        freeRcNodes(&.{ acd, abcd, abcde_rotated });
     }
 
     ///////////////////////////// Debug Print
