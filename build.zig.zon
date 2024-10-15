@@ -23,10 +23,6 @@
         .ztracy = .{
             .path = "copied-libs/ztracy",
         },
-        .zigrc = .{
-            .url = "https://github.com/Aandreba/zigrc/archive/refs/tags/0.4.0.tar.gz",
-            .hash = "122081ba85104ea10d0fd80ef7f78ff72a0f2bb07351fde7fb0f97afcd63e78d7f01",
-        },
     },
 
     .paths = .{

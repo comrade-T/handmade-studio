@@ -1,7 +1,10 @@
 // This file is part of Handmade Studio.
 
-// This file was copied & modified from
-// https://github.com/Aandreba/zigrc - version 0.4.0 - commit cc477224dff356b7aa2de33620a7f33bc34d41a7 - src/root.zig
+// This file was copied & modified from:
+// repository: https://github.com/Aandreba/zigrc
+// version:    0.4.0
+// commit:     cc477224dff356b7aa2de33620a7f33bc34d41a7
+// file(s):    src/root.zig
 
 // MIT License
 //

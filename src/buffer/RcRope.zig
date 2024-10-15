@@ -15,8 +15,10 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-// This file was modified from
-// https://github.com/neurocyte/flow - commit 9080fd4826a08797dc58c625c045a42f2f59afc6 - src/buffer/Buffer.zig
+// This file was modified from:
+// repository: https://github.com/neurocyte/flow
+// commit:     9080fd4826a08797dc58c625c045a42f2f59afc6
+// file(s):    src/buffer/Buffer.zig
 
 // MIT License
 //
