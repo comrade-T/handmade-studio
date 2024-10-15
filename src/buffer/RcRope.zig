@@ -1015,6 +1015,173 @@ const Node = union(enum) {
 
     ///////////////////////////// Balancing
 
+    const MAX_IMBALANCE = 1;
+
+    fn calculateBalanceFactor(left: *const Node, right: *const Node) i64 {
+        var balance_factor: i64 = @intCast(left.weights().depth);
+        balance_factor -= right.weights().depth;
+        return balance_factor;
+    }
+
+    fn balance(a: Allocator, self: RcNode) !RcNode {
+        switch (self.value.*) {
+            .leaf => return self,
+            .branch => |branch| {
+                {
+                    const initial_balance_factor = calculateBalanceFactor(branch.left.value, branch.right.value);
+                    if (@abs(initial_balance_factor) < MAX_IMBALANCE) return self;
+                }
+
+                var result: RcNode = undefined;
+                defer if (result.value != self.value) self.release();
+
+                const left = try balance(a, branch.left);
+                const right = try balance(a, branch.right);
+                const balance_factor = calculateBalanceFactor(left.value, right.value);
+
+                if (@abs(balance_factor) > MAX_IMBALANCE) {
+                    if (balance_factor < 0) {
+                        const right_balance_factor = calculateBalanceFactor(right.value.branch.left.value, right.value.branch.right.value);
+                        if (right_balance_factor <= 0) {
+                            const this = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
+                            result = try rotateLeft(a, this);
+                        } else {
+                            const new_right = try rotateRight(a, right);
+                            const this = try Node.new(a, left, new_right);
+                            result = try rotateLeft(a, this);
+                        }
+                    } else {
+                        const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
+                        if (left_balance_factor >= 0) {
+                            const this = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
+                            result = try rotateRight(a, this);
+                        } else {
+                            const new_left = try rotateLeft(a, left);
+                            const this = try Node.new(a, new_left, right);
+                            result = try rotateRight(a, this);
+                        }
+                    }
+                } else {
+                    result = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
+                }
+
+                const should_balance_again = result.value.* == .branch and @abs(calculateBalanceFactor(result.value.branch.left.value, result.value.branch.right.value)) > MAX_IMBALANCE;
+                if (should_balance_again) result = try balance(a, result);
+
+                return result;
+            },
+        }
+    }
+
+    test balance {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+
+        var node_list = try insertCharOneAfterAnother(testing_allocator, &content_arena, "abcde");
+        defer node_list.deinit();
+
+        // check if balancing a 'before node' doesn't mess up 'after node' (no segfault)
+        // in this case, 'before node' is `len-2`, 'after node' is `len-1`
+        {
+            const minus_i = 2;
+            const original_dbg_str =
+                \\4 1/4
+                \\  1 B| `a` Rc:4
+                \\  3 0/3
+                \\    1 `b` Rc:3
+                \\    2 0/2
+                \\      1 `c` Rc:2
+                \\      1 `d`
+            ;
+            try eqStr(original_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
+
+            const balanced = try balance(testing_allocator, node_list.items[node_list.items.len - minus_i]);
+            node_list.items[node_list.items.len - minus_i] = balanced;
+            const balanced_dbg_str =
+                \\3 1/4
+                \\  2 1/2
+                \\    1 B| `a` Rc:4
+                \\    1 `b` Rc:3
+                \\  2 0/2
+                \\    1 `c` Rc:2
+                \\    1 `d`
+            ;
+            try eqStr(balanced_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
+        }
+        {
+            const minus_i = 1;
+            const original_dbg_str =
+                \\5 1/5
+                \\  1 B| `a` Rc:4
+                \\  4 0/4
+                \\    1 `b` Rc:3
+                \\    3 0/3
+                \\      1 `c` Rc:2
+                \\      2 0/2
+                \\        1 `d`
+                \\        1 `e`
+            ;
+            try eqStr(original_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
+
+            const balanced = try balance(testing_allocator, node_list.items[node_list.items.len - minus_i]);
+            node_list.items[node_list.items.len - minus_i] = balanced;
+            const balanced_dbg_str =
+                \\4 1/5
+                \\  3 1/3
+                \\    1 B| `a` Rc:4
+                \\    2 0/2
+                \\      1 `b` Rc:3
+                \\      1 `c` Rc:2
+                \\  2 0/2
+                \\    1 `d`
+                \\    1 `e`
+            ;
+            try eqStr(balanced_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
+        }
+
+        // check if previous steps are still accessible (no segfault)
+        {
+            const dbg_str =
+                \\2 1/1
+                \\  1 B| `a`
+                \\  1 ``
+            ;
+            try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 5]));
+        }
+        {
+            const dbg_str =
+                \\2 1/2
+                \\  1 B| `a` Rc:4
+                \\  1 `b`
+            ;
+            try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 4]));
+        }
+        {
+            const dbg_str =
+                \\3 1/3
+                \\  1 B| `a` Rc:4
+                \\  2 0/2
+                \\    1 `b` Rc:3
+                \\    1 `c`
+            ;
+            try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 3]));
+        }
+        {
+            const dbg_str =
+                \\3 1/4
+                \\  2 1/2
+                \\    1 B| `a` Rc:4
+                \\    1 `b` Rc:3
+                \\  2 0/2
+                \\    1 `c` Rc:2
+                \\    1 `d`
+            ;
+            try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 2]));
+        }
+
+        freeRcNodes(node_list.items);
+    }
+
     fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
         assert(self.value.* == .branch);
         defer self.release();
@@ -1029,7 +1196,7 @@ const Node = union(enum) {
     }
 
     test rotateLeft {
-        var content_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
 
         const acd = try Node.fromString(testing_allocator, &content_arena, "ACD");
@@ -1078,7 +1245,7 @@ const Node = union(enum) {
     }
 
     test rotateRight {
-        var content_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
 
         const abc = try Node.fromString(testing_allocator, &content_arena, "ABC");
