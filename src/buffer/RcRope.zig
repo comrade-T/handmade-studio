@@ -839,7 +839,7 @@ const Node = union(enum) {
             if (ctx.delete_next_bol and ctx.count == 0) {
                 result.replace = try Leaf.new(ctx.a, leaf.buf, false, leaf.eol);
                 result.keep_walking = false;
-                result.delete_next_bol = false;
+                ctx.delete_next_bol = false;
                 return result;
             }
 
@@ -847,81 +847,124 @@ const Node = union(enum) {
             const leaf_bol = leaf.bol and !ctx.delete_next_bol;
             ctx.delete_next_bol = false;
 
-            blk: {
-                // next node
-                if (ctx.col > leaf_noc) {
+            // next node
+            if (ctx.col > leaf_noc) {
+                ctx.count -= leaf_noc;
+                if (leaf.eol) ctx.col -= 1;
+                return result;
+            }
+
+            // this node
+            defer {
+                if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
+            }
+
+            if (ctx.col == 0) {
+                if (ctx.count > leaf_noc) {
                     ctx.count -= leaf_noc;
-                    if (leaf.eol) ctx.col -= 1;
-                    break :blk;
-                }
-
-                // this node
-                defer {
-                    if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
-                }
-
-                if (ctx.col == 0) {
-                    if (ctx.count > leaf_noc) {
-                        ctx.count -= leaf_noc;
-                        result.replace = try Leaf.new(ctx.a, "", leaf_bol, false);
-                        if (leaf.eol) {
-                            ctx.count -= 1;
-                            ctx.delete_next_bol = true;
-                        }
-                        break :blk;
-                    }
-
-                    if (ctx.count == leaf_noc) {
-                        result.replace = Leaf.new(ctx.a, "", leaf_bol, leaf.eol);
-                        ctx.count = 0;
-                        break :blk;
-                    }
-
-                    const pos = getNumOfBytesTillCol(leaf.buf, ctx.count);
-                    result.replace = try leaf.new(ctx.a, leaf.buf[pos..], leaf_bol, leaf.eol);
-                    ctx.count = 0;
-                    break :blk;
-                }
-
-                if (ctx.col == leaf_noc) {
+                    result.replace = try Leaf.new(ctx.a, "", leaf_bol, false);
                     if (leaf.eol) {
                         ctx.count -= 1;
-                        result.replace = try Leaf.new(ctx.a, leaf.buf, leaf_bol, false);
                         ctx.delete_next_bol = true;
                     }
-                    ctx.col -= leaf_noc;
-                    break :blk;
+                    return result;
                 }
 
-                if (ctx.col + ctx.count >= leaf_noc) {
-                    ctx.count -= leaf_noc - ctx.count;
-                    const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
-                    const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
-                        ctx.count -= 1;
-                        ctx.delete_next_bol = true;
-                        break :leaf_eol false;
-                    } else leaf.eol;
-                    result.replace = Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, leaf_eol);
-                    ctx.col = 0;
-                    break :blk;
+                if (ctx.count == leaf_noc) {
+                    result.replace = try Leaf.new(ctx.a, "", leaf_bol, leaf.eol);
+                    ctx.count = 0;
+                    return result;
                 }
 
-                const pos_start = getNumOfBytesTillCol(leaf.buf, ctx.col);
-                const pos_end = getNumOfBytesTillCol(leaf.buf, ctx.col + ctx.count);
-                const left = try Leaf.new(ctx.a, leaf.buf[0..pos_start], leaf_bol, false);
-                const right = try Leaf.new(ctx.a, leaf.buf[pos_end..], false, leaf.eol);
-                result.replace = try Node.new(ctx.a, left, right);
+                const pos = getNumOfBytesTillCol(leaf.buf, ctx.count);
+                result.replace = try Leaf.new(ctx.a, leaf.buf[pos..], leaf_bol, leaf.eol);
                 ctx.count = 0;
+                return result;
             }
+
+            if (ctx.col == leaf_noc) {
+                if (leaf.eol) {
+                    ctx.count -= 1;
+                    result.replace = try Leaf.new(ctx.a, leaf.buf, leaf_bol, false);
+                    ctx.delete_next_bol = true;
+                }
+                ctx.col -= leaf_noc;
+                return result;
+            }
+
+            if (ctx.col + ctx.count >= leaf_noc) {
+                ctx.count -= leaf_noc - ctx.col;
+                const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
+                const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
+                    ctx.count -= 1;
+                    ctx.delete_next_bol = true;
+                    break :leaf_eol false;
+                } else leaf.eol;
+                result.replace = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, leaf_eol);
+                ctx.col = 0;
+                return result;
+            }
+
+            const pos_start = getNumOfBytesTillCol(leaf.buf, ctx.col);
+            const pos_end = getNumOfBytesTillCol(leaf.buf, ctx.col + ctx.count);
+            const left = try Leaf.new(ctx.a, leaf.buf[0..pos_start], leaf_bol, false);
+            const right = try Leaf.new(ctx.a, leaf.buf[pos_end..], false, leaf.eol);
+            result.replace = try Node.new(ctx.a, left, right);
+            ctx.count = 0;
 
             return result;
         }
     };
 
-    fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) !void {
+    fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
         var ctx = DeleteCharsCtx{ .a = a, .col = destination.col, .count = count };
-        const found, const root = try walkMutFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
-        return if (found) (root orelse error.Stop) else error.NotFound;
+        const result = try walkMutFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
+        if (result.found) return result.replace orelse error.Stop;
+        return error.NotFound;
+    }
+
+    test "deleteChars - basics" {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+
+        const original = try Node.fromString(testing_allocator, &content_arena, "1234567", true);
+        defer freeRcNode(original);
+
+        {
+            const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 0 }, 1);
+            defer freeRcNode(edit);
+            try eqStr(
+                \\1 B| `234567`
+            , try debugStr(idc_if_it_leaks, edit));
+        }
+
+        {
+            const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 3 }, 1);
+            defer freeRcNode(edit);
+            try eqStr(
+                \\2 1/6
+                \\  1 B| `123`
+                \\  1 `567`
+            , try debugStr(idc_if_it_leaks, edit));
+        }
+
+        {
+            const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
+            defer freeRcNode(edit);
+            try eqStr(
+                \\2 1/6
+                \\  1 B| `12345`
+                \\  1 `7`
+            , try debugStr(idc_if_it_leaks, edit));
+        }
+
+        {
+            const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 6 }, 1);
+            defer freeRcNode(edit);
+            try eqStr(
+                \\1 B| `123456`
+            , try debugStr(idc_if_it_leaks, edit));
+        }
     }
 
     ///////////////////////////// Debug Print
