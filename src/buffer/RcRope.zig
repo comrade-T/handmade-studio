@@ -1,6 +1,52 @@
+// This file is part of Handmade Studio.
+//
+// Handmade Studio is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// Handmade Studio is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+// This file was modified from
+// https://github.com/neurocyte/flow - commit 9080fd4826a08797dc58c625c045a42f2f59afc6 - src/buffer/Buffer.zig
+
+// MIT License
+//
+// Copyright (c) 2024 CJ van den Berg
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const std = @import("std");
 const rc = @import("zigrc");
 const code_point = @import("code_point");
+
+const TrimmedRc = @import("CustomRc.zig").TrimmedRc;
 
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -126,7 +172,9 @@ fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) Walk
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const RcNode = rc.Rc(Node);
+// const RcNode = rc.Rc(Node);
+const RcNode = TrimmedRc(Node, u16);
+
 const Node = union(enum) {
     branch: Branch,
     leaf: Leaf,
@@ -157,12 +205,12 @@ const Node = union(enum) {
 
     ///////////////////////////// Release
 
-    fn releaseChildrenRecursive(self: *const Node) void {
+    fn releaseChildrenRecursive(self: *const Node, a: Allocator) void {
         if (self.* == .leaf) return;
-        if (self.branch.left.strongCount() == 1) self.branch.left.value.releaseChildrenRecursive();
-        self.branch.left.release();
-        if (self.branch.right.strongCount() == 1) self.branch.right.value.releaseChildrenRecursive();
-        self.branch.right.release();
+        if (self.branch.left.strongCount() == 1) self.branch.left.value.releaseChildrenRecursive(a);
+        self.branch.left.release(a);
+        if (self.branch.right.strongCount() == 1) self.branch.right.value.releaseChildrenRecursive(a);
+        self.branch.right.release(a);
     }
 
     ///////////////////////////// Load
@@ -179,8 +227,8 @@ const Node = union(enum) {
             defer content_arena.deinit();
             const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
             defer {
-                root.value.releaseChildrenRecursive();
-                root.release();
+                root.value.releaseChildrenRecursive(testing_allocator);
+                root.release(testing_allocator);
             }
             try eqStr(
                 \\2 2/11
@@ -373,8 +421,8 @@ const Node = union(enum) {
 
             const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
             defer {
-                old_root.value.releaseChildrenRecursive();
-                old_root.release();
+                old_root.value.releaseChildrenRecursive(testing_allocator);
+                old_root.release(testing_allocator);
             }
             try eqStr(
                 \\2 2/11
@@ -385,8 +433,8 @@ const Node = union(enum) {
             {
                 const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
                 defer {
-                    new_root.value.releaseChildrenRecursive();
-                    new_root.release();
+                    new_root.value.releaseChildrenRecursive(testing_allocator);
+                    new_root.release(testing_allocator);
                 }
 
                 try eqStr(
@@ -440,8 +488,8 @@ const Node = union(enum) {
 
             // freeing old_root first
             {
-                old_root.value.releaseChildrenRecursive();
-                old_root.release();
+                old_root.value.releaseChildrenRecursive(testing_allocator);
+                old_root.release(testing_allocator);
                 try eqStr(
                     \\3 2/14
                     \\  2 1/9
@@ -452,8 +500,8 @@ const Node = union(enum) {
             }
 
             // freeing new_root later
-            new_root.value.releaseChildrenRecursive();
-            new_root.release();
+            new_root.value.releaseChildrenRecursive(testing_allocator);
+            new_root.release(testing_allocator);
         }
     }
 
@@ -851,8 +899,8 @@ const Node = union(enum) {
             defer iterations.deinit();
 
             for (0..iterations.items.len) |i| {
-                iterations.items[i].value.releaseChildrenRecursive();
-                iterations.items[i].release();
+                iterations.items[i].value.releaseChildrenRecursive(testing_allocator);
+                iterations.items[i].release(testing_allocator);
             }
         }
 
@@ -864,8 +912,8 @@ const Node = union(enum) {
 
             for (0..iterations.items.len) |i_| {
                 const i = iterations.items.len - 1 - i_;
-                iterations.items[i].value.releaseChildrenRecursive();
-                iterations.items[i].release();
+                iterations.items[i].value.releaseChildrenRecursive(testing_allocator);
+                iterations.items[i].release(testing_allocator);
             }
         }
     }
@@ -1033,7 +1081,7 @@ const Node = union(enum) {
                 }
 
                 var result: RcNode = undefined;
-                defer if (result.value != self.value) self.release();
+                defer if (result.value != self.value) self.release(a);
 
                 const left = try balance(a, branch.left);
                 const right = try balance(a, branch.right);
@@ -1041,6 +1089,7 @@ const Node = union(enum) {
 
                 if (@abs(balance_factor) > MAX_IMBALANCE) {
                     if (balance_factor < 0) {
+                        assert(right.value.* == .branch);
                         const right_balance_factor = calculateBalanceFactor(right.value.branch.left.value, right.value.branch.right.value);
                         if (right_balance_factor <= 0) {
                             const this = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
@@ -1051,6 +1100,7 @@ const Node = union(enum) {
                             result = try rotateLeft(a, this);
                         }
                     } else {
+                        assert(left.value.* == .branch);
                         const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
                         if (left_balance_factor >= 0) {
                             const this = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
@@ -1184,10 +1234,10 @@ const Node = union(enum) {
 
     fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
         assert(self.value.* == .branch);
-        defer self.release();
+        defer self.release(allocator);
 
         const other = self.value.branch.right;
-        defer other.release();
+        defer other.release(allocator);
         assert(other.value.* == .branch);
 
         const a = try Node.new(allocator, self.value.branch.left, other.value.branch.left);
@@ -1233,10 +1283,10 @@ const Node = union(enum) {
 
     fn rotateRight(allocator: Allocator, self: RcNode) !RcNode {
         assert(self.value.* == .branch);
-        defer self.release();
+        defer self.release(allocator);
 
         const other = self.value.branch.left;
-        defer other.release();
+        defer other.release(allocator);
         assert(other.value.* == .branch);
 
         const a = try Node.new(allocator, self.value.branch.right, other.value.branch.right);
@@ -1327,10 +1377,9 @@ const Leaf = struct {
 
     test new {
         const leaf = try Leaf.new(testing_allocator, "hello", false, false);
-        defer leaf.release();
+        defer leaf.release(testing_allocator);
 
         try eq(1, leaf.strongCount());
-        try eq(0, leaf.weakCount());
         try eqStr("hello", leaf.value.leaf.buf);
         try eq(false, leaf.value.leaf.bol);
         try eq(false, leaf.value.leaf.eol);
@@ -1405,6 +1454,6 @@ fn freeRcNodes(nodes: []const RcNode) void {
 }
 
 fn freeRcNode(node: RcNode) void {
-    node.value.releaseChildrenRecursive();
-    node.release();
+    node.value.releaseChildrenRecursive(testing_allocator);
+    node.release(testing_allocator);
 }
