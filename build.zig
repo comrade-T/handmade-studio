@@ -88,6 +88,8 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = rc_rope;
 
+    _ = addTestableModule(&bops, "src/buffer/UndoTree.zig", &.{}, zig_build_test_step);
+
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);

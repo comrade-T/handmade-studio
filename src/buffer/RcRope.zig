@@ -174,7 +174,6 @@ fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) Walk
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-// const RcNode = rc.Rc(Node);
 const RcNode = TrimmedRc(Node, u16);
 
 const Node = union(enum) {
@@ -1447,6 +1446,41 @@ test getNumOfChars {
 test {
     std.testing.refAllDecls(Node);
     std.testing.refAllDecls(Leaf);
+}
+
+test "size matters" {
+    try eq(8, @alignOf(Leaf));
+    try eq(8, @alignOf(Branch));
+    try eq(4, @alignOf(Weights));
+    try eq(8, @alignOf(Node));
+
+    try eq(12, @sizeOf(Weights));
+    try eq(24, @sizeOf(Leaf));
+    try eq(32, @sizeOf(Branch));
+    try eq(40, @sizeOf(Node));
+
+    // try eq(24, @sizeOf(rc.Rc(Node))); // using zigrc's version
+    // try eq(56, rc.Rc(Node).innerSize()); // using zigrc's version
+
+    try eq(8, @alignOf(RcNode));
+    try eq(8, RcNode.innerAlign());
+
+    try eq(8, @sizeOf(RcNode));
+    try eq(48, RcNode.innerSize());
+}
+
+test "ArrayListUnmanaged" {
+    try eq(8, @alignOf(ArrayList(void)));
+    try eq(8, @alignOf(std.ArrayListUnmanaged(void)));
+
+    try eq(40, @sizeOf(ArrayList(void)));
+    try eq(24, @sizeOf(std.ArrayListUnmanaged(void)));
+
+    try eq(40, @sizeOf(ArrayList(f64)));
+    try eq(24, @sizeOf(std.ArrayListUnmanaged(f64)));
+
+    var list = try std.ArrayListUnmanaged(void).initCapacity(testing_allocator, 1);
+    defer list.deinit(testing_allocator);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
