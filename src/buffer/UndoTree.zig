@@ -86,6 +86,67 @@ fn endMultiCursorEdit() !void {
     // TODO:
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const CursorRange = struct {
+    start: CursorPoint,
+    end: CursorPoint,
+};
+
+const ConsecutiveMultiCursorInsertEvent = struct {
+    chars_list: ArrayList(u8),
+    ranges: ArrayList(CursorRange),
+
+    fn init(a: Allocator) !ConsecutiveMultiCursorInsertEvent {
+        return ConsecutiveMultiCursorInsertEvent{
+            .chars_list = ArrayList(u8).init(a),
+            .ranges = ArrayList(CursorRange).init(a),
+        };
+    }
+
+    fn deinit(self: *@This()) void {
+        self.chars_list.deinit();
+        self.ranges.deinit();
+    }
+
+    fn addRange(self: *@This(), range: CursorRange) !void {
+        self.ranges.appendSlice(range);
+    }
+
+    fn addChars(self: *@This(), chars: []const u8, line_inc: u16, col_inc: u16) !void {
+        self.chars_list.appendSlice(chars);
+        for (0..self.ranges.items) |i| {
+            self.ranges.items[i].end.line += line_inc;
+            self.ranges.items[i].end.col += col_inc;
+        }
+    }
+
+    fn finalize(self: *@This(), a: Allocator, node: RcNode) !Event {
+        defer self.deinit();
+
+        var modifications = ArrayList(Event.Modification).init(a);
+        for (self.ranges.items) |r| {
+            const mod = Event.Modification{
+                .start = r.start,
+                .end = r.end,
+                .chars = a.dupe(u8, self.chars_list),
+            };
+            try modifications.append(mod);
+        }
+
+        // TODO: how do I make it singular?
+
+        return Event{
+            .node = node,
+            .timestamp = std.time.milliTimestamp(),
+            .kind = .insert,
+            .children = .none,
+            .parent = self.current_event_index,
+            .changes = .{ .multiple = try modifications.toOwnedSlice() },
+        };
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// WIP 2
 
 fn beginSingleCursorEdit() !void {
@@ -343,9 +404,9 @@ const Event = struct {
         end: CursorPoint = .{},
         chars: []const u8 = "",
     };
+};
 
-    const CursorPoint = struct {
-        line: u16 = 0,
-        col: u16 = 0,
-    };
+const CursorPoint = struct {
+    line: u16 = 0,
+    col: u16 = 0,
 };
