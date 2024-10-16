@@ -174,7 +174,7 @@ fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) Walk
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const RcNode = TrimmedRc(Node, u16);
+pub const RcNode = TrimmedRc(Node, usize);
 
 const Node = union(enum) {
     branch: Branch,
@@ -1467,20 +1467,6 @@ test "size matters" {
 
     try eq(8, @sizeOf(RcNode));
     try eq(48, RcNode.innerSize());
-}
-
-test "ArrayListUnmanaged" {
-    try eq(8, @alignOf(ArrayList(void)));
-    try eq(8, @alignOf(std.ArrayListUnmanaged(void)));
-
-    try eq(40, @sizeOf(ArrayList(void)));
-    try eq(24, @sizeOf(std.ArrayListUnmanaged(void)));
-
-    try eq(40, @sizeOf(ArrayList(f64)));
-    try eq(24, @sizeOf(std.ArrayListUnmanaged(f64)));
-
-    var list = try std.ArrayListUnmanaged(void).initCapacity(testing_allocator, 1);
-    defer list.deinit(testing_allocator);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

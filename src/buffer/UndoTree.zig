@@ -4,6 +4,7 @@ const std = @import("std");
 const RcNode = @import("RcRope.zig").RcNode;
 
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
@@ -12,6 +13,12 @@ const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+a: Allocator,
+events: EventList,
+current_event_index: ?u16 = null,
+
+const EventList = std.MultiArrayList(Event);
 
 const Event = struct {
     node: ?RcNode,
@@ -26,29 +33,6 @@ const Event = struct {
     operation: Operation,
     operation_kind: OperationKind,
 };
-
-const ChildrenIndexList = std.ArrayList(u16);
-
-const OperationKind = enum { insert, delete };
-
-const Operation = struct {
-    start: CursorPoint,
-    end: CursorPoint,
-    chars: []const u8,
-};
-
-const CursorPoint = struct {
-    line: u16,
-    col: u16,
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-a: Allocator,
-events: EventList,
-current_event_index: ?u16 = null,
-
-const EventList = std.MultiArrayList(Event);
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -72,8 +56,64 @@ fn deinit(self: *UndoTree) void {
     self.events.deinit(self.a);
 }
 
-fn setCurrentEventIndex(self: *UndoTree, i: u16) void {
-    self.current_event_index = i;
+fn setCurrentEventIndex(self: *UndoTree, target: u16) !ArrayList(u16) {
+    assert(self.current_event_index != null);
+    const current = self.current_event_index orelse unreachable;
+    if (target == current) return ArrayList(u16).init(self.a);
+    defer self.current_event_index = target;
+
+    if (target < current) return try self.getTraversalList(current, target);
+
+    const list = try self.getTraversalList(target, current);
+    std.mem.sort(u16, list.items, {}, std.sort.asc(u16));
+    return list;
+}
+
+fn getTraversalList(self: *UndoTree, descendant_index: u16, ancestor_index: u16) !ArrayList(u16) {
+    assert(descendant_index > ancestor_index);
+    assert(descendant_index < self.events.len and ancestor_index < self.events.len);
+    var list = std.ArrayList(u16).init(self.a);
+    var i: u16 = descendant_index;
+    while (true) {
+        try list.append(i);
+        const parent_index = self.events.items(.parent)[i] orelse @panic("encountered null parent before reaching target");
+        if (parent_index == ancestor_index) return list;
+        i = parent_index;
+    }
+    unreachable;
+}
+
+test setCurrentEventIndex {
+    var utree = try UndoTree.init(testing_allocator);
+    defer utree.deinit();
+    {
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 }, .chars = "h" });
+        try eqSlice(?u16, &.{null}, utree.events.items(.parent));
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 }, .chars = "e" });
+        try eqSlice(?u16, &.{ null, 0 }, utree.events.items(.parent));
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 }, .chars = "l" });
+        try eqSlice(?u16, &.{ null, 0, 1 }, utree.events.items(.parent));
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 }, .chars = "l" });
+        try eqSlice(?u16, &.{ null, 0, 1, 2 }, utree.events.items(.parent));
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "o" });
+        try eqSlice(?u16, &.{ null, 0, 1, 2, 3 }, utree.events.items(.parent));
+    }
+
+    {
+        var list = try utree.setCurrentEventIndex(0);
+        defer list.deinit();
+        try eqSlice(u16, &.{ 4, 3, 2, 1 }, list.items);
+    }
+    {
+        var list = try utree.setCurrentEventIndex(4);
+        defer list.deinit();
+        try eqSlice(u16, &.{ 1, 2, 3, 4 }, list.items);
+    }
+    {
+        var list = try utree.setCurrentEventIndex(2);
+        defer list.deinit();
+        try eqSlice(u16, &.{ 4, 3 }, list.items);
+    }
 }
 
 fn addEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, operation: Operation) !void {
@@ -107,45 +147,61 @@ test addEvent {
     var utree = try UndoTree.init(testing_allocator);
     defer utree.deinit();
 
-    try utree.addEvent(null, .insert, .{
-        .start = .{ .line = 0, .col = 0 },
-        .end = .{ .line = 0, .col = 5 },
-        .chars = "hello",
-    });
-    try eq(1, utree.events.len);
-    try eq(null, utree.events.get(0).parent);
+    {
+        try utree.addEvent(null, .insert, .{
+            .start = .{ .line = 0, .col = 0 },
+            .end = .{ .line = 0, .col = 5 },
+            .chars = "hello",
+        });
+        try eq(1, utree.events.len);
+        try eq(null, utree.events.get(0).parent);
+    }
 
-    try utree.addEvent(null, .insert, .{
-        .start = .{ .line = 0, .col = 5 },
-        .end = .{ .line = 1, .col = 0 },
-        .chars = "\n",
-    });
-    try eq(2, utree.events.len);
-    try eq(0, utree.events.get(1).parent);
-    try eq(1, utree.events.get(0).children.single);
+    {
+        try utree.addEvent(null, .insert, .{
+            .start = .{ .line = 0, .col = 5 },
+            .end = .{ .line = 1, .col = 0 },
+            .chars = "\n",
+        });
+        try eq(2, utree.events.len);
+        try eq(0, utree.events.get(1).parent);
+        try eq(1, utree.events.get(0).children.single);
+    }
 
-    utree.setCurrentEventIndex(0);
-    try utree.addEvent(null, .insert, .{
-        .start = .{ .line = 0, .col = 5 },
-        .end = .{ .line = 0, .col = 11 },
-        .chars = " venus",
-    });
-    try eq(3, utree.events.len);
-    try eq(0, utree.events.get(1).parent);
-    try eq(0, utree.events.get(2).parent);
-    try eqSlice(u16, &.{ 1, 2 }, utree.events.get(0).children.multiple.items);
+    {
+        var list = try utree.setCurrentEventIndex(0);
+        defer list.deinit();
+        try eq(utree.current_event_index, 0);
+        try eqSlice(u16, &.{1}, list.items);
 
-    utree.setCurrentEventIndex(0);
-    try utree.addEvent(null, .insert, .{
-        .start = .{ .line = 0, .col = 11 },
-        .end = .{ .line = 1, .col = 0 },
-        .chars = "\n",
-    });
-    try eq(4, utree.events.len);
-    try eq(0, utree.events.get(1).parent);
-    try eq(0, utree.events.get(2).parent);
-    try eq(0, utree.events.get(3).parent);
-    try eqSlice(u16, &.{ 1, 2, 3 }, utree.events.get(0).children.multiple.items);
+        try utree.addEvent(null, .insert, .{
+            .start = .{ .line = 0, .col = 5 },
+            .end = .{ .line = 0, .col = 11 },
+            .chars = " venus",
+        });
+        try eq(3, utree.events.len);
+        try eq(0, utree.events.get(1).parent);
+        try eq(0, utree.events.get(2).parent);
+        try eqSlice(u16, &.{ 1, 2 }, utree.events.get(0).children.multiple.items);
+    }
+
+    {
+        var list = try utree.setCurrentEventIndex(0);
+        defer list.deinit();
+        try eq(utree.current_event_index, 0);
+        try eqSlice(u16, &.{2}, list.items);
+
+        try utree.addEvent(null, .insert, .{
+            .start = .{ .line = 0, .col = 11 },
+            .end = .{ .line = 1, .col = 0 },
+            .chars = "\n",
+        });
+        try eq(4, utree.events.len);
+        try eq(0, utree.events.get(1).parent);
+        try eq(0, utree.events.get(2).parent);
+        try eq(0, utree.events.get(3).parent);
+        try eqSlice(u16, &.{ 1, 2, 3 }, utree.events.get(0).children.multiple.items);
+    }
 }
 
 ///////////////////////////// Load
@@ -172,6 +228,23 @@ fn saveToDisk(bytes: []const u8, path: []const u8) !void {
     _ = bytes;
     _ = path;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Types
+
+const ChildrenIndexList = std.ArrayList(u16);
+
+const OperationKind = enum { insert, delete };
+
+const Operation = struct {
+    start: CursorPoint,
+    end: CursorPoint,
+    chars: []const u8,
+};
+
+const CursorPoint = struct {
+    line: u16,
+    col: u16,
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
