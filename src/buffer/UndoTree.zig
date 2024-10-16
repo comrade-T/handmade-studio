@@ -1,7 +1,8 @@
 const UndoTree = @This();
 
 const std = @import("std");
-const RcNode = @import("RcRope.zig").RcNode;
+const rcr = @import("RcRope.zig");
+const RcNode = rcr.RcNode;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -16,12 +17,15 @@ const assert = std.debug.assert;
 
 a: Allocator,
 events: EventList,
+pending: EventList,
 current_event_index: u16 = 0,
 
 const EventList = std.MultiArrayList(Event);
 
 const Event = struct {
     node: ?RcNode = null,
+
+    timestamp: i64,
 
     parent: ?u16 = null,
     children: union(enum) {
@@ -37,11 +41,17 @@ const Event = struct {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn init(a: Allocator) !UndoTree {
-    var list = EventList{};
-    try list.append(a, Event{ .children = .none, .operation_kind = .original, .operation = .{} });
+    var events = EventList{};
+    try events.append(a, Event{
+        .timestamp = std.time.milliTimestamp(),
+        .children = .none,
+        .operation_kind = .original,
+        .operation = .{},
+    });
     return UndoTree{
         .a = a,
-        .events = list,
+        .pending = EventList{},
+        .events = events,
     };
 }
 
@@ -55,8 +65,129 @@ fn deinit(self: *UndoTree) void {
             else => {},
         }
     }
+    self.pending.deinit(self.a);
     self.events.deinit(self.a);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn addPendingEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, operation: Operation) !void {
+    const event = Event{
+        .node = node,
+        .timestamp = std.time.milliTimestamp(),
+        .operation_kind = operation_kind,
+        .operation = operation,
+        .children = .none,
+        .parent = self.current_event_index,
+    };
+    try self.pending.append(self.a, event);
+}
+
+test addPendingEvent {
+    var utree = try UndoTree.init(testing_allocator);
+    defer utree.deinit();
+
+    try utree.addPendingEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 }, .chars = "h" });
+    try utree.addPendingEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 }, .chars = "e" });
+    try utree.addPendingEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 }, .chars = "l" });
+    try utree.addPendingEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 }, .chars = "l" });
+    try utree.addPendingEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "o" });
+    try eq(1, utree.events.len);
+    try eq(5, utree.pending.len);
+
+    // TODO: how the fuck do I join those updates together?
+}
+
+fn upgradeLatestPendingEventToUndoEvent(self: *UndoTree) !void {
+    assert(self.pending.len > 0);
+    if (self.pending.len == 0) return;
+    try self.events.append(self.a, self.pending.get(self.pending.len - 1));
+    try self.updateCurrentIndexAfterAppend();
+    self.cleanUpPendingEvents();
+}
+
+fn cleanUpPendingEvents(self: *UndoTree) void {
+    for (0..self.pending.len - 1) |i| {
+        const node = self.pending.items(.node)[i];
+        assert(node != null);
+        if (node) |n| rcr.freeRcNode(n);
+    }
+    self.pending.deinit(self.a);
+    self.pending = EventList{};
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn addUndoEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, operation: Operation) !void {
+    const event = self.createEvent(node, operation_kind, operation);
+    try self.events.append(self.a, event);
+    try self.updateCurrentIndexAfterAppend();
+}
+
+test addUndoEvent {
+    var utree = try UndoTree.init(testing_allocator);
+    defer utree.deinit();
+    try eq(1, utree.events.len);
+    try eq(null, utree.events.get(0).parent);
+
+    {
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "hello" });
+        try eq(2, utree.events.len);
+        try eq(0, utree.events.get(1).parent);
+        try eq(1, utree.events.get(0).children.single);
+    }
+
+    {
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 1, .col = 0 }, .chars = "\n" });
+        try eq(3, utree.events.len);
+        try eq(1, utree.events.get(2).parent);
+        try eq(2, utree.events.get(1).children.single);
+    }
+
+    {
+        var list = try utree.setCurrentEventIndex(1);
+        defer list.deinit();
+        try eq(utree.current_event_index, 1);
+        try eqSlice(u16, &.{2}, list.items);
+
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 11 }, .chars = " venus" });
+        try eq(4, utree.events.len);
+        try eq(1, utree.events.get(2).parent);
+        try eq(1, utree.events.get(3).parent);
+        try eqSlice(u16, &.{ 2, 3 }, utree.events.get(1).children.multiple.items);
+    }
+}
+
+fn createEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, operation: Operation) Event {
+    return Event{
+        .node = node,
+        .timestamp = std.time.milliTimestamp(),
+        .operation_kind = operation_kind,
+        .operation = operation,
+        .children = .none,
+        .parent = self.current_event_index,
+    };
+}
+
+fn updateCurrentIndexAfterAppend(self: *@This()) !void {
+    const new_child_index: u16 = @intCast(self.events.len - 1);
+    defer self.current_event_index = new_child_index;
+
+    const parent_children = &self.events.items(.children)[self.current_event_index];
+    switch (parent_children.*) {
+        .none => parent_children.* = .{ .single = new_child_index },
+        .single => |single_child_index| {
+            const list = try self.a.create(ChildrenIndexList);
+            list.* = try ChildrenIndexList.initCapacity(self.a, 2);
+            try list.append(single_child_index);
+            try list.append(new_child_index);
+            parent_children.* = .{ .multiple = list };
+        },
+        .multiple => try parent_children.*.multiple.append(new_child_index),
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 fn setCurrentEventIndex(self: *UndoTree, target: u16) !ArrayList(u16) {
     const current = self.current_event_index;
@@ -88,15 +219,15 @@ test setCurrentEventIndex {
     var utree = try UndoTree.init(testing_allocator);
     defer utree.deinit();
     {
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 }, .chars = "h" });
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 }, .chars = "h" });
         try eqSlice(?u16, &.{ null, 0 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 }, .chars = "e" });
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 }, .chars = "e" });
         try eqSlice(?u16, &.{ null, 0, 1 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 }, .chars = "l" });
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 }, .chars = "l" });
         try eqSlice(?u16, &.{ null, 0, 1, 2 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 }, .chars = "l" });
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 }, .chars = "l" });
         try eqSlice(?u16, &.{ null, 0, 1, 2, 3 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "o" });
+        try utree.addUndoEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "o" });
         try eqSlice(?u16, &.{ null, 0, 1, 2, 3, 4 }, utree.events.items(.parent));
     }
 
@@ -117,66 +248,7 @@ test setCurrentEventIndex {
     }
 }
 
-fn addEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, operation: Operation) !void {
-    const event = Event{
-        .node = node,
-        .operation_kind = operation_kind,
-        .operation = operation,
-        .children = .none,
-        .parent = self.current_event_index,
-    };
-    try self.events.append(self.a, event);
-
-    const new_child_index: u16 = @intCast(self.events.len - 1);
-    defer self.current_event_index = new_child_index;
-
-    const parent_children = &self.events.items(.children)[self.current_event_index];
-    switch (parent_children.*) {
-        .none => parent_children.* = .{ .single = new_child_index },
-        .single => |single_child_index| {
-            const list = try self.a.create(ChildrenIndexList);
-            list.* = try ChildrenIndexList.initCapacity(self.a, 2);
-            try list.append(single_child_index);
-            try list.append(new_child_index);
-            parent_children.* = .{ .multiple = list };
-        },
-        .multiple => try parent_children.*.multiple.append(new_child_index),
-    }
-}
-
-test addEvent {
-    var utree = try UndoTree.init(testing_allocator);
-    defer utree.deinit();
-    try eq(1, utree.events.len);
-    try eq(null, utree.events.get(0).parent);
-
-    {
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "hello" });
-        try eq(2, utree.events.len);
-        try eq(0, utree.events.get(1).parent);
-        try eq(1, utree.events.get(0).children.single);
-    }
-
-    {
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 1, .col = 0 }, .chars = "\n" });
-        try eq(3, utree.events.len);
-        try eq(1, utree.events.get(2).parent);
-        try eq(2, utree.events.get(1).children.single);
-    }
-
-    {
-        var list = try utree.setCurrentEventIndex(1);
-        defer list.deinit();
-        try eq(utree.current_event_index, 1);
-        try eqSlice(u16, &.{2}, list.items);
-
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 11 }, .chars = " venus" });
-        try eq(4, utree.events.len);
-        try eq(1, utree.events.get(2).parent);
-        try eq(1, utree.events.get(3).parent);
-        try eqSlice(u16, &.{ 2, 3 }, utree.events.get(1).children.multiple.items);
-    }
-}
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////// Load
 
@@ -235,5 +307,5 @@ test {
     try eq(8, @sizeOf(RcNode));
 
     try eq(8, @alignOf(Event));
-    try eq(64, @sizeOf(Event));
+    try eq(72, @sizeOf(Event));
 }

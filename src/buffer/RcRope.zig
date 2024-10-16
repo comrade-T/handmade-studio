@@ -1471,11 +1471,11 @@ test "size matters" {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn freeRcNodes(nodes: []const RcNode) void {
+pub fn freeRcNodes(nodes: []const RcNode) void {
     for (nodes) |node| freeRcNode(node);
 }
 
-fn freeRcNode(node: RcNode) void {
+pub fn freeRcNode(node: RcNode) void {
     node.value.releaseChildrenRecursive(testing_allocator);
     node.release(testing_allocator);
 }
