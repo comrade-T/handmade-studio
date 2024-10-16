@@ -16,14 +16,14 @@ const assert = std.debug.assert;
 
 a: Allocator,
 events: EventList,
-current_event_index: ?u16 = null,
+current_event_index: u16 = 0,
 
 const EventList = std.MultiArrayList(Event);
 
 const Event = struct {
-    node: ?RcNode,
+    node: ?RcNode = null,
 
-    parent: ?u16,
+    parent: ?u16 = null,
     children: union(enum) {
         none,
         single: u16,
@@ -37,9 +37,11 @@ const Event = struct {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn init(a: Allocator) !UndoTree {
+    var list = EventList{};
+    try list.append(a, Event{ .children = .none, .operation_kind = .original, .operation = .{} });
     return UndoTree{
         .a = a,
-        .events = EventList{},
+        .events = list,
     };
 }
 
@@ -57,8 +59,7 @@ fn deinit(self: *UndoTree) void {
 }
 
 fn setCurrentEventIndex(self: *UndoTree, target: u16) !ArrayList(u16) {
-    assert(self.current_event_index != null);
-    const current = self.current_event_index orelse unreachable;
+    const current = self.current_event_index;
     if (target == current) return ArrayList(u16).init(self.a);
     defer self.current_event_index = target;
 
@@ -88,31 +89,31 @@ test setCurrentEventIndex {
     defer utree.deinit();
     {
         try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 }, .chars = "h" });
-        try eqSlice(?u16, &.{null}, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 }, .chars = "e" });
         try eqSlice(?u16, &.{ null, 0 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 }, .chars = "l" });
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 }, .chars = "e" });
         try eqSlice(?u16, &.{ null, 0, 1 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 }, .chars = "l" });
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 }, .chars = "l" });
         try eqSlice(?u16, &.{ null, 0, 1, 2 }, utree.events.items(.parent));
-        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "o" });
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 }, .chars = "l" });
         try eqSlice(?u16, &.{ null, 0, 1, 2, 3 }, utree.events.items(.parent));
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "o" });
+        try eqSlice(?u16, &.{ null, 0, 1, 2, 3, 4 }, utree.events.items(.parent));
     }
 
     {
         var list = try utree.setCurrentEventIndex(0);
         defer list.deinit();
-        try eqSlice(u16, &.{ 4, 3, 2, 1 }, list.items);
+        try eqSlice(u16, &.{ 5, 4, 3, 2, 1 }, list.items);
     }
     {
-        var list = try utree.setCurrentEventIndex(4);
+        var list = try utree.setCurrentEventIndex(5);
         defer list.deinit();
-        try eqSlice(u16, &.{ 1, 2, 3, 4 }, list.items);
+        try eqSlice(u16, &.{ 1, 2, 3, 4, 5 }, list.items);
     }
     {
         var list = try utree.setCurrentEventIndex(2);
         defer list.deinit();
-        try eqSlice(u16, &.{ 4, 3 }, list.items);
+        try eqSlice(u16, &.{ 5, 4, 3 }, list.items);
     }
 }
 
@@ -122,14 +123,14 @@ fn addEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, opera
         .operation_kind = operation_kind,
         .operation = operation,
         .children = .none,
-        .parent = self.current_event_index orelse null,
+        .parent = self.current_event_index,
     };
     try self.events.append(self.a, event);
 
     const new_child_index: u16 = @intCast(self.events.len - 1);
     defer self.current_event_index = new_child_index;
 
-    const parent_children = &self.events.items(.children)[self.current_event_index orelse return];
+    const parent_children = &self.events.items(.children)[self.current_event_index];
     switch (parent_children.*) {
         .none => parent_children.* = .{ .single = new_child_index },
         .single => |single_child_index| {
@@ -146,61 +147,34 @@ fn addEvent(self: *UndoTree, node: ?RcNode, operation_kind: OperationKind, opera
 test addEvent {
     var utree = try UndoTree.init(testing_allocator);
     defer utree.deinit();
+    try eq(1, utree.events.len);
+    try eq(null, utree.events.get(0).parent);
 
     {
-        try utree.addEvent(null, .insert, .{
-            .start = .{ .line = 0, .col = 0 },
-            .end = .{ .line = 0, .col = 5 },
-            .chars = "hello",
-        });
-        try eq(1, utree.events.len);
-        try eq(null, utree.events.get(0).parent);
-    }
-
-    {
-        try utree.addEvent(null, .insert, .{
-            .start = .{ .line = 0, .col = 5 },
-            .end = .{ .line = 1, .col = 0 },
-            .chars = "\n",
-        });
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 }, .chars = "hello" });
         try eq(2, utree.events.len);
         try eq(0, utree.events.get(1).parent);
         try eq(1, utree.events.get(0).children.single);
     }
 
     {
-        var list = try utree.setCurrentEventIndex(0);
-        defer list.deinit();
-        try eq(utree.current_event_index, 0);
-        try eqSlice(u16, &.{1}, list.items);
-
-        try utree.addEvent(null, .insert, .{
-            .start = .{ .line = 0, .col = 5 },
-            .end = .{ .line = 0, .col = 11 },
-            .chars = " venus",
-        });
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 1, .col = 0 }, .chars = "\n" });
         try eq(3, utree.events.len);
-        try eq(0, utree.events.get(1).parent);
-        try eq(0, utree.events.get(2).parent);
-        try eqSlice(u16, &.{ 1, 2 }, utree.events.get(0).children.multiple.items);
+        try eq(1, utree.events.get(2).parent);
+        try eq(2, utree.events.get(1).children.single);
     }
 
     {
-        var list = try utree.setCurrentEventIndex(0);
+        var list = try utree.setCurrentEventIndex(1);
         defer list.deinit();
-        try eq(utree.current_event_index, 0);
+        try eq(utree.current_event_index, 1);
         try eqSlice(u16, &.{2}, list.items);
 
-        try utree.addEvent(null, .insert, .{
-            .start = .{ .line = 0, .col = 11 },
-            .end = .{ .line = 1, .col = 0 },
-            .chars = "\n",
-        });
+        try utree.addEvent(null, .insert, .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 11 }, .chars = " venus" });
         try eq(4, utree.events.len);
-        try eq(0, utree.events.get(1).parent);
-        try eq(0, utree.events.get(2).parent);
-        try eq(0, utree.events.get(3).parent);
-        try eqSlice(u16, &.{ 1, 2, 3 }, utree.events.get(0).children.multiple.items);
+        try eq(1, utree.events.get(2).parent);
+        try eq(1, utree.events.get(3).parent);
+        try eqSlice(u16, &.{ 2, 3 }, utree.events.get(1).children.multiple.items);
     }
 }
 
@@ -233,17 +207,17 @@ fn saveToDisk(bytes: []const u8, path: []const u8) !void {
 
 const ChildrenIndexList = std.ArrayList(u16);
 
-const OperationKind = enum { insert, delete };
+const OperationKind = enum { original, insert, delete };
 
 const Operation = struct {
-    start: CursorPoint,
-    end: CursorPoint,
-    chars: []const u8,
+    start: CursorPoint = .{},
+    end: CursorPoint = .{},
+    chars: []const u8 = "",
 };
 
 const CursorPoint = struct {
-    line: u16,
-    col: u16,
+    line: u16 = 0,
+    col: u16 = 0,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
