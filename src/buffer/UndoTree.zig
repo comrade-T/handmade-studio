@@ -1,9 +1,11 @@
 const UndoTree = @This();
 
-const std = @import("std");
 const rcr = @import("RcRope.zig");
 const RcNode = rcr.RcNode;
+const Node = rcr.Node;
+const freeRcNode = rcr.freeRcNode;
 
+const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
@@ -25,14 +27,36 @@ events: EventList,
 
 active_event_index: u16,
 
-fn init(a: Allocator) !UndoTree {
+fn init(a: Allocator, opts: InitOption) !UndoTree {
+    var events = EventList{};
+    switch (opts) {
+        .new => |node| {
+            try events.append(a, Event{
+                .node = node,
+                .parent = null,
+                .timestamp = std.time.milliTimestamp(),
+                .kind = .none,
+                .children = .none,
+                .changes = .none,
+            });
+        },
+        .load => unreachable,
+    }
     return UndoTree{
         .a = a,
         .arena = ArenaAllocator.init(a),
+        .active_event_index = 0,
+        .events = events,
     };
 }
 
+const InitOption = union(enum) {
+    new: RcNode,
+    load: void,
+};
+
 fn deinit(self: *@This()) void {
+    self.events.deinit(self.a);
     self.arena.deinit();
 }
 
@@ -83,6 +107,26 @@ const UniformedInsertEventBuilder = struct {
     }
 };
 
+test UniformedInsertEventBuilder {
+    const source =
+        \\const one = 1;
+        \\const two = 2;
+        \\var x: u32 = one + two;
+        \\const not_false = true;
+    ;
+
+    var content_arena = ArenaAllocator.init(testing_allocator);
+    defer content_arena.deinit();
+
+    const root = try Node.fromString(testing_allocator, &content_arena, source);
+    defer freeRcNode(root);
+
+    var utree = try UndoTree.init(testing_allocator, .{ .new = root });
+    defer utree.deinit();
+
+    // TODO:
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const CursorPoint = struct {
@@ -103,7 +147,7 @@ const Event = struct {
     children: Children,
     changes: Changes,
 
-    const Kind = enum { insert, delete, replace };
+    const Kind = enum { none, insert, delete };
 
     const Children = union(enum) {
         none,

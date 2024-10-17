@@ -176,7 +176,7 @@ fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) Walk
 
 pub const RcNode = TrimmedRc(Node, usize);
 
-const Node = union(enum) {
+pub const Node = union(enum) {
     branch: Branch,
     leaf: Leaf,
 
@@ -216,7 +216,7 @@ const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    fn fromString(a: Allocator, arena: *ArenaAllocator, source: []const u8) !RcNode {
+    pub fn fromString(a: Allocator, arena: *ArenaAllocator, source: []const u8) !RcNode {
         var stream = std.io.fixedBufferStream(source);
         return Node.fromReader(a, arena, stream.reader(), source.len);
     }
@@ -371,7 +371,7 @@ const Node = union(enum) {
     };
 
     const InsertCharsError = error{ OutOfMemory, InputLenZero, ColumnOutOfBounds };
-    fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, chars: []const u8, destination: CursorPoint) InsertCharsError!struct { usize, usize, RcNode } {
+    pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, chars: []const u8, destination: CursorPoint) InsertCharsError!struct { usize, usize, RcNode } {
         if (chars.len == 0) return error.InputLenZero;
         var self = self_;
 
@@ -1011,7 +1011,7 @@ const Node = union(enum) {
         }
     };
 
-    fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
+    pub fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
         var ctx = DeleteCharsCtx{ .a = a, .col = destination.col, .count = count };
         const result = try walkMutFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
         if (result.found) return result.replace orelse error.Stop;
@@ -1072,7 +1072,7 @@ const Node = union(enum) {
         return balance_factor;
     }
 
-    fn balance(a: Allocator, self: RcNode) !RcNode {
+    pub fn balance(a: Allocator, self: RcNode) !RcNode {
         switch (self.value.*) {
             .leaf => return self,
             .branch => |branch| {
@@ -1458,9 +1458,6 @@ test "size matters" {
     try eq(24, @sizeOf(Leaf));
     try eq(32, @sizeOf(Branch));
     try eq(40, @sizeOf(Node));
-
-    // try eq(24, @sizeOf(rc.Rc(Node))); // using zigrc's version
-    // try eq(56, rc.Rc(Node).innerSize()); // using zigrc's version
 
     try eq(8, @alignOf(RcNode));
     try eq(8, RcNode.innerAlign());
