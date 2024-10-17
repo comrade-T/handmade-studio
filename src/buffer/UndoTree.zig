@@ -10,6 +10,7 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
+const idc_if_it_leaks = std.heap.page_allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
@@ -62,7 +63,8 @@ fn deinit(self: *@This()) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn finalizeUniformedInsertEvent(self: *@This(), node: RcNode, builder: UniformedInsertEventBuilder) !void {
+fn finalizeUniformedInsertEvent(self: *@This(), node: RcNode, builder: UniformedInsertEventBuilder) !Event {
+    const ranges = try builder.calculateFinalRanges(self.arena.allocator());
     const event = Event{
         .node = node,
         .parent = self.active_event_index,
@@ -70,7 +72,7 @@ fn finalizeUniformedInsertEvent(self: *@This(), node: RcNode, builder: Uniformed
         .kind = .insert,
         .children = .none,
         .changes = Event.Changes{ .multiple_uniformed = .{
-            .ranges = self.arena.allocator().dupe(CursorRange, builder.ranges),
+            .ranges = ranges,
             .contents = builder.contents,
         } },
     };
@@ -78,53 +80,136 @@ fn finalizeUniformedInsertEvent(self: *@This(), node: RcNode, builder: Uniformed
     return event;
 }
 
+// test finalizeUniformedInsertEvent {
+//     const source =
+//         \\const one = 1;
+//         \\const two = 2;
+//         \\var x: u32 = one + two;
+//         \\const not_false = true;
+//     ;
+//
+//     var content_arena = ArenaAllocator.init(testing_allocator);
+//     defer content_arena.deinit();
+//
+//     const root = try Node.fromString(testing_allocator, &content_arena, source);
+//     defer freeRcNode(root);
+//
+//     var utree = try UndoTree.init(testing_allocator, .{ .new = root });
+//     defer utree.deinit();
+//
+//     var builder = try UniformedInsertEventBuilder.init(testing_allocator);
+//     defer builder.deinit();
+// }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const UniformedInsertEventBuilder = struct {
     a: Allocator,
-    ranges: ArrayList(CursorRange),
+    points: ArrayList(CursorPoint),
     contents: []const u8 = "",
 
     fn init(a: Allocator) !UniformedInsertEventBuilder {
-        return UniformedInsertEventBuilder{ .a = a, .ranges = ArrayList(CursorRange).init(a) };
+        return UniformedInsertEventBuilder{ .a = a, .points = ArrayList(CursorPoint).init(a) };
     }
 
     fn deinit(self: *@This()) void {
-        self.ranges.deinit();
+        self.points.deinit();
         self.a.free(self.contents);
     }
 
-    fn addInitialRange(self: *@This(), point: CursorPoint) !void {
-        try self.ranges.append(point);
-    }
-
-    fn updateRange(self: *@This(), i: usize, new_range: CursorRange) !void {
-        assert(i < self.ranges.items.len);
-        self.ranges.items[i] = new_range;
+    fn addInitialPoint(self: *@This(), point: CursorPoint) !void {
+        try self.points.append(point);
     }
 
     fn appendChars(self: *@This(), new_chars: []const u8) !void {
-        if (self.contents.len > 0) self.a.free(self.contents);
+        const old_contents = self.contents;
+        defer if (self.contents.len > 0) self.a.free(old_contents);
         self.contents = try std.fmt.allocPrint(self.a, "{s}{s}", .{ self.contents, new_chars });
+    }
+
+    fn calculateFinalRanges(self: *@This(), a: Allocator) ![]CursorRange {
+        var list = try ArrayList(CursorRange).initCapacity(a, self.points.items.len);
+        var last_line = self.contents;
+        var nlcount: u16 = 0;
+
+        var iter = std.mem.split(u8, self.contents, "\n");
+        while (iter.next()) |chunk| {
+            last_line = chunk;
+            nlcount += 1;
+        }
+        nlcount -|= 1;
+
+        const noc: u16 = @intCast(rcr.getNumOfChars(last_line));
+
+        for (self.points.items, 0..) |point, i_| {
+            const i: u16 = @intCast(i_);
+            const start_line = point.line + (nlcount * i);
+            const end_line = point.line + (nlcount * (i + 1));
+            const end_col = if (nlcount == 0) point.col + noc else noc;
+            try list.append(CursorRange{
+                .start = CursorPoint{ .line = start_line, .col = point.col },
+                .end = CursorPoint{ .line = end_line, .col = end_col },
+            });
+        }
+
+        return try list.toOwnedSlice();
     }
 };
 
 test UniformedInsertEventBuilder {
-    const source =
-        \\const one = 1;
-        \\const two = 2;
-        \\var x: u32 = one + two;
-        \\const not_false = true;
-    ;
+    var builder = try UniformedInsertEventBuilder.init(testing_allocator);
+    defer builder.deinit();
 
-    var content_arena = ArenaAllocator.init(testing_allocator);
-    defer content_arena.deinit();
+    try builder.addInitialPoint(.{ .line = 0, .col = 0 });
+    try builder.addInitialPoint(.{ .line = 1, .col = 0 });
+    try builder.addInitialPoint(.{ .line = 3, .col = 5 });
+    try builder.addInitialPoint(.{ .line = 5, .col = 10 });
+    try eq(4, builder.points.items.len);
 
-    const root = try Node.fromString(testing_allocator, &content_arena, source);
-    defer freeRcNode(root);
+    ///////////////////////////// no line shifts
 
-    var utree = try UndoTree.init(testing_allocator, .{ .new = root });
-    defer utree.deinit();
+    try builder.appendChars("h");
+    try builder.appendChars("i");
+    try eqStr("hi", builder.contents);
+    try eqSlice(CursorRange, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 2 } },
+        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 2 } },
+        .{ .start = .{ .line = 3, .col = 5 }, .end = .{ .line = 3, .col = 7 } },
+        .{ .start = .{ .line = 5, .col = 10 }, .end = .{ .line = 5, .col = 12 } },
+    }, try builder.calculateFinalRanges(idc_if_it_leaks));
 
-    // TODO:
+    ///////////////////////////// 1st round of line shifts
+
+    try builder.appendChars("\n");
+    try eqStr("hi\n", builder.contents);
+    try eqSlice(CursorRange, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 1, .col = 0 } },
+        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 3, .col = 0 } },
+        .{ .start = .{ .line = 5, .col = 5 }, .end = .{ .line = 6, .col = 0 } },
+        .{ .start = .{ .line = 8, .col = 10 }, .end = .{ .line = 9, .col = 0 } },
+    }, try builder.calculateFinalRanges(idc_if_it_leaks));
+
+    ///////////////////////////// 2nd round of line shifts
+
+    try builder.appendChars("\n");
+    try eqStr("hi\n\n", builder.contents);
+    try eqSlice(CursorRange, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 2, .col = 0 } },
+        .{ .start = .{ .line = 3, .col = 0 }, .end = .{ .line = 5, .col = 0 } },
+        .{ .start = .{ .line = 7, .col = 5 }, .end = .{ .line = 9, .col = 0 } },
+        .{ .start = .{ .line = 11, .col = 10 }, .end = .{ .line = 13, .col = 0 } },
+    }, try builder.calculateFinalRanges(idc_if_it_leaks));
+
+    ///////////////////////////// no line shifts
+
+    try builder.appendChars("hello");
+    try eqStr("hi\n\nhello", builder.contents);
+    try eqSlice(CursorRange, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 2, .col = 5 } },
+        .{ .start = .{ .line = 3, .col = 0 }, .end = .{ .line = 5, .col = 5 } },
+        .{ .start = .{ .line = 7, .col = 5 }, .end = .{ .line = 9, .col = 5 } },
+        .{ .start = .{ .line = 11, .col = 10 }, .end = .{ .line = 13, .col = 5 } },
+    }, try builder.calculateFinalRanges(idc_if_it_leaks));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

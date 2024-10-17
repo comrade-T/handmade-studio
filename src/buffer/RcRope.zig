@@ -1428,7 +1428,7 @@ fn getNumOfBytesTillCol(str: []const u8, col: usize) usize {
     return num_of_bytes;
 }
 
-fn getNumOfChars(str: []const u8) u32 {
+pub fn getNumOfChars(str: []const u8) u32 {
     var iter = code_point.Iterator{ .bytes = str };
     var num_chars: u32 = 0;
     while (iter.next()) |_| num_chars += 1;
