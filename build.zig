@@ -94,6 +94,12 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = undo_tree;
 
+    const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+    }, zig_build_test_step);
+    _ = buffer;
+
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);

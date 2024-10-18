@@ -1,4 +1,4 @@
-const UndoTree = @This();
+const Buffer = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -17,4 +17,6 @@ a: Allocator,
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-// TODO:
+test {
+    try eq(2, 2);
+}
