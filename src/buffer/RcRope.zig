@@ -65,20 +65,20 @@ pub const EolMode = enum { lf, crlf };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WalkMutError = error{OutOfMemory};
-const WalkMutCallback = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult;
+const WalkError = error{OutOfMemory};
+const WalkCallback = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkError!WalkResult;
 
-pub const WalkMutResult = struct {
+pub const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
     replace: ?RcNode = null,
 
-    pub const keep_walking = WalkMutResult{ .keep_walking = true };
-    pub const stop = WalkMutResult{ .keep_walking = false };
-    pub const found = WalkMutResult{ .found = true };
+    pub const keep_walking = WalkResult{ .keep_walking = true };
+    pub const stop = WalkResult{ .keep_walking = false };
+    pub const found = WalkResult{ .found = true };
 
-    pub fn merge(branch: *const Branch, a: Allocator, left: WalkMutResult, right: WalkMutResult) WalkMutError!WalkMutResult {
-        var result = WalkMutResult{};
+    pub fn merge(branch: *const Branch, a: Allocator, left: WalkResult, right: WalkResult) WalkError!WalkResult {
+        var result = WalkResult{};
 
         if (left.replace != null or right.replace != null) {
             var new_left: RcNode = undefined;
@@ -123,14 +123,14 @@ pub const WalkMutResult = struct {
     }
 };
 
-fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallback, ctx: *anyopaque) WalkMutError!WalkMutResult {
+fn walkFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
     switch (node.value.*) {
         .branch => |*branch| {
             const left_bols = branch.left.value.weights().bols;
             if (line >= left_bols) {
-                const right = try walkMutFromLineBegin(a, branch.right, line - left_bols, f, ctx);
+                const right = try walkFromLineBegin(a, branch.right, line - left_bols, f, ctx);
                 if (right.replace) |replacement| {
-                    var result = WalkMutResult{};
+                    var result = WalkResult{};
                     result.found = right.found;
                     result.keep_walking = right.keep_walking;
                     result.replace = if (replacement.value.isEmpty())
@@ -141,10 +141,10 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
                 }
                 return right;
             }
-            const left = try walkMutFromLineBegin(a, branch.left, line, f, ctx);
-            const right = if (left.found and left.keep_walking) try walkMut(a, branch.right, f, ctx) else WalkMutResult{};
+            const left = try walkFromLineBegin(a, branch.left, line, f, ctx);
+            const right = if (left.found and left.keep_walking) try walk(a, branch.right, f, ctx) else WalkResult{};
 
-            return WalkMutResult.merge(branch, a, left, right);
+            return WalkResult.merge(branch, a, left, right);
         },
         .leaf => |*leaf| {
             if (line == 0) {
@@ -152,23 +152,23 @@ fn walkMutFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkMutCallb
                 result.found = true;
                 return result;
             }
-            return WalkMutResult.keep_walking;
+            return WalkResult.keep_walking;
         },
     }
 }
 
-fn walkMut(a: Allocator, node: RcNode, f: WalkMutCallback, ctx: *anyopaque) WalkMutError!WalkMutResult {
+fn walk(a: Allocator, node: RcNode, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
     switch (node.value.*) {
         .branch => |*branch| {
-            const left = try walkMut(a, branch.left, f, ctx);
+            const left = try walk(a, branch.left, f, ctx);
             if (!left.keep_walking) {
-                var result = WalkMutResult{};
+                var result = WalkResult{};
                 result.found = left.found;
                 if (left.replace) |r| result.replace = try Node.new(a, r, branch.right.retain());
                 return result;
             }
-            const right_result = try walkMut(a, branch.right, f, ctx);
-            return WalkMutResult.merge(branch, a, left, right_result);
+            const right_result = try walk(a, branch.right, f, ctx);
+            return WalkResult.merge(branch, a, left, right_result);
         },
         .leaf => |*leaf| return f(ctx, leaf),
     }
@@ -358,21 +358,21 @@ const InsertCharsCtx = struct {
     chars: []const u8,
     eol: bool,
 
-    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult {
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         const leaf_noc = getNumOfChars(leaf.buf);
 
         if (ctx.col == 0) {
             const left = try Leaf.new(ctx.a, ctx.chars, leaf.bol, ctx.eol);
             const right = try Leaf.new(ctx.a, leaf.buf, ctx.eol, leaf.eol);
-            return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+            return WalkResult{ .replace = try Node.new(ctx.a, left, right) };
         }
 
         if (leaf_noc == ctx.col) {
             if (leaf.eol and ctx.eol and ctx.chars.len == 0) {
                 const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, true);
                 const right = try Leaf.new(ctx.a, ctx.chars, true, true);
-                return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                return WalkResult{ .replace = try Node.new(ctx.a, left, right) };
             }
 
             const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, false);
@@ -381,11 +381,11 @@ const InsertCharsCtx = struct {
                 const middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
                 const right = try Leaf.new(ctx.a, "", ctx.eol, leaf.eol);
                 const mid_right = try Node.new(ctx.a, middle, right);
-                return WalkMutResult{ .replace = try Node.new(ctx.a, left, mid_right) };
+                return WalkResult{ .replace = try Node.new(ctx.a, left, mid_right) };
             }
 
             const right = try Leaf.new(ctx.a, ctx.chars, false, leaf.eol);
-            return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+            return WalkResult{ .replace = try Node.new(ctx.a, left, right) };
         }
 
         if (leaf_noc > ctx.col) {
@@ -393,18 +393,18 @@ const InsertCharsCtx = struct {
             if (ctx.eol and ctx.chars.len == 0) {
                 const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol);
                 const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
-                return WalkMutResult{ .replace = try Node.new(ctx.a, left, right) };
+                return WalkResult{ .replace = try Node.new(ctx.a, left, right) };
             }
 
             const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, false);
             const middle = try Leaf.new(ctx.a, ctx.chars, false, ctx.eol);
             const right = try Leaf.new(ctx.a, leaf.buf[pos..], ctx.eol, leaf.eol);
             const mid_right = try Node.new(ctx.a, middle, right);
-            return WalkMutResult{ .replace = try Node.new(ctx.a, left, mid_right) };
+            return WalkResult{ .replace = try Node.new(ctx.a, left, mid_right) };
         }
 
         ctx.col -= leaf_noc;
-        return if (leaf.eol) WalkMutResult.stop else WalkMutResult.keep_walking;
+        return if (leaf.eol) WalkResult.stop else WalkResult.keep_walking;
     }
 };
 
@@ -434,7 +434,7 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, 
         }
 
         var ctx: InsertCharsCtx = .{ .a = a, .col = destination.col, .chars = chunk, .eol = need_eol };
-        const result = try walkMutFromLineBegin(a, self, destination.line, InsertCharsCtx.walker, &ctx);
+        const result = try walkFromLineBegin(a, self, destination.line, InsertCharsCtx.walker, &ctx);
 
         if (!result.found) return error.ColumnOutOfBounds;
         if (result.replace) |root| self = root;
@@ -957,9 +957,7 @@ fn freeBackAndForth(str: []const u8) !void {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Delete
-
-///////////////////////////// Delete
+////////////////////////////////////////////////////////////////////////////////////////////// Delete Chars
 
 const DeleteCharsCtx = struct {
     a: Allocator,
@@ -967,9 +965,9 @@ const DeleteCharsCtx = struct {
     count: usize,
     delete_next_bol: bool = false,
 
-    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkMutError!WalkMutResult {
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-        var result = WalkMutResult.keep_walking;
+        var result = WalkResult.keep_walking;
 
         if (ctx.delete_next_bol and ctx.count == 0) {
             result.replace = try Leaf.new(ctx.a, leaf.buf, false, leaf.eol);
@@ -1053,7 +1051,7 @@ const DeleteCharsCtx = struct {
 
 pub fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
     var ctx = DeleteCharsCtx{ .a = a, .col = destination.col, .count = count };
-    const result = try walkMutFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
+    const result = try walkFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
     if (result.found) return result.replace orelse error.Stop;
     return error.NotFound;
 }
@@ -1100,6 +1098,75 @@ test "deleteChars - basics" {
             \\1 B| `123456`
         , try debugStr(idc_if_it_leaks, edit));
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Delete Range
+
+const GetGetNocOfRangeCtx = struct {
+    noc: usize = 0,
+    curr_line: usize = undefined,
+    curr_col: usize = 0,
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        ctx.noc += getNumOfChars(leaf.buf);
+        if (leaf.eol) {
+            ctx.noc += 1;
+            return WalkResult.found;
+        }
+        return WalkResult.keep_walking;
+    }
+};
+
+pub fn getNocOfRange(node: RcNode, start: CursorPoint, end: CursorPoint) usize {
+    assert(end.line >= start.line);
+    assert(end.line > start.line or (start.line == end.line and start.col <= end.col));
+    if (start.line == end.line) return end.col - start.col;
+
+    var ctx = GetGetNocOfRangeCtx{};
+    for (start.line..end.line + 1) |line| {
+        ctx.curr_line = line;
+        if (line == end.line) {
+            ctx.noc += end.col;
+            break;
+        }
+        _ = walkFromLineBegin(idc_if_it_leaks, node, line, GetGetNocOfRangeCtx.walker, &ctx) catch unreachable;
+    }
+    return ctx.noc - start.col;
+}
+
+test getNocOfRange {
+    var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer content_arena.deinit();
+
+    const original = try Node.fromString(testing_allocator, &content_arena, "hello venus\nhello world\nhello kitty");
+    defer freeRcNode(original);
+
+    const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
+    defer freeRcNode(edit);
+    try eqStr(
+        \\4 3/34
+        \\  2 1/11
+        \\    1 B| `hello`
+        \\    1 `venus` |E
+        \\  3 2/23
+        \\    2 1/12
+        \\      1 B| `hello`
+        \\      1 ` world` |E
+        \\    2 1/11
+        \\      1 B| `hello`
+        \\      1 ` kitty`
+    , try debugStr(idc_if_it_leaks, edit));
+
+    try eq(5, getNocOfRange(edit, .{ .line = 0, .col = 0 }, .{ .line = 0, .col = 5 }));
+    try eq(5, getNocOfRange(edit, .{ .line = 0, .col = 5 }, .{ .line = 0, .col = 10 }));
+    try eq(10, getNocOfRange(edit, .{ .line = 0, .col = 0 }, .{ .line = 0, .col = 10 }));
+
+    try eq(11, getNocOfRange(edit, .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 }));
+    try eq(16, getNocOfRange(edit, .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 5 }));
+    try eq(11, getNocOfRange(edit, .{ .line = 0, .col = 5 }, .{ .line = 1, .col = 5 }));
+
+    try eq(23, getNocOfRange(edit, .{ .line = 0, .col = 5 }, .{ .line = 2, .col = 5 }));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Balance
