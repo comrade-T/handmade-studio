@@ -988,63 +988,62 @@ const DeleteCharsCtx = struct {
         }
 
         // this node
-        defer {
-            if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
-        }
+        this_node: {
+            if (ctx.col == 0) {
+                if (ctx.count > leaf_noc) {
+                    ctx.count -= leaf_noc;
+                    result.replace = try Leaf.new(ctx.a, "", leaf_bol, false);
+                    if (leaf.eol) {
+                        ctx.count -= 1;
+                        ctx.delete_next_bol = true;
+                    }
+                    break :this_node;
+                }
 
-        if (ctx.col == 0) {
-            if (ctx.count > leaf_noc) {
-                ctx.count -= leaf_noc;
-                result.replace = try Leaf.new(ctx.a, "", leaf_bol, false);
+                if (ctx.count == leaf_noc) {
+                    result.replace = try Leaf.new(ctx.a, "", leaf_bol, leaf.eol);
+                    ctx.count = 0;
+                    return result;
+                }
+
+                const pos = getNumOfBytesTillCol(leaf.buf, ctx.count);
+                result.replace = try Leaf.new(ctx.a, leaf.buf[pos..], leaf_bol, leaf.eol);
+                ctx.count = 0;
+                break :this_node;
+            }
+
+            if (ctx.col == leaf_noc) {
                 if (leaf.eol) {
                     ctx.count -= 1;
+                    result.replace = try Leaf.new(ctx.a, leaf.buf, leaf_bol, false);
                     ctx.delete_next_bol = true;
                 }
-                return result;
+                ctx.col -= leaf_noc;
+                break :this_node;
             }
 
-            if (ctx.count == leaf_noc) {
-                result.replace = try Leaf.new(ctx.a, "", leaf_bol, leaf.eol);
-                ctx.count = 0;
-                return result;
+            if (ctx.col + ctx.count >= leaf_noc) {
+                ctx.count -= leaf_noc - ctx.col;
+                const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
+                const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
+                    ctx.count -= 1;
+                    ctx.delete_next_bol = true;
+                    break :leaf_eol false;
+                } else leaf.eol;
+                result.replace = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, leaf_eol);
+                ctx.col = 0;
+                break :this_node;
             }
 
-            const pos = getNumOfBytesTillCol(leaf.buf, ctx.count);
-            result.replace = try Leaf.new(ctx.a, leaf.buf[pos..], leaf_bol, leaf.eol);
+            const pos_start = getNumOfBytesTillCol(leaf.buf, ctx.col);
+            const pos_end = getNumOfBytesTillCol(leaf.buf, ctx.col + ctx.count);
+            const left = try Leaf.new(ctx.a, leaf.buf[0..pos_start], leaf_bol, false);
+            const right = try Leaf.new(ctx.a, leaf.buf[pos_end..], false, leaf.eol);
+            result.replace = try Node.new(ctx.a, left, right);
             ctx.count = 0;
-            return result;
         }
 
-        if (ctx.col == leaf_noc) {
-            if (leaf.eol) {
-                ctx.count -= 1;
-                result.replace = try Leaf.new(ctx.a, leaf.buf, leaf_bol, false);
-                ctx.delete_next_bol = true;
-            }
-            ctx.col -= leaf_noc;
-            return result;
-        }
-
-        if (ctx.col + ctx.count >= leaf_noc) {
-            ctx.count -= leaf_noc - ctx.col;
-            const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
-            const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
-                ctx.count -= 1;
-                ctx.delete_next_bol = true;
-                break :leaf_eol false;
-            } else leaf.eol;
-            result.replace = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf_bol, leaf_eol);
-            ctx.col = 0;
-            return result;
-        }
-
-        const pos_start = getNumOfBytesTillCol(leaf.buf, ctx.col);
-        const pos_end = getNumOfBytesTillCol(leaf.buf, ctx.col + ctx.count);
-        const left = try Leaf.new(ctx.a, leaf.buf[0..pos_start], leaf_bol, false);
-        const right = try Leaf.new(ctx.a, leaf.buf[pos_end..], false, leaf.eol);
-        result.replace = try Node.new(ctx.a, left, right);
-        ctx.count = 0;
-
+        if (ctx.count == 0 and !ctx.delete_next_bol) result.keep_walking = false;
         return result;
     }
 };
@@ -1100,7 +1099,46 @@ test "deleteChars - basics" {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Delete Range
+test "deleteChars - multiple lines" {
+    var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer content_arena.deinit();
+
+    const original = try Node.fromString(testing_allocator, &content_arena, "hello venus\nhello world\nhello kitty");
+    defer freeRcNode(original);
+    try eqStr(
+        \\3 3/35
+        \\  1 B| `hello venus` |E
+        \\  2 2/23
+        \\    1 B| `hello world` |E
+        \\    1 B| `hello kitty`
+    , try debugStr(idc_if_it_leaks, original));
+
+    {
+        const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 0 }, 6);
+        defer freeRcNode(edit);
+        try eqStr(
+            \\3 3/29
+            \\  1 B| `venus` |E
+            \\  2 2/23 Rc:2
+            \\    1 B| `hello world` |E
+            \\    1 B| `hello kitty`
+        , try debugStr(idc_if_it_leaks, edit));
+    }
+
+    {
+        const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 0 }, 18);
+        defer freeRcNode(edit);
+        try eqStr(
+            \\3 2/17
+            \\  1 B| ``
+            \\  2 1/17
+            \\    1 `world` |E
+            \\    1 B| `hello kitty` Rc:2
+        , try debugStr(idc_if_it_leaks, edit));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Get Noc Of Range
 
 const GetGetNocOfRangeCtx = struct {
     noc: usize = 0,
@@ -1145,17 +1183,13 @@ test getNocOfRange {
     const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
     defer freeRcNode(edit);
     try eqStr(
-        \\4 3/34
+        \\3 3/34
         \\  2 1/11
         \\    1 B| `hello`
         \\    1 `venus` |E
-        \\  3 2/23
-        \\    2 1/12
-        \\      1 B| `hello`
-        \\      1 ` world` |E
-        \\    2 1/11
-        \\      1 B| `hello`
-        \\      1 ` kitty`
+        \\  2 2/23 Rc:2
+        \\    1 B| `hello world` |E
+        \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, edit));
 
     try eq(5, getNocOfRange(edit, .{ .line = 0, .col = 0 }, .{ .line = 0, .col = 5 }));
