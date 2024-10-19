@@ -348,17 +348,6 @@ pub const Node = union(enum) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const CursorPoint = struct {
-    line: usize,
-    col: usize,
-
-    pub fn cmp(_: void, a: CursorPoint, b: CursorPoint) bool {
-        if (a.line < b.line) return true;
-        if (a.line == b.line and a.col < b.col) return true;
-        return false;
-    }
-};
-
 const InsertCharsCtx = struct {
     a: Allocator,
     col: usize,
@@ -1598,6 +1587,36 @@ const Weights = struct {
 
     fn isEmpty(self: *const Leaf) bool {
         return self.buf.len == 0 and !self.bol and !self.eol;
+    }
+};
+
+pub const CursorPoint = struct {
+    line: usize,
+    col: usize,
+
+    pub fn cmp(_: void, a: CursorPoint, b: CursorPoint) bool {
+        if (a.line < b.line) return true;
+        if (a.line == b.line and a.col < b.col) return true;
+        return false;
+    }
+};
+
+pub const CursorRange = struct {
+    start: CursorPoint,
+    end: CursorPoint,
+
+    pub fn cmp(_: void, a: CursorRange, b: CursorRange) bool {
+        assert(std.sort.isSorted(CursorPoint, &.{ a.start, a.end }, {}, CursorPoint.cmp));
+        assert(std.sort.isSorted(CursorPoint, &.{ b.start, b.end }, {}, CursorPoint.cmp));
+
+        if (a.start.line < b.start.line) return true;
+        if (a.start.line == b.start.line) {
+            if (a.start.col < b.start.col) return true;
+            if (a.end.line < b.end.line) return true;
+            if (a.end.line == b.end.line and a.end.col < b.end.col) return true;
+        }
+
+        return false;
     }
 };
 

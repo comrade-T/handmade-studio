@@ -13,6 +13,7 @@ const assert = std.debug.assert;
 
 const rcr = @import("RcRope.zig");
 const RcNode = rcr.RcNode;
+const CursorRange = rcr.CursorRange;
 const CursorPoint = rcr.CursorPoint;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -125,6 +126,7 @@ test insertCharsMultiCursor {
 ///////////////////////////// deleteRange
 
 pub fn deleteRange(self: *@This(), start: CursorPoint, end: CursorPoint) !void {
+    assert(std.sort.isSorted(CursorPoint, &.{ start, end }, {}, CursorPoint.cmp));
     const noc = rcr.getNocOfRange(self.root, start, end);
     const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
     self.root = new_root;
@@ -142,6 +144,47 @@ test deleteRange {
     try ropeman.deleteRange(.{ .line = 0, .col = 0 }, .{ .line = 1, .col = 6 });
     try eqStr("world\nhello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
     try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.registerLastPendingToHistory();
+    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+}
+
+///////////////////////////// deleteRangesMultiCursor
+
+fn deleteRangesMultiCursor(self: *@This(), ranges: []const CursorRange) !void {
+    assert(ranges.len > 1);
+    assert(std.sort.isSorted(CursorRange, ranges, {}, CursorRange.cmp));
+
+    var i = ranges.len;
+    while (i > 0) {
+        i -= 1;
+        const r = ranges[i];
+        const noc = rcr.getNocOfRange(self.root, r.start, r.end);
+        const new_root = try rcr.deleteChars(self.root, self.a, r.start, noc);
+        self.root = new_root;
+        try self.pending.append(new_root);
+    }
+}
+
+test deleteRangesMultiCursor {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+
+    try ropeman.deleteRangesMultiCursor(&.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 } },
+        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 1 } },
+        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 2, .col = 1 } },
+    });
+    try eqStr("ello venus\nello world\nello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.deleteRangesMultiCursor(&.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 5 } },
+        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 5 } },
+        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 2, .col = 5 } },
+    });
+    try eqStr("venus\nworld\nkitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 
     try ropeman.registerLastPendingToHistory();
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
