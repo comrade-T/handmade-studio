@@ -48,6 +48,12 @@ pub fn initFromString(a: Allocator, source: []const u8) !RopeMan {
     return ropeman;
 }
 
+pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
+    return self.root.value.toString(a, eol_mode);
+}
+
+///////////////////////////// insertChars
+
 pub fn insertChars(self: *@This(), chars: []const u8, destination: CursorPoint) !CursorPoint {
     assert(self.pending.items.len == 0);
     const line, const col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, destination);
@@ -55,31 +61,6 @@ pub fn insertChars(self: *@This(), chars: []const u8, destination: CursorPoint) 
     try self.history.append(new_root);
     return .{ .line = line, .col = col };
 }
-
-pub fn deleteRange(self: *@This(), start: CursorPoint, end: CursorPoint) !void {
-    assert(self.pending.items.len == 0);
-    const noc = rcr.getNocOfRange(self.root, start, end);
-    const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
-    self.root = new_root;
-    try self.history.append(new_root);
-}
-
-// pub fn registerLastPendingToHistory(self: *@This()) !void {
-//     assert(self.pending.items.len > 0);
-//     if (self.pending.items.len == 0) return;
-//
-//     const last_pending = self.pending.pop();
-//     try self.history.append(last_pending);
-//
-//     rcr.freeRcNodes(self.pending.items);
-//     self.pending.clearRetainingCapacity();
-// }
-
-pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
-    return self.root.value.toString(a, eol_mode);
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
 
 test insertChars {
     var ropeman = try RopeMan.initFromString(testing_allocator, "hello");
@@ -99,6 +80,44 @@ test insertChars {
     try eq(.{ 0, 3 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
+///////////////////////////// insertCharsMultiCursor
+
+pub fn insertCharsMultiCursor(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
+    assert(destinations.len > 1);
+    assert(std.sort.isSorted(CursorPoint, destinations, {}, CursorPoint.cmp));
+
+    var i = destinations.len;
+    while (i > 0) {
+        i -= 1;
+        const d = destinations[i];
+        _, _, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, d);
+        self.root = new_root;
+        try self.pending.append(new_root);
+    }
+}
+
+test insertCharsMultiCursor {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+
+    try ropeman.insertCharsMultiCursor("/", &.{
+        .{ .line = 0, .col = 0 },
+        .{ .line = 1, .col = 0 },
+        .{ .line = 2, .col = 0 },
+    });
+    try eqStr("/hello venus\n/hello world\n/hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+}
+
+///////////////////////////// deleteRange
+
+pub fn deleteRange(self: *@This(), start: CursorPoint, end: CursorPoint) !void {
+    assert(self.pending.items.len == 0);
+    const noc = rcr.getNocOfRange(self.root, start, end);
+    const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
+    self.root = new_root;
+    try self.history.append(new_root);
+}
+
 test deleteRange {
     var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
@@ -110,4 +129,17 @@ test deleteRange {
     try ropeman.deleteRange(.{ .line = 0, .col = 0 }, .{ .line = 1, .col = 6 });
     try eqStr("world\nhello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
     try eq(.{ 0, 3 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+}
+
+///////////////////////////// registerLastPendingToHistory
+
+fn registerLastPendingToHistory(self: *@This()) !void {
+    assert(self.pending.items.len > 0);
+    if (self.pending.items.len == 0) return;
+
+    const last_pending = self.pending.pop();
+    try self.history.append(last_pending);
+
+    rcr.freeRcNodes(self.pending.items);
+    self.pending.clearRetainingCapacity();
 }

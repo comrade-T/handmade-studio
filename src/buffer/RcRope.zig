@@ -348,7 +348,16 @@ pub const Node = union(enum) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub const CursorPoint = struct { line: usize, col: usize };
+pub const CursorPoint = struct {
+    line: usize,
+    col: usize,
+
+    pub fn cmp(_: void, a: CursorPoint, b: CursorPoint) bool {
+        if (a.line < b.line) return true;
+        if (a.line == b.line and a.col < b.col) return true;
+        return false;
+    }
+};
 
 const InsertCharsCtx = struct {
     a: Allocator,
