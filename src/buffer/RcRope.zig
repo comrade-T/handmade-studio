@@ -61,6 +61,8 @@ const eqStr = std.testing.expectEqualStrings;
 const eqDeep = std.testing.expectEqualDeep;
 const assert = std.debug.assert;
 
+pub const EolMode = enum { lf, crlf };
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const WalkMutError = error{OutOfMemory};
@@ -204,6 +206,41 @@ pub const Node = union(enum) {
         };
     }
 
+    ///////////////////////////// store
+
+    pub fn toString(self: *const Node, a: Allocator, eol_mode: EolMode) ![]const u8 {
+        var s = try ArrayList(u8).initCapacity(a, self.weights().len);
+        try self.store(s.writer(), eol_mode);
+        return s.toOwnedSlice();
+    }
+
+    test toString {
+        var arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
+        defer arena.deinit();
+
+        const root = try Node.fromString(idc_if_it_leaks, &arena, "hello world");
+        try eqStr("hello world", try root.value.toString(idc_if_it_leaks, .lf));
+
+        _, _, const e1 = try insertChars(root, idc_if_it_leaks, &arena, "// ", .{ .line = 0, .col = 0 });
+        try eqStr("// hello world", try e1.value.toString(idc_if_it_leaks, .lf));
+    }
+
+    pub fn store(self: *const Node, writer: anytype, eol_mode: EolMode) !void {
+        switch (self.*) {
+            .branch => |*branch| {
+                try branch.left.value.store(writer, eol_mode);
+                try branch.right.value.store(writer, eol_mode);
+            },
+            .leaf => |*leaf| {
+                _ = try writer.write(leaf.buf);
+                if (leaf.eol) switch (eol_mode) {
+                    .lf => _ = try writer.write("\n"),
+                    .crlf => _ = try writer.write("\r\n"),
+                };
+            },
+        }
+    }
+
     ///////////////////////////// Release
 
     fn releaseChildrenRecursive(self: *const Node, a: Allocator) void {
@@ -313,7 +350,7 @@ pub const Node = union(enum) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const CursorPoint = struct { line: usize, col: usize };
+pub const CursorPoint = struct { line: usize, col: usize };
 
 const InsertCharsCtx = struct {
     a: Allocator,
