@@ -108,6 +108,18 @@ test insertCharsMultiCursor {
         .{ .line = 2, .col = 0 },
     });
     try eqStr("/hello venus\n/hello world\n/hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.insertCharsMultiCursor("/ ", &.{
+        .{ .line = 0, .col = 1 },
+        .{ .line = 1, .col = 1 },
+        .{ .line = 2, .col = 1 },
+    });
+    try eqStr("// hello venus\n// hello world\n// hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.registerLastPendingToHistory();
+    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
 ///////////////////////////// deleteRange
