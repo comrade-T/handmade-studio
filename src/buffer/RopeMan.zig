@@ -55,10 +55,9 @@ pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8
 ///////////////////////////// insertChars
 
 pub fn insertChars(self: *@This(), chars: []const u8, destination: CursorPoint) !CursorPoint {
-    assert(self.pending.items.len == 0);
     const line, const col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, destination);
     self.root = new_root;
-    try self.history.append(new_root);
+    try self.pending.append(new_root);
     return .{ .line = line, .col = col };
 }
 
@@ -72,12 +71,15 @@ test insertChars {
     const e1p = try ropeman.insertChars("//", .{ .line = 0, .col = 0 });
     try eq(CursorPoint{ .line = 0, .col = 2 }, e1p);
     try eqStr("//hello", try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    try eq(.{ 1, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 
     const e2p = try ropeman.insertChars(" ", e1p);
     try eq(CursorPoint{ .line = 0, .col = 3 }, e2p);
     try eqStr("// hello", try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 0, 3 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.registerLastPendingToHistory();
+    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
 ///////////////////////////// insertCharsMultiCursor
@@ -111,11 +113,10 @@ test insertCharsMultiCursor {
 ///////////////////////////// deleteRange
 
 pub fn deleteRange(self: *@This(), start: CursorPoint, end: CursorPoint) !void {
-    assert(self.pending.items.len == 0);
     const noc = rcr.getNocOfRange(self.root, start, end);
     const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
     self.root = new_root;
-    try self.history.append(new_root);
+    try self.pending.append(new_root);
 }
 
 test deleteRange {
@@ -124,11 +125,14 @@ test deleteRange {
 
     try ropeman.deleteRange(.{ .line = 0, .col = 0 }, .{ .line = 0, .col = 6 });
     try eqStr("venus\nhello world\nhello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    try eq(.{ 1, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 
     try ropeman.deleteRange(.{ .line = 0, .col = 0 }, .{ .line = 1, .col = 6 });
     try eqStr("world\nhello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 0, 3 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.registerLastPendingToHistory();
+    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
 ///////////////////////////// registerLastPendingToHistory
@@ -140,6 +144,6 @@ fn registerLastPendingToHistory(self: *@This()) !void {
     const last_pending = self.pending.pop();
     try self.history.append(last_pending);
 
-    rcr.freeRcNodes(self.pending.items);
+    rcr.freeRcNodes(self.a, self.pending.items);
     self.pending.clearRetainingCapacity();
 }
