@@ -113,11 +113,86 @@ fn adjustPointsAfterMultiCursorInsert(points: []CursorPoint, chars: []const u8) 
 
     if (nlcount > 0) {
         const noc: u16 = @intCast(rcr.getNumOfChars(last_line));
-        for (points, 0..) |point, i_| {
-            const i: u16 = @intCast(i_);
-            points[i_].line = point.line + (nlcount * i);
-            points[i_].col = if (nlcount == 0) point.col + noc else noc;
+        for (points, 0..) |point, i| {
+            const i_u16: u16 = @intCast(i);
+            points[i].line = point.line + (nlcount * i_u16);
+            points[i].col = if (nlcount == 0) point.col + noc else noc;
         }
+    }
+}
+
+test "insertCharsMultiCursor - with new lines - 2 points start at same line" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "one two");
+    defer ropeman.deinit();
+    const input_points = &.{
+        .{ .line = 0, .col = 0 },
+        .{ .line = 0, .col = 3 },
+    };
+    const e1_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\n", input_points);
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 0 },
+            .{ .line = 2, .col = 0 },
+        }, e1_points);
+        try eqStr(
+            \\
+            \\one
+            \\ two
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+    const e2_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "ok ", e1_points);
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 3 },
+            .{ .line = 2, .col = 3 },
+        }, e2_points);
+        try eqStr(
+            \\
+            \\ok one
+            \\ok  two
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 4, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
+
+test "insertCharsMultiCursor - with new lines - 3 points start at same line" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three");
+    defer ropeman.deinit();
+    const input_points = &.{
+        .{ .line = 0, .col = 0 },
+        .{ .line = 0, .col = 3 },
+        .{ .line = 0, .col = 7 },
+    };
+    const e1_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\n", input_points);
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 0 },
+            .{ .line = 2, .col = 0 },
+            .{ .line = 3, .col = 0 },
+        }, e1_points);
+        try eqStr(
+            \\
+            \\one
+            \\ two
+            \\ three
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+    const e2_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "ok ", e1_points);
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 3 },
+            .{ .line = 2, .col = 3 },
+            .{ .line = 3, .col = 3 },
+        }, e2_points);
+        try eqStr(
+            \\
+            \\ok one
+            \\ok  two
+            \\ok  three
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
 }
 
@@ -128,62 +203,65 @@ test "insertCharsMultiCursor - with new lines" {
         \\hello kitty
     );
     defer ropeman.deinit();
-
-    const e1_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\n", &.{
+    const input_points = &.{
         .{ .line = 0, .col = 5 },
         .{ .line = 1, .col = 5 },
         .{ .line = 2, .col = 5 },
-    });
-    try eqSlice(CursorPoint, &.{
-        .{ .line = 1, .col = 0 },
-        .{ .line = 3, .col = 0 },
-        .{ .line = 5, .col = 0 },
-    }, e1_points);
-    try eqStr(
-        \\hello
-        \\ venus
-        \\hello
-        \\ world
-        \\hello
-        \\ kitty
-    , try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-
+    };
+    const e1_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\n", input_points);
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 0 },
+            .{ .line = 3, .col = 0 },
+            .{ .line = 5, .col = 0 },
+        }, e1_points);
+        try eqStr(
+            \\hello
+            \\ venus
+            \\hello
+            \\ world
+            \\hello
+            \\ kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
     const e2_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "ok", e1_points);
-    try eqSlice(CursorPoint, &.{
-        .{ .line = 1, .col = 2 },
-        .{ .line = 3, .col = 2 },
-        .{ .line = 5, .col = 2 },
-    }, e2_points);
-    try eqStr(
-        \\hello
-        \\ok venus
-        \\hello
-        \\ok world
-        \\hello
-        \\ok kitty
-    , try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 2 },
+            .{ .line = 3, .col = 2 },
+            .{ .line = 5, .col = 2 },
+        }, e2_points);
+        try eqStr(
+            \\hello
+            \\ok venus
+            \\hello
+            \\ok world
+            \\hello
+            \\ok kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
     const e3_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\nfine", e2_points);
-    try eqSlice(CursorPoint, &.{
-        .{ .line = 2, .col = 4 },
-        .{ .line = 5, .col = 4 },
-        .{ .line = 8, .col = 4 },
-    }, e3_points);
-    try eqStr(
-        \\hello
-        \\ok
-        \\fine venus
-        \\hello
-        \\ok
-        \\fine world
-        \\hello
-        \\ok
-        \\fine kitty
-    , try ropeman.toString(idc_if_it_leaks, .lf));
-    try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 2, .col = 4 },
+            .{ .line = 5, .col = 4 },
+            .{ .line = 8, .col = 4 },
+        }, e3_points);
+        try eqStr(
+            \\hello
+            \\ok
+            \\fine venus
+            \\hello
+            \\ok
+            \\fine world
+            \\hello
+            \\ok
+            \\fine kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
     try ropeman.registerLastPendingToHistory();
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
