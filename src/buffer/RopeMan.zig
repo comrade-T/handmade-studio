@@ -85,40 +85,77 @@ test insertChars {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertCharsMultiCursor
 
-pub fn insertCharsMultiCursor(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
+pub fn insertCharsMultiCursor(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) ![]CursorPoint {
     assert(destinations.len > 1);
     assert(std.sort.isSorted(CursorPoint, destinations, {}, CursorPoint.cmp));
+
+    var points = try a.alloc(CursorPoint, destinations.len);
 
     var i = destinations.len;
     while (i > 0) {
         i -= 1;
         const d = destinations[i];
-        _, _, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, d);
+        points[i].line, points[i].col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, d);
         self.root = new_root;
         try self.pending.append(new_root);
     }
+
+    return points;
 }
 
-test insertCharsMultiCursor {
+test "insertCharsMultiCursor - no new lines" {
     var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     {
-        try ropeman.insertCharsMultiCursor("/", &.{
-            .{ .line = 0, .col = 0 },
-            .{ .line = 1, .col = 0 },
-            .{ .line = 2, .col = 0 },
-        });
+        try eqSlice(
+            CursorPoint,
+            &.{
+                .{ .line = 0, .col = 1 },
+                .{ .line = 1, .col = 1 },
+                .{ .line = 2, .col = 1 },
+            },
+            try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "/", &.{
+                .{ .line = 0, .col = 0 },
+                .{ .line = 1, .col = 0 },
+                .{ .line = 2, .col = 0 },
+            }),
+        );
         try eqStr("/hello venus\n/hello world\n/hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     {
-        try ropeman.insertCharsMultiCursor("/ ", &.{
-            .{ .line = 0, .col = 1 },
-            .{ .line = 1, .col = 1 },
-            .{ .line = 2, .col = 1 },
-        });
+        try eqSlice(
+            CursorPoint,
+            &.{
+                .{ .line = 0, .col = 3 },
+                .{ .line = 1, .col = 3 },
+                .{ .line = 2, .col = 3 },
+            },
+            try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "/ ", &.{
+                .{ .line = 0, .col = 1 },
+                .{ .line = 1, .col = 1 },
+                .{ .line = 2, .col = 1 },
+            }),
+        );
         try eqStr("// hello venus\n// hello world\n// hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+    {
+        try eqSlice(
+            CursorPoint,
+            &.{
+                .{ .line = 0, .col = 17 },
+                .{ .line = 1, .col = 11 },
+                .{ .line = 2, .col = 6 },
+            },
+            try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "|x|", &.{
+                .{ .line = 0, .col = 14 },
+                .{ .line = 1, .col = 8 },
+                .{ .line = 2, .col = 3 },
+            }),
+        );
+        try eqStr("// hello venus|x|\n// hello|x| world\n// |x|hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     try ropeman.registerLastPendingToHistory();
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
