@@ -56,9 +56,8 @@ pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
 
 pub fn insertChars(self: *@This(), chars: []const u8, destination: CursorPoint) !CursorPoint {
-    const line, const col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, destination);
-    self.root = new_root;
-    try self.pending.append(new_root);
+    const line, const col, self.root = try self.insertAndBalance(chars, destination);
+    try self.pending.append(self.root);
     return .{ .line = line, .col = col };
 }
 
@@ -83,6 +82,13 @@ test insertChars {
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
+fn insertAndBalance(self: *@This(), chars: []const u8, destination: CursorPoint) !struct { usize, usize, RcNode } {
+    const line, const col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, destination);
+    const is_rebalanced, const balanced_root = try rcr.balance(self.a, new_root);
+    if (is_rebalanced) rcr.freeRcNode(self.a, new_root);
+    return .{ line, col, balanced_root };
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// insertCharsMultiCursor
 
 pub fn insertCharsMultiCursor(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) ![]CursorPoint {
@@ -92,10 +98,8 @@ pub fn insertCharsMultiCursor(self: *@This(), a: Allocator, chars: []const u8, d
     var i = destinations.len;
     while (i > 0) {
         i -= 1;
-        const d = destinations[i];
-        points[i].line, points[i].col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, d);
-        self.root = new_root;
-        try self.pending.append(new_root);
+        points[i].line, points[i].col, self.root = try self.insertAndBalance(chars, destinations[i]);
+        try self.pending.append(self.root);
     }
     adjustPointsAfterMultiCursorInsert(points, chars);
     return points;
