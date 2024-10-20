@@ -1292,97 +1292,72 @@ fn isRebalanced(branch: Branch, left: RcNode, right: RcNode) bool {
     return branch.left.value != left.value or branch.right.value != right.value;
 }
 
-pub fn balance(a: Allocator, self: RcNode) !RcNode {
-    switch (self.value.*) {
-        .leaf => return self,
-        .branch => |branch| {
-            {
-                const initial_balance_factor = calculateBalanceFactor(branch.left.value, branch.right.value);
-                if (@abs(initial_balance_factor) < MAX_IMBALANCE) return self;
-            }
+// pub fn balance(a: Allocator, self: RcNode) !RcNode {
+//     switch (self.value.*) {
+//         .leaf => return self,
+//         .branch => |branch| {
+//             {
+//                 const initial_balance_factor = calculateBalanceFactor(branch.left.value, branch.right.value);
+//                 if (@abs(initial_balance_factor) < MAX_IMBALANCE) return self;
+//             }
+//
+//             var result: RcNode = undefined;
+//
+//             var left = try balance(a, branch.left);
+//             var right = try balance(a, branch.right);
+//             const balance_factor = calculateBalanceFactor(left.value, right.value);
+//
+//             find_result: {
+//                 if (@abs(balance_factor) <= MAX_IMBALANCE) {
+//                     result = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
+//                     break :find_result;
+//                 }
+//
+//                 if (balance_factor < 0) {
+//                     assert(right.value.* == .branch);
+//                     const right_balance_factor = calculateBalanceFactor(right.value.branch.left.value, right.value.branch.right.value);
+//                     if (right_balance_factor <= 0) {
+//                         const this = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
+//                         result = try rotateLeft(a, this);
+//                         break :find_result;
+//                     }
+//
+//                     var new_right = try rotateRight(a, right);
+//                     const this = try Node.new(a, left.retain(), new_right.retain());
+//                     result = try rotateLeft(a, this);
+//                     break :find_result;
+//                 }
+//
+//                 assert(left.value.* == .branch);
+//                 const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
+//                 if (left_balance_factor >= 0) {
+//                     const this = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
+//                     result = try rotateRight(a, this);
+//                     break :find_result;
+//                 }
+//
+//                 var new_left = try rotateLeft(a, left);
+//                 const this = try Node.new(a, new_left.retain(), right.retain());
+//                 result = try rotateRight(a, this);
+//                 break :find_result;
+//             }
+//
+//             const should_balance_again = result.value.* == .branch and @abs(calculateBalanceFactor(result.value.branch.left.value, result.value.branch.right.value)) > MAX_IMBALANCE;
+//             if (should_balance_again) result = try balance(a, result);
+//
+//             return result;
+//         },
+//     }
+// }
 
-            var result: RcNode = undefined;
-
-            var left = try balance(a, branch.left);
-            var right = try balance(a, branch.right);
-            const balance_factor = calculateBalanceFactor(left.value, right.value);
-
-            find_result: {
-                if (@abs(balance_factor) <= MAX_IMBALANCE) {
-                    result = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
-                    break :find_result;
-                }
-
-                if (balance_factor < 0) {
-                    assert(right.value.* == .branch);
-                    const right_balance_factor = calculateBalanceFactor(right.value.branch.left.value, right.value.branch.right.value);
-                    if (right_balance_factor <= 0) {
-                        const this = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
-                        result = try rotateLeft(a, this);
-                        break :find_result;
-                    }
-
-                    var new_right = try rotateRight(a, right);
-                    const this = try Node.new(a, left.retain(), new_right.retain());
-                    result = try rotateLeft(a, this);
-                    break :find_result;
-                }
-
-                assert(left.value.* == .branch);
-                const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
-                if (left_balance_factor >= 0) {
-                    const this = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
-                    result = try rotateRight(a, this);
-                    break :find_result;
-                }
-
-                var new_left = try rotateLeft(a, left);
-                const this = try Node.new(a, new_left.retain(), right.retain());
-                result = try rotateRight(a, this);
-                break :find_result;
-            }
-
-            const should_balance_again = result.value.* == .branch and @abs(calculateBalanceFactor(result.value.branch.left.value, result.value.branch.right.value)) > MAX_IMBALANCE;
-            if (should_balance_again) result = try balance(a, result);
-
-            return result;
-        },
-    }
-}
-
-test balance {
-    const a = testing_allocator;
-    var content_arena = std.heap.ArenaAllocator.init(a);
-    defer content_arena.deinit();
-
-    const root = try Node.fromString(a, &content_arena, "one two three");
-
-    _, _, const e1 = try insertChars(root, a, &content_arena, "\n", .{ .line = 0, .col = 7 });
-    _, _, const e2 = try insertChars(e1, a, &content_arena, "\n", .{ .line = 0, .col = 3 });
-    _, _, const e3 = try insertChars(e2, a, &content_arena, "\n", .{ .line = 0, .col = 0 });
-    try eqStr(
-        \\4 4/16
-        \\  3 3/10
-        \\    2 2/5
-        \\      1 B| `` |E
-        \\      1 B| `one` |E
-        \\    1 B| ` two` |E Rc:2
-        \\  1 B| ` three` Rc:3
-    , try debugStr(idc_if_it_leaks, e3));
-
-    const e3b = try balance(a, e3);
-    try eqStr(
-        \\3 4/16
-        \\  2 2/5 Rc:2
-        \\    1 B| `` |E
-        \\    1 B| `one` |E
-        \\  2 2/11
-        \\    1 B| ` two` |E Rc:3
-        \\    1 B| ` three` Rc:4
-    , try debugStr(idc_if_it_leaks, e3b));
-
-    freeRcNodes(a, &.{ root, e1, e2, e3, e3b });
-}
+// test balance {
+//     const a = testing_allocator;
+//     var content_arena = std.heap.ArenaAllocator.init(a);
+//     defer content_arena.deinit();
+//
+//     const root = try Node.fromString(a, &content_arena, "");
+//     _, _, const e1 = try insertChars(root, a, &content_arena, "1", .{ .line = 0, .col = 0 });
+// }
 
 fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
     assert(self.value.* == .branch);
@@ -1403,19 +1378,35 @@ test rotateLeft {
     _, _, const abcd = try insertChars(acd, testing_allocator, &content_arena, "B", .{ .line = 0, .col = 1 });
     _, _, const abcde = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 4 });
 
-    const abcde_dbg =
-        \\4 1/5
-        \\  1 B| `A` Rc:2
-        \\  3 0/4
-        \\    1 `B` Rc:2
-        \\    2 0/3
-        \\      1 `CD`
-        \\      1 `E`
-    ;
-    try eqStr(abcde_dbg, try debugStr(idc_if_it_leaks, abcde));
+    // sanity check
+    {
+        try eqStr(
+            \\1 B| `ACD`
+        , try debugStr(idc_if_it_leaks, acd));
+
+        try eqStr(
+            \\3 1/4
+            \\  1 B| `A` Rc:2
+            \\  2 0/3
+            \\    1 `B` Rc:2
+            \\    1 `CD`
+        , try debugStr(idc_if_it_leaks, abcd));
+
+        try eqStr(
+            \\4 1/5
+            \\  1 B| `A` Rc:2
+            \\  3 0/4
+            \\    1 `B` Rc:2
+            \\    2 0/3
+            \\      1 `CD`
+            \\      1 `E`
+        , try debugStr(idc_if_it_leaks, abcde));
+    }
+
+    ///////////////////////////// after rotateLeft
 
     const abcde_rotated = try rotateLeft(testing_allocator, abcde);
-    const abcde_rotated_dbg =
+    try eqStr(
         \\3 1/5
         \\  2 1/2
         \\    1 B| `A` Rc:3
@@ -1423,8 +1414,32 @@ test rotateLeft {
         \\  2 0/3 Rc:2
         \\    1 `CD`
         \\    1 `E`
-    ;
-    try eqStr(abcde_rotated_dbg, try debugStr(idc_if_it_leaks, abcde_rotated));
+    , try debugStr(idc_if_it_leaks, abcde_rotated));
+
+    // sanity check
+    {
+        try eqStr(
+            \\1 B| `ACD`
+        , try debugStr(idc_if_it_leaks, acd));
+
+        try eqStr(
+            \\3 1/4
+            \\  1 B| `A` Rc:3
+            \\  2 0/3
+            \\    1 `B` Rc:3
+            \\    1 `CD`
+        , try debugStr(idc_if_it_leaks, abcd));
+
+        try eqStr(
+            \\4 1/5
+            \\  1 B| `A` Rc:3
+            \\  3 0/4
+            \\    1 `B` Rc:3
+            \\    2 0/3 Rc:2
+            \\      1 `CD`
+            \\      1 `E`
+        , try debugStr(idc_if_it_leaks, abcde));
+    }
 
     freeRcNodes(testing_allocator, &.{ acd, abcd, abcde, abcde_rotated });
 }
@@ -1444,29 +1459,87 @@ test rotateRight {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const abc = try Node.fromString(testing_allocator, &content_arena, "ABC");
-    _, _, const abcd = try insertChars(abc, testing_allocator, &content_arena, "D", .{ .line = 0, .col = 3 });
-    _, _, const _abcd = try insertChars(abcd, testing_allocator, &content_arena, "_", .{ .line = 0, .col = 0 });
-    const _abcd_dbg =
-        \\3 1/5
-        \\  2 1/4
-        \\    1 B| `_`
-        \\    1 `ABC`
-        \\  1 `D` Rc:2
-    ;
-    try eqStr(_abcd_dbg, try debugStr(idc_if_it_leaks, _abcd));
+    const def = try Node.fromString(testing_allocator, &content_arena, "DEF");
+    _, _, const cdef = try insertChars(def, testing_allocator, &content_arena, "C", .{ .line = 0, .col = 0 });
+    _, _, const bcdef = try insertChars(cdef, testing_allocator, &content_arena, "B", .{ .line = 0, .col = 0 });
+    _, _, const abcdef = try insertChars(bcdef, testing_allocator, &content_arena, "A", .{ .line = 0, .col = 0 });
 
-    const _abcd_rotated = try rotateRight(testing_allocator, _abcd);
-    const _abcd_rotated_dbg =
-        \\3 1/5
-        \\  1 B| `_` Rc:2
+    // sanity check
+    {
+        try eqStr(
+            \\1 B| `DEF`
+        , try debugStr(idc_if_it_leaks, def));
+
+        try eqStr(
+            \\2 1/4
+            \\  1 B| `C`
+            \\  1 `DEF` Rc:3
+        , try debugStr(idc_if_it_leaks, cdef));
+
+        try eqStr(
+            \\3 1/5
+            \\  2 1/2
+            \\    1 B| `B`
+            \\    1 `C` Rc:2
+            \\  1 `DEF` Rc:3
+        , try debugStr(idc_if_it_leaks, bcdef));
+
+        try eqStr(
+            \\4 1/6
+            \\  3 1/3
+            \\    2 1/2
+            \\      1 B| `A`
+            \\      1 `B`
+            \\    1 `C` Rc:2
+            \\  1 `DEF` Rc:3
+        , try debugStr(idc_if_it_leaks, abcdef));
+    }
+
+    ///////////////////////////// after rotateRight
+
+    const abcdef_rotated = try rotateRight(testing_allocator, abcdef);
+    try eqStr(
+        \\3 1/6
+        \\  2 1/2 Rc:2
+        \\    1 B| `A`
+        \\    1 `B`
         \\  2 0/4
-        \\    1 `ABC` Rc:2
-        \\    1 `D` Rc:3
-    ;
-    try eqStr(_abcd_rotated_dbg, try debugStr(idc_if_it_leaks, _abcd_rotated));
+        \\    1 `C` Rc:3
+        \\    1 `DEF` Rc:4
+    , try debugStr(idc_if_it_leaks, abcdef_rotated));
 
-    freeRcNodes(testing_allocator, &.{ abc, abcd, _abcd, _abcd_rotated });
+    // sanity check
+    {
+        try eqStr(
+            \\1 B| `DEF`
+        , try debugStr(idc_if_it_leaks, def));
+
+        try eqStr(
+            \\2 1/4
+            \\  1 B| `C`
+            \\  1 `DEF` Rc:4
+        , try debugStr(idc_if_it_leaks, cdef));
+
+        try eqStr(
+            \\3 1/5
+            \\  2 1/2
+            \\    1 B| `B`
+            \\    1 `C` Rc:3
+            \\  1 `DEF` Rc:4
+        , try debugStr(idc_if_it_leaks, bcdef));
+
+        try eqStr(
+            \\4 1/6
+            \\  3 1/3
+            \\    2 1/2 Rc:2
+            \\      1 B| `A`
+            \\      1 `B`
+            \\    1 `C` Rc:3
+            \\  1 `DEF` Rc:4
+        , try debugStr(idc_if_it_leaks, abcdef));
+    }
+
+    freeRcNodes(testing_allocator, &.{ def, cdef, bcdef, abcdef, abcdef_rotated });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Debug
