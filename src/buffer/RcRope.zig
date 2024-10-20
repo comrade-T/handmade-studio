@@ -1336,6 +1336,7 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                     }
 
                     const new_right = try rotateRight(a, right);
+                    defer freeRcNode(a, right);
                     const temp = try Node.new(a, left, new_right);
                     defer freeRcNode(a, temp);
                     result = try rotateLeft(a, temp);
@@ -1357,6 +1358,7 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                 }
 
                 const new_left = try rotateLeft(a, left);
+                defer freeRcNode(a, left);
                 const temp = try Node.new(a, new_left, right);
                 defer freeRcNode(a, temp);
                 result = try rotateRight(a, temp);
@@ -1441,7 +1443,42 @@ test balance {
         , try debugStr(idc_if_it_leaks, e5_balanced));
     }
 
-    freeRcNodes(testing_allocator, &.{ root, e1, e2, e3, e4, e4_balanced, e5, e5_balanced });
+    ///////////////////////////// e6
+
+    _, _, const e6 = try insertChars(e5, testing_allocator, &content_arena, "6", .{ .line = 0, .col = 5 });
+    try eqStr( // unbalanced
+        \\6 1/6
+        \\  1 B| `1` Rc:6
+        \\  5 0/5
+        \\    1 `2` Rc:6
+        \\    4 0/4
+        \\      1 `3` Rc:4
+        \\      3 0/3
+        \\        1 `4` Rc:2
+        \\        2 0/2
+        \\          1 `5`
+        \\          1 `6`
+    , try debugStr(idc_if_it_leaks, e6));
+
+    const e6_has_changes, const e6_balanced = try balance(testing_allocator, e6);
+    {
+        try eq(true, e6_has_changes);
+        try eqStr(
+            \\4 1/6
+            \\  2 1/2
+            \\    1 B| `1` Rc:6
+            \\    1 `2` Rc:6
+            \\  3 0/4
+            \\    2 0/2
+            \\      1 `3` Rc:5
+            \\      1 `4` Rc:3
+            \\    2 0/2 Rc:2
+            \\      1 `5`
+            \\      1 `6`
+        , try debugStr(idc_if_it_leaks, e6_balanced));
+    }
+
+    freeRcNodes(testing_allocator, &.{ root, e1, e2, e3, e4, e4_balanced, e5, e5_balanced, e6, e6_balanced });
 }
 
 fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
