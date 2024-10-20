@@ -1288,6 +1288,10 @@ fn calculateBalanceFactor(left: *const Node, right: *const Node) i64 {
     return balance_factor;
 }
 
+fn isRebalanced(branch: Branch, left: RcNode, right: RcNode) bool {
+    return branch.left.value != left.value or branch.right.value != right.value;
+}
+
 pub fn balance(a: Allocator, self: RcNode) !RcNode {
     switch (self.value.*) {
         .leaf => return self,
@@ -1298,38 +1302,44 @@ pub fn balance(a: Allocator, self: RcNode) !RcNode {
             }
 
             var result: RcNode = undefined;
-            defer if (result.value != self.value) self.release(a);
 
-            const left = try balance(a, branch.left);
-            const right = try balance(a, branch.right);
+            var left = try balance(a, branch.left);
+            var right = try balance(a, branch.right);
             const balance_factor = calculateBalanceFactor(left.value, right.value);
 
-            if (@abs(balance_factor) > MAX_IMBALANCE) {
+            find_result: {
+                if (@abs(balance_factor) <= MAX_IMBALANCE) {
+                    result = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
+                    break :find_result;
+                }
+
                 if (balance_factor < 0) {
                     assert(right.value.* == .branch);
                     const right_balance_factor = calculateBalanceFactor(right.value.branch.left.value, right.value.branch.right.value);
                     if (right_balance_factor <= 0) {
-                        const this = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
+                        const this = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
                         result = try rotateLeft(a, this);
-                    } else {
-                        const new_right = try rotateRight(a, right);
-                        const this = try Node.new(a, left, new_right);
-                        result = try rotateLeft(a, this);
+                        break :find_result;
                     }
-                } else {
-                    assert(left.value.* == .branch);
-                    const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
-                    if (left_balance_factor >= 0) {
-                        const this = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
-                        result = try rotateRight(a, this);
-                    } else {
-                        const new_left = try rotateLeft(a, left);
-                        const this = try Node.new(a, new_left, right);
-                        result = try rotateRight(a, this);
-                    }
+
+                    var new_right = try rotateRight(a, right);
+                    const this = try Node.new(a, left.retain(), new_right.retain());
+                    result = try rotateLeft(a, this);
+                    break :find_result;
                 }
-            } else {
-                result = if (branch.left.value != left.value or branch.right.value != right.value) try Node.new(a, left, right) else self;
+
+                assert(left.value.* == .branch);
+                const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
+                if (left_balance_factor >= 0) {
+                    const this = if (isRebalanced(branch, left, right)) try Node.new(a, left.retain(), right.retain()) else self;
+                    result = try rotateRight(a, this);
+                    break :find_result;
+                }
+
+                var new_left = try rotateLeft(a, left);
+                const this = try Node.new(a, new_left.retain(), right.retain());
+                result = try rotateRight(a, this);
+                break :find_result;
             }
 
             const should_balance_again = result.value.* == .branch and @abs(calculateBalanceFactor(result.value.branch.left.value, result.value.branch.right.value)) > MAX_IMBALANCE;
@@ -1341,124 +1351,47 @@ pub fn balance(a: Allocator, self: RcNode) !RcNode {
 }
 
 test balance {
-    var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+    const a = testing_allocator;
+    var content_arena = std.heap.ArenaAllocator.init(a);
     defer content_arena.deinit();
 
-    var node_list = try insertCharOneAfterAnother(testing_allocator, &content_arena, "abcde");
-    defer node_list.deinit();
+    const root = try Node.fromString(a, &content_arena, "one two three");
 
-    // check if balancing a 'before node' doesn't mess up 'after node' (no segfault)
-    // in this case, 'before node' is `len-2`, 'after node' is `len-1`
-    {
-        const minus_i = 2;
-        const original_dbg_str =
-            \\4 1/4
-            \\  1 B| `a` Rc:4
-            \\  3 0/3
-            \\    1 `b` Rc:3
-            \\    2 0/2
-            \\      1 `c` Rc:2
-            \\      1 `d`
-        ;
-        try eqStr(original_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
+    _, _, const e1 = try insertChars(root, a, &content_arena, "\n", .{ .line = 0, .col = 7 });
+    _, _, const e2 = try insertChars(e1, a, &content_arena, "\n", .{ .line = 0, .col = 3 });
+    _, _, const e3 = try insertChars(e2, a, &content_arena, "\n", .{ .line = 0, .col = 0 });
+    try eqStr(
+        \\4 4/16
+        \\  3 3/10
+        \\    2 2/5
+        \\      1 B| `` |E
+        \\      1 B| `one` |E
+        \\    1 B| ` two` |E Rc:2
+        \\  1 B| ` three` Rc:3
+    , try debugStr(idc_if_it_leaks, e3));
 
-        const balanced = try balance(testing_allocator, node_list.items[node_list.items.len - minus_i]);
-        node_list.items[node_list.items.len - minus_i] = balanced;
-        const balanced_dbg_str =
-            \\3 1/4
-            \\  2 1/2
-            \\    1 B| `a` Rc:4
-            \\    1 `b` Rc:3
-            \\  2 0/2
-            \\    1 `c` Rc:2
-            \\    1 `d`
-        ;
-        try eqStr(balanced_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
-    }
-    {
-        const minus_i = 1;
-        const original_dbg_str =
-            \\5 1/5
-            \\  1 B| `a` Rc:4
-            \\  4 0/4
-            \\    1 `b` Rc:3
-            \\    3 0/3
-            \\      1 `c` Rc:2
-            \\      2 0/2
-            \\        1 `d`
-            \\        1 `e`
-        ;
-        try eqStr(original_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
+    const e3b = try balance(a, e3);
+    try eqStr(
+        \\3 4/16
+        \\  2 2/5 Rc:2
+        \\    1 B| `` |E
+        \\    1 B| `one` |E
+        \\  2 2/11
+        \\    1 B| ` two` |E Rc:3
+        \\    1 B| ` three` Rc:4
+    , try debugStr(idc_if_it_leaks, e3b));
 
-        const balanced = try balance(testing_allocator, node_list.items[node_list.items.len - minus_i]);
-        node_list.items[node_list.items.len - minus_i] = balanced;
-        const balanced_dbg_str =
-            \\4 1/5
-            \\  3 1/3
-            \\    1 B| `a` Rc:4
-            \\    2 0/2
-            \\      1 `b` Rc:3
-            \\      1 `c` Rc:2
-            \\  2 0/2
-            \\    1 `d`
-            \\    1 `e`
-        ;
-        try eqStr(balanced_dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - minus_i]));
-    }
-
-    // check if previous steps are still accessible (no segfault)
-    {
-        const dbg_str =
-            \\2 1/1
-            \\  1 B| `a`
-            \\  1 ``
-        ;
-        try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 5]));
-    }
-    {
-        const dbg_str =
-            \\2 1/2
-            \\  1 B| `a` Rc:4
-            \\  1 `b`
-        ;
-        try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 4]));
-    }
-    {
-        const dbg_str =
-            \\3 1/3
-            \\  1 B| `a` Rc:4
-            \\  2 0/2
-            \\    1 `b` Rc:3
-            \\    1 `c`
-        ;
-        try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 3]));
-    }
-    {
-        const dbg_str =
-            \\3 1/4
-            \\  2 1/2
-            \\    1 B| `a` Rc:4
-            \\    1 `b` Rc:3
-            \\  2 0/2
-            \\    1 `c` Rc:2
-            \\    1 `d`
-        ;
-        try eqStr(dbg_str, try debugStr(idc_if_it_leaks, node_list.items[node_list.items.len - 2]));
-    }
-
-    freeRcNodes(testing_allocator, node_list.items);
+    freeRcNodes(a, &.{ root, e1, e2, e3, e3b });
 }
 
 fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
     assert(self.value.* == .branch);
-    defer self.release(allocator);
 
     const other = self.value.branch.right;
-    defer other.release(allocator);
     assert(other.value.* == .branch);
 
-    const a = try Node.new(allocator, self.value.branch.left, other.value.branch.left);
-    const b = try Node.new(allocator, a, other.value.branch.right);
+    const a = try Node.new(allocator, self.value.branch.left.retain(), other.value.branch.left.retain());
+    const b = try Node.new(allocator, a, other.value.branch.right.retain());
     return b;
 }
 
@@ -1485,29 +1418,25 @@ test rotateLeft {
     const abcde_rotated_dbg =
         \\3 1/5
         \\  2 1/2
-        \\    1 B| `A` Rc:2
-        \\    1 `B` Rc:2
-        \\  2 0/3
+        \\    1 B| `A` Rc:3
+        \\    1 `B` Rc:3
+        \\  2 0/3 Rc:2
         \\    1 `CD`
         \\    1 `E`
     ;
     try eqStr(abcde_rotated_dbg, try debugStr(idc_if_it_leaks, abcde_rotated));
 
-    // IMPORTANT: the `abcde` before roation is no longer available, accessing it will cause segfault
-
-    freeRcNodes(testing_allocator, &.{ acd, abcd, abcde_rotated });
+    freeRcNodes(testing_allocator, &.{ acd, abcd, abcde, abcde_rotated });
 }
 
 fn rotateRight(allocator: Allocator, self: RcNode) !RcNode {
     assert(self.value.* == .branch);
-    defer self.release(allocator);
 
     const other = self.value.branch.left;
-    defer other.release(allocator);
     assert(other.value.* == .branch);
 
-    const a = try Node.new(allocator, self.value.branch.right, other.value.branch.right);
-    const b = try Node.new(allocator, other.value.branch.left, a);
+    const a = try Node.new(allocator, other.value.branch.right.retain(), self.value.branch.right.retain());
+    const b = try Node.new(allocator, other.value.branch.left.retain(), a);
     return b;
 }
 
@@ -1530,16 +1459,14 @@ test rotateRight {
     const _abcd_rotated = try rotateRight(testing_allocator, _abcd);
     const _abcd_rotated_dbg =
         \\3 1/5
-        \\  1 B| `_`
+        \\  1 B| `_` Rc:2
         \\  2 0/4
-        \\    1 `D` Rc:2
-        \\    1 `ABC`
+        \\    1 `ABC` Rc:2
+        \\    1 `D` Rc:3
     ;
     try eqStr(_abcd_rotated_dbg, try debugStr(idc_if_it_leaks, _abcd_rotated));
 
-    // IMPORTANT: the `_abcd` before roation is no longer available, accessing it will cause segfault
-
-    freeRcNodes(testing_allocator, &.{ abc, abcd, _abcd_rotated });
+    freeRcNodes(testing_allocator, &.{ abc, abcd, _abcd, _abcd_rotated });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Debug
