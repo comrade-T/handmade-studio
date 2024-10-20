@@ -415,7 +415,10 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, 
     var col = destination.col;
     var need_eol = false;
 
+    var i: usize = 0;
     while (rest.len > 0) {
+        defer i += 1;
+
         chunk_blk: {
             if (std.mem.indexOfScalar(u8, rest, '\n')) |eol| {
                 chunk = rest[0..eol];
@@ -433,7 +436,10 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, 
         const result = try walkFromLineBegin(a, self, line, InsertCharsCtx.walker, &ctx);
 
         if (!result.found) return error.ColumnOutOfBounds;
-        if (result.replace) |root| self = root;
+        if (result.replace) |root| {
+            if (i > 0) freeRcNode(a, self, true); // prevent leaks
+            self = root;
+        }
 
         eol_blk: {
             if (need_eol) {
@@ -893,16 +899,34 @@ test "insertChars - with newline \n" {
     // 3rd edit
     const l3, const c3, const r3 = try insertChars(r2, a, &content_arena, "\nfine", .{ .line = l2, .col = c2 });
     {
+        try eqStr(
+            \\3 2/12
+            \\  1 B| `hello venus` Rc:3
+            \\  2 1/1
+            \\    1 `` |E Rc:3
+            \\    1 B| ``
+        , try debugStr(idc_if_it_leaks, r1));
+
+        try eqStr(
+            \\4 2/14
+            \\  1 B| `hello venus` Rc:3
+            \\  3 1/3
+            \\    1 `` |E Rc:3
+            \\    2 1/2
+            \\      1 B| `ok`
+            \\      1 ``
+        , try debugStr(idc_if_it_leaks, r2));
+
         try eq(.{ 2, 4 }, .{ l3, c3 });
         try eqStr(
             \\6 3/19
-            \\  1 B| `hello venus` Rc:4
+            \\  1 B| `hello venus` Rc:3
             \\  5 2/8
-            \\    1 `` |E Rc:4
+            \\    1 `` |E Rc:3
             \\    4 2/7
-            \\      1 B| `ok` Rc:2
+            \\      1 B| `ok`
             \\      3 1/5
-            \\        1 `` |E Rc:2
+            \\        1 `` |E
             \\        2 1/4
             \\          1 B| `fine`
             \\          1 ``
