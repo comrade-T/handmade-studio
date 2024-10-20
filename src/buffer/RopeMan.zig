@@ -344,10 +344,8 @@ test "insertCharsMultiCursor - no new lines" {
 
 pub fn deleteRange(self: *@This(), start: CursorPoint, end: CursorPoint) !CursorPoint {
     assert(std.sort.isSorted(CursorPoint, &.{ start, end }, {}, CursorPoint.cmp));
-    const noc = rcr.getNocOfRange(self.root, start, end);
-    const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
-    self.root = new_root;
-    try self.pending.append(new_root);
+    self.root = try self.deleteAndBalance(start, end);
+    try self.pending.append(self.root);
     return start;
 }
 
@@ -368,6 +366,14 @@ test deleteRange {
     }
     try ropeman.registerLastPendingToHistory();
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+}
+
+fn deleteAndBalance(self: *@This(), start: CursorPoint, end: CursorPoint) !RcNode {
+    const noc = rcr.getNocOfRange(self.root, start, end);
+    const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
+    const is_rebalanced, const balanced_root = try rcr.balance(self.a, new_root);
+    if (is_rebalanced) rcr.freeRcNode(self.a, new_root);
+    return balanced_root;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRangesMultiCursor
