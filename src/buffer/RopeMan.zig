@@ -88,9 +88,7 @@ test insertChars {
 pub fn insertCharsMultiCursor(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) ![]CursorPoint {
     assert(destinations.len > 1);
     assert(std.sort.isSorted(CursorPoint, destinations, {}, CursorPoint.cmp));
-
     var points = try a.alloc(CursorPoint, destinations.len);
-
     var i = destinations.len;
     while (i > 0) {
         i -= 1;
@@ -99,8 +97,64 @@ pub fn insertCharsMultiCursor(self: *@This(), a: Allocator, chars: []const u8, d
         self.root = new_root;
         try self.pending.append(new_root);
     }
-
+    adjustPointsAfterMultiCursorInsert(points, chars);
     return points;
+}
+
+fn adjustPointsAfterMultiCursorInsert(points: []CursorPoint, chars: []const u8) void {
+    var last_line = chars;
+    var nlcount: u16 = 0;
+    var split_iter = std.mem.split(u8, chars, "\n");
+    while (split_iter.next()) |chunk| {
+        last_line = chunk;
+        nlcount += 1;
+    }
+    nlcount -|= 1;
+
+    if (nlcount > 0) {
+        const noc: u16 = @intCast(rcr.getNumOfChars(last_line));
+        for (points, 0..) |point, i_| {
+            const i: u16 = @intCast(i_);
+            points[i_].line = point.line + (nlcount * i);
+            points[i_].col = if (nlcount == 0) point.col + noc else noc;
+        }
+    }
+}
+
+test "insertCharsMultiCursor - with new lines" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+
+    const e1_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\n", &.{
+        .{ .line = 0, .col = 5 },
+        .{ .line = 1, .col = 5 },
+        .{ .line = 2, .col = 5 },
+    });
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 1, .col = 0 },
+        .{ .line = 3, .col = 0 },
+        .{ .line = 5, .col = 0 },
+    }, e1_points);
+    try eqStr("hello\n venus\nhello\n world\nhello\n kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    const e2_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "ok", e1_points);
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 1, .col = 2 },
+        .{ .line = 3, .col = 2 },
+        .{ .line = 5, .col = 2 },
+    }, e2_points);
+    try eqStr("hello\nok venus\nhello\nok world\nhello\nok kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    const e3_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\nfine", e2_points);
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 2, .col = 4 },
+        .{ .line = 5, .col = 4 },
+        .{ .line = 8, .col = 4 },
+    }, e3_points);
+    try eqStr("hello\nok\nfine venus\nhello\nok\nfine world\nhello\nok\nfine kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
 test "insertCharsMultiCursor - no new lines" {
