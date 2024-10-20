@@ -122,7 +122,11 @@ fn adjustPointsAfterMultiCursorInsert(points: []CursorPoint, chars: []const u8) 
 }
 
 test "insertCharsMultiCursor - with new lines" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFromString(testing_allocator,
+        \\hello venus
+        \\hello world
+        \\hello kitty
+    );
     defer ropeman.deinit();
 
     const e1_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\n", &.{
@@ -135,7 +139,14 @@ test "insertCharsMultiCursor - with new lines" {
         .{ .line = 3, .col = 0 },
         .{ .line = 5, .col = 0 },
     }, e1_points);
-    try eqStr("hello\n venus\nhello\n world\nhello\n kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eqStr(
+        \\hello
+        \\ venus
+        \\hello
+        \\ world
+        \\hello
+        \\ kitty
+    , try ropeman.toString(idc_if_it_leaks, .lf));
     try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 
     const e2_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "ok", e1_points);
@@ -144,7 +155,14 @@ test "insertCharsMultiCursor - with new lines" {
         .{ .line = 3, .col = 2 },
         .{ .line = 5, .col = 2 },
     }, e2_points);
-    try eqStr("hello\nok venus\nhello\nok world\nhello\nok kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eqStr(
+        \\hello
+        \\ok venus
+        \\hello
+        \\ok world
+        \\hello
+        \\ok kitty
+    , try ropeman.toString(idc_if_it_leaks, .lf));
     try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 
     const e3_points = try ropeman.insertCharsMultiCursor(idc_if_it_leaks, "\nfine", e2_points);
@@ -153,8 +171,21 @@ test "insertCharsMultiCursor - with new lines" {
         .{ .line = 5, .col = 4 },
         .{ .line = 8, .col = 4 },
     }, e3_points);
-    try eqStr("hello\nok\nfine venus\nhello\nok\nfine world\nhello\nok\nfine kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+    try eqStr(
+        \\hello
+        \\ok
+        \\fine venus
+        \\hello
+        \\ok
+        \\fine world
+        \\hello
+        \\ok
+        \\fine kitty
+    , try ropeman.toString(idc_if_it_leaks, .lf));
     try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+
+    try ropeman.registerLastPendingToHistory();
+    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
 test "insertCharsMultiCursor - no new lines" {
