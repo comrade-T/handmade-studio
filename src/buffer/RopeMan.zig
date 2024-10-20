@@ -287,7 +287,11 @@ test "insertCharsMultiCursor - no new lines" {
                 .{ .line = 2, .col = 0 },
             }),
         );
-        try eqStr("/hello venus\n/hello world\n/hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+        try eqStr(
+            \\/hello venus
+            \\/hello world
+            \\/hello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     {
@@ -304,7 +308,11 @@ test "insertCharsMultiCursor - no new lines" {
                 .{ .line = 2, .col = 1 },
             }),
         );
-        try eqStr("// hello venus\n// hello world\n// hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+        try eqStr(
+            \\// hello venus
+            \\// hello world
+            \\// hello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     {
@@ -321,7 +329,11 @@ test "insertCharsMultiCursor - no new lines" {
                 .{ .line = 2, .col = 3 },
             }),
         );
-        try eqStr("// hello venus|x|\n// hello|x| world\n// |x|hello kitty", try ropeman.toString(idc_if_it_leaks, .lf));
+        try eqStr(
+            \\// hello venus|x|
+            \\// hello|x| world
+            \\// |x|hello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     try ropeman.registerLastPendingToHistory();
