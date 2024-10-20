@@ -429,8 +429,8 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, 
             need_eol = false;
         }
 
-        var ctx: InsertCharsCtx = .{ .a = a, .col = destination.col, .chars = chunk, .eol = need_eol };
-        const result = try walkFromLineBegin(a, self, destination.line, InsertCharsCtx.walker, &ctx);
+        var ctx: InsertCharsCtx = .{ .a = a, .col = col, .chars = chunk, .eol = need_eol };
+        const result = try walkFromLineBegin(a, self, line, InsertCharsCtx.walker, &ctx);
 
         if (!result.found) return error.ColumnOutOfBounds;
         if (result.replace) |root| self = root;
@@ -868,7 +868,7 @@ test "insertChars - with newline \n" {
     }
 
     // 2nd edit
-    const l2, const c2, const r2 = try insertChars(r1, a, &content_arena, "h", .{ .line = 1, .col = 0 });
+    const l2, const c2, const r2 = try insertChars(r1, a, &content_arena, "ok", .{ .line = 1, .col = 0 });
     {
         try eqStr(
             \\3 2/12
@@ -878,19 +878,38 @@ test "insertChars - with newline \n" {
             \\    1 B| ``
         , try debugStr(idc_if_it_leaks, r1));
 
-        try eq(.{ 1, 1 }, .{ l2, c2 });
+        try eq(.{ 1, 2 }, .{ l2, c2 });
         try eqStr(
-            \\4 2/13
+            \\4 2/14
             \\  1 B| `hello venus` Rc:2
-            \\  3 1/2
+            \\  3 1/3
             \\    1 `` |E Rc:2
-            \\    2 1/1
-            \\      1 B| `h`
+            \\    2 1/2
+            \\      1 B| `ok`
             \\      1 ``
         , try debugStr(idc_if_it_leaks, r2));
     }
 
-    freeRcNodes(testing_allocator, &.{ r0, r1, r2 });
+    // 3rd edit
+    const l3, const c3, const r3 = try insertChars(r2, a, &content_arena, "\nfine", .{ .line = l2, .col = c2 });
+    {
+        try eq(.{ 2, 4 }, .{ l3, c3 });
+        try eqStr(
+            \\6 3/19
+            \\  1 B| `hello venus` Rc:4
+            \\  5 2/8
+            \\    1 `` |E Rc:4
+            \\    4 2/7
+            \\      1 B| `ok` Rc:2
+            \\      3 1/5
+            \\        1 `` |E Rc:2
+            \\        2 1/4
+            \\          1 B| `fine`
+            \\          1 ``
+        , try debugStr(idc_if_it_leaks, r3));
+    }
+
+    freeRcNodes(testing_allocator, &.{ r0, r1, r2, r3 });
 }
 
 test "insertChars - testing free order after inserting one character after another" {
@@ -1501,7 +1520,7 @@ test rotateRight {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Debug
 
-fn debugStr(a: Allocator, node: RcNode) ![]const u8 {
+pub fn debugStr(a: Allocator, node: RcNode) ![]const u8 {
     var result = std.ArrayList(u8).init(a);
     try _buildDebugStr(a, node, &result, 0);
     return try result.toOwnedSlice();
