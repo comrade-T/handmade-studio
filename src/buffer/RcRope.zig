@@ -265,7 +265,7 @@ pub const Node = union(enum) {
             var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
             defer content_arena.deinit();
             const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
-            defer freeRcNode(testing_allocator, root, true);
+            defer freeRcNode(testing_allocator, root);
             try eqStr(
                 \\2 2/11
                 \\  1 B| `hello` |E
@@ -437,7 +437,7 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, 
 
         if (!result.found) return error.ColumnOutOfBounds;
         if (result.replace) |root| {
-            if (i > 0) freeRcNode(a, self, true); // prevent leaks
+            if (i > 0) freeRcNode(a, self); // prevent leaks
             self = root;
         }
 
@@ -461,7 +461,7 @@ test "insertChars - single insertion at beginning" {
         defer content_arena.deinit();
 
         const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
-        defer freeRcNode(testing_allocator, old_root, true);
+        defer freeRcNode(testing_allocator, old_root);
         try eqStr(
             \\2 2/11
             \\  1 B| `hello` |E
@@ -470,7 +470,7 @@ test "insertChars - single insertion at beginning" {
 
         {
             const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
-            defer freeRcNode(testing_allocator, new_root, true);
+            defer freeRcNode(testing_allocator, new_root);
 
             try eqStr(
                 \\2 2/11
@@ -523,7 +523,7 @@ test "insertChars - single insertion at beginning" {
 
         // freeing old_root first
         {
-            freeRcNode(testing_allocator, old_root, true);
+            freeRcNode(testing_allocator, old_root);
             try eqStr(
                 \\3 2/14
                 \\  2 1/9
@@ -534,7 +534,7 @@ test "insertChars - single insertion at beginning" {
         }
 
         // freeing new_root later
-        freeRcNode(testing_allocator, new_root, true);
+        freeRcNode(testing_allocator, new_root);
     }
 }
 
@@ -793,7 +793,7 @@ test "insertChars - multiple insertions from empty string" {
         \\    1 `l`
     , try debugStr(idc_if_it_leaks, r6c));
 
-    freeRcNode(testing_allocator, r6c, true);
+    freeRcNode(testing_allocator, r6c);
 }
 
 test "insertChars - abcd" {
@@ -801,10 +801,10 @@ test "insertChars - abcd" {
     defer content_arena.deinit();
 
     const acd = try Node.fromString(testing_allocator, &content_arena, "ACD");
-    defer freeRcNode(testing_allocator, acd, true);
+    defer freeRcNode(testing_allocator, acd);
 
     _, _, const abcd = try insertChars(acd, testing_allocator, &content_arena, "B", .{ .line = 0, .col = 1 });
-    defer freeRcNode(testing_allocator, abcd, true);
+    defer freeRcNode(testing_allocator, abcd);
     const abcd_dbg =
         \\3 1/4
         \\  1 B| `A`
@@ -816,7 +816,7 @@ test "insertChars - abcd" {
 
     {
         _, _, const eabcd = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 0 });
-        defer freeRcNode(testing_allocator, eabcd, true);
+        defer freeRcNode(testing_allocator, eabcd);
         const eabcd_dbg =
             \\3 1/5
             \\  2 1/2
@@ -831,7 +831,7 @@ test "insertChars - abcd" {
 
     {
         _, _, const abcde = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 4 });
-        defer freeRcNode(testing_allocator, abcde, true);
+        defer freeRcNode(testing_allocator, abcde);
         const abcde_dbg =
             \\4 1/5
             \\  1 B| `A` Rc:2
@@ -967,7 +967,7 @@ fn freeBackAndForth(str: []const u8) !void {
         defer content_arena.deinit();
         var iterations = try insertCharOneAfterAnother(testing_allocator, &content_arena, str);
         defer iterations.deinit();
-        for (0..iterations.items.len) |i| freeRcNode(testing_allocator, iterations.items[i], true);
+        for (0..iterations.items.len) |i| freeRcNode(testing_allocator, iterations.items[i]);
     }
 
     {
@@ -978,7 +978,7 @@ fn freeBackAndForth(str: []const u8) !void {
 
         for (0..iterations.items.len) |i_| {
             const i = iterations.items.len - 1 - i_;
-            freeRcNode(testing_allocator, iterations.items[i], true);
+            freeRcNode(testing_allocator, iterations.items[i]);
         }
     }
 }
@@ -1086,11 +1086,11 @@ test "deleteChars - basics" {
     defer content_arena.deinit();
 
     const original = try Node.fromString(testing_allocator, &content_arena, "1234567");
-    defer freeRcNode(testing_allocator, original, true);
+    defer freeRcNode(testing_allocator, original);
 
     {
         const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 0 }, 1);
-        defer freeRcNode(testing_allocator, edit, true);
+        defer freeRcNode(testing_allocator, edit);
         try eqStr(
             \\1 B| `234567`
         , try debugStr(idc_if_it_leaks, edit));
@@ -1098,7 +1098,7 @@ test "deleteChars - basics" {
 
     {
         const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 3 }, 1);
-        defer freeRcNode(testing_allocator, edit, true);
+        defer freeRcNode(testing_allocator, edit);
         try eqStr(
             \\2 1/6
             \\  1 B| `123`
@@ -1108,7 +1108,7 @@ test "deleteChars - basics" {
 
     {
         const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
-        defer freeRcNode(testing_allocator, edit, true);
+        defer freeRcNode(testing_allocator, edit);
         try eqStr(
             \\2 1/6
             \\  1 B| `12345`
@@ -1118,7 +1118,7 @@ test "deleteChars - basics" {
 
     {
         const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 6 }, 1);
-        defer freeRcNode(testing_allocator, edit, true);
+        defer freeRcNode(testing_allocator, edit);
         try eqStr(
             \\1 B| `123456`
         , try debugStr(idc_if_it_leaks, edit));
@@ -1253,10 +1253,10 @@ test getNocOfRange {
     defer content_arena.deinit();
 
     const original = try Node.fromString(testing_allocator, &content_arena, "hello venus\nhello world\nhello kitty");
-    defer freeRcNode(testing_allocator, original, true);
+    defer freeRcNode(testing_allocator, original);
 
     const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
-    defer freeRcNode(testing_allocator, edit, true);
+    defer freeRcNode(testing_allocator, edit);
     try eqStr(
         \\3 3/34
         \\  2 1/11
@@ -1716,10 +1716,10 @@ test "size matters" {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn freeRcNodes(a: Allocator, nodes: []const RcNode) void {
-    for (nodes) |node| freeRcNode(a, node, true);
+    for (nodes) |node| freeRcNode(a, node);
 }
 
-pub fn freeRcNode(a: Allocator, node: RcNode, _: bool) void {
+pub fn freeRcNode(a: Allocator, node: RcNode) void {
     releaseChildrenRecursive(node.value, a);
     node.release(a);
 }
