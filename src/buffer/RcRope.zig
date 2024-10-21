@@ -1008,7 +1008,7 @@ const DeleteCharsCtx = struct {
 
         // next node
         if (ctx.col > leaf_noc) {
-            ctx.count -= leaf_noc;
+            ctx.col -= leaf_noc;
             if (leaf.eol) ctx.col -= 1;
             return result;
         }
@@ -1075,6 +1075,7 @@ const DeleteCharsCtx = struct {
 };
 
 pub fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
+    assert(count > 0);
     var ctx = DeleteCharsCtx{ .a = a, .col = destination.col, .count = count };
     const result = try walkFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
     if (result.found) return result.replace orelse error.Stop;
@@ -1769,6 +1770,10 @@ pub const CursorPoint = struct {
 pub const CursorRange = struct {
     start: CursorPoint,
     end: CursorPoint,
+
+    pub fn isEmpty(self: *const @This()) bool {
+        return self.start.line == self.end.line and self.start.col == self.end.col;
+    }
 
     pub fn cmp(_: void, a: CursorRange, b: CursorRange) bool {
         assert(std.sort.isSorted(CursorPoint, &.{ a.start, a.end }, {}, CursorPoint.cmp));
