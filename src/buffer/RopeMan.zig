@@ -344,7 +344,7 @@ test "insertCharsMultiCursor - no new lines" {
 
 pub fn deleteRange(self: *@This(), start: CursorPoint, end: CursorPoint) !CursorPoint {
     assert(std.sort.isSorted(CursorPoint, &.{ start, end }, {}, CursorPoint.cmp));
-    self.root = try self.deleteAndBalance(start, end);
+    self.root = try self.deleteAndBalance(CursorRange{ .start = start, .end = end });
     try self.pending.append(self.root);
     return start;
 }
@@ -368,9 +368,10 @@ test deleteRange {
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
 }
 
-fn deleteAndBalance(self: *@This(), start: CursorPoint, end: CursorPoint) !RcNode {
-    const noc = rcr.getNocOfRange(self.root, start, end);
-    const new_root = try rcr.deleteChars(self.root, self.a, start, noc);
+fn deleteAndBalance(self: *@This(), r: CursorRange) !RcNode {
+    if (r.isEmpty()) return self.root.retain();
+    const noc = rcr.getNocOfRange(self.root, r.start, r.end);
+    const new_root = try rcr.deleteChars(self.root, self.a, r.start, noc);
     const is_rebalanced, const balanced_root = try rcr.balance(self.a, new_root);
     if (is_rebalanced) rcr.freeRcNode(self.a, new_root);
     return balanced_root;
@@ -382,20 +383,68 @@ pub fn deleteRangesMultiCursor(self: *@This(), a: Allocator, ranges: []const Cur
     assert(ranges.len > 1);
     assert(std.sort.isSorted(CursorRange, ranges, {}, CursorRange.cmp));
     var points = try a.alloc(CursorPoint, ranges.len);
-
     var i = ranges.len;
     while (i > 0) {
         i -= 1;
-        const r = ranges[i];
-        self.root = try self.deleteAndBalance(r.start, r.end);
+        self.root = try self.deleteAndBalance(ranges[i]);
         try self.pending.append(self.root);
-        points[i] = r.start;
+        points[i] = ranges[i].start;
     }
-
+    adjustPointsAfterMultiCursorDelete(points, ranges);
     return points;
 }
 
-test deleteRangesMultiCursor {
+fn adjustPointsAfterMultiCursorDelete(points: []CursorPoint, ranges: []const CursorRange) void {
+    assert(points.len == ranges.len);
+    var chop_accum: usize = 0;
+    var col_accum: usize = 0;
+    for (ranges, 0..) |range, i| {
+        points[i].line -= chop_accum;
+        points[i].col += col_accum;
+        const current_chop = range.end.line - range.start.line;
+        chop_accum += current_chop;
+        if (current_chop == 0) col_accum = 0 else col_accum += range.start.col;
+    }
+}
+
+test "deleteRangesMultiCursor - with line shifts" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
+        .{ .start = .{ .line = 0, .col = 11 }, .end = .{ .line = 1, .col = 0 } },
+        .{ .start = .{ .line = 1, .col = 11 }, .end = .{ .line = 2, .col = 0 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 0 },
+            .{ .line = 0, .col = 11 },
+            .{ .line = 0, .col = 22 },
+        }, e1_points);
+        try eqStr(
+            \\hello venushello worldhello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+    const e2_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
+        .{ .start = .{ .line = 0, .col = 10 }, .end = .{ .line = 0, .col = 11 } },
+        .{ .start = .{ .line = 0, .col = 21 }, .end = .{ .line = 0, .col = 22 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 0 },
+            .{ .line = 0, .col = 10 },
+            .{ .line = 0, .col = 21 },
+        }, e2_points);
+        try eqStr(
+            \\hello venuhello worlhello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
+
+test "deleteRangesMultiCursor - no line shifts" {
     var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
