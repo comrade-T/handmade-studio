@@ -427,7 +427,7 @@ fn adjustPointsAfterMultiCursorDelete(a: Allocator, ranges: []const CursorRange)
     return points;
 }
 
-test "deleteRangesMultiCursor - single line - case 1 - delete 3 spaces in 'one two three four'" {
+test "deleteRangesMultiCursor - single line - case 1a - delete 3 spaces in 'one two three four'" {
     var ropeman = try RopeMan.initFromString(testing_allocator, "one two three four");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
@@ -447,6 +447,27 @@ test "deleteRangesMultiCursor - single line - case 1 - delete 3 spaces in 'one t
         try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
 }
+test "deleteRangesMultiCursor - single line - case 1b - delete 3 spaces in 'one two three four'" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello world\none two three four");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 1, .col = 3 }, .end = .{ .line = 1, .col = 4 } },
+        .{ .start = .{ .line = 1, .col = 7 }, .end = .{ .line = 1, .col = 8 } },
+        .{ .start = .{ .line = 1, .col = 13 }, .end = .{ .line = 1, .col = 14 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 1, .col = 3 },
+            .{ .line = 1, .col = 6 },
+            .{ .line = 1, .col = 11 },
+        }, e1_points);
+        try eqStr(
+            \\hello world
+            \\onetwothreefour
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
 test "deleteRangesMultiCursor - single line - case 2 - delete 'one ' & 'three '" {
     var ropeman = try RopeMan.initFromString(testing_allocator, "one two three four");
     defer ropeman.deinit();
@@ -461,6 +482,26 @@ test "deleteRangesMultiCursor - single line - case 2 - delete 'one ' & 'three '"
         }, e1_points);
         try eqStr(
             \\two four
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
+
+test "deleteRangesMultiCursor - with line shifts - distant affected" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "venus venue\nhello world\nhello kitty");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 1, .col = 6 } },
+        .{ .start = .{ .line = 2, .col = 4 }, .end = .{ .line = 2, .col = 6 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 5 },
+            .{ .line = 1, .col = 4 },
+        }, e1_points);
+        try eqStr(
+            \\venusworld
+            \\hellkitty
         , try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
