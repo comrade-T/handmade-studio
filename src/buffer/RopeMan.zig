@@ -382,115 +382,91 @@ fn deleteAndBalance(self: *@This(), r: CursorRange) !RcNode {
 pub fn deleteRangesMultiCursor(self: *@This(), a: Allocator, ranges: []const CursorRange) ![]CursorPoint {
     assert(ranges.len > 1);
     assert(std.sort.isSorted(CursorRange, ranges, {}, CursorRange.cmp));
-    var points = try a.alloc(CursorPoint, ranges.len);
     var i = ranges.len;
     while (i > 0) {
         i -= 1;
         self.root = try self.deleteAndBalance(ranges[i]);
         try self.pending.append(self.root);
-        points[i] = ranges[i].start;
     }
-    adjustPointsAfterMultiCursorDelete(points, ranges);
+    return try adjustPointsAfterMultiCursorDelete(a, ranges);
+}
+
+fn adjustPointsAfterMultiCursorDelete(a: Allocator, ranges: []const CursorRange) ![]CursorPoint {
+    var points = try a.alloc(CursorPoint, ranges.len);
+
+    var total_deficit: usize = 0;
+    var subject: usize = 0;
+    var debt: usize = 0;
+    var anchor: usize = 0;
+
+    for (ranges, 0..) |r, i| {
+        const deficit = r.end.line - r.start.line;
+        defer total_deficit += deficit;
+
+        const adjusted_start_line = r.start.line - total_deficit;
+        if (adjusted_start_line > subject) {
+            subject = adjusted_start_line;
+            debt = 0;
+            anchor = 0;
+        }
+
+        const p = CursorPoint{
+            .line = adjusted_start_line,
+            .col = r.start.col + anchor - debt,
+        };
+        defer points[i] = p;
+
+        if (deficit == 0) {
+            debt += r.end.col - r.start.col;
+            continue;
+        }
+
+        anchor = p.col + debt;
+    }
+
     return points;
 }
 
-fn adjustPointsAfterMultiCursorDelete(points: []CursorPoint, ranges: []const CursorRange) void {
-    assert(points.len == ranges.len);
-
-    var accum_line_deficits: usize = 0;
-    var curr_line: usize = 0;
-    var curr_line_col_deficits: usize = 0;
-    var curr_line_tail: usize = 0;
-
-    for (ranges, 0..) |r, i| {
-        const line_deficit = r.end.line - r.start.line;
-
-        points[i].line -= accum_line_deficits;
-
-        if (points[i].line == curr_line) {
-            if (line_deficit > 0) points[i].col += curr_line_tail;
-            points[i].col -= curr_line_col_deficits;
-        }
-
-        if (points[i].line > curr_line) {
-            curr_line = points[i].line;
-            curr_line_col_deficits = 0;
-        }
-
-        if (line_deficit == 0) {
-            assert(r.end.line == r.start.line and r.end.col >= r.start.col);
-            curr_line_col_deficits += r.end.col - r.start.col;
-        }
-
-        accum_line_deficits += line_deficit;
-
-        curr_line_tail = points[i].col;
-    }
-}
-
-test "deleteRangesMultiCursor - multiple lines - no line shifts" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
-    defer ropeman.deinit();
-    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
-        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 } },
-        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 1 } },
-        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 2, .col = 1 } },
-    });
-    {
-        try eqSlice(CursorPoint, &.{
-            .{ .line = 0, .col = 0 },
-            .{ .line = 1, .col = 0 },
-            .{ .line = 2, .col = 0 },
-        }, e1_points);
-        try eqStr(
-            \\ello venus
-            \\ello world
-            \\ello kitty
-        , try ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-    }
-    const e2_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
-        .{ .start = .{ .line = 0, .col = 1 }, .end = .{ .line = 0, .col = 5 } },
-        .{ .start = .{ .line = 1, .col = 1 }, .end = .{ .line = 1, .col = 5 } },
-        .{ .start = .{ .line = 2, .col = 1 }, .end = .{ .line = 2, .col = 5 } },
-    });
-    {
-        try eqSlice(CursorPoint, &.{
-            .{ .line = 0, .col = 1 },
-            .{ .line = 1, .col = 1 },
-            .{ .line = 2, .col = 1 },
-        }, e2_points);
-        try eqStr(
-            \\evenus
-            \\eworld
-            \\ekitty
-        , try ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-    }
-    try ropeman.registerLastPendingToHistory();
-    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-}
-
-test "deleteRangesMultiCursor - single line - no line shifts" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three");
+test "deleteRangesMultiCursor - single line - case 1 - delete 3 spaces in 'one two three four'" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three four");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 3 }, .end = .{ .line = 0, .col = 4 } },
         .{ .start = .{ .line = 0, .col = 7 }, .end = .{ .line = 0, .col = 8 } },
+        .{ .start = .{ .line = 0, .col = 13 }, .end = .{ .line = 0, .col = 14 } },
     });
     {
         try eqSlice(CursorPoint, &.{
             .{ .line = 0, .col = 3 },
             .{ .line = 0, .col = 6 },
+            .{ .line = 0, .col = 11 },
         }, e1_points);
         try eqStr(
-            \\onetwothree
+            \\onetwothreefour
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
+test "deleteRangesMultiCursor - single line - case 2 - delete 'one ' & 'three '" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three four");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 } },
+        .{ .start = .{ .line = 0, .col = 8 }, .end = .{ .line = 0, .col = 14 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 0 },
+            .{ .line = 0, .col = 4 },
+        }, e1_points);
+        try eqStr(
+            \\two four
         , try ropeman.toString(idc_if_it_leaks, .lf));
         try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
 }
 
-test "deleteRangesMultiCursor - different lines - with line shifts - 1st case" {
+test "deleteRangesMultiCursor - with line shifts - 1st case" {
     var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
@@ -543,32 +519,96 @@ test "deleteRangesMultiCursor - different lines - with line shifts - 1st case" {
     }
 }
 
-// test "deleteRangesMultiCursor - with line shifts - 2nd" {
-//     var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
-//     defer ropeman.deinit();
-//     const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
-//         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
-//         .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 6 } },
-//         .{ .start = .{ .line = 0, .col = 11 }, .end = .{ .line = 1, .col = 0 } },
-//         .{ .start = .{ .line = 1, .col = 5 }, .end = .{ .line = 1, .col = 6 } },
-//         .{ .start = .{ .line = 1, .col = 11 }, .end = .{ .line = 2, .col = 0 } },
-//         .{ .start = .{ .line = 2, .col = 5 }, .end = .{ .line = 2, .col = 6 } },
-//     });
-//     {
-//         try eqSlice(CursorPoint, &.{
-//             .{ .line = 0, .col = 0 },
-//             .{ .line = 0, .col = 5 },
-//             .{ .line = 0, .col = 10 },
-//             .{ .line = 0, .col = 15 },
-//             .{ .line = 0, .col = 20 },
-//             .{ .line = 0, .col = 25 },
-//         }, e1_points);
-//         try eqStr(
-//             \\hellovenushelloworldhellokitty
-//         , try ropeman.toString(idc_if_it_leaks, .lf));
-//         try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
-//     }
-// }
+test "deleteRangesMultiCursor - with line shifts - 2nd case" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 6 } },
+        .{ .start = .{ .line = 0, .col = 11 }, .end = .{ .line = 1, .col = 0 } },
+        .{ .start = .{ .line = 1, .col = 11 }, .end = .{ .line = 2, .col = 0 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 5 },
+            .{ .line = 0, .col = 10 },
+            .{ .line = 0, .col = 21 },
+        }, e1_points);
+        try eqStr(
+            \\hellovenushello worldhello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
+
+test "deleteRangesMultiCursor - with line shifts - 3rd case" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
+        .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 6 } },
+        .{ .start = .{ .line = 0, .col = 11 }, .end = .{ .line = 1, .col = 0 } },
+        .{ .start = .{ .line = 1, .col = 5 }, .end = .{ .line = 1, .col = 6 } },
+        .{ .start = .{ .line = 1, .col = 11 }, .end = .{ .line = 2, .col = 0 } },
+        .{ .start = .{ .line = 2, .col = 5 }, .end = .{ .line = 2, .col = 6 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 0 },
+            .{ .line = 0, .col = 5 },
+            .{ .line = 0, .col = 10 },
+            .{ .line = 0, .col = 15 },
+            .{ .line = 0, .col = 20 },
+            .{ .line = 0, .col = 25 },
+        }, e1_points);
+        try eqStr(
+            \\hellovenushelloworldhellokitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+}
+
+test "deleteRangesMultiCursor - multiple lines - no line shifts" {
+    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    defer ropeman.deinit();
+    const e1_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 } },
+        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 1 } },
+        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 2, .col = 1 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 0 },
+            .{ .line = 1, .col = 0 },
+            .{ .line = 2, .col = 0 },
+        }, e1_points);
+        try eqStr(
+            \\ello venus
+            \\ello world
+            \\ello kitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+    const e2_points = try ropeman.deleteRangesMultiCursor(idc_if_it_leaks, &.{
+        .{ .start = .{ .line = 0, .col = 1 }, .end = .{ .line = 0, .col = 5 } },
+        .{ .start = .{ .line = 1, .col = 1 }, .end = .{ .line = 1, .col = 5 } },
+        .{ .start = .{ .line = 2, .col = 1 }, .end = .{ .line = 2, .col = 5 } },
+    });
+    {
+        try eqSlice(CursorPoint, &.{
+            .{ .line = 0, .col = 1 },
+            .{ .line = 1, .col = 1 },
+            .{ .line = 2, .col = 1 },
+        }, e2_points);
+        try eqStr(
+            \\evenus
+            \\eworld
+            \\ekitty
+        , try ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+    }
+    try ropeman.registerLastPendingToHistory();
+    try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// registerLastPendingToHistory
 
