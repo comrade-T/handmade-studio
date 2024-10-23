@@ -59,15 +59,24 @@ pub fn deinit(self: *@This()) void {
     self.arena.deinit();
 }
 
-pub fn initFromString(a: Allocator, source: []const u8) !RopeMan {
+pub const InitFrom = enum { string, file };
+
+pub fn initFrom(a: Allocator, from: InitFrom, source: []const u8) !RopeMan {
     var ropeman = try RopeMan.init(a);
-    ropeman.root = try rcr.Node.fromString(ropeman.a, &ropeman.arena, source);
+    switch (from) {
+        .string => ropeman.root = try rcr.Node.fromString(ropeman.a, &ropeman.arena, source),
+        .file => ropeman.root = try rcr.Node.fromFile(ropeman.a, &ropeman.arena, source),
+    }
     try ropeman.history.append(ropeman.root);
     return ropeman;
 }
 
 pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
     return self.root.value.toString(a, eol_mode);
+}
+
+pub fn dump(self: *@This(), target: CursorPoint, buf: []u8, buf_size: usize) ![]const u8 {
+    return try rcr.dump(self.root, target, buf, buf_size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
@@ -113,7 +122,7 @@ fn adjustPointsAfterMultiCursorInsert(points: []CursorPoint, chars: []const u8) 
 }
 
 test "insertCharsMultiCursor - with new lines - 2 points start at same line" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "one two");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one two");
     defer ropeman.deinit();
     const input_points = &.{
         .{ .line = 0, .col = 0 },
@@ -148,7 +157,7 @@ test "insertCharsMultiCursor - with new lines - 2 points start at same line" {
 }
 
 test "insertCharsMultiCursor - with new lines - 3 points start at same line" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one two three");
     defer ropeman.deinit();
     const input_points = &.{
         .{ .line = 0, .col = 0 },
@@ -188,7 +197,7 @@ test "insertCharsMultiCursor - with new lines - 3 points start at same line" {
 }
 
 test "insertCharsMultiCursor - with new lines" {
-    var ropeman = try RopeMan.initFromString(testing_allocator,
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string,
         \\hello venus
         \\hello world
         \\hello kitty
@@ -258,7 +267,7 @@ test "insertCharsMultiCursor - with new lines" {
 }
 
 test "insertCharsMultiCursor - no new lines" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     {
         try eqSlice(
@@ -386,7 +395,7 @@ fn adjustPointsAfterMultiCursorDelete(a: Allocator, ranges: []const CursorRange)
 }
 
 test "deleteRangesMultiCursor - single line - case 1a - delete 3 spaces in 'one two three four'" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three four");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one two three four");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 3 }, .end = .{ .line = 0, .col = 4 } },
@@ -406,7 +415,7 @@ test "deleteRangesMultiCursor - single line - case 1a - delete 3 spaces in 'one 
     }
 }
 test "deleteRangesMultiCursor - single line - case 1b - delete 3 spaces in 'one two three four'" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello world\none two three four");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\none two three four");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 1, .col = 3 }, .end = .{ .line = 1, .col = 4 } },
@@ -427,7 +436,7 @@ test "deleteRangesMultiCursor - single line - case 1b - delete 3 spaces in 'one 
     }
 }
 test "deleteRangesMultiCursor - single line - case 2 - delete 'one ' & 'three '" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "one two three four");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one two three four");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 4 } },
@@ -446,7 +455,7 @@ test "deleteRangesMultiCursor - single line - case 2 - delete 'one ' & 'three '"
 }
 
 test "deleteRangesMultiCursor - with line shifts - distant affected" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "venus venue\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "venus venue\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 1, .col = 6 } },
@@ -466,7 +475,7 @@ test "deleteRangesMultiCursor - with line shifts - distant affected" {
 }
 
 test "deleteRangesMultiCursor - with line shifts - 1st case" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
@@ -519,7 +528,7 @@ test "deleteRangesMultiCursor - with line shifts - 1st case" {
 }
 
 test "deleteRangesMultiCursor - with line shifts - 2nd case" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 5 }, .end = .{ .line = 0, .col = 6 } },
@@ -540,7 +549,7 @@ test "deleteRangesMultiCursor - with line shifts - 2nd case" {
 }
 
 test "deleteRangesMultiCursor - with line shifts - 3rd case" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
@@ -567,7 +576,7 @@ test "deleteRangesMultiCursor - with line shifts - 3rd case" {
 }
 
 test "deleteRangesMultiCursor - multiple lines - no line shifts" {
-    var ropeman = try RopeMan.initFromString(testing_allocator, "hello venus\nhello world\nhello kitty");
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello venus\nhello world\nhello kitty");
     defer ropeman.deinit();
     const e1_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 } },

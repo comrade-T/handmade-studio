@@ -95,15 +95,15 @@ pub fn build(b: *std.Build) void {
     _ = undo_tree;
 
     {
-        const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
+        const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
             .{ .name = "code_point", .module = zg.module("code_point") },
-            .{ .name = "ztracy", .module = ztracy.module("root") },
+        }, zig_build_test_step);
+
+        const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
+            .{ .name = "RopeMan", .module = ropeman.module },
+            .{ .name = "LangSuite", .module = langsuite.module },
         }, zig_build_test_step);
         _ = buffer;
-
-        _ = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
-            .{ .name = "code_point", .module = zg.module("code_point") },
-        }, zig_build_test_step);
     }
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
@@ -153,15 +153,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
-
-    // const window = addTestableModule(&bops, "src/window/window.zig", &.{
-    //     .{ .name = "code_point", .module = zg.module("code_point") },
-    //     .{ .name = "neo_buffer", .module = neo_buffer.module },
-    //     .{ .name = "ztracy", .module = ztracy.module("root") },
-    //     .{ .name = "ts", .module = ts.module },
-    //     .{ .name = "input_processor", .module = input_processor.module },
-    //     ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    // }, zig_build_test_step);
 
     const display_cache_pool = addTestableModule(&bops, "src/window/DisplayCachePool.zig", &.{
         .{ .name = "neo_buffer", .module = neo_buffer.module },
