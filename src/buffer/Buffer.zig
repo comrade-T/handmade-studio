@@ -42,11 +42,11 @@ pub fn destroy(self: *@This()) void {
 
 pub fn initiateTreeSitter(self: *@This(), langsuite: *LangSuite) !void {
     self.langsuite = langsuite;
-    self.tsparser = try self.langsuite.?.newParser();
+    self.tsparser = try self.langsuite.?.createParser();
     _ = self.parse();
 }
 
-pub fn parse(self: *@This()) !void {
+pub fn parse(self: *@This()) ?[]const ts.Range {
     assert(self.tsparser != null);
 
     const may_old_tree = self.tstree;
@@ -58,10 +58,10 @@ pub fn parse(self: *@This()) !void {
             fn read(payload: ?*anyopaque, _: u32, ts_point: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
                 const ctx: *Buffer = @ptrCast(@alignCast(payload orelse return ""));
                 const result = ctx.ropeman.dump(
-                    .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.col) },
+                    .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.column) },
                     &ctx.parse_buf,
                     PARSE_BUFFER_SIZE,
-                );
+                ) catch "";
                 bytes_read.* = @intCast(result.len);
                 return @ptrCast(result.ptr);
             }
@@ -92,7 +92,27 @@ pub fn parse(self: *@This()) !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test Buffer {
-    var buf = try Buffer.create(testing_allocator, .string, "hello there");
+test initiateTreeSitter {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    const source =
+        \\const a = 10;
+    ;
+    var buf = try Buffer.create(testing_allocator, .string, source);
     defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    try eqStr(
+        \\source_file
+        \\  Decl
+        \\    VarDecl
+        \\      "const"
+        \\      IDENTIFIER
+        \\      "="
+        \\      ErrorUnionExpr
+        \\        SuffixExpr
+        \\          INTEGER
+        \\      ";"
+    , try buf.tstree.?.getRootNode().debugPrint());
 }
