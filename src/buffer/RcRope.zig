@@ -260,6 +260,13 @@ pub const Node = union(enum) {
         return Node.fromReader(a, arena, stream.reader(), source.len);
     }
 
+    pub fn fromFile(a: Allocator, arena: *ArenaAllocator, path: []const u8) !RcNode {
+        const file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
+        defer file.close();
+        const stat = try file.stat();
+        return Node.fromReader(a, arena, file.reader(), stat.size);
+    }
+
     test fromString {
         // without bol
         {
@@ -1984,6 +1991,92 @@ fn __inputCharsOneAfterAnotherAt0Position(a: Allocator, arena: *ArenaAllocator, 
     var root = try Node.fromString(a, arena, "");
     for (0..chars.len) |i| _, _, root = try insertChars(root, a, arena, chars[i .. i + 1], .{ .line = 0, .col = 0 });
     return root;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Dump
+
+const DumpCtx = struct {
+    buf_anchor: usize = 0,
+    buf: []u8,
+    buf_size: usize,
+    col: usize,
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        defer ctx.col -|= leaf.noc;
+
+        if (leaf.noc < ctx.col) return WalkResult.keep_walking;
+
+        var buf_start: usize = 0;
+        if (ctx.col > 0) {
+            var iter = code_point.Iterator{ .bytes = leaf.buf };
+            while (iter.next()) |cp| {
+                if (iter.i - 1 == ctx.col) {
+                    buf_start = cp.offset;
+                    break;
+                }
+            }
+        }
+
+        var buf_end: usize = 0;
+        if (leaf.buf.len + ctx.buf_anchor > ctx.buf_size) {
+            var iter = code_point.Iterator{ .bytes = leaf.buf, .i = @intCast(ctx.col) };
+            while (iter.next()) |cp| {
+                if (ctx.buf_anchor + cp.offset + cp.len - buf_start > ctx.buf_size) break;
+                buf_end = cp.offset + cp.len;
+            }
+        } else {
+            buf_end = leaf.buf.len;
+        }
+
+        if (buf_end > buf_start) {
+            const cpy_len = buf_end - buf_start;
+            @memcpy(ctx.buf[ctx.buf_anchor .. ctx.buf_anchor + cpy_len], leaf.buf[buf_start..buf_end]);
+            ctx.buf_anchor += cpy_len;
+        }
+
+        if (ctx.buf_size - ctx.buf_anchor > 0 and leaf.eol) {
+            ctx.buf[ctx.buf_anchor] = '\n';
+            ctx.buf_anchor += 1;
+        }
+
+        if (ctx.buf_size - ctx.buf_anchor == 0) return WalkResult.stop;
+
+        return WalkResult.keep_walking;
+    }
+};
+
+pub fn dump(node: RcNode, target: CursorPoint, buf: []u8, buf_size: usize) ![]const u8 {
+    var ctx: DumpCtx = .{ .col = target.col, .buf = buf, .buf_size = buf_size };
+    const result = try walkFromLineBegin(idc_if_it_leaks, node, target.line, DumpCtx.walker, &ctx);
+    if (!result.found) return error.NotFound;
+    return buf[0..ctx.buf_anchor];
+}
+
+test dump {
+    try testDump("hello\nworld", "hello\nworld", .{ .line = 0, .col = 0 }, 1024);
+    try testDump("hello\nworld", "ello\nworld", .{ .line = 0, .col = 1 }, 1024);
+    try testDump("hello\nworld", "world", .{ .line = 1, .col = 0 }, 1024);
+    try testDump("hello\nworld", "orld", .{ .line = 1, .col = 1 }, 1024);
+
+    try testDump("hello\nworld", "hell", .{ .line = 0, .col = 0 }, 4);
+    try testDump("hello\nworld", "ello", .{ .line = 0, .col = 1 }, 4);
+    try testDump("hello\nworld", "llo\n", .{ .line = 0, .col = 2 }, 4);
+
+    try testDump("hello\nworld", "worl", .{ .line = 1, .col = 0 }, 4);
+    try testDump("hello\nworld", "orld", .{ .line = 1, .col = 1 }, 4);
+    try testDump("hello\nworld", "rld", .{ .line = 1, .col = 2 }, 4);
+    try testDump("hello\nworld", "ld", .{ .line = 1, .col = 3 }, 4);
+}
+
+fn testDump(source: []const u8, expected_str: []const u8, point: CursorPoint, comptime buf_size: usize) !void {
+    var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer content_arena.deinit();
+    var buf: [buf_size]u8 = undefined;
+    const root = try Node.fromString(testing_allocator, &content_arena, source);
+    defer freeRcNode(testing_allocator, root);
+    const result = try dump(root, point, &buf, buf_size);
+    try eqStr(expected_str, result);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
