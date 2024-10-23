@@ -323,18 +323,18 @@ pub const Node = union(enum) {
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "");
             try eq(1, leaves.len);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "" }, leaves[0].value.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "", .noc = 0 }, leaves[0].value.leaf);
         }
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "\n");
             try eq(1, leaves.len);
-            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "" }, leaves[0].value.leaf);
+            try eqDeep(Leaf{ .bol = false, .eol = true, .buf = "", .noc = 0 }, leaves[0].value.leaf);
         }
         {
             const leaves = try createLeavesByNewLine(idc_if_it_leaks, "hello\nworld");
             try eq(2, leaves.len);
-            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "hello" }, leaves[0].value.leaf);
-            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world" }, leaves[1].value.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = true, .buf = "hello", .noc = 5 }, leaves[0].value.leaf);
+            try eqDeep(Leaf{ .bol = true, .eol = false, .buf = "world", .noc = 5 }, leaves[1].value.leaf);
         }
     }
 
@@ -356,7 +356,6 @@ const InsertCharsCtx = struct {
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-        const leaf_noc = getNumOfChars(leaf.buf);
 
         if (ctx.col == 0) {
             const left = try Leaf.new(ctx.a, ctx.chars, leaf.bol, ctx.eol);
@@ -364,7 +363,7 @@ const InsertCharsCtx = struct {
             return WalkResult{ .replace = try Node.new(ctx.a, left, right) };
         }
 
-        if (leaf_noc == ctx.col) {
+        if (leaf.noc == ctx.col) {
             if (leaf.eol and ctx.eol and ctx.chars.len == 0) {
                 const left = try Leaf.new(ctx.a, leaf.buf, leaf.bol, true);
                 const right = try Leaf.new(ctx.a, ctx.chars, true, true);
@@ -384,7 +383,7 @@ const InsertCharsCtx = struct {
             return WalkResult{ .replace = try Node.new(ctx.a, left, right) };
         }
 
-        if (leaf_noc > ctx.col) {
+        if (leaf.noc > ctx.col) {
             const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
             if (ctx.eol and ctx.chars.len == 0) {
                 const left = try Leaf.new(ctx.a, leaf.buf[0..pos], leaf.bol, ctx.eol);
@@ -399,7 +398,7 @@ const InsertCharsCtx = struct {
             return WalkResult{ .replace = try Node.new(ctx.a, left, mid_right) };
         }
 
-        ctx.col -= leaf_noc;
+        ctx.col -= leaf.noc;
         return if (leaf.eol) WalkResult.stop else WalkResult.keep_walking;
     }
 };
@@ -1002,13 +1001,12 @@ const DeleteCharsCtx = struct {
             return result;
         }
 
-        const leaf_noc = getNumOfChars(leaf.buf);
         const leaf_bol = leaf.bol and !ctx.delete_next_bol;
         ctx.delete_next_bol = false;
 
         // next node
-        if (ctx.col > leaf_noc) {
-            ctx.col -= leaf_noc;
+        if (ctx.col > leaf.noc) {
+            ctx.col -= leaf.noc;
             if (leaf.eol) ctx.col -= 1;
             return result;
         }
@@ -1016,8 +1014,8 @@ const DeleteCharsCtx = struct {
         // this node
         this_node: {
             if (ctx.col == 0) {
-                if (ctx.count > leaf_noc) {
-                    ctx.count -= leaf_noc;
+                if (ctx.count > leaf.noc) {
+                    ctx.count -= leaf.noc;
                     result.replace = try Leaf.new(ctx.a, "", leaf_bol, false);
                     if (leaf.eol) {
                         ctx.count -= 1;
@@ -1026,7 +1024,7 @@ const DeleteCharsCtx = struct {
                     break :this_node;
                 }
 
-                if (ctx.count == leaf_noc) {
+                if (ctx.count == leaf.noc) {
                     result.replace = try Leaf.new(ctx.a, "", leaf_bol, leaf.eol);
                     ctx.count = 0;
                     break :this_node;
@@ -1038,18 +1036,18 @@ const DeleteCharsCtx = struct {
                 break :this_node;
             }
 
-            if (ctx.col == leaf_noc) {
+            if (ctx.col == leaf.noc) {
                 if (leaf.eol) {
                     ctx.count -= 1;
                     result.replace = try Leaf.new(ctx.a, leaf.buf, leaf_bol, false);
                     ctx.delete_next_bol = true;
                 }
-                ctx.col -= leaf_noc;
+                ctx.col -= leaf.noc;
                 break :this_node;
             }
 
-            if (ctx.col + ctx.count >= leaf_noc) {
-                ctx.count -= leaf_noc - ctx.col;
+            if (ctx.col + ctx.count >= leaf.noc) {
+                ctx.count -= leaf.noc - ctx.col;
                 const pos = getNumOfBytesTillCol(leaf.buf, ctx.col);
                 const leaf_eol = if (leaf.eol and ctx.count > 0) leaf_eol: {
                     ctx.count -= 1;
@@ -1709,10 +1707,11 @@ const Leaf = struct {
     buf: []const u8,
     bol: bool = true,
     eol: bool = true,
+    noc: u32,
 
     fn new(a: Allocator, source: []const u8, bol: bool, eol: bool) !RcNode {
         return try RcNode.init(a, .{
-            .leaf = .{ .buf = source, .bol = bol, .eol = eol },
+            .leaf = .{ .buf = source, .bol = bol, .eol = eol, .noc = getNumOfChars(source) },
         });
     }
 
@@ -1744,15 +1743,13 @@ const Weights = struct {
     bols: u32 = 0,
     len: u32 = 0,
     depth: u32 = 1,
+    noc: u32 = 0,
 
     fn add(self: *Weights, other: Weights) void {
         self.bols += other.bols;
         self.len += other.len;
+        self.noc += other.noc;
         self.depth = @max(self.depth, other.depth);
-    }
-
-    fn isEmpty(self: *const Leaf) bool {
-        return self.buf.len == 0 and !self.bol and !self.eol;
     }
 };
 
@@ -1828,7 +1825,7 @@ test "size matters" {
     try eq(4, @alignOf(Weights));
     try eq(8, @alignOf(Node));
 
-    try eq(12, @sizeOf(Weights));
+    try eq(16, @sizeOf(Weights));
     try eq(24, @sizeOf(Leaf));
     try eq(32, @sizeOf(Branch));
     try eq(40, @sizeOf(Node));
