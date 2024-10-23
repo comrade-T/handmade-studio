@@ -2000,20 +2000,26 @@ const DumpCtx = struct {
     buf: []u8,
     buf_size: usize,
     col: usize,
-    maybe_out_of_bounds: bool = false,
+    should_stop: bool = false,
+    out_of_bounds: bool = false,
+    last_line: bool = false,
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-        defer ctx.col -|= leaf.noc;
-
-        ctx.maybe_out_of_bounds = false;
-
-        if (leaf.noc <= ctx.col) {
-            ctx.maybe_out_of_bounds = true;
-            if (leaf.eol) return WalkResult.stop;
+        defer {
+            ctx.col -|= leaf.noc;
+            if (ctx.buf_size - ctx.buf_anchor == 0) ctx.should_stop = true;
+            if (leaf.eol and ctx.buf_anchor < ctx.buf_size) {
+                ctx.buf[ctx.buf_anchor] = '\n';
+                ctx.buf_anchor += 1;
+            }
         }
 
-        if (leaf.eol and leaf.noc <= ctx.col) return WalkResult.stop;
+        if ((leaf.eol or ctx.last_line) and (ctx.col > 0) and (leaf.noc <= ctx.col)) {
+            ctx.out_of_bounds = true;
+            return WalkResult.stop;
+        }
+
         if (leaf.noc < ctx.col) return WalkResult.keep_walking;
 
         var buf_start: usize = 0;
@@ -2044,21 +2050,21 @@ const DumpCtx = struct {
             ctx.buf_anchor += cpy_len;
         }
 
-        if (ctx.buf_size - ctx.buf_anchor > 0 and leaf.eol) {
-            ctx.buf[ctx.buf_anchor] = '\n';
-            ctx.buf_anchor += 1;
-        }
-
-        if (ctx.buf_size - ctx.buf_anchor == 0) return WalkResult.stop;
-
+        if (leaf.eol) return WalkResult.stop;
         return WalkResult.keep_walking;
     }
 };
 
-pub fn dump(node: RcNode, target: CursorPoint, buf: []u8, buf_size: usize) ![]const u8 {
+pub fn dump(node: RcNode, target: CursorPoint, buf: []u8, buf_size: usize) []const u8 {
+    const num_of_lines = node.value.weights().bols;
+    if (target.line > num_of_lines -| 1) return "";
     var ctx: DumpCtx = .{ .col = target.col, .buf = buf, .buf_size = buf_size };
-    const result = try walkFromLineBegin(idc_if_it_leaks, node, target.line, DumpCtx.walker, &ctx);
-    if (!result.found or ctx.maybe_out_of_bounds) return error.NotFound;
+    for (target.line..num_of_lines) |i| {
+        if (i == num_of_lines -| 1) ctx.last_line = true;
+        const result = walkFromLineBegin(idc_if_it_leaks, node, i, DumpCtx.walker, &ctx) catch unreachable;
+        if (!result.found or ctx.out_of_bounds) return "";
+        if (ctx.should_stop) break;
+    }
     return buf[0..ctx.buf_anchor];
 }
 
@@ -2084,6 +2090,21 @@ test dump {
     try testDump("hello\nworld", "", .{ .line = 1, .col = 6 }, 1024);
     try testDump("hello\nworld", "", .{ .line = 2, .col = 0 }, 1024);
     try testDump("hello\nworld", "", .{ .line = 100, .col = 0 }, 1024);
+
+    {
+        const source =
+            \\const a = 10;
+            \\const b = 20;
+            \\
+            \\const c = 50;
+        ;
+        try testDump(source,
+            \\const a = 10;
+            \\const b = 20;
+            \\
+            \\const c = 50;
+        , .{ .line = 0, .col = 0 }, 1024);
+    }
 }
 
 fn testDump(source: []const u8, expected_str: []const u8, point: CursorPoint, comptime buf_size: usize) !void {
@@ -2092,7 +2113,7 @@ fn testDump(source: []const u8, expected_str: []const u8, point: CursorPoint, co
     var buf: [buf_size]u8 = undefined;
     const root = try Node.fromString(testing_allocator, &content_arena, source);
     defer freeRcNode(testing_allocator, root);
-    const result = dump(root, point, &buf, buf_size) catch "";
+    const result = dump(root, point, &buf, buf_size);
     try eqStr(expected_str, result);
 }
 
