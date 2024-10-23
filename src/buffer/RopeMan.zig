@@ -30,7 +30,7 @@ const assert = std.debug.assert;
 
 const rcr = @import("RcRope.zig");
 const RcNode = rcr.RcNode;
-const CursorRange = rcr.CursorRange;
+pub const CursorRange = rcr.CursorRange;
 pub const CursorPoint = rcr.CursorPoint;
 
 //////////////////////////////////////////////////////////////////////////////////////////////

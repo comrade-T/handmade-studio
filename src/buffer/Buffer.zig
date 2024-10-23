@@ -104,15 +104,15 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations
     return .{ new_cursor_points, self.parse() };
 }
 
-fn editSyntaxTreeInsert(self: *@This(), first_point: CursorPoint, last_point: CursorPoint) !void {
-    const start_point = ts.Point{ .row = @intCast(first_point.line), .column = @intCast(first_point.col) };
-    const start_byte = try self.ropeman.getByteOffsetOfPosition(first_point.line, first_point.col);
+fn editSyntaxTreeInsert(self: *@This(), start_cp: CursorPoint, end_cp: CursorPoint) !void {
+    const start_point = ts.Point{ .row = @intCast(start_cp.line), .column = @intCast(start_cp.col) };
+    const start_byte = try self.ropeman.getByteOffsetOfPosition(start_cp.line, start_cp.col);
 
     const old_end_byte = start_byte;
     const old_end_point = start_point;
 
-    const new_end_byte = try self.ropeman.getByteOffsetOfPosition(last_point.line, last_point.col);
-    const new_end_point = ts.Point{ .row = @intCast(last_point.line), .column = @intCast(last_point.col) };
+    const new_end_byte = try self.ropeman.getByteOffsetOfPosition(end_cp.line, end_cp.col);
+    const new_end_point = ts.Point{ .row = @intCast(end_cp.line), .column = @intCast(end_cp.col) };
 
     const edit = ts.InputEdit{
         .start_byte = @intCast(start_byte),
@@ -184,6 +184,40 @@ test "insertChars - 3 cursors" {
         \\  line_comment
         \\  line_comment
     , try buf.tstree.?.getRootNode().debugPrint());
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges
+
+pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const RopeMan.CursorRange) !struct { []CursorPoint, ?[]const ts.Range } {
+    assert(ranges.len > 0);
+    if (ranges.len == 0) return .{ &.{}, null };
+
+    const new_cursor_points = try self.ropeman.deleteRanges(a, ranges);
+    if (self.tstree == null) return .{ new_cursor_points, null };
+
+    for (0..ranges.len) |i| try self.editSyntaxTreeInsert(ranges[i], new_cursor_points[i]);
+    return .{ new_cursor_points, self.parse() };
+}
+
+fn editSyntaxTreeDelete(self: *@This(), range: RopeMan.CursorRange) !void {
+    const start_point = ts.Point{ .row = @intCast(range.start.line), .column = @intCast(range.start.col) };
+    const old_end_point = ts.Point{ .row = @intCast(range.end.line), .column = @intCast(range.end.col) };
+
+    const start_byte = try self.ropeman.getByteOffsetOfPosition(range.start.line, range.end.col);
+    const old_end_byte = try self.ropeman.getByteOffsetOfPosition(range.end.line, range.end.col);
+
+    const new_end_byte = start_byte;
+    const new_end_point = start_point;
+
+    const edit = ts.InputEdit{
+        .start_byte = @intCast(start_byte),
+        .old_end_byte = @intCast(old_end_byte),
+        .new_end_byte = @intCast(new_end_byte),
+        .start_point = start_point,
+        .old_end_point = old_end_point,
+        .new_end_point = new_end_point,
+    };
+    self.tstree.?.edit(&edit);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// parse
