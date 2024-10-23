@@ -60,6 +60,7 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const eqDeep = std.testing.expectEqualDeep;
 const assert = std.debug.assert;
+const shouldErr = std.testing.expectError;
 
 pub const EolMode = enum { lf, crlf };
 
@@ -1693,6 +1694,296 @@ fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent
             try result.appendSlice(content);
         },
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// getByteOffsetOfPosition
+
+const GetByteOffsetOfPositionError = error{ OutOfMemory, LineOutOfBounds, ColOutOfBounds };
+pub fn getByteOffsetOfPosition(self: RcNode, line: usize, col: usize) GetByteOffsetOfPositionError!usize {
+    const GetByteOffsetCtx = struct {
+        target_line: usize,
+        target_col: usize,
+
+        byte_offset: usize = 0,
+        current_line: usize = 0,
+        current_col: usize = 0,
+        should_stop: bool = false,
+        encountered_bol: bool = false,
+
+        fn walk(cx: *@This(), node: RcNode) WalkError!WalkResult {
+            if (cx.should_stop) return WalkResult.stop;
+
+            switch (node.value.*) {
+                .branch => |*branch| {
+                    const left_bols_end = cx.current_line + branch.left.value.weights().bols;
+
+                    var left = WalkResult.keep_walking;
+                    if (cx.current_line == cx.target_line or cx.target_line < left_bols_end) {
+                        left = try cx.walk(branch.left);
+                    }
+
+                    if (cx.current_line < cx.target_line) {
+                        cx.byte_offset += branch.left.value.weights().len;
+                    }
+
+                    cx.current_line = left_bols_end;
+
+                    const right = try cx.walk(branch.right);
+                    return try WalkResult.merge(branch, idc_if_it_leaks, left, right);
+                },
+                .leaf => |leaf| return cx.walker(&leaf),
+            }
+        }
+
+        fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+            if (!cx.encountered_bol and !leaf.bol) {
+                cx.byte_offset += leaf.weights().len;
+                return WalkResult.keep_walking;
+            }
+
+            if (leaf.bol) cx.encountered_bol = true;
+
+            if (cx.encountered_bol and cx.target_col == 0) {
+                cx.should_stop = true;
+                return WalkResult.stop;
+            }
+
+            const sum = cx.current_col + leaf.noc;
+            if (sum <= cx.target_col) {
+                cx.current_col += leaf.noc;
+                cx.byte_offset += leaf.buf.len;
+            }
+            if (sum > cx.target_col) {
+                var iter = code_point.Iterator{ .bytes = leaf.buf };
+                while (iter.next()) |cp| {
+                    cx.current_col += 1;
+                    cx.byte_offset += cp.len;
+                    if (cx.current_col >= cx.target_col) break;
+                }
+            }
+            if (cx.encountered_bol and (leaf.eol or sum >= cx.target_col)) {
+                cx.should_stop = true;
+                return WalkResult.stop;
+            }
+
+            if (leaf.eol) cx.byte_offset += 1;
+            return WalkResult.keep_walking;
+        }
+    };
+
+    if (line > self.value.weights().bols) return error.LineOutOfBounds;
+    var ctx = GetByteOffsetCtx{ .target_line = line, .target_col = col };
+    _ = try ctx.walk(self);
+    if (ctx.current_col < col) return error.ColOutOfBounds;
+    return ctx.byte_offset;
+}
+
+test getByteOffsetOfPosition {
+    const a = idc_if_it_leaks;
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    {
+        const root = try Node.fromString(a, &arena, "Hello World!");
+        try shouldErr(error.LineOutOfBounds, getByteOffsetOfPosition(root, 3, 0));
+        try shouldErr(error.LineOutOfBounds, getByteOffsetOfPosition(root, 2, 0));
+        try eq(0, getByteOffsetOfPosition(root, 0, 0));
+        try eq(1, getByteOffsetOfPosition(root, 0, 1));
+        try eq(2, getByteOffsetOfPosition(root, 0, 2));
+        try eq(11, getByteOffsetOfPosition(root, 0, 11));
+        try eq(12, getByteOffsetOfPosition(root, 0, 12));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 0, 13));
+    }
+    {
+        const source = "one\ntwo\nthree\nfour";
+        const root = try Node.fromString(a, &arena, source);
+
+        try eqStr("o", source[0..1]);
+        try eq(0, getByteOffsetOfPosition(root, 0, 0));
+        try eqStr("e", source[2..3]);
+        try eq(2, getByteOffsetOfPosition(root, 0, 2));
+        try eqStr("\n", source[3..4]);
+        try eq(3, getByteOffsetOfPosition(root, 0, 3));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 0, 4));
+
+        try eqStr("t", source[4..5]);
+        try eq(4, getByteOffsetOfPosition(root, 1, 0));
+        try eqStr("o", source[6..7]);
+        try eq(6, getByteOffsetOfPosition(root, 1, 2));
+        try eqStr("\n", source[7..8]);
+        try eq(7, getByteOffsetOfPosition(root, 1, 3));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 1, 4));
+
+        try eqStr("t", source[8..9]);
+        try eq(8, getByteOffsetOfPosition(root, 2, 0));
+        try eqStr("e", source[12..13]);
+        try eq(12, getByteOffsetOfPosition(root, 2, 4));
+        try eqStr("\n", source[13..14]);
+        try eq(13, getByteOffsetOfPosition(root, 2, 5));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 2, 6));
+
+        try eqStr("f", source[14..15]);
+        try eq(14, getByteOffsetOfPosition(root, 3, 0));
+        try eqStr("r", source[17..18]);
+        try eq(17, getByteOffsetOfPosition(root, 3, 3));
+        // no eol on this line
+        try eq(18, source.len);
+        try eq(18, getByteOffsetOfPosition(root, 3, 4));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 3, 5));
+    }
+    {
+        const one = try Leaf.new(a, "one", true, false);
+        const two = try Leaf.new(a, "_two", false, false);
+        const three = try Leaf.new(a, "_three", false, true);
+        const four = try Leaf.new(a, "four", true, true);
+        const two_three = try Node.new(a, two, three);
+        const one_two_three = try Node.new(a, one, two_three);
+        {
+            const root = try Node.new(a, one_two_three, four);
+            const txt = "one_two_three\nfour";
+
+            try eqStr("o", txt[0..1]);
+            try eq(0, getByteOffsetOfPosition(root, 0, 0));
+            try eqStr("e", txt[12..13]);
+            try eq(13, getByteOffsetOfPosition(root, 0, 13));
+            try eqStr("\n", txt[13..14]);
+            try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 0, 14));
+
+            try eqStr("f", txt[14..15]);
+            try eq(14, getByteOffsetOfPosition(root, 1, 0));
+            try eqStr("r", txt[17..18]);
+            try eq(18, getByteOffsetOfPosition(root, 1, 4));
+            try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 1, 5));
+        }
+    }
+
+    // make sure that getByteOffsetOfPosition() works properly with ugly tree structure,
+    // where bol is in one leaf, and eol is in another leaf in a different branch.
+    {
+        const eol_hello = try Node.new(a, try Leaf.new(a, "", false, true), try Leaf.new(a, "    \\\\hello", true, true));
+        const const_hello = try Node.new(a, try Leaf.new(a, "const str =", true, false), eol_hello);
+        const semicolon = try Node.new(a, try Leaf.new(a, "", true, false), try Leaf.new(a, ";", false, false));
+        const world_semicolon = try Node.new(a, try Leaf.new(a, "    \\\\world", true, true), semicolon);
+        const root = try Node.new(a, const_hello, world_semicolon);
+        const root_debug_str =
+            \\4 4/37
+            \\  3 2/24
+            \\    1 B| `const str =`
+            \\    2 1/13
+            \\      1 `` |E
+            \\      1 B| `    \\hello` |E
+            \\  3 2/13
+            \\    1 B| `    \\world` |E
+            \\    2 1/1
+            \\      1 B| ``
+            \\      1 `;`
+        ;
+        try eqStr(root_debug_str, try debugStr(idc_if_it_leaks, root));
+        try eq(11, getByteOffsetOfPosition(root, 0, 11));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 0, 12));
+        try eq(23, getByteOffsetOfPosition(root, 1, 11));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 1, 12));
+        try eq(35, getByteOffsetOfPosition(root, 2, 11));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 2, 12));
+        try eq(36, getByteOffsetOfPosition(root, 3, 0));
+        try eq(37, getByteOffsetOfPosition(root, 3, 1));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 3, 2));
+    }
+
+    {
+        const source = "1\n22\n333\n4444";
+        const nodes = try insertCharOneAfterAnother(idc_if_it_leaks, &arena, source);
+        const root = nodes.items[nodes.items.len - 1];
+        const root_debug_str =
+            \\13 4/13
+            \\  1 B| `1` Rc:12
+            \\  12 3/12
+            \\    1 `` |E Rc:12
+            \\    11 3/11
+            \\      1 B| `2` Rc:10
+            \\      10 2/10
+            \\        1 `2` Rc:9
+            \\        9 2/9
+            \\          1 `` |E Rc:9
+            \\          8 2/8
+            \\            1 B| `3` Rc:7
+            \\            7 1/7
+            \\              1 `3` Rc:6
+            \\              6 1/6
+            \\                1 `3` Rc:5
+            \\                5 1/5
+            \\                  1 `` |E Rc:5
+            \\                  4 1/4
+            \\                    1 B| `4` Rc:3
+            \\                    3 0/3
+            \\                      1 `4` Rc:2
+            \\                      2 0/2
+            \\                        1 `4`
+            \\                        1 `4`
+        ;
+        try eqStr(root_debug_str, try debugStr(idc_if_it_leaks, root));
+        try eq(0, getByteOffsetOfPosition(root, 0, 0));
+        try eq(1, getByteOffsetOfPosition(root, 0, 1));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 0, 2));
+        try eq(2, getByteOffsetOfPosition(root, 1, 0));
+        try eq(3, getByteOffsetOfPosition(root, 1, 1));
+        try eq(4, getByteOffsetOfPosition(root, 1, 2));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 1, 3));
+        try eq(5, getByteOffsetOfPosition(root, 2, 0));
+        try eq(6, getByteOffsetOfPosition(root, 2, 1));
+        try eq(7, getByteOffsetOfPosition(root, 2, 2));
+        try eq(8, getByteOffsetOfPosition(root, 2, 3));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 2, 4));
+    }
+    {
+        const reverse_input_sequence = "4444\n333\n22\n1";
+        const root = try __inputCharsOneAfterAnotherAt0Position(a, &arena, reverse_input_sequence);
+        const root_debug_str =
+            \\13 4/13
+            \\  12 4/12
+            \\    11 4/11
+            \\      10 4/10
+            \\        9 3/9
+            \\          8 3/8
+            \\            7 3/7
+            \\              6 3/6
+            \\                5 2/5
+            \\                  4 2/4
+            \\                    3 2/3
+            \\                      2 1/2
+            \\                        1 B| `1`
+            \\                        1 `` |E
+            \\                      1 B| `2` Rc:2
+            \\                    1 `2` Rc:3
+            \\                  1 `` |E Rc:4
+            \\                1 B| `3` Rc:5
+            \\              1 `3` Rc:6
+            \\            1 `3` Rc:7
+            \\          1 `` |E Rc:8
+            \\        1 B| `4` Rc:9
+            \\      1 `4` Rc:10
+            \\    1 `4` Rc:11
+            \\  1 `4` Rc:12
+        ;
+        try eqStr(root_debug_str, try debugStr(idc_if_it_leaks, root));
+        try eq(0, getByteOffsetOfPosition(root, 0, 0));
+        try eq(1, getByteOffsetOfPosition(root, 0, 1));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 0, 2));
+        try eq(2, getByteOffsetOfPosition(root, 1, 0));
+        try eq(3, getByteOffsetOfPosition(root, 1, 1));
+        try eq(4, getByteOffsetOfPosition(root, 1, 2));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 1, 3));
+        try eq(5, getByteOffsetOfPosition(root, 2, 0));
+        try eq(6, getByteOffsetOfPosition(root, 2, 1));
+        try eq(7, getByteOffsetOfPosition(root, 2, 2));
+        try eq(8, getByteOffsetOfPosition(root, 2, 3));
+        try shouldErr(error.ColOutOfBounds, getByteOffsetOfPosition(root, 2, 4));
+    }
+}
+
+fn __inputCharsOneAfterAnotherAt0Position(a: Allocator, arena: *ArenaAllocator, chars: []const u8) !RcNode {
+    var root = try Node.fromString(a, arena, "");
+    for (0..chars.len) |i| _, _, root = try insertChars(root, a, arena, chars[i .. i + 1], .{ .line = 0, .col = 0 });
+    return root;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
