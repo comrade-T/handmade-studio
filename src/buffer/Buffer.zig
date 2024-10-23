@@ -1,3 +1,20 @@
+// This file is part of Handmade Studio.
+//
+// Handmade Studio is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// Handmade Studio is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const Buffer = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -123,6 +140,48 @@ test "insertChars - 1 single cursor" {
     try eqSlice(ts.Range, &.{.{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 0, .column = 16 }, .start_byte = 0, .end_byte = 16 }}, e1_ts_ranges.?);
     try eqStr(
         \\source_file
+        \\  line_comment
+    , try buf.tstree.?.getRootNode().debugPrint());
+}
+
+test "insertChars - 3 cursors" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    const source =
+        \\const a = 10;
+        \\const b = 20;
+        \\const c = 50;
+    ;
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    const e1_points, const e1_ts_ranges = try buf.insertChars(testing_allocator, "// ", &.{
+        CursorPoint{ .line = 0, .col = 0 },
+        CursorPoint{ .line = 1, .col = 0 },
+        CursorPoint{ .line = 2, .col = 0 },
+    });
+    defer testing_allocator.free(e1_points);
+    try eqStr(
+        \\// const a = 10;
+        \\// const b = 20;
+        \\// const c = 50;
+    , try buf.ropeman.toString(idc_if_it_leaks, .lf));
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 0, .col = 3 },
+        .{ .line = 1, .col = 3 },
+        .{ .line = 2, .col = 3 },
+    }, e1_points);
+    try eqSlice(ts.Range, &.{
+        .{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 0, .column = 16 }, .start_byte = 0, .end_byte = 16 },
+        .{ .start_point = .{ .row = 1, .column = 0 }, .end_point = .{ .row = 1, .column = 16 }, .start_byte = 17, .end_byte = 33 },
+        .{ .start_point = .{ .row = 2, .column = 0 }, .end_point = .{ .row = 2, .column = 16 }, .start_byte = 34, .end_byte = 50 },
+    }, e1_ts_ranges.?);
+    try eqStr(
+        \\source_file
+        \\  line_comment
+        \\  line_comment
         \\  line_comment
     , try buf.tstree.?.getRootNode().debugPrint());
 }
