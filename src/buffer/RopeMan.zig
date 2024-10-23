@@ -31,7 +31,7 @@ const assert = std.debug.assert;
 const rcr = @import("RcRope.zig");
 const RcNode = rcr.RcNode;
 const CursorRange = rcr.CursorRange;
-const CursorPoint = rcr.CursorPoint;
+pub const CursorPoint = rcr.CursorPoint;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -77,6 +77,10 @@ pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8
 
 pub fn dump(self: *@This(), target: CursorPoint, buf: []u8, buf_size: usize) ![]const u8 {
     return try rcr.dump(self.root, target, buf, buf_size);
+}
+
+pub fn getByteOffsetOfPosition(self: *@This(), line: usize, col: usize) !usize {
+    return try rcr.getByteOffsetOfPosition(self.root, line, col);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
