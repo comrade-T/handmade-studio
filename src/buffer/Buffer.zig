@@ -98,7 +98,6 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations
     if (destinations.len == 0) return .{ &.{}, null };
 
     const new_cursor_points = try self.ropeman.insertChars(a, chars, destinations);
-    try self.ropeman.registerLastPendingToHistory();
     if (self.tstree == null) return .{ new_cursor_points, null };
 
     for (0..destinations.len) |i| try self.editSyntaxTreeInsert(destinations[i], new_cursor_points[i]);
@@ -107,12 +106,12 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations
 
 fn editSyntaxTreeInsert(self: *@This(), start_cp: CursorPoint, end_cp: CursorPoint) !void {
     const start_point = ts.Point{ .row = @intCast(start_cp.line), .column = @intCast(start_cp.col) };
-    const start_byte = try self.ropeman.getByteOffsetOfPosition(start_cp.line, start_cp.col);
+    const start_byte = try RopeMan.getByteOffsetOfPosition(self.ropeman.root, start_cp.line, start_cp.col);
 
     const old_end_byte = start_byte;
     const old_end_point = start_point;
 
-    const new_end_byte = try self.ropeman.getByteOffsetOfPosition(end_cp.line, end_cp.col);
+    const new_end_byte = try RopeMan.getByteOffsetOfPosition(self.ropeman.root, end_cp.line, end_cp.col);
     const new_end_point = ts.Point{ .row = @intCast(end_cp.line), .column = @intCast(end_cp.col) };
 
     const edit = ts.InputEdit{
@@ -290,23 +289,23 @@ pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const RopeMan.Cursor
     assert(ranges.len > 0);
     if (ranges.len == 0) return .{ &.{}, null };
 
+    const old_node = self.ropeman.root;
     const new_cursor_points = try self.ropeman.deleteRanges(a, ranges);
-    try self.ropeman.registerLastPendingToHistory();
     if (self.tstree == null) return .{ new_cursor_points, null };
 
-    for (0..ranges.len) |i| try self.editSyntaxTreeDelete(ranges[i]);
+    for (0..ranges.len) |i| try self.editSyntaxTreeDelete(old_node, ranges[i], new_cursor_points[i]);
     return .{ new_cursor_points, self.parse() };
 }
 
-fn editSyntaxTreeDelete(self: *@This(), range: RopeMan.CursorRange) !void {
+fn editSyntaxTreeDelete(self: *@This(), old_node: RopeMan.RcNode, range: RopeMan.CursorRange, new_cp: CursorPoint) !void {
     const start_point = ts.Point{ .row = @intCast(range.start.line), .column = @intCast(range.start.col) };
     const old_end_point = ts.Point{ .row = @intCast(range.end.line), .column = @intCast(range.end.col) };
 
-    const start_byte = try self.ropeman.getByteOffsetOfPositionNextToLast(range.start.line, range.start.col);
-    const old_end_byte = try self.ropeman.getByteOffsetOfPositionNextToLast(range.end.line, range.end.col);
+    const start_byte = try RopeMan.getByteOffsetOfPosition(old_node, range.start.line, range.start.col);
+    const old_end_byte = try RopeMan.getByteOffsetOfPosition(old_node, range.end.line, range.end.col);
 
     const new_end_byte = start_byte;
-    const new_end_point = start_point;
+    const new_end_point = ts.Point{ .row = @intCast(new_cp.line), .column = @intCast(new_cp.col) };
 
     const edit = ts.InputEdit{
         .start_byte = @intCast(start_byte),
@@ -349,6 +348,114 @@ test "deleteRanges - 1 single cursor" {
         \\  ERROR
         \\    ";"
     , try buf.tstree.?.getRootNode().debugPrint());
+}
+
+const three_happy_consts =
+    \\source_file
+    \\  Decl
+    \\    VarDecl
+    \\      "const"
+    \\      IDENTIFIER
+    \\      "="
+    \\      ErrorUnionExpr
+    \\        SuffixExpr
+    \\          INTEGER
+    \\      ";"
+    \\  Decl
+    \\    VarDecl
+    \\      "const"
+    \\      IDENTIFIER
+    \\      "="
+    \\      ErrorUnionExpr
+    \\        SuffixExpr
+    \\          INTEGER
+    \\      ";"
+    \\  Decl
+    \\    VarDecl
+    \\      "const"
+    \\      IDENTIFIER
+    \\      "="
+    \\      ErrorUnionExpr
+    \\        SuffixExpr
+    \\          INTEGER
+    \\      ";"
+;
+
+test "deleteRanges - 3 cursors - case 1" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    const source =
+        \\xconst a = 10;
+        \\xconst b = 20;
+        \\xconst c = 50;
+    ;
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    const e1_points, const e1_ts_ranges = try buf.deleteRanges(testing_allocator, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 } },
+        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 1 } },
+        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 2, .col = 1 } },
+    });
+    defer testing_allocator.free(e1_points);
+    try eqStr(
+        \\const a = 10;
+        \\const b = 20;
+        \\const c = 50;
+    , try buf.ropeman.toString(idc_if_it_leaks, .lf));
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 0, .col = 0 },
+        .{ .line = 1, .col = 0 },
+        .{ .line = 2, .col = 0 },
+    }, e1_points);
+    try eqSlice(ts.Range, &.{
+        .{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 1, .column = 0 }, .start_byte = 0, .end_byte = 15 },
+        .{ .start_point = .{ .row = 2, .column = 0 }, .end_point = .{ .row = 2, .column = 13 }, .start_byte = 28, .end_byte = 41 },
+    }, e1_ts_ranges.?);
+    try eqStr(three_happy_consts, try buf.tstree.?.getRootNode().debugPrint());
+}
+
+test "deleteRanges - 3 cursors - case 2" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    const source =
+        \\xconstx a = 10;
+        \\xconstx b = 20;
+        \\xconstx c = 50;
+    ;
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    const e1_points, const e1_ts_ranges = try buf.deleteRanges(testing_allocator, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 1 } },
+        .{ .start = .{ .line = 0, .col = 6 }, .end = .{ .line = 0, .col = 7 } },
+        .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 1 } },
+        .{ .start = .{ .line = 1, .col = 6 }, .end = .{ .line = 1, .col = 7 } },
+        .{ .start = .{ .line = 2, .col = 0 }, .end = .{ .line = 2, .col = 1 } },
+        .{ .start = .{ .line = 2, .col = 6 }, .end = .{ .line = 2, .col = 7 } },
+    });
+    defer testing_allocator.free(e1_points);
+    try eqStr(
+        \\const a = 10;
+        \\const b = 20;
+        \\const c = 50;
+    , try buf.ropeman.toString(idc_if_it_leaks, .lf));
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 0, .col = 0 },
+        .{ .line = 0, .col = 5 },
+        .{ .line = 1, .col = 0 },
+        .{ .line = 1, .col = 5 },
+        .{ .line = 2, .col = 0 },
+        .{ .line = 2, .col = 5 },
+    }, e1_points);
+    try eqSlice(ts.Range, &.{
+        .{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 2, .column = 13 }, .start_byte = 0, .end_byte = 41 },
+    }, e1_ts_ranges.?);
+    try eqStr(three_happy_consts, try buf.tstree.?.getRootNode().debugPrint());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// parse
