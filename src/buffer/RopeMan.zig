@@ -75,8 +75,8 @@ pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8
     return self.root.value.toString(a, eol_mode);
 }
 
-pub fn dump(self: *@This(), target: CursorPoint, buf: []u8, buf_size: usize) ![]const u8 {
-    return try rcr.dump(self.root, target, buf, buf_size);
+pub fn dump(self: *@This(), target: CursorPoint, buf: []u8, buf_size: usize) []const u8 {
+    return rcr.dump(self.root, target, buf, buf_size);
 }
 
 pub fn getByteOffsetOfPosition(self: *@This(), line: usize, col: usize) !usize {

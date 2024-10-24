@@ -98,6 +98,7 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations
     if (destinations.len == 0) return .{ &.{}, null };
 
     const new_cursor_points = try self.ropeman.insertChars(a, chars, destinations);
+    try self.ropeman.registerLastPendingToHistory();
     if (self.tstree == null) return .{ new_cursor_points, null };
 
     for (0..destinations.len) |i| try self.editSyntaxTreeInsert(destinations[i], new_cursor_points[i]);
@@ -144,7 +145,7 @@ test "insertChars - 1 single cursor" {
     , try buf.tstree.?.getRootNode().debugPrint());
 }
 
-test "insertChars - 3 cursors" {
+test "insertChars - 3 cursors - case 1" {
     var ls = try LangSuite.create(testing_allocator, .zig);
     defer ls.destroy();
 
@@ -186,6 +187,103 @@ test "insertChars - 3 cursors" {
     , try buf.tstree.?.getRootNode().debugPrint());
 }
 
+test "insertChars - 3 cursors - case 2" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    const source =
+        \\const a = 10;
+        \\const b = 20;
+        \\
+        \\const c = 50;
+    ;
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    const e1_points, const e1_ts_ranges = try buf.insertChars(testing_allocator, "// ", &.{
+        CursorPoint{ .line = 0, .col = 0 },
+        CursorPoint{ .line = 1, .col = 0 },
+        CursorPoint{ .line = 3, .col = 0 },
+    });
+    defer testing_allocator.free(e1_points);
+    try eqStr(
+        \\// const a = 10;
+        \\// const b = 20;
+        \\
+        \\// const c = 50;
+    , try buf.ropeman.toString(idc_if_it_leaks, .lf));
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 0, .col = 3 },
+        .{ .line = 1, .col = 3 },
+        .{ .line = 3, .col = 3 },
+    }, e1_points);
+    try eqSlice(ts.Range, &.{
+        .{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 0, .column = 16 }, .start_byte = 0, .end_byte = 16 },
+        .{ .start_point = .{ .row = 1, .column = 0 }, .end_point = .{ .row = 1, .column = 16 }, .start_byte = 17, .end_byte = 33 },
+        .{ .start_point = .{ .row = 3, .column = 0 }, .end_point = .{ .row = 3, .column = 16 }, .start_byte = 35, .end_byte = 51 },
+    }, e1_ts_ranges.?);
+    try eqStr(
+        \\source_file
+        \\  line_comment
+        \\  line_comment
+        \\  line_comment
+    , try buf.tstree.?.getRootNode().debugPrint());
+}
+
+test "insertChars - 3 cursors - case 3" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    const source =
+        \\const a = 10;
+        \\const b = 20;
+        \\
+        \\const c = 50;
+    ;
+    var buf = try Buffer.create(testing_allocator, .string, source);
+    defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    const e1_points, const e1_ts_ranges = try buf.insertChars(testing_allocator, "//", &.{
+        CursorPoint{ .line = 0, .col = 0 },
+        CursorPoint{ .line = 1, .col = 0 },
+        CursorPoint{ .line = 3, .col = 13 },
+    });
+    defer testing_allocator.free(e1_points);
+    try eqStr(
+        \\//const a = 10;
+        \\//const b = 20;
+        \\
+        \\const c = 50;//
+    , try buf.ropeman.toString(idc_if_it_leaks, .lf));
+    try eqSlice(CursorPoint, &.{
+        .{ .line = 0, .col = 2 },
+        .{ .line = 1, .col = 2 },
+        .{ .line = 3, .col = 15 },
+    }, e1_points);
+    try eqSlice(ts.Range, &.{
+        .{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 0, .column = 15 }, .start_byte = 0, .end_byte = 15 },
+        .{ .start_point = .{ .row = 1, .column = 0 }, .end_point = .{ .row = 1, .column = 15 }, .start_byte = 16, .end_byte = 31 },
+        .{ .start_point = .{ .row = 3, .column = 13 }, .end_point = .{ .row = 3, .column = 15 }, .start_byte = 46, .end_byte = 48 },
+    }, e1_ts_ranges.?);
+    try eqStr(
+        \\source_file
+        \\  line_comment
+        \\  line_comment
+        \\  Decl
+        \\    VarDecl
+        \\      "const"
+        \\      IDENTIFIER
+        \\      "="
+        \\      ErrorUnionExpr
+        \\        SuffixExpr
+        \\          INTEGER
+        \\      ";"
+        \\  line_comment
+    , try buf.tstree.?.getRootNode().debugPrint());
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges
 
 pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const RopeMan.CursorRange) !struct { []CursorPoint, ?[]const ts.Range } {
@@ -193,6 +291,7 @@ pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const RopeMan.Cursor
     if (ranges.len == 0) return .{ &.{}, null };
 
     const new_cursor_points = try self.ropeman.deleteRanges(a, ranges);
+    try self.ropeman.registerLastPendingToHistory();
     if (self.tstree == null) return .{ new_cursor_points, null };
 
     for (0..ranges.len) |i| try self.editSyntaxTreeInsert(ranges[i], new_cursor_points[i]);
@@ -237,7 +336,8 @@ fn parse(self: *@This()) ?[]const ts.Range {
                     .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.column) },
                     &ctx.parse_buf,
                     PARSE_BUFFER_SIZE,
-                ) catch "";
+                );
+
                 bytes_read.* = @intCast(result.len);
                 return @ptrCast(result.ptr);
             }
