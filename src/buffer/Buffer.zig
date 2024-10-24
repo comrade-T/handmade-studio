@@ -294,7 +294,7 @@ pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const RopeMan.Cursor
     try self.ropeman.registerLastPendingToHistory();
     if (self.tstree == null) return .{ new_cursor_points, null };
 
-    for (0..ranges.len) |i| try self.editSyntaxTreeInsert(ranges[i], new_cursor_points[i]);
+    for (0..ranges.len) |i| try self.editSyntaxTreeDelete(ranges[i]);
     return .{ new_cursor_points, self.parse() };
 }
 
@@ -302,8 +302,8 @@ fn editSyntaxTreeDelete(self: *@This(), range: RopeMan.CursorRange) !void {
     const start_point = ts.Point{ .row = @intCast(range.start.line), .column = @intCast(range.start.col) };
     const old_end_point = ts.Point{ .row = @intCast(range.end.line), .column = @intCast(range.end.col) };
 
-    const start_byte = try self.ropeman.getByteOffsetOfPosition(range.start.line, range.end.col);
-    const old_end_byte = try self.ropeman.getByteOffsetOfPosition(range.end.line, range.end.col);
+    const start_byte = try self.ropeman.getByteOffsetOfPositionNextToLast(range.start.line, range.start.col);
+    const old_end_byte = try self.ropeman.getByteOffsetOfPositionNextToLast(range.end.line, range.end.col);
 
     const new_end_byte = start_byte;
     const new_end_point = start_point;
@@ -317,6 +317,38 @@ fn editSyntaxTreeDelete(self: *@This(), range: RopeMan.CursorRange) !void {
         .new_end_point = new_end_point,
     };
     self.tstree.?.edit(&edit);
+}
+
+test "deleteRanges - 1 single cursor" {
+    var ls = try LangSuite.create(testing_allocator, .zig);
+    defer ls.destroy();
+
+    var buf = try Buffer.create(testing_allocator, .string, "const a = 10;");
+    defer buf.destroy();
+    try buf.initiateTreeSitter(ls);
+
+    const e1_points, const e1_ts_ranges = try buf.deleteRanges(testing_allocator, &.{
+        .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 6 } },
+    });
+    defer testing_allocator.free(e1_points);
+    try eqStr("a = 10;", try buf.ropeman.toString(idc_if_it_leaks, .lf));
+    try eqSlice(CursorPoint, &.{.{ .line = 0, .col = 0 }}, e1_points);
+    try eqSlice(ts.Range, &.{
+        .{ .start_point = .{ .row = 0, .column = 0 }, .end_point = .{ .row = 0, .column = 7 }, .start_byte = 0, .end_byte = 7 },
+    }, e1_ts_ranges.?);
+    try eqStr(
+        \\source_file
+        \\  ContainerField
+        \\    ErrorUnionExpr
+        \\      SuffixExpr
+        \\        IDENTIFIER
+        \\    "="
+        \\    ErrorUnionExpr
+        \\      SuffixExpr
+        \\        INTEGER
+        \\  ERROR
+        \\    ";"
+    , try buf.tstree.?.getRootNode().debugPrint());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// parse

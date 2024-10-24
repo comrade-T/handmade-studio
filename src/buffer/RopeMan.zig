@@ -79,6 +79,11 @@ pub fn dump(self: *@This(), target: CursorPoint, buf: []u8, buf_size: usize) []c
     return rcr.dump(self.root, target, buf, buf_size);
 }
 
+pub fn getByteOffsetOfPositionNextToLast(self: *@This(), line: usize, col: usize) !usize {
+    assert(self.history.items.len > 1);
+    return try rcr.getByteOffsetOfPosition(self.history.items[self.history.items.len - 2], line, col);
+}
+
 pub fn getByteOffsetOfPosition(self: *@This(), line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(self.root, line, col);
 }
