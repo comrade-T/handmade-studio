@@ -239,6 +239,9 @@ const Predicate = union(enum) {
         }
 
         fn eval(self: *const MatchPredicate, source: []const u8) bool {
+            const zone = ztracy.ZoneNC(@src(), "MatchPredicate.eval()", 0x33FF33);
+            defer zone.End();
+
             const result = self.regex.match(source) catch return false;
             return switch (self.variant) {
                 .match => result,
@@ -270,8 +273,8 @@ pub const MatchResult = struct {
 };
 
 pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
-    const zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
-    defer zone.End();
+    const big_zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
+    defer big_zone.End();
 
     var match: ts.Query.Match = undefined;
     {

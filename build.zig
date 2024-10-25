@@ -99,11 +99,13 @@ pub fn build(b: *std.Build) void {
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
     const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
         .{ .name = "RopeMan", .module = ropeman.module },
         .{ .name = "LangSuite", .module = langsuite.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
     const the_something = addTestableModule(&bops, "src/window/TheSomething.zig", &.{
@@ -175,6 +177,21 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
+
+    {
+        const path = "src/window/TheSomething.zig";
+        const exe = b.addExecutable(.{
+            .name = "TheSomething",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("Buffer", buffer.module);
+        exe.root_module.addImport("LangSuite", langsuite.module);
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
+        addRunnableRaylibFile(b, exe, raylib, path);
+    }
 
     ///////////////////////////// Raylib
 

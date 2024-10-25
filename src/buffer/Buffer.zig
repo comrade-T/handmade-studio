@@ -17,6 +17,7 @@
 
 const Buffer = @This();
 const std = @import("std");
+const ztracy = @import("ztracy");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
@@ -461,6 +462,9 @@ test "deleteRanges - 3 cursors - case 2" {
 ////////////////////////////////////////////////////////////////////////////////////////////// parse
 
 fn parse(self: *@This()) ?[]const ts.Range {
+    const zone = ztracy.ZoneNC(@src(), "Buffer.parse()", 0xFFFFFF);
+    defer zone.End();
+
     assert(self.tsparser != null);
 
     const may_old_tree = self.tstree;

@@ -16,6 +16,7 @@
 const LangSuite = @This();
 
 const std = @import("std");
+const ztracy = @import("ztracy");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
@@ -65,6 +66,9 @@ pub fn addDefaultHighlightQuery(self: *@This()) !void {
 }
 
 pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
+    const zone = ztracy.ZoneNC(@src(), "Language.addQuery", 0x00AAFF);
+    defer zone.End();
+
     const query = try ts.Query.create(self.language, patterns);
     const sq = try self.a.create(StoredQuery);
     sq.* = StoredQuery{
