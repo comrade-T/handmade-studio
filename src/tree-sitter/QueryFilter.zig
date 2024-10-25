@@ -63,12 +63,12 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
                 if (name.len == 0) continue;
 
                 if (name[name.len - 1] == '?') {
-                    const cap_name, const predicate = try Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]);
+                    const cap_id, const predicate = try Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]);
                     if (predicate == .unsupported) continue;
-                    if (predicates_map.getPtr(cap_name)) |list| try list.append(predicate) else {
+                    if (predicates_map.getPtr(cap_id)) |list| try list.append(predicate) else {
                         var list = ArrayList(Predicate).init(self.arena.allocator());
                         try list.append(predicate);
-                        try predicates_map.put(cap_name, list);
+                        try predicates_map.put(cap_id, list);
                     }
                     continue;
                 }
@@ -89,7 +89,7 @@ pub fn deinit(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Predicates
 
-const PredicateMap = std.StringHashMap(ArrayList(Predicate));
+const PredicateMap = std.AutoHashMap(u32, ArrayList(Predicate));
 
 const Predicate = union(enum) {
     eq: EqPredicate,
@@ -98,8 +98,8 @@ const Predicate = union(enum) {
     match: MatchPredicate,
     unsupported,
 
-    const CreationError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError, UnsupportedDirective };
-    const CreationResult = struct { []const u8, Predicate };
+    const CreationError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError, Unsupported };
+    const CreationResult = struct { u32, Predicate };
 
     fn create(a: Allocator, query: *const Query, name: []const u8, steps: []const PredicateStep) CreationError!CreationResult {
         if (eql(u8, name, "eq?")) return EqPredicate.create(query, steps);
@@ -107,7 +107,7 @@ const Predicate = union(enum) {
         if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
         if (eql(u8, name, "match?")) return MatchPredicate.create(a, query, steps, .match);
         if (eql(u8, name, "not-match?")) return MatchPredicate.create(a, query, steps, .not_match);
-        return .{ &.{}, Predicate.unsupported };
+        return error.Unsupported;
     }
 
     fn eval(self: *const Predicate, source: []const u8) bool {
@@ -180,9 +180,8 @@ const Predicate = union(enum) {
 
         fn create(query: *const Query, steps: []const PredicateStep) CreationError!CreationResult {
             checkBodySteps("#eq?", steps, &.{ .capture, .string }) catch |err| return err;
-            const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
             const p = Predicate{ .eq = EqPredicate{ .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))) } };
-            return .{ capture, p };
+            return .{ steps[1].value_id, p };
         }
 
         fn eval(self: *const EqPredicate, source: []const u8) bool {
@@ -195,9 +194,8 @@ const Predicate = union(enum) {
 
         fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) CreationError!CreationResult {
             try checkVariedStringSteps(steps);
-            const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
             const p = Predicate{ .not_eq = NotEqPredicate{ .targets = try gatherVariedStringTargets(a, query, steps) } };
-            return .{ capture, p };
+            return .{ steps[1].value_id, p };
         }
 
         fn eval(self: *const NotEqPredicate, source: []const u8) bool {
@@ -211,9 +209,8 @@ const Predicate = union(enum) {
 
         fn create(a: Allocator, query: *const Query, steps: []const PredicateStep) CreationError!CreationResult {
             try checkVariedStringSteps(steps);
-            const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
             const p = Predicate{ .any_of = AnyOfPredicate{ .targets = try gatherVariedStringTargets(a, query, steps) } };
-            return .{ capture, p };
+            return .{ steps[1].value_id, p };
         }
 
         fn eval(self: *const AnyOfPredicate, source: []const u8) bool {
@@ -234,12 +231,11 @@ const Predicate = union(enum) {
             const regex = try a.create(Regex);
             regex.* = Regex.compile(a, query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)))) catch return CreationError.RegexCompileError;
 
-            const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
             const p = Predicate{ .match = MatchPredicate{
                 .regex = regex,
                 .variant = variant,
             } };
-            return .{ capture, p };
+            return .{ steps[1].value_id, p };
         }
 
         fn eval(self: *const MatchPredicate, source: []const u8) bool {
@@ -261,7 +257,7 @@ fn isPredicateOfTypeTarget(steps: []const PredicateStep) bool {
 
 pub const CapturedTarget = struct {
     node: ts.Node,
-    name: []const u8,
+    capture_id: u32,
 };
 
 pub const MatchResult = struct {
@@ -306,7 +302,7 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
         const node_contents = source[start_byte..end_byte];
         const cap_name = self.query.getCaptureNameForId(cap.id);
 
-        if (predicates_map.get(cap_name)) |predicates| {
+        if (predicates_map.get(cap.id)) |predicates| {
             for (predicates.items) |p| {
                 if (!p.eval(node_contents)) {
                     all_predicates_matched = false;
@@ -316,7 +312,7 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
         }
 
         if (cap_name[0] != '_') {
-            targets_buf[target_index] = CapturedTarget{ .name = cap_name, .node = cap.node };
+            targets_buf[target_index] = CapturedTarget{ .capture_id = cap.id, .node = cap.node };
             target_index += 1;
         }
     }
@@ -594,6 +590,14 @@ test "get directives within certain range" {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Measuring Contest
+
+test {
+    try eq(8, @alignOf(ts.Node));
+    try eq(32, @sizeOf(ts.Node));
+    try eq(40, @sizeOf(CapturedTarget));
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
 pub const MatchLimit = struct {
@@ -620,7 +624,7 @@ fn testFilter(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8, 
         if (!match.all_predicates_matched) continue;
         try eq(expected[i].targets.len, match.targets.len);
         for (0..expected[i].targets.len) |j| {
-            try eqStr(expected[i].targets[j], match.targets[j].name);
+            try eqStr(expected[i].targets[j], query.getCaptureNameForId(match.targets[j].capture_id));
             const node = match.targets[j].node;
             const node_contents = source[node.getStartByte()..node.getEndByte()];
             try eqStr(expected[i].contents[j], node_contents);
