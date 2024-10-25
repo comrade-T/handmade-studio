@@ -39,7 +39,6 @@ a: Allocator,
 arena: std.heap.ArenaAllocator,
 query: *const ts.Query,
 patterns: []PredicateMap = undefined,
-directives: DirectiveMap,
 
 pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
     const self = try a.create(@This());
@@ -47,7 +46,6 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
         .a = a,
         .arena = std.heap.ArenaAllocator.init(a),
         .query = query,
-        .directives = DirectiveMap.init(self.arena.allocator()),
     };
 
     var patterns = std.ArrayList(PredicateMap).init(self.arena.allocator());
@@ -55,7 +53,6 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
     for (0..query.getPatternCount()) |pattern_index| {
         const steps = query.getPredicatesForPattern(@as(u32, @intCast(pattern_index)));
         var predicates_map = PredicateMap.init(self.arena.allocator());
-        var directives = ArrayList(Directive).init(self.arena.allocator());
 
         var start: usize = 0;
         for (steps, 0..) |step, i| {
@@ -75,17 +72,10 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
                     }
                     continue;
                 }
-
-                if (name[name.len - 1] == '!') {
-                    const directive = Directive.create(name, query, subset) catch continue;
-                    try directives.append(directive);
-                }
             }
         }
 
         try patterns.append(predicates_map);
-
-        try self.directives.put(pattern_index, try directives.toOwnedSlice());
     }
 
     self.*.patterns = try patterns.toOwnedSlice();
@@ -106,7 +96,6 @@ const Predicate = union(enum) {
     not_eq: NotEqPredicate,
     any_of: AnyOfPredicate,
     match: MatchPredicate,
-    capture,
     unsupported,
 
     const CreationError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError, UnsupportedDirective };
@@ -130,7 +119,6 @@ const Predicate = union(enum) {
             .not_eq => self.not_eq.eval(source),
             .any_of => self.any_of.eval(source),
             .match => self.match.eval(source),
-            .capture => true,
             .unsupported => false,
         };
     }
@@ -269,75 +257,6 @@ fn isPredicateOfTypeTarget(steps: []const PredicateStep) bool {
     return false;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Directives
-
-const DirectiveMap = std.AutoArrayHashMap(usize, []Directive);
-
-const Directive = union(enum) {
-    font_size: struct {
-        capture: []const u8,
-        value: f32,
-    },
-    font_face: struct {
-        capture: []const u8,
-        value: []const u8,
-    },
-    font: struct {
-        capture: []const u8,
-        font_face: []const u8,
-        font_size: f32,
-    },
-    img: struct {
-        capture: []const u8,
-        path: []const u8,
-    },
-    // TODO: add color directive
-
-    fn create(name: []const u8, query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        if (eql(u8, name, "font!")) return createFontDirective(query, steps);
-        if (eql(u8, name, "font-size!")) return createFontSizeDirective(query, steps);
-        if (eql(u8, name, "font-face!")) return createFontFaceDirective(query, steps);
-        if (eql(u8, name, "img!")) return createImgDirective(query, steps);
-        return Predicate.CreationError.UnsupportedDirective;
-    }
-
-    fn createFontSizeDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("font-size!", steps, &.{ .capture, .string }) catch |err| return err;
-        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
-        const str_value = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
-        return Directive{ .font_size = .{
-            .capture = capture,
-            .value = std.fmt.parseFloat(f32, str_value) catch 0,
-        } };
-    }
-
-    fn createFontFaceDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("font-face!", steps, &.{ .capture, .string }) catch |err| return err;
-        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
-        const font_face = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
-        return Directive{ .font_face = .{ .capture = capture, .value = font_face } };
-    }
-
-    fn createFontDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("font!", steps, &.{ .capture, .string, .string }) catch |err| return err;
-        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
-        const font_face = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
-        const size_str = query.getStringValueForId(@as(u32, @intCast(steps[3].value_id)));
-        return Directive{ .font = .{
-            .capture = capture,
-            .font_face = font_face,
-            .font_size = std.fmt.parseFloat(f32, size_str) catch 0,
-        } };
-    }
-
-    fn createImgDirective(query: *const Query, steps: []const PredicateStep) Predicate.CreationError!Directive {
-        Predicate.checkBodySteps("img!", steps, &.{ .capture, .string }) catch |err| return err;
-        const capture = query.getCaptureNameForId(@as(u32, @intCast(steps[1].value_id)));
-        const path = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)));
-        return Directive{ .img = .{ .capture = capture, .path = path } };
-    }
-};
-
 ////////////////////////////////////////////////////////////////////////////////////////////// QueryFilter.nextMatch()
 
 pub const CapturedTarget = struct {
@@ -348,7 +267,6 @@ pub const CapturedTarget = struct {
 pub const MatchResult = struct {
     all_predicates_matched: bool,
     targets: []CapturedTarget,
-    directives: []Directive,
     pattern_index: u16,
 };
 
@@ -406,66 +324,8 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
     return MatchResult{
         .all_predicates_matched = all_predicates_matched,
         .targets = targets_buf[0..target_index],
-        .directives = self.directives.get(match.pattern_index) orelse &.{},
         .pattern_index = @intCast(match.pattern_index),
     };
-}
-
-pub fn getAllMatches(self: *@This(), a: Allocator, source: []const u8, offset: usize, cursor: *Query.Cursor) ![]MatchResult {
-    const zone = ztracy.ZoneNC(@src(), "QueryFilter.getAllMatches()", 0x00000F);
-    defer zone.End();
-
-    var results = ArrayList(MatchResult).init(a);
-    errdefer results.deinit();
-
-    while (cursor.nextMatch()) |match| {
-        const next_match_zone = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0x5555FF);
-        defer next_match_zone.End();
-
-        const predicates_map = self.patterns[match.pattern_index];
-
-        var all_predicates_matches = true;
-        var targets = ArrayList(CapturedTarget).init(a);
-        errdefer targets.deinit();
-
-        for (match.captures()) |cap| {
-            const node_start_byte = cap.node.getStartByte();
-            const node_end_byte = cap.node.getEndByte();
-
-            assert(node_start_byte >= offset);
-            if (node_start_byte < offset) continue;
-
-            const start_byte = node_start_byte - offset;
-            const end_byte = node_end_byte - offset;
-
-            const node_contents = source[start_byte..end_byte];
-            const cap_name = self.query.getCaptureNameForId(cap.id);
-
-            if (cap_name.len > 0 and cap_name[0] != '_') {
-                try targets.append(CapturedTarget{ .name = cap_name, .node = cap.node });
-            }
-
-            if (predicates_map.get(cap_name)) |predicates| {
-                for (predicates.items) |p| {
-                    if (!p.eval(node_contents)) {
-                        all_predicates_matches = false;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (all_predicates_matches) try results.append(MatchResult{
-            .all_predicates_matched = all_predicates_matches,
-            .targets = try targets.toOwnedSlice(),
-            .directives = self.directives.get(match.pattern_index) orelse &.{},
-            .pattern_index = @intCast(match.pattern_index),
-        });
-
-        targets.deinit();
-    }
-
-    return results.toOwnedSlice();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Tests
@@ -474,12 +334,29 @@ const test_source = @embedFile("fixtures/predicates_test_dummy.zig");
 
 test "no predicate" {
     const patterns = "((IDENTIFIER) @variable)";
-    try testFilter(test_source, patterns, &.{
-        "std",            "Allocator", "std", "mem",       "Allocator",
-        "add",            "x",         "y",   "x",         "y",
-        "sub",            "a",         "b",   "a",         "b",
-        "callAddExample", "_",         "add", "not_false", "xxx",
-        "yyy",            "String",
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"std"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"std"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"mem"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"sub"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"_"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"not_false"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"xxx"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"yyy"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"String"} },
     });
 }
 
@@ -488,13 +365,18 @@ test "#eq?" {
         const patterns =
             \\ ((IDENTIFIER) @variable (#eq? @variable "add"))
         ;
-        try testFilter(test_source, patterns, &.{ "add", "add" });
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+        });
     }
     {
         const patterns =
             \\ (FnProto (IDENTIFIER) @cap (#eq? @cap "add"))
         ;
-        try testFilter(test_source, patterns, &.{"add"});
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"cap"}, .contents = &.{"add"} },
+        });
     }
 }
 
@@ -503,20 +385,52 @@ test "#not-eq?" {
         const patterns =
             \\ ((IDENTIFIER) @variable (#not-eq? @variable "std"))
         ;
-        try testFilter(test_source, patterns, &.{
-            "Allocator", "mem", "Allocator", "add",    "x", "y",              "x", "y",
-            "sub",       "a",   "b",         "a",      "b", "callAddExample", "_", "add",
-            "not_false", "xxx", "yyy",       "String",
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"mem"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"sub"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"_"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"not_false"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"xxx"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"yyy"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"String"} },
         });
     }
     {
         const patterns =
             \\ ((IDENTIFIER) @variable (#not-eq? @variable "std" "Allocator"))
         ;
-        try testFilter(test_source, patterns, &.{
-            "mem",       "add", "x",   "y",      "x",              "y", "sub",
-            "a",         "b",   "a",   "b",      "callAddExample", "_", "add",
-            "not_false", "xxx", "yyy", "String",
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"variable"}, .contents = &.{"mem"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"sub"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"_"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"not_false"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"xxx"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"yyy"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"String"} },
         });
     }
 }
@@ -525,24 +439,49 @@ test "#any-of?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "Allocator"))
     ;
-    try testFilter(test_source, patterns, &.{ "std", "Allocator", "std", "Allocator" });
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"std"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"std"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+    });
 }
 
 test "#match?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
     ;
-    try testFilter(test_source, patterns, &.{ "Allocator", "Allocator", "String" });
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"String"} },
+    });
 }
 
 test "#not-match?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#not-match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$"))
     ;
-    try testFilter(test_source, patterns, &.{
-        "std",       "std", "mem", "add", "x", "y",              "x", "y",
-        "sub",       "a",   "b",   "a",   "b", "callAddExample", "_", "add",
-        "not_false", "xxx", "yyy",
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"std"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"std"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"mem"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"y"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"sub"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"_"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"add"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"not_false"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"xxx"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"yyy"} },
     });
 }
 
@@ -552,7 +491,10 @@ test "#any-of? + #not-eq?" {
     const patterns =
         \\ ((IDENTIFIER) @variable (#any-of? @variable "std" "Allocator") (#not-eq? @variable "std"))
     ;
-    try testFilter(test_source, patterns, &.{ "Allocator", "Allocator" });
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"Allocator"} },
+    });
 }
 
 test "#match? + #not-eq?" {
@@ -560,61 +502,50 @@ test "#match? + #not-eq?" {
         \\((IDENTIFIER) @variable (#match? @variable "^[A-Z]([a-z]+[A-Za-z0-9]*)*$")
         \\                        (#not-eq? @variable "Allocator"))
     ;
-    try testFilter(test_source, patterns, &.{"String"});
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"String"} },
+    });
 }
 
 ///////////////////////////// More Complex Patterns
 
 test "get return type for functions that are not named 'callAddExample'" {
-    const patterns =
-        \\(
-        \\  FnProto
-        \\    (IDENTIFIER) @_fn.name (#not-eq? @_fn.name "callAddExample")
-        \\    _?
-        \\    (ErrorUnionExpr
-        \\      (SuffixExpr
-        \\        (BuildinTypeExpr) @return_type
-        \\      )
-        \\    )
-        \\)
-    ;
-    try testFilter(test_source, patterns, &.{ "f32", "f64" });
-}
-
-///////////////////////////// Directives
-
-test "get directives" {
-    const patterns =
-        \\(
-        \\  FnProto
-        \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#font-size! @fn_name 60)
-        \\    _?
-        \\    (ErrorUnionExpr
-        \\      (SuffixExpr
-        \\        (BuildinTypeExpr) @return_type
-        \\        (#font! @return_type "Inter" 80)
-        \\      )
-        \\    )
-        \\)
-    ;
-    try testFilterWithDirectives(test_source, .{ .offset = 0, .start_line = 0, .end_line = 21 }, patterns, &.{
-        .{
-            .targets = &.{ "fn_name", "return_type" },
-            .contents = &.{ "add", "f32" },
-            .directives = &.{
-                .{ .font_size = .{ .capture = "fn_name", .value = 60 } },
-                .{ .font = .{ .capture = "return_type", .font_face = "Inter", .font_size = 80 } },
-            },
-        },
-        .{
-            .targets = &.{ "fn_name", "return_type" },
-            .contents = &.{ "sub", "f64" },
-            .directives = &.{
-                .{ .font_size = .{ .capture = "fn_name", .value = 60 } },
-                .{ .font = .{ .capture = "return_type", .font_face = "Inter", .font_size = 80 } },
-            },
-        },
-    });
+    { // ignore capture groups prefixed with '_'
+        const patterns =
+            \\(
+            \\  FnProto
+            \\    (IDENTIFIER) @_fn.name (#not-eq? @_fn.name "callAddExample")
+            \\    _?
+            \\    (ErrorUnionExpr
+            \\      (SuffixExpr
+            \\        (BuildinTypeExpr) @return_type
+            \\      )
+            \\    )
+            \\)
+        ;
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"return_type"}, .contents = &.{"f32"} },
+            .{ .targets = &.{"return_type"}, .contents = &.{"f64"} },
+        });
+    }
+    { // include capture groups NOT prefixed with '_'
+        const patterns =
+            \\(
+            \\  FnProto
+            \\    (IDENTIFIER) @fn.name (#not-eq? @fn.name "callAddExample")
+            \\    _?
+            \\    (ErrorUnionExpr
+            \\      (SuffixExpr
+            \\        (BuildinTypeExpr) @return_type
+            \\      )
+            \\    )
+            \\)
+        ;
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{ "fn.name", "return_type" }, .contents = &.{ "add", "f32" } },
+            .{ .targets = &.{ "fn.name", "return_type" }, .contents = &.{ "sub", "f64" } },
+        });
+    }
 }
 
 ///////////////////////////// Offset
@@ -624,17 +555,16 @@ test "get directives within certain range" {
         const patterns =
             \\(
             \\  FnProto
-            \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample") (#font-size! @fn_name 60)
+            \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample")
             \\    _?
             \\    (ErrorUnionExpr
             \\      (SuffixExpr
             \\        (BuildinTypeExpr) @return_type
-            \\        (#font-size! @return_type 80)
             \\      )
             \\    )
             \\)
         ;
-        try testFilterWithDirectives(test_source, .{
+        try testFilter(test_source, .{
             .offset = getByteOffsetForSkippingLines(test_source, 6),
             .start_line = 6,
             .end_line = 21,
@@ -642,41 +572,26 @@ test "get directives within certain range" {
             .{
                 .targets = &.{ "fn_name", "return_type" },
                 .contents = &.{ "sub", "f64" },
-                .directives = &.{
-                    .{ .font_size = .{ .capture = "fn_name", .value = 60 } },
-                    .{ .font_size = .{ .capture = "return_type", .value = 80 } },
-                },
             },
         });
     }
     {
         const patterns = "((IDENTIFIER) @variable)";
-        try testFilterWithDirectives(test_source, .{
+        try testFilter(test_source, .{
             .offset = getByteOffsetForSkippingLines(test_source, 6),
             .start_line = 6,
             .end_line = 13,
         }, patterns, &.{
-            .{ .targets = &.{"variable"}, .contents = &.{"sub"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"a"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"b"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"a"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"b"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"_"}, .directives = &.{} },
-            .{ .targets = &.{"variable"}, .contents = &.{"add"}, .directives = &.{} },
+            .{ .targets = &.{"variable"}, .contents = &.{"sub"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"_"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
         });
     }
-}
-
-pub fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize {
-    var offset: usize = 0;
-    var i: usize = 0;
-    for (source) |char| {
-        offset += 1;
-        if (char == '\n') i += 1;
-        if (i == lines_to_skip) break;
-    }
-    return offset;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
@@ -690,55 +605,30 @@ pub const MatchLimit = struct {
 const Expected = struct {
     targets: []const []const u8,
     contents: []const []const u8,
-    directives: []const Directive,
 };
 
-fn testFilterWithDirectives(og_source: []const u8, limit: MatchLimit, patterns: []const u8, expected: []const Expected) !void {
-    const query, const cursor = try setupTestWithNoCleanUp(og_source, limit, patterns);
+fn testFilter(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8, expected: []const Expected) !void {
+    const query, const cursor = try setupTestWithNoCleanUp(source, may_limit, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
-    const results = try filter.getAllMatches(testing_allocator, og_source[limit.offset..], limit.offset, cursor);
-    defer {
-        for (results) |r| testing_allocator.free(r.targets);
-        testing_allocator.free(results);
-    }
+    const offset = if (may_limit) |limit| limit.offset else 0;
 
-    try eq(expected.len, results.len);
-
-    for (0..expected.len) |i| {
+    var targets_buf: [8]CapturedTarget = undefined;
+    var i: usize = 0;
+    while (filter.nextMatch(source[offset..], offset, &targets_buf, cursor)) |match| {
+        if (!match.all_predicates_matched) continue;
+        try eq(expected[i].targets.len, match.targets.len);
         for (0..expected[i].targets.len) |j| {
-            try eqStr(expected[i].targets[j], results[i].targets[j].name);
-            const node = results[i].targets[j].node;
-            const node_contents = og_source[node.getStartByte()..node.getEndByte()];
+            try eqStr(expected[i].targets[j], match.targets[j].name);
+            const node = match.targets[j].node;
+            const node_contents = source[node.getStartByte()..node.getEndByte()];
             try eqStr(expected[i].contents[j], node_contents);
         }
-        try eq(expected[i].directives.len, results[i].directives.len);
-        for (0..expected[i].directives.len) |j| {
-            try std.testing.expectEqualDeep(expected[i].directives[j], results[i].directives[j]);
-        }
-    }
-}
-
-fn testFilter(source: []const u8, patterns: []const u8, expected: []const []const u8) !void {
-    const query, const cursor = try setupTestWithNoCleanUp(source, null, patterns);
-    var filter = try QueryFilter.init(testing_allocator, query);
-    defer filter.deinit();
-
-    const results = try filter.getAllMatches(testing_allocator, source, 0, cursor);
-    defer {
-        for (results) |r| testing_allocator.free(r.targets);
-        testing_allocator.free(results);
+        i += 1;
     }
 
-    try eq(expected.len, results.len);
-
-    for (0..expected.len) |i| {
-        try eq(1, results[i].targets.len);
-        const node = results[i].targets[0].node;
-        const node_contents = source[node.getStartByte()..node.getEndByte()];
-        try eqStr(expected[i], node_contents);
-    }
+    try eq(expected.len, i);
 }
 
 fn setupTestWithNoCleanUp(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
@@ -756,4 +646,15 @@ fn setupTestWithNoCleanUp(source: []const u8, may_limit: ?MatchLimit, patterns: 
     }
     cursor.execute(query, tree.getRootNode());
     return .{ query, cursor };
+}
+
+fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize {
+    var offset: usize = 0;
+    var i: usize = 0;
+    for (source) |char| {
+        offset += 1;
+        if (char == '\n') i += 1;
+        if (i == lines_to_skip) break;
+    }
+    return offset;
 }

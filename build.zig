@@ -66,6 +66,7 @@ pub fn build(b: *std.Build) void {
 
     const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
         .{ .name = "regex", .module = regex },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
     query_filter.compile.linkLibrary(tree_sitter);
 
