@@ -61,41 +61,151 @@ const LinkedList = struct {
         self.tail = node;
     }
 
-    fn get(self: *const @This(), index: usize) ?Value {
+    test append {
+        var list = LinkedList.init(testing_allocator);
+        defer list.deinit();
+
+        try eq(0, list.len);
+        try eq(null, list.head);
+        try eq(null, list.tail);
+        try eq(null, list.get(0));
+        try eq(null, list.get(100));
+
+        try list.append(1);
+        try eq(1, list.len);
+        try eq(1, list.head.?.value);
+        try eq(1, list.tail.?.value);
+        try eq(1, list.get(0).?);
+        try eq(null, list.get(1));
+
+        try list.append(2);
+        try eq(2, list.len);
+        try eq(1, list.head.?.value);
+        try eq(2, list.tail.?.value);
+        try eq(1, list.get(0).?);
+        try eq(2, list.get(1).?);
+        try eq(null, list.get(2));
+
+        try eq(true, list.set(0, 100));
+        try eq(2, list.len);
+        try eq(100, list.head.?.value);
+        try eq(2, list.tail.?.value);
+        try eq(100, list.get(0).?);
+        try eq(2, list.get(1).?);
+        try eq(null, list.get(2));
+    }
+
+    fn getNode(self: *const @This(), index: usize) ?*Node {
         if (self.len == 0 or index >= self.len) return null;
         var current = self.head;
         var i: usize = 0;
         while (current) |node| {
             defer i += 1;
-            if (index == i) return node.value;
+            if (index == i) return node;
             current = node.next;
         }
         unreachable;
     }
+
+    fn get(self: *const @This(), index: usize) ?Value {
+        const node = self.getNode(index) orelse return null;
+        return node.value;
+    }
+
+    fn set(self: *@This(), index: usize, value: Value) bool {
+        const node = self.getNode(index) orelse return false;
+        node.value = value;
+        return true;
+    }
+
+    fn remove(self: *@This(), index: usize) bool {
+        defer self.len -|= 1;
+
+        if (index == 0) {
+            const node = self.getNode(index) orelse return false;
+            self.head = node.next;
+            if (self.tail == node) self.tail = null;
+            self.a.destroy(node);
+            return true;
+        }
+
+        const prev = self.getNode(index - 1) orelse unreachable;
+        const node = prev.next orelse unreachable;
+        defer self.a.destroy(node);
+
+        prev.*.next = node.next;
+        if (self.head == node) self.head = prev;
+        if (self.tail == node) self.tail = prev;
+
+        return true;
+    }
+
+    test remove {
+        {
+            var list = LinkedList.init(testing_allocator);
+            defer list.deinit();
+
+            try list.append(1);
+            try eq(1, list.len);
+
+            try eq(true, list.remove(0));
+            try eq(0, list.len);
+            try eq(null, list.get(0));
+            try eq(null, list.head);
+            try eq(null, list.tail);
+        }
+        {
+            var list = LinkedList.init(testing_allocator);
+            defer list.deinit();
+
+            try list.append(1);
+            try list.append(2);
+            try eq(2, list.len);
+
+            try eq(true, list.remove(0));
+            try eq(1, list.len);
+            try eq(2, list.get(0));
+            try eq(2, list.head.?.value);
+            try eq(2, list.tail.?.value);
+        }
+        {
+            var list = LinkedList.init(testing_allocator);
+            defer list.deinit();
+
+            try list.append(1);
+            try list.append(2);
+            try eq(2, list.len);
+
+            try eq(true, list.remove(1));
+            try eq(1, list.len);
+            try eq(1, list.get(0).?);
+            try eq(null, list.get(1));
+            try eq(1, list.head.?.value);
+            try eq(1, list.tail.?.value);
+        }
+        {
+            var list = LinkedList.init(testing_allocator);
+            defer list.deinit();
+
+            try list.append(1);
+            try list.append(2);
+            try list.append(3);
+            try eq(3, list.len);
+
+            try eq(true, list.remove(1));
+            try eq(2, list.len);
+            try eq(1, list.get(0).?);
+            try eq(3, list.get(1).?);
+            try eq(null, list.get(2));
+            try eq(1, list.head.?.value);
+            try eq(3, list.tail.?.value);
+        }
+    }
 };
 
-test LinkedList {
-    var list = LinkedList.init(testing_allocator);
-    defer list.deinit();
+//////////////////////////////////////////////////////////////////////////////////////////////
 
-    try eq(0, list.len);
-    try eq(null, list.head);
-    try eq(null, list.tail);
-    try eq(null, list.get(0));
-    try eq(null, list.get(100));
-
-    try list.append(1);
-    try eq(1, list.len);
-    try eq(1, list.head.?.value);
-    try eq(1, list.tail.?.value);
-    try eq(1, list.get(0).?);
-    try eq(null, list.get(1));
-
-    try list.append(2);
-    try eq(2, list.len);
-    try eq(1, list.head.?.value);
-    try eq(2, list.tail.?.value);
-    try eq(1, list.get(0).?);
-    try eq(2, list.get(1).?);
-    try eq(null, list.get(2));
+test {
+    std.testing.refAllDecls(TheSomething);
+    std.testing.refAllDecls(LinkedList);
 }
