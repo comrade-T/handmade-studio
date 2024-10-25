@@ -95,17 +95,22 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = undo_tree;
 
-    {
-        const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
-            .{ .name = "code_point", .module = zg.module("code_point") },
-        }, zig_build_test_step);
+    /////////////////////////////
 
-        const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
-            .{ .name = "RopeMan", .module = ropeman.module },
-            .{ .name = "LangSuite", .module = langsuite.module },
-        }, zig_build_test_step);
-        _ = buffer;
-    }
+    const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
+
+    const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
+        .{ .name = "RopeMan", .module = ropeman.module },
+        .{ .name = "LangSuite", .module = langsuite.module },
+    }, zig_build_test_step);
+
+    const the_something = addTestableModule(&bops, "src/window/TheSomething.zig", &.{
+        .{ .name = "Buffer", .module = buffer.module },
+        .{ .name = "LangSuite", .module = langsuite.module },
+    }, zig_build_test_step);
+    _ = the_something;
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
