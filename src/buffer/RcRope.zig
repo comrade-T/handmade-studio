@@ -45,6 +45,7 @@
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const std = @import("std");
+const ztracy = @import("ztracy");
 const rc = @import("zigrc");
 const code_point = @import("code_point");
 
@@ -116,13 +117,13 @@ pub const WalkResult = struct {
 
             if (new_left.value.isEmpty()) {
                 result.replace = new_right;
-                if (new_left_is_replace) new_left.release(testing_allocator);
+                if (new_left_is_replace) new_left.release(a);
                 break :replace;
             }
 
             if (new_right.value.isEmpty()) {
                 result.replace = new_left;
-                if (new_right_is_replace) new_right.release(testing_allocator);
+                if (new_right_is_replace) new_right.release(a);
                 break :replace;
             }
 
@@ -221,6 +222,9 @@ pub const Node = union(enum) {
     ///////////////////////////// store
 
     pub fn toString(self: *const Node, a: Allocator, eol_mode: EolMode) ![]const u8 {
+        const zone = ztracy.ZoneNC(@src(), "Node.toString()", 0xF55555);
+        defer zone.End();
+
         var s = try ArrayList(u8).initCapacity(a, self.weights().len);
         try self.store(s.writer(), eol_mode);
         return s.toOwnedSlice();
