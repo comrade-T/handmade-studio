@@ -256,8 +256,11 @@ fn isPredicateOfTypeTarget(steps: []const PredicateStep) bool {
 ////////////////////////////////////////////////////////////////////////////////////////////// QueryFilter.nextMatch()
 
 pub const CapturedTarget = struct {
-    node: ts.Node,
-    capture_id: u32,
+    capture_id: u16,
+    start_line: u16,
+    start_col: u16,
+    end_line: u16,
+    end_col: u16,
 };
 
 pub const MatchResult = struct {
@@ -312,7 +315,15 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
         }
 
         if (cap_name[0] != '_') {
-            targets_buf[target_index] = CapturedTarget{ .capture_id = cap.id, .node = cap.node };
+            const start_point = cap.node.getStartPoint();
+            const end_point = cap.node.getEndPoint();
+            targets_buf[target_index] = CapturedTarget{
+                .capture_id = @intCast(cap.id),
+                .start_line = @intCast(start_point.row),
+                .start_col = @intCast(start_point.column),
+                .end_line = @intCast(end_point.row),
+                .end_col = @intCast(end_point.column),
+            };
             target_index += 1;
         }
     }
@@ -593,9 +604,8 @@ test "get directives within certain range" {
 ////////////////////////////////////////////////////////////////////////////////////////////// Measuring Contest
 
 test {
-    try eq(8, @alignOf(ts.Node));
-    try eq(32, @sizeOf(ts.Node));
-    try eq(40, @sizeOf(CapturedTarget));
+    try eq(2, @alignOf(CapturedTarget));
+    try eq(10, @sizeOf(CapturedTarget));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
@@ -625,14 +635,30 @@ fn testFilter(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8, 
         try eq(expected[i].targets.len, match.targets.len);
         for (0..expected[i].targets.len) |j| {
             try eqStr(expected[i].targets[j], query.getCaptureNameForId(match.targets[j].capture_id));
-            const node = match.targets[j].node;
-            const node_contents = source[node.getStartByte()..node.getEndByte()];
-            try eqStr(expected[i].contents[j], node_contents);
+            try testMatchContents(expected[i].contents[j], source, match.targets[j]);
         }
         i += 1;
     }
 
     try eq(expected.len, i);
+}
+
+fn testMatchContents(expected: []const u8, source: []const u8, target: CapturedTarget) !void {
+    var bytes = ArrayList(u8).init(std.heap.page_allocator);
+    defer bytes.deinit();
+
+    var split_iter = std.mem.split(u8, source, "\n");
+    var i: usize = 0;
+    while (split_iter.next()) |line| {
+        defer i += 1;
+        if (i == target.start_line and target.start_line == target.end_line) {
+            try bytes.appendSlice(line[target.start_col..target.end_col]);
+            break;
+        }
+        if (i > target.start_line) try bytes.appendSlice("\n");
+    }
+
+    try eqStr(expected, bytes.items);
 }
 
 fn setupTestWithNoCleanUp(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8) !struct { *ts.Query, *ts.Query.Cursor } {
