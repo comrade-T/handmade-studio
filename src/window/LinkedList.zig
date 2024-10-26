@@ -18,11 +18,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing_allocator = std.testing.allocator;
+const idc_if_it_leaks = std.heap.page_allocator;
 const eq = std.testing.expectEqual;
+const eqSlice = std.testing.expectEqualSlices;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn LinkedList(T: type) type {
+pub fn LinkedList(comptime T: type) type {
     return struct {
         const Self = @This();
 
@@ -45,11 +47,11 @@ pub fn LinkedList(T: type) type {
         head: ?*Node = null,
         tail: ?*Node = null,
 
-        fn init(a: Allocator) Self {
+        pub fn init(a: Allocator) Self {
             return Self{ .a = a };
         }
 
-        fn deinit(self: *@This()) void {
+        pub fn deinit(self: *@This()) void {
             var current = self.head;
             while (current) |node| {
                 const next = node.next;
@@ -58,7 +60,7 @@ pub fn LinkedList(T: type) type {
             }
         }
 
-        fn append(self: *@This(), value: T) !void {
+        pub fn append(self: *@This(), value: T) !void {
             const node = try Node.create(self.a, value);
             self.len += 1;
             if (self.head == null) self.head = node;
@@ -66,7 +68,7 @@ pub fn LinkedList(T: type) type {
             self.tail = node;
         }
 
-        fn getNode(self: *const @This(), index: usize) ?*Node {
+        pub fn getNode(self: *const @This(), index: usize) ?*Node {
             if (self.len == 0 or index >= self.len) return null;
             var current = self.head;
             var i: usize = 0;
@@ -78,18 +80,18 @@ pub fn LinkedList(T: type) type {
             unreachable;
         }
 
-        fn get(self: *const @This(), index: usize) ?T {
+        pub fn get(self: *const @This(), index: usize) ?T {
             const node = self.getNode(index) orelse return null;
             return node.value;
         }
 
-        fn set(self: *@This(), index: usize, value: T) bool {
+        pub fn set(self: *@This(), index: usize, value: T) bool {
             const node = self.getNode(index) orelse return false;
             node.value = value;
             return true;
         }
 
-        fn remove(self: *@This(), index: usize) bool {
+        pub fn remove(self: *@This(), index: usize) bool {
             defer self.len -|= 1;
 
             if (index == 0) {
@@ -109,6 +111,23 @@ pub fn LinkedList(T: type) type {
             if (self.tail == node) self.tail = prev;
 
             return true;
+        }
+
+        pub fn appendSlice(self: *@This(), new_items: []const T) !void {
+            for (new_items) |item| try self.append(item);
+        }
+
+        pub fn toOwnedSlice(self: *@This(), a: Allocator) ![]T {
+            var results = try a.alloc(T, self.len);
+            var current = self.head;
+            var i: usize = 0;
+            while (current) |node| {
+                defer i += 1;
+                const next = node.next;
+                results[i] = node.value;
+                current = next;
+            }
+            return results;
         }
     };
 }
@@ -160,53 +179,45 @@ test "LinkedList.remove()" {
         try eq(true, list.remove(0));
         try eq(0, list.len);
         try eq(null, list.get(0));
-        try eq(null, list.head);
-        try eq(null, list.tail);
+        try eq(.{ null, null }, .{ list.head, list.tail });
     }
     {
         var list = LinkedList(u32).init(testing_allocator);
         defer list.deinit();
 
-        try list.append(1);
-        try list.append(2);
+        try list.appendSlice(&.{ 1, 2 });
         try eq(2, list.len);
 
         try eq(true, list.remove(0));
         try eq(1, list.len);
-        try eq(2, list.get(0));
-        try eq(2, list.head.?.value);
-        try eq(2, list.tail.?.value);
+        try list.appendSlice(&.{2});
+        try eq(.{ 2, 2 }, .{ list.head.?.value, list.tail.?.value });
     }
     {
         var list = LinkedList(u32).init(testing_allocator);
         defer list.deinit();
 
-        try list.append(1);
-        try list.append(2);
+        try list.appendSlice(&.{ 1, 2 });
         try eq(2, list.len);
 
         try eq(true, list.remove(1));
         try eq(1, list.len);
-        try eq(1, list.get(0).?);
+        try eqSlice(u32, &.{1}, try list.toOwnedSlice(idc_if_it_leaks));
         try eq(null, list.get(1));
-        try eq(1, list.head.?.value);
-        try eq(1, list.tail.?.value);
+        try eq(.{ 1, 1 }, .{ list.head.?.value, list.tail.?.value });
     }
     {
         var list = LinkedList(u32).init(testing_allocator);
         defer list.deinit();
 
-        try list.append(1);
-        try list.append(2);
-        try list.append(3);
+        try list.appendSlice(&.{ 1, 2, 3 });
         try eq(3, list.len);
+        try eqSlice(u32, &.{ 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
 
         try eq(true, list.remove(1));
         try eq(2, list.len);
-        try eq(1, list.get(0).?);
-        try eq(3, list.get(1).?);
+        try eqSlice(u32, &.{ 1, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
         try eq(null, list.get(2));
-        try eq(1, list.head.?.value);
-        try eq(3, list.tail.?.value);
     }
 }

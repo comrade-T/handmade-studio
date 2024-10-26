@@ -95,6 +95,8 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = undo_tree;
 
+    _ = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
+
     /////////////////////////////
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
