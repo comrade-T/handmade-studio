@@ -22,6 +22,7 @@ const idc_if_it_leaks = std.heap.page_allocator;
 const assert = std.debug.assert;
 const eq = std.testing.expectEqual;
 const eqSlice = std.testing.expectEqualSlices;
+const shouldErr = std.testing.expectError;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -93,8 +94,6 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         pub fn remove(self: *@This(), index: usize) bool {
-            defer self.len -|= 1;
-
             if (index == 0) return self.removeNodeAt0thIndex();
 
             const prev = self.getNode(index - 1) orelse unreachable;
@@ -103,6 +102,7 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         fn removeNodeAt0thIndex(self: *@This()) bool {
+            defer self.len -|= 1;
             const node = self.getNode(0) orelse return false;
             self.head = node.next;
             if (self.tail == node) self.tail = null;
@@ -111,6 +111,7 @@ pub fn LinkedList(comptime T: type) type {
         }
 
         fn removeNodeUsingPrev(self: *@This(), prev: *Node) void {
+            defer self.len -|= 1;
             assert(prev.next != null);
             const node = prev.next orelse unreachable;
             defer self.a.destroy(node);
@@ -151,9 +152,34 @@ pub fn LinkedList(comptime T: type) type {
             if (self.tail == prev) self.tail = node;
         }
 
+        pub fn prepend(self: *@This(), new_item: T) !void {
+            defer self.len += 1;
+            const node = try Node.create(self.a, new_item);
+            node.next = self.head;
+            self.head = node;
+            if (self.tail == null) self.tail = node;
+        }
+
+        pub fn prependSlice(self: *@This(), new_items: []const T) !void {
+            var i = new_items.len;
+            while (i > 0) {
+                i -= 1;
+                try self.prepend(new_items[i]);
+            }
+        }
+
         pub fn replaceRange(self: *@This(), start: usize, len: usize, new_items: []const T) !void {
             assert(start + len <= self.len);
+            if (len == 0 and new_items.len == 0) return;
             if (start + len > self.len) return;
+
+            var removal_anchor: ?*Node = null;
+            var removal_anchor_type: enum { none, head, body } = .none;
+            const num_to_remove: i64 = @as(i64, @intCast(len)) - @as(i64, @intCast(new_items.len));
+            const num_to_replace = if (num_to_remove <= 0) @min(len, new_items.len) else 0;
+
+            var num_replaced: usize = 0;
+            var num_inserted: usize = 0;
 
             var current: ?*Node = self.head;
             var prev: ?*Node = null;
@@ -167,38 +193,69 @@ pub fn LinkedList(comptime T: type) type {
                 if (i < start) continue;
 
                 // in overwrite range
-                if (len > 0 and i + len <= start + len) {
+                if (i < start + num_to_replace) {
                     node.value = new_items[i - start];
+                    num_replaced += 1;
                     continue;
                 }
 
                 // to be removed
-                if (len > new_items.len) {
-                    if (i == 0) {
-                        const is_removed = self.removeNodeAt0thIndex();
-                        assert(is_removed);
-                        continue;
+                if (i < start + len) {
+                    if (removal_anchor_type == .none) {
+                        if (prev == null) {
+                            assert(i == 0);
+                            removal_anchor_type = .head;
+                            continue;
+                        }
+                        removal_anchor = prev;
+                        removal_anchor_type = .body;
                     }
-                    assert(prev != null);
-                    self.removeNodeUsingPrev(prev orelse return);
                     continue;
                 }
 
-                { // to be inserted
-                    if (i == 0) {
-                        try self.appendSlice(new_items);
-                        return;
-                    }
+                // to be inserted
 
-                    if (i - start >= new_items.len) return;
+                if (i == 0) {
+                    try self.prependSlice(new_items);
+                    num_inserted += new_items.len;
+                    break;
+                }
 
-                    assert(prev != null);
-                    var target = prev;
-                    for (i - start..new_items.len) |j| {
-                        try self.insertAfterNode(target orelse return, new_items[j]);
-                        target = target.?.next;
-                    }
-                    return;
+                if (i - start >= new_items.len) break;
+
+                assert(prev != null);
+                var target = prev;
+                for (i - start..new_items.len) |j| {
+                    assert(target != null);
+                    try self.insertAfterNode(target orelse break, new_items[j]);
+                    num_inserted += 1;
+                    target = target.?.next;
+                }
+                break;
+            }
+
+            if (num_replaced + num_inserted < new_items.len) {
+                const slice = new_items[num_replaced + num_inserted .. new_items.len];
+                try self.appendSlice(slice);
+                num_inserted += slice.len;
+            }
+            assert(num_replaced + num_inserted == new_items.len);
+
+            if (num_to_remove > 0) {
+                switch (removal_anchor_type) {
+                    .none => {},
+                    .head => {
+                        for (0..@intCast(num_to_remove)) |_| {
+                            const is_removed = self.removeNodeAt0thIndex();
+                            assert(is_removed);
+                        }
+                    },
+                    .body => {
+                        assert(removal_anchor != null);
+                        for (0..@intCast(num_to_remove)) |_| {
+                            self.removeNodeUsingPrev(removal_anchor.?);
+                        }
+                    },
                 }
             }
         }
@@ -319,27 +376,27 @@ test "LinkedList.insertAfter()" {
     try eq(.{ 1, 1000 }, .{ list.head.?.value, list.tail.?.value });
 }
 
+test "LinkedList.prepend() & LinkedList.prependSlice()" {
+    var list = LinkedList(u32).init(testing_allocator);
+    defer list.deinit();
+
+    try list.appendSlice(&.{ 1, 2, 3 });
+    try list.prepend(0);
+    try eqSlice(u32, &.{ 0, 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+    try eq(.{ 0, 3 }, .{ list.head.?.value, list.tail.?.value });
+}
+
 test "LinkedList.replaceRange()" {
+
+    ///////////////////////////// insert only
+
     {
         var list = LinkedList(u32).init(testing_allocator);
         defer list.deinit();
-
         try list.appendSlice(&.{ 1, 2, 3 });
-        try eqSlice(u32, &.{ 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
 
-        try list.replaceRange(0, 1, &.{100});
-        try eqSlice(u32, &.{ 100, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
-        try eq(.{ 100, 3 }, .{ list.head.?.value, list.tail.?.value });
-    }
-    {
-        var list = LinkedList(u32).init(testing_allocator);
-        defer list.deinit();
-
-        try list.appendSlice(&.{ 1, 2, 3 });
-        try eqSlice(u32, &.{ 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
-
-        try list.replaceRange(0, 1, &.{ 100, 200, 300 });
-        try eqSlice(u32, &.{ 100, 200, 300, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try list.replaceRange(0, 0, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 100, 200, 300, 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
         try eq(.{ 100, 3 }, .{ list.head.?.value, list.tail.?.value });
     }
     {
@@ -351,27 +408,141 @@ test "LinkedList.replaceRange()" {
         try eqSlice(u32, &.{ 1, 100, 200, 300, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
         try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
     }
-    // {
-    //     var list = LinkedList(u32).init(testing_allocator);
-    //     defer list.deinit();
-    //     try list.appendSlice(&.{ 1, 2, 3 });
-    //
-    //     try list.replaceRange(0, 0, &.{ 100, 200, 300 });
-    //     try eqSlice(u32, &.{ 100, 200, 300, 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
-    //     try eq(.{ 100, 3 }, .{ list.head.?.value, list.tail.?.value });
-    // }
-}
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
 
-// test {
-//     {
-//         var list = std.ArrayList(u32).init(idc_if_it_leaks);
-//         try list.replaceRange(0, 0, &.{ 1, 2, 3 });
-//         try eqSlice(u32, &.{ 1, 2, 3 }, list.items);
-//     }
-//     {
-//         var list = std.ArrayList(u32).init(idc_if_it_leaks);
-//         try list.appendSlice(&.{ 1, 2, 3 });
-//         try list.replaceRange(0, 0, &.{ 100, 200, 300 });
-//         try eqSlice(u32, &.{ 100, 200, 300, 1, 2, 3 }, list.items);
-//     }
-// }
+        try list.replaceRange(2, 0, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 1, 2, 100, 200, 300, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(3, 0, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 1, 2, 3, 100, 200, 300 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 300 }, .{ list.head.?.value, list.tail.?.value });
+    }
+
+    ///////////////////////////// remove only
+
+    // remove at 0th index
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(0, 0, &.{});
+        try eqSlice(u32, &.{ 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(0, 1, &.{});
+        try eqSlice(u32, &.{ 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 2, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(0, 2, &.{});
+        try eqSlice(u32, &.{3}, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 3, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+
+    // remove at 1st index
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(1, 1, &.{});
+        try eqSlice(u32, &.{ 1, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(1, 2, &.{});
+        try eqSlice(u32, &.{1}, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 1 }, .{ list.head.?.value, list.tail.?.value });
+    }
+
+    // remove at 2nd index
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(2, 1, &.{});
+        try eqSlice(u32, &.{ 1, 2 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 2 }, .{ list.head.?.value, list.tail.?.value });
+    }
+
+    ///////////////////////////// replace and insert
+
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(0, 1, &.{100});
+        try eqSlice(u32, &.{ 100, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 100, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(0, 1, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 100, 200, 300, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 100, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(0, 3, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 100, 200, 300 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 100, 300 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(1, 1, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 1, 100, 200, 300, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(1, 2, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 1, 100, 200, 300 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 300 }, .{ list.head.?.value, list.tail.?.value });
+    }
+    {
+        var list = LinkedList(u32).init(testing_allocator);
+        defer list.deinit();
+        try list.appendSlice(&.{ 1, 2, 3 });
+
+        try list.replaceRange(2, 1, &.{ 100, 200, 300 });
+        try eqSlice(u32, &.{ 1, 2, 100, 200, 300 }, try list.toOwnedSlice(idc_if_it_leaks));
+        try eq(.{ 1, 300 }, .{ list.head.?.value, list.tail.?.value });
+    }
+}

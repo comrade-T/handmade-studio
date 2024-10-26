@@ -12,7 +12,7 @@ const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
 const LangSuite = @import("LangSuite");
-const LinkedList = @import("LinkedList.zig");
+const LinkedList = @import("LinkedList.zig").LinkedList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -27,6 +27,24 @@ fn init(a: Allocator, buf: *Buffer) !TheSomething {
 fn deinit(self: *@This()) void {
     _ = self;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const TheLines = LinkedList(LineCaptures);
+
+const LineCaptures = ArrayList(StoredCapture);
+
+const StoredCapture = struct {
+    capture_id: u16,
+    start_col: u16,
+    end_col: u16,
+};
+
+fn baddie() !void {
+    // TODO:
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() !void {
     var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
