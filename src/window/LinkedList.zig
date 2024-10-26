@@ -19,6 +19,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing_allocator = std.testing.allocator;
 const idc_if_it_leaks = std.heap.page_allocator;
+const assert = std.debug.assert;
 const eq = std.testing.expectEqual;
 const eqSlice = std.testing.expectEqualSlices;
 
@@ -129,6 +130,20 @@ pub fn LinkedList(comptime T: type) type {
             }
             return results;
         }
+
+        pub fn insertAfter(self: *@This(), i: usize, new_item: T) !bool {
+            const prev = self.getNode(i) orelse return false;
+            try self.insertAfterNode(prev, new_item);
+            return true;
+        }
+
+        pub fn insertAfterNode(self: *@This(), prev: *Node, new_item: T) !void {
+            const node = try Node.create(self.a, new_item);
+            node.next = prev.next;
+            prev.next = node;
+            self.len += 1;
+            if (self.tail == prev) self.tail = node;
+        }
     };
 }
 
@@ -220,4 +235,28 @@ test "LinkedList.remove()" {
         try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
         try eq(null, list.get(2));
     }
+}
+
+test "LinkedList.insertAfter()" {
+    var list = LinkedList(u32).init(testing_allocator);
+    defer list.deinit();
+
+    try list.appendSlice(&.{ 1, 2, 3 });
+    try eqSlice(u32, &.{ 1, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+
+    try eq(true, try list.insertAfter(0, 100));
+    try eqSlice(u32, &.{ 1, 100, 2, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+    try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
+
+    try eq(true, try list.insertAfter(2, 200));
+    try eqSlice(u32, &.{ 1, 100, 2, 200, 3 }, try list.toOwnedSlice(idc_if_it_leaks));
+    try eq(.{ 1, 3 }, .{ list.head.?.value, list.tail.?.value });
+
+    try eq(true, try list.insertAfter(4, 300));
+    try eqSlice(u32, &.{ 1, 100, 2, 200, 3, 300 }, try list.toOwnedSlice(idc_if_it_leaks));
+    try eq(.{ 1, 300 }, .{ list.head.?.value, list.tail.?.value });
+
+    try eq(true, try list.insertAfter(5, 1000));
+    try eqSlice(u32, &.{ 1, 100, 2, 200, 3, 300, 1000 }, try list.toOwnedSlice(idc_if_it_leaks));
+    try eq(.{ 1, 1000 }, .{ list.head.?.value, list.tail.?.value });
 }
