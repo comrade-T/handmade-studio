@@ -2121,6 +2121,35 @@ fn testDump(source: []const u8, expected_str: []const u8, point: CursorPoint, co
     try eqStr(expected_str, result);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Get Line u21 alloc
+
+const GetLineU21AllocCtx = struct {
+    list: ArrayList(u21),
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        while (iter.next()) |cp| try ctx.list.append(cp.code);
+        if (leaf.eol) return WalkResult.stop;
+        return WalkResult.keep_walking;
+    }
+};
+
+pub fn getLineU21Alloc(a: Allocator, node: RcNode, line: usize) ![]const u21 {
+    var ctx: GetLineU21AllocCtx = .{ .list = try ArrayList(u21).initCapacity(a, 1024) };
+    errdefer ctx.list.deinit();
+    const result = try walkFromLineBegin(a, node, line, GetLineU21AllocCtx.walker, &ctx);
+    if (!result.found) return error.NotFound;
+    return try ctx.list.toOwnedSlice();
+}
+
+test getLineU21Alloc {
+    var content_arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
+    const root = try Node.fromString(idc_if_it_leaks, &content_arena, "hello\nworld");
+    try eqStrU21("hello", try getLineU21Alloc(idc_if_it_leaks, root, 0));
+    try eqStrU21("world", try getLineU21Alloc(idc_if_it_leaks, root, 1));
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const Branch = struct {
@@ -2272,6 +2301,13 @@ pub fn freeRcNodes(a: Allocator, nodes: []const RcNode) void {
 pub fn freeRcNode(a: Allocator, node: RcNode) void {
     releaseChildrenRecursive(node.value, a);
     node.release(a);
+}
+
+fn eqStrU21(expected: []const u8, got: []const u21) !void {
+    var slice = try testing_allocator.alloc(u8, got.len);
+    defer testing_allocator.free(slice);
+    for (got, 0..) |cp, i| slice[i] = @intCast(cp);
+    try eqStr(expected, slice);
 }
 
 fn releaseChildrenRecursive(self: *const Node, a: Allocator) void {
