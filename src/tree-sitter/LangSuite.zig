@@ -85,6 +85,12 @@ pub fn createParser(self: *@This()) !*ts.Parser {
     return parser;
 }
 
+pub fn getLangChoiceFromFilePath(path: []const u8) ?SupportedLanguages {
+    const endsWith = std.mem.endsWith;
+    if (endsWith(u8, path, ".zig")) return SupportedLanguages.zig;
+    return null;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub const DEFAULT_QUERY_ID = "DEFAULT";
