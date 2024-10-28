@@ -26,6 +26,7 @@ const idc_if_it_leaks = std.heap.page_allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
+const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
@@ -143,8 +144,8 @@ fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void
 }
 
 const max_int_u32 = std.math.maxInt(u32);
-fn getCaptures(self: *@This()) !void {
-    assert(self.ls != null and self.tree != null);
+fn getCapturesDemo(self: *@This()) !void {
+    assert(self.ls != null and self.buf.tstree != null);
     const ls = self.ls orelse return;
     const tree = self.buf.tstree orelse return;
 
@@ -153,7 +154,7 @@ fn getCaptures(self: *@This()) !void {
 
     const num_of_lines = self.buf.ropeman.root.value.weights().bols;
     var lines_list = try ArrayList(std.ArrayListUnmanaged(StoredCapture)).initCapacity(self.a, num_of_lines);
-    @memset(lines_list.items, std.ArrayListUnmanaged(StoredCapture){});
+    for (0..num_of_lines) |_| try lines_list.append(std.ArrayListUnmanaged(StoredCapture){});
 
     for (ls.queries.values(), 0..) |sq, query_index| {
         var cursor = try LangSuite.ts.Query.Cursor.create();
@@ -165,18 +166,43 @@ fn getCaptures(self: *@This()) !void {
             for (match.targets) |target| {
                 for (target.start_line..target.end_line + 1) |linenr| {
                     const cap = StoredCapture{
-                        .query_idex = query_index,
+                        .query_idex = @intCast(query_index),
                         .capture_id = target.capture_id,
                         .start_col = if (linenr == target.start_line) target.start_col else 0,
-                        .end_col = if (linenr == target.end_col) target.end_col else max_int_u32,
+                        .end_col = if (linenr == target.end_line) target.end_col else max_int_u32,
                     };
-                    lines_list.items[linenr].append(self.a, cap);
+                    try lines_list.items[linenr].append(self.a, cap);
                 }
             }
         }
     }
 
-    // TODO:
+    for (lines_list.items) |*arr| {
+        const slice = try arr.toOwnedSlice(self.a);
+        std.mem.sort(StoredCapture, slice, {}, StoredCapture.lessThan);
+        try self.cap_list.append(slice);
+    }
+    lines_list.deinit();
+}
+
+test getCapturesDemo {
+    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
+    defer lang_hub.deinit();
+    {
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_1_line.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("const a = 10;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+
+        try ws.getCapturesDemo();
+        try eq(2, ws.cap_list.len);
+        try eqSlice(StoredCapture, &.{
+            .{ .query_idex = 0, .capture_id = 28, .start_col = 0, .end_col = 5 },
+            .{ .query_idex = 0, .capture_id = 2, .start_col = 6, .end_col = 7 },
+            .{ .query_idex = 0, .capture_id = 12, .start_col = 10, .end_col = 12 },
+            .{ .query_idex = 0, .capture_id = 33, .start_col = 12, .end_col = 13 },
+        }, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(1).?);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -186,6 +212,11 @@ const StoredCapture = struct {
     capture_id: u16,
     start_col: u32,
     end_col: u32,
+
+    fn lessThan(_: void, a: StoredCapture, b: StoredCapture) bool {
+        if (a.start_col < b.start_col) return true;
+        return a.end_col < b.end_col;
+    }
 };
 
 test {
