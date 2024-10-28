@@ -181,9 +181,9 @@ pub fn build(b: *std.Build) void {
     ////////////////////////////////////////////////////////////////////////////// Executable
 
     {
-        const path = "src/window/TheSomething.zig";
+        const path = "src/window/WindowSource.zig";
         const exe = b.addExecutable(.{
-            .name = "TheSomething",
+            .name = "WindowSource",
             .root_source_file = b.path(path),
             .target = target,
             .optimize = optimize,
