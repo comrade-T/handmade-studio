@@ -29,6 +29,7 @@ const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const RopeMan = @import("RopeMan");
+pub const InitFrom = RopeMan.InitFrom;
 const CursorPoint = RopeMan.CursorPoint;
 const LangSuite = @import("LangSuite");
 const ts = LangSuite.ts;
@@ -45,7 +46,7 @@ tstree: ?*ts.Tree = null,
 parse_buf: [PARSE_BUFFER_SIZE]u8 = undefined,
 const PARSE_BUFFER_SIZE = 1024;
 
-pub fn create(a: Allocator, from: RopeMan.InitFrom, source: []const u8) !*Buffer {
+pub fn create(a: Allocator, from: InitFrom, source: []const u8) !*Buffer {
     const self = try a.create(@This());
     self.* = .{
         .a = a,

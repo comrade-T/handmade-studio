@@ -110,7 +110,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
-    const window_source = addTestableModule(&bops, "src/window/WindowSource", &.{
+    const window_source = addTestableModule(&bops, "src/window/WindowSource.zig", &.{
         .{ .name = "Buffer", .module = buffer.module },
         .{ .name = "LangSuite", .module = langsuite.module },
     }, zig_build_test_step);
