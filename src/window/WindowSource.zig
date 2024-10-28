@@ -145,12 +145,7 @@ fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void
     try self.buf.initiateTreeSitter(self.ls.?);
 }
 
-const StoredCaptureList = std.ArrayListUnmanaged(StoredCapture);
-const max_int_u32 = std.math.maxInt(u32);
 fn getCapturesDemo(self: *@This()) !void {
-    const big_zone = ztracy.ZoneNC(@src(), "getCapturesDemo()", 0x333300);
-    defer big_zone.End();
-
     assert(self.ls != null and self.buf.tstree != null);
     const ls = self.ls orelse return;
     const tree = self.buf.tstree orelse return;
@@ -183,14 +178,12 @@ fn getCapturesDemo(self: *@This()) !void {
         }
     }
 
-    const zone = ztracy.ZoneNC(@src(), "sort and append", 0x0F0F0F);
     for (lines_list.items) |*arr| {
         const slice = try arr.toOwnedSlice(self.a);
         std.mem.sort(StoredCapture, slice, {}, StoredCapture.lessThan);
         try self.cap_list.append(slice);
     }
     lines_list.deinit();
-    zone.End();
 }
 
 test getCapturesDemo {
@@ -210,6 +203,76 @@ test getCapturesDemo {
             .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 },
         }, ws.cap_list.get(0).?);
         try eqSlice(StoredCapture, &.{}, ws.cap_list.get(1).?);
+    }
+}
+
+const CapturedLinesMap = std.AutoArrayHashMap(usize, StoredCaptureList);
+const StoredCaptureList = std.ArrayListUnmanaged(StoredCapture);
+const max_int_u32 = std.math.maxInt(u32);
+
+fn getCaptures(self: *@This(), source: []const u8, start: usize, end: usize) !CapturedLinesMap {
+    assert(self.ls != null and self.buf.tstree != null);
+
+    var map = CapturedLinesMap.init(self.a);
+    const ls = self.ls orelse return map;
+    const tree = self.buf.tstree orelse return map;
+
+    for (start..end + 1) |i| try map.put(i, try StoredCaptureList.initCapacity(self.a, 8));
+
+    for (ls.queries.values(), 0..) |sq, query_index| {
+        var cursor = try LangSuite.ts.Query.Cursor.create();
+        cursor.execute(sq.query, tree.getRootNode());
+        cursor.setPointRange(
+            .{ .row = @intCast(start), .column = 0 },
+            .{ .row = @intCast(end), .column = 0 },
+        );
+
+        var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
+        while (sq.filter.nextMatch(source, 0, &targets_buf, cursor)) |match| {
+            if (!match.all_predicates_matched) continue;
+            for (match.targets) |target| {
+                for (target.start_line..target.end_line + 1) |linenr| {
+                    const cap = StoredCapture{
+                        .query_index = @intCast(query_index),
+                        .capture_id = target.capture_id,
+                        .start_col = if (linenr == target.start_line) target.start_col else 0,
+                        .end_col = if (linenr == target.end_line) target.end_col else max_int_u32,
+                    };
+                    var list = map.getPtr(linenr) orelse continue;
+                    try list.append(self.a, cap);
+                }
+            }
+        }
+    }
+
+    for (map.values()) |list| std.mem.sort(StoredCapture, list.items, {}, StoredCapture.lessThan);
+    return map;
+}
+
+test getCaptures {
+    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
+    defer lang_hub.deinit();
+    {
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_1_line.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("const a = 10;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+
+        const source = try ws.buf.ropeman.toString(testing_allocator, .lf);
+        defer testing_allocator.free(source);
+
+        var map = try ws.getCaptures(source, 0, ws.buf.ropeman.root.value.weights().bols - 1);
+        defer {
+            for (map.values()) |*list| list.deinit(testing_allocator);
+            map.deinit();
+        }
+
+        try eqSlice(StoredCapture, &.{
+            .{ .start_col = 0, .end_col = 5, .query_index = 0, .capture_id = 28 },
+            .{ .start_col = 6, .end_col = 7, .query_index = 0, .capture_id = 2 },
+            .{ .start_col = 10, .end_col = 12, .query_index = 0, .capture_id = 12 },
+            .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 },
+        }, map.get(0).?.items);
+        try eqSlice(StoredCapture, &.{}, map.get(1).?.items);
     }
 }
 
