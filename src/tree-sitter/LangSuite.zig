@@ -93,6 +93,31 @@ pub fn getLangChoiceFromFilePath(path: []const u8) ?SupportedLanguages {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub const LangHub = struct {
+    a: Allocator,
+    map: std.AutoArrayHashMap(SupportedLanguages, *LangSuite),
+
+    pub fn init(a: Allocator) !LangHub {
+        return LangHub{ .a = a, .map = std.AutoArrayHashMap(SupportedLanguages, *LangSuite).init(a) };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        for (self.map.values()) |ls| ls.destroy();
+        self.map.deinit();
+    }
+
+    pub fn get(self: *@This(), lang_choice: SupportedLanguages) !*LangSuite {
+        if (!self.map.contains(lang_choice)) {
+            var ls = try LangSuite.create(self.a, lang_choice);
+            try ls.addDefaultHighlightQuery();
+            try self.map.put(lang_choice, ls);
+        }
+        return self.map.get(lang_choice) orelse unreachable;
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 pub const DEFAULT_QUERY_ID = "DEFAULT";
 
 pub const QueryMap = std.StringArrayHashMap(*StoredQuery);
