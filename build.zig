@@ -110,11 +110,11 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
-    const the_something = addTestableModule(&bops, "src/window/TheSomething.zig", &.{
+    const window_source = addTestableModule(&bops, "src/window/WindowSource", &.{
         .{ .name = "Buffer", .module = buffer.module },
         .{ .name = "LangSuite", .module = langsuite.module },
     }, zig_build_test_step);
-    _ = the_something;
+    _ = window_source;
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 

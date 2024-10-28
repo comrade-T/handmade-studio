@@ -1,4 +1,4 @@
-const TheSomething = @This();
+const WindowSource = @This();
 const std = @import("std");
 const ztracy = @import("ztracy");
 
@@ -13,36 +13,6 @@ const assert = std.debug.assert;
 const Buffer = @import("Buffer");
 const LangSuite = @import("LangSuite");
 const LinkedList = @import("LinkedList.zig").LinkedList;
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-a: Allocator,
-buf: *Buffer,
-
-fn init(a: Allocator, buf: *Buffer) !TheSomething {
-    const self = TheSomething{ .a = a, .buf = buf };
-    return self;
-}
-
-fn deinit(self: *@This()) void {
-    _ = self;
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const TheLines = LinkedList(LineCaptures);
-
-const LineCaptures = ArrayList(StoredCapture);
-
-const StoredCapture = struct {
-    capture_id: u16,
-    start_col: u16,
-    end_col: u16,
-};
-
-fn baddie() !void {
-    // TODO:
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -82,20 +52,47 @@ pub fn main() !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+a: Allocator,
+buf: *Buffer,
+
+fn init(a: Allocator, buf: *Buffer) !WindowSource {
+    const self = WindowSource{ .a = a, .buf = buf };
+    return self;
+}
+
+fn deinit(self: *@This()) void {
+    _ = self;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const TheLines = LinkedList(LineCaptures);
+
+const LineCaptures = ArrayList(StoredCapture);
+
+const StoredCapture = struct {
+    capture_id: u16,
+    start_col: u16,
+    end_col: u16,
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const test_source = @embedFile("fixtures/dummy.zig");
 
-test TheSomething {
+test WindowSource {
     var ls = try LangSuite.create(testing_allocator, .zig);
     try ls.addDefaultHighlightQuery();
     defer ls.destroy();
 
-    var buf = try Buffer.create(testing_allocator, .string, test_source);
-    defer buf.destroy();
-
-    var something = try TheSomething.init(testing_allocator, buf);
+    var something = try WindowSource.init(testing_allocator, "fixtures/dummy.zig");
     defer something.deinit();
 
     {
-        // TODO:
+        // TheSomething will become WindowSource
+        // TODO: create buffer (either from string or from file)
+        // TODO: create a WindowSource.initiateTreeSitter() method
+        // TODO: if the created buffer is from file, depends on the file path, call WindowSource.initiateTreeSitter()
+        // TODO: create a temporary function to return a LangSuite.SupportedLanguages enum variant from file path
     }
 }
