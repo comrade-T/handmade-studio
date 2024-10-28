@@ -260,10 +260,10 @@ fn isPredicateOfTypeTarget(steps: []const PredicateStep) bool {
 
 pub const CapturedTarget = struct {
     capture_id: u16,
-    start_line: u16,
-    start_col: u16,
-    end_line: u16,
-    end_col: u16,
+    start_line: u32,
+    start_col: u32,
+    end_line: u32,
+    end_col: u32,
 };
 
 pub const MatchResult = struct {
@@ -322,10 +322,10 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
             const end_point = cap.node.getEndPoint();
             targets_buf[target_index] = CapturedTarget{
                 .capture_id = @intCast(cap.id),
-                .start_line = @intCast(start_point.row),
-                .start_col = @intCast(start_point.column),
-                .end_line = @intCast(end_point.row),
-                .end_col = @intCast(end_point.column),
+                .start_line = start_point.row,
+                .start_col = start_point.column,
+                .end_line = end_point.row,
+                .end_col = end_point.column,
             };
             target_index += 1;
         }
@@ -607,8 +607,8 @@ test "get directives within certain range" {
 ////////////////////////////////////////////////////////////////////////////////////////////// Measuring Contest
 
 test {
-    try eq(2, @alignOf(CapturedTarget));
-    try eq(10, @sizeOf(CapturedTarget));
+    try eq(4, @alignOf(CapturedTarget));
+    try eq(20, @sizeOf(CapturedTarget));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers

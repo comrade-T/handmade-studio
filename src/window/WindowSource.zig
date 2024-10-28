@@ -72,21 +72,26 @@ pub fn main() !void {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
-lang_hub: *LangSuite.LangHub,
-path: ?[]const u8 = null,
-buf: *Buffer,
+
 from: InitFrom,
+path: []const u8 = "",
+
+buf: *Buffer,
+ls: ?*LangSuite = null,
+cap_list: CapList,
+
+const CapList = LinkedList([]StoredCapture);
 
 pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSuite.LangHub) !WindowSource {
     var self = WindowSource{
         .a = a,
         .from = from,
         .buf = try Buffer.create(a, from, source),
-        .lang_hub = lang_hub,
+        .cap_list = CapList.init(a),
     };
     if (from == .file) {
         self.path = source;
-        try self.initiateTreeSitterForFile();
+        try self.initiateTreeSitterForFile(lang_hub);
     }
     return self;
 }
@@ -119,27 +124,71 @@ test init {
     }
 }
 
-fn initiateTreeSitterForFile(self: *@This()) !void {
-    const lang_choice = LangSuite.getLangChoiceFromFilePath(self.path orelse return) orelse return;
-    try self.initiateTreeSitter(lang_choice);
-}
-
-pub fn initiateTreeSitter(self: *@This(), lang_choice: LangSuite.SupportedLanguages) !void {
-    try self.buf.initiateTreeSitter(try self.lang_hub.get(lang_choice));
-}
-
 pub fn deinit(self: *@This()) void {
     self.buf.destroy();
+    { // cap list
+        var current = self.cap_list.head;
+        while (current) |node| {
+            self.a.free(node.value);
+            current = node.next;
+        }
+        self.cap_list.deinit();
+    }
+}
+
+fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void {
+    const lang_choice = LangSuite.getLangChoiceFromFilePath(self.path) orelse return;
+    self.ls = try lang_hub.get(lang_choice);
+    try self.buf.initiateTreeSitter(self.ls.?);
+}
+
+const max_int_u32 = std.math.maxInt(u32);
+fn getCaptures(self: *@This()) !void {
+    assert(self.ls != null and self.tree != null);
+    const ls = self.ls orelse return;
+    const tree = self.buf.tstree orelse return;
+
+    const entire_file = try self.buf.ropeman.toString(self.a, .lf);
+    defer self.a.free(entire_file);
+
+    const num_of_lines = self.buf.ropeman.root.value.weights().bols;
+    var lines_list = try ArrayList(std.ArrayListUnmanaged(StoredCapture)).initCapacity(self.a, num_of_lines);
+    @memset(lines_list.items, std.ArrayListUnmanaged(StoredCapture){});
+
+    for (ls.queries.values(), 0..) |sq, query_index| {
+        var cursor = try LangSuite.ts.Query.Cursor.create();
+        cursor.execute(sq.query, tree.getRootNode());
+
+        var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
+        while (sq.filter.nextMatch(entire_file, 0, &targets_buf, cursor)) |match| {
+            if (!match.all_predicates_matched) continue;
+            for (match.targets) |target| {
+                for (target.start_line..target.end_line + 1) |linenr| {
+                    const cap = StoredCapture{
+                        .query_idex = query_index,
+                        .capture_id = target.capture_id,
+                        .start_col = if (linenr == target.start_line) target.start_col else 0,
+                        .end_col = if (linenr == target.end_col) target.end_col else max_int_u32,
+                    };
+                    lines_list.items[linenr].append(self.a, cap);
+                }
+            }
+        }
+    }
+
+    // TODO:
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const TheLines = LinkedList(LineCaptures);
-
-const LineCaptures = ArrayList(StoredCapture);
-
 const StoredCapture = struct {
+    query_idex: u16,
     capture_id: u16,
-    start_col: u16,
-    end_col: u16,
+    start_col: u32,
+    end_col: u32,
 };
+
+test {
+    try eq(4, @alignOf(StoredCapture));
+    try eq(12, @sizeOf(StoredCapture));
+}
