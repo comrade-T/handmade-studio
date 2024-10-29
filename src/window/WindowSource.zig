@@ -38,44 +38,6 @@ const LinkedList = @import("LinkedList.zig").LinkedList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn main() !void {
-    const total_start_time = std.time.milliTimestamp();
-    defer {
-        const total_end_time = std.time.milliTimestamp();
-        const took = total_end_time - total_start_time;
-        std.debug.print("took total: {d}\n", .{took});
-    }
-
-    /////////////////////////////
-
-    var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa_.deinit();
-    const gpa = gpa_.allocator();
-
-    /////////////////////////////
-
-    var lang_hub = try LangSuite.LangHub.init(gpa);
-    defer lang_hub.deinit();
-
-    var ws = try WindowSource.init(gpa, .file, "src/window/old_window.zig", &lang_hub);
-    defer ws.deinit();
-
-    /////////////////////////////
-
-    {
-        const start_time = std.time.milliTimestamp();
-        defer {
-            const end_time = std.time.milliTimestamp();
-            const took = end_time - start_time;
-            std.debug.print("took: {d}\n", .{took});
-        }
-        try ws.getCapturesDemo();
-        std.debug.print("done\n", .{});
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 a: Allocator,
 
 from: InitFrom,

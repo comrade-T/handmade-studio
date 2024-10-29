@@ -180,21 +180,6 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 
-    {
-        const path = "src/window/WindowSource.zig";
-        const exe = b.addExecutable(.{
-            .name = "WindowSource",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
-        exe.root_module.addImport("Buffer", buffer.module);
-        exe.root_module.addImport("LangSuite", langsuite.module);
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
-        addRunnableRaylibFile(b, exe, raylib, path);
-    }
-
     ///////////////////////////// Raylib
 
     {
