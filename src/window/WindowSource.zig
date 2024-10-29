@@ -224,7 +224,7 @@ fn getCaptures(self: *@This(), source: []const u8, start: usize, end: usize) !Ca
         cursor.execute(sq.query, tree.getRootNode());
         cursor.setPointRange(
             .{ .row = @intCast(start), .column = 0 },
-            .{ .row = @intCast(end), .column = 0 },
+            .{ .row = @intCast(end + 1), .column = 0 },
         );
 
         var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
@@ -252,27 +252,61 @@ fn getCaptures(self: *@This(), source: []const u8, start: usize, end: usize) !Ca
 test getCaptures {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
+
     {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_1_line.zig", &lang_hub);
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.deinit();
-        try eqStr("const a = 10;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
         const source = try ws.buf.ropeman.toString(testing_allocator, .lf);
         defer testing_allocator.free(source);
+        try eqStr(
+            \\const a = 10;
+            \\var not_false = true;
+            \\
+        , source);
 
-        var map = try ws.getCaptures(source, 0, ws.buf.ropeman.root.value.weights().bols - 1);
-        defer {
-            for (map.values()) |*list| list.deinit(testing_allocator);
-            map.deinit();
+        const first_line_matches: []const StoredCapture = &.{
+            .{ .start_col = 0, .end_col = 5, .query_index = 0, .capture_id = 28 }, // @type.qualifier
+            .{ .start_col = 6, .end_col = 7, .query_index = 0, .capture_id = 2 }, // @variable
+            .{ .start_col = 10, .end_col = 12, .query_index = 0, .capture_id = 12 }, // number
+            .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
+        };
+        const second_line_matches: []const StoredCapture = &.{
+            .{ .start_col = 0, .end_col = 3, .query_index = 0, .capture_id = 28 }, // @type.qualifier
+            .{ .start_col = 4, .end_col = 13, .query_index = 0, .capture_id = 2 }, // @variable
+            .{ .start_col = 16, .end_col = 20, .query_index = 0, .capture_id = 14 }, // boolean
+            .{ .start_col = 20, .end_col = 21, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
+        };
+
+        try eqStr("type.qualifier", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(28));
+        try eqStr("variable", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(2));
+        try eqStr("number", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(12));
+        try eqStr("boolean", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(14));
+        try eqStr("punctuation.delimiter", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(33));
+
+        { // entire file
+            var map = try ws.getCaptures(source, 0, ws.buf.ropeman.root.value.weights().bols - 1);
+            defer {
+                for (map.values()) |*list| list.deinit(testing_allocator);
+                map.deinit();
+            }
+
+            try eq(3, map.keys().len);
+            try eqSlice(StoredCapture, first_line_matches, map.get(0).?.items);
+            try eqSlice(StoredCapture, second_line_matches, map.get(1).?.items);
+            try eqSlice(StoredCapture, &.{}, map.get(2).?.items);
         }
 
-        try eqSlice(StoredCapture, &.{
-            .{ .start_col = 0, .end_col = 5, .query_index = 0, .capture_id = 28 },
-            .{ .start_col = 6, .end_col = 7, .query_index = 0, .capture_id = 2 },
-            .{ .start_col = 10, .end_col = 12, .query_index = 0, .capture_id = 12 },
-            .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 },
-        }, map.get(0).?.items);
-        try eqSlice(StoredCapture, &.{}, map.get(1).?.items);
+        { // only 1st line
+            var map = try ws.getCaptures(source, 0, 0);
+            defer {
+                for (map.values()) |*list| list.deinit(testing_allocator);
+                map.deinit();
+            }
+
+            try eq(1, map.keys().len);
+            try eqSlice(StoredCapture, first_line_matches, map.get(0).?.items);
+        }
     }
 }
 
