@@ -101,24 +101,34 @@ pub fn LinkedList(comptime T: type) type {
             return true;
         }
 
-        fn removeNodeAt0thIndex(self: *@This()) bool {
+        fn removeNodeAt0thIndexWithCallback(self: *@This(), f: ?PreReplaceRemoveCallback, ctx: ?*anyopaque) bool {
             defer self.len -|= 1;
             const node = self.getNode(0) orelse return false;
+            if (f != null and ctx != null) f.?(ctx.?, node.value);
             self.head = node.next;
             if (self.tail == node) self.tail = null;
             self.a.destroy(node);
             return true;
         }
 
-        fn removeNodeUsingPrev(self: *@This(), prev: *Node) void {
+        fn removeNodeAt0thIndex(self: *@This()) bool {
+            return self.removeNodeAt0thIndexWithCallback(null, null);
+        }
+
+        fn removeNodeUsingPrevWithCallback(self: *@This(), prev: *Node, f: ?PreReplaceRemoveCallback, ctx: ?*anyopaque) void {
             defer self.len -|= 1;
             assert(prev.next != null);
             const node = prev.next orelse unreachable;
+            if (f != null and ctx != null) f.?(ctx.?, node.value);
             defer self.a.destroy(node);
 
             prev.*.next = node.next;
             if (self.head == node) self.head = prev;
             if (self.tail == node) self.tail = prev;
+        }
+
+        fn removeNodeUsingPrev(self: *@This(), prev: *Node) void {
+            self.removeNodeUsingPrevWithCallback(prev, null, null);
         }
 
         pub fn appendSlice(self: *@This(), new_items: []const T) !void {
@@ -168,7 +178,8 @@ pub fn LinkedList(comptime T: type) type {
             }
         }
 
-        pub fn replaceRange(self: *@This(), start: usize, len: usize, new_items: []const T) !void {
+        const PreReplaceRemoveCallback = *const fn (ctx: *anyopaque, value: T) void;
+        pub fn repaceRangeWithCallback(self: *@This(), start: usize, len: usize, new_items: []const T, f: ?PreReplaceRemoveCallback, ctx: ?*anyopaque) !void {
             assert(start + len <= self.len);
             if (len == 0 and new_items.len == 0) return;
             if (start + len > self.len) return;
@@ -194,6 +205,8 @@ pub fn LinkedList(comptime T: type) type {
 
                 // in overwrite range
                 if (i < start + num_to_replace) {
+                    if (f != null and ctx != null) f.?(ctx.?, node.value);
+
                     node.value = new_items[i - start];
                     num_replaced += 1;
                     continue;
@@ -246,18 +259,22 @@ pub fn LinkedList(comptime T: type) type {
                     .none => {},
                     .head => {
                         for (0..@intCast(num_to_remove)) |_| {
-                            const is_removed = self.removeNodeAt0thIndex();
+                            const is_removed = self.removeNodeAt0thIndexWithCallback(f, ctx);
                             assert(is_removed);
                         }
                     },
                     .body => {
                         assert(removal_anchor != null);
                         for (0..@intCast(num_to_remove)) |_| {
-                            self.removeNodeUsingPrev(removal_anchor.?);
+                            self.removeNodeUsingPrevWithCallback(removal_anchor.?, f, ctx);
                         }
                     },
                 }
             }
+        }
+
+        pub fn replaceRange(self: *@This(), start: usize, len: usize, new_items: []const T) !void {
+            try self.repaceRangeWithCallback(start, len, new_items, null, null);
         }
     };
 }
