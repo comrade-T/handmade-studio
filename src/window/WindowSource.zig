@@ -79,6 +79,8 @@ a: Allocator,
 from: InitFrom,
 path: []const u8 = "",
 
+contents: []const u8 = undefined,
+
 buf: *Buffer,
 ls: ?*LangSuite = null,
 cap_list: CapList,
@@ -92,9 +94,16 @@ pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSui
         .buf = try Buffer.create(a, from, source),
         .cap_list = CapList.init(a),
     };
-    if (from == .file) {
-        self.path = source;
-        try self.initiateTreeSitterForFile(lang_hub);
+    switch (from) {
+        .string => {
+            self.contents = try self.a.dupe(u8, source);
+        },
+        .file => {
+            self.path = source;
+            self.contents = try self.buf.ropeman.toString(self.a, .lf);
+            try self.initiateTreeSitterForFile(lang_hub);
+            try self.populateCapListWithAllCaptures();
+        },
     }
     return self;
 }
@@ -102,33 +111,24 @@ pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSui
 test init {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
-    {
+    { // no Tree Sitter
         var ws = try WindowSource.init(testing_allocator, .string, "hello world", &lang_hub);
         defer ws.deinit();
         try eq(null, ws.buf.tstree);
+        try eq(0, ws.cap_list.len);
         try eqStr("hello world", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
     }
-    {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_1_line.zig", &lang_hub);
+    { // with Tree Sitter
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.deinit();
-        try eqStr("const a = 10;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eqStr(
-            \\source_file
-            \\  Decl
-            \\    VarDecl
-            \\      "const"
-            \\      IDENTIFIER
-            \\      "="
-            \\      ErrorUnionExpr
-            \\        SuffixExpr
-            \\          INTEGER
-            \\      ";"
-        , try ws.buf.tstree.?.getRootNode().debugPrint());
+        try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
     }
 }
 
 pub fn deinit(self: *@This()) void {
     self.buf.destroy();
+    self.a.free(self.contents);
     { // cap list
         var current = self.cap_list.head;
         while (current) |node| {
@@ -249,6 +249,19 @@ test getCaptures {
             try eqSlice(StoredCapture, first_line_matches, map.get(0).?.items);
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// populateCapListWithAllCaptures
+
+fn populateCapListWithAllCaptures(self: *@This()) !void {
+    assert(self.buf.tstree != null);
+
+    var map = try self.getCaptures(self.contents, 0, self.buf.ropeman.getNumOfLines() - 1);
+    defer map.deinit();
+    assert(map.values().len == self.buf.ropeman.getNumOfLines());
+
+    assert(self.cap_list.len == 0);
+    for (map.values()) |*list| try self.cap_list.append(try list.toOwnedSlice(self.a));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

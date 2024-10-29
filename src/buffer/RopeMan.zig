@@ -83,6 +83,10 @@ pub fn getByteOffsetOfPosition(node: RcNode, line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(node, line, col);
 }
 
+pub fn getNumOfLines(self: *@This()) usize {
+    return self.root.value.weights().bols;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
 
 pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) ![]CursorPoint {
