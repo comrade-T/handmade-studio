@@ -277,6 +277,11 @@ fn joinTSRanges(ranges: []const LangSuite.ts.Range) struct { usize, usize } {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars()
 
+fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
+    const ws = @as(*WindowSource, @ptrCast(@alignCast(ctx)));
+    ws.a.free(value);
+}
+
 pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
     assert(destinations.len > 0);
 
@@ -303,20 +308,13 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
     const replace_start = destinations[0].line;
     const replace_len = destinations[destinations.len - 1].line - replace_start + 1;
     assert(replace_start < self.cap_list.len and replace_start + replace_len < self.cap_list.len);
-    {
-        var current = self.cap_list.getNode(replace_start) orelse unreachable;
-        for (0..replace_len) |_| {
-            self.a.free(current.value);
-            current = current.next orelse break;
-        }
-    }
-    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+    try self.cap_list.repaceRangeWithCallback(replace_start, replace_len, new_values, freeStoredCaptureSlice, self);
 }
 
 test insertChars {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
-    {
+    { // replace 1 line
         var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.deinit();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
@@ -334,6 +332,30 @@ test insertChars {
             .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 1 },
         }, ws.cap_list.get(0).?);
         try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.get(1).?);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+    }
+    { // replace 2 lines in single call
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
+
+        try ws.insertChars("// ", &.{ .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 } });
+        try eqStr(
+            \\// const a = 10;
+            \\// var not_false = true;
+            \\
+        , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
+
+        try eqSlice(StoredCapture, &.{
+            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 0 },
+            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 1 },
+        }, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, &.{
+            .{ .start_col = 0, .end_col = 24, .query_index = 0, .capture_id = 0 },
+            .{ .start_col = 0, .end_col = 24, .query_index = 0, .capture_id = 1 },
+        }, ws.cap_list.get(1).?);
         try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
     }
 }
