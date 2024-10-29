@@ -18,6 +18,7 @@
 const WindowSource = @This();
 const std = @import("std");
 const ztracy = @import("ztracy");
+const code_point = @import("code_point");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -397,7 +398,7 @@ test deleteRanges {
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// StoredCapture
 
 const StoredCapture = struct {
     query_index: u16,
@@ -415,4 +416,71 @@ const StoredCapture = struct {
 test {
     try eq(4, @alignOf(StoredCapture));
     try eq(12, @sizeOf(StoredCapture));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const IDs = struct {
+    query_id: u16,
+    capture_id: u16,
+};
+
+const LineIterator = struct {
+    col: usize,
+    cp_iter: code_point.Iterator,
+
+    captures_start: usize = 0,
+    ids_buf: [8]IDs = undefined,
+
+    fn init(ws: *const WindowSource, line: usize, col: usize) !LineIterator {
+        const start_byte = try ws.buf.ropeman.getByteOffsetOfRoot(line, col);
+        return LineIterator{
+            .col = col,
+            .cp_iter = code_point.Iterator{ .bytes = ws.contents[start_byte..] },
+        };
+    }
+
+    const Result = struct {
+        ids: []IDs,
+        code_point: u21,
+    };
+
+    fn next(self: *@This(), captures: []StoredCapture) ?Result {
+        if (captures.len == 0) return null;
+        const cp = self.cp_iter.next() orelse return null;
+        if (cp.code == '\n') return null;
+
+        defer self.col += 1;
+
+        var ids_index: usize = 0;
+        for (captures[self.captures_start..], 0..) |cap, i| {
+            if (cap.start_col > self.col) break;
+            self.captures_start = i;
+
+            self.ids_buf[ids_index] = IDs{ .capture_id = cap.capture_id, .query_id = cap.query_index };
+            ids_index += 1;
+        }
+
+        return Result{
+            .ids = self.ids_buf[0..ids_index],
+            .code_point = cp.code,
+        };
+    }
+};
+
+test LineIterator {
+    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
+    defer lang_hub.deinit();
+    {
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("const a = 10;\nvar not_false = true;\n", ws.contents);
+
+        const line_0_captures = ws.cap_list.get(0).?;
+
+        var iter = try LineIterator.init(&ws, 0, 0);
+        const result_1 = iter.next(line_0_captures);
+        try eq('c', result_1.?.code_point);
+        try eqSlice(IDs, &.{.{ .query_id = 0, .capture_id = 28 }}, result_1.?.ids);
+    }
 }

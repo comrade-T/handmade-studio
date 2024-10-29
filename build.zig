@@ -113,6 +113,7 @@ pub fn build(b: *std.Build) void {
     const window_source = addTestableModule(&bops, "src/window/WindowSource.zig", &.{
         .{ .name = "Buffer", .module = buffer.module },
         .{ .name = "LangSuite", .module = langsuite.module },
+        .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
     _ = window_source;
 

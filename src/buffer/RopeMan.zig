@@ -79,6 +79,10 @@ pub fn dump(self: *@This(), target: CursorPoint, buf: []u8, buf_size: usize) []c
     return rcr.dump(self.root, target, buf, buf_size);
 }
 
+pub fn getByteOffsetOfRoot(self: *@This(), line: usize, col: usize) !usize {
+    return try rcr.getByteOffsetOfPosition(self.root, line, col);
+}
+
 pub fn getByteOffsetOfPosition(node: RcNode, line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(node, line, col);
 }
