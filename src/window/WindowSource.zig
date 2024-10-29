@@ -408,7 +408,7 @@ const StoredCapture = struct {
 
     fn lessThan(_: void, a: StoredCapture, b: StoredCapture) bool {
         if (a.start_col < b.start_col) return true;
-        if (a.start_col == b.start_col) return a.end_col < b.end_col;
+        if (a.start_col == b.start_col) return a.end_col > b.end_col;
         return false;
     }
 };
@@ -461,7 +461,6 @@ const LineIterator = struct {
                 continue;
             }
 
-            self.captures_start = i;
             self.ids_buf[ids_index] = IDs{ .capture_id = cap.capture_id, .query_id = cap.query_index };
             ids_index += 1;
         }
