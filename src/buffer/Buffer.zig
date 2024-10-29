@@ -44,9 +44,6 @@ langsuite: ?*LangSuite = null,
 tsparser: ?*ts.Parser = null,
 tstree: ?*ts.Tree = null,
 
-parse_buf: [PARSE_BUFFER_SIZE]u8 = undefined,
-const PARSE_BUFFER_SIZE = 1024;
-
 pub fn create(a: Allocator, from: InitFrom, source: []const u8) !*Buffer {
     const self = try a.create(@This());
     self.* = .{
@@ -472,12 +469,19 @@ fn parse(self: *@This()) ?[]const ts.Range {
     const may_old_tree = self.tstree;
     defer if (may_old_tree) |old_tree| old_tree.destroy();
 
+    const PARSE_BUFFER_SIZE = 1024;
+    const ParseCtx = struct {
+        buf: *Buffer,
+        parse_buf: [PARSE_BUFFER_SIZE]u8 = undefined,
+    };
+    var parse_ctx = ParseCtx{ .buf = self };
+
     const input: ts.Input = .{
-        .payload = self,
+        .payload = &parse_ctx,
         .read = struct {
             fn read(payload: ?*anyopaque, _: u32, ts_point: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
-                const ctx: *Buffer = @ptrCast(@alignCast(payload orelse return ""));
-                const result = ctx.ropeman.dump(
+                const ctx: *ParseCtx = @ptrCast(@alignCast(payload orelse return ""));
+                const result = ctx.buf.ropeman.dump(
                     .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.column) },
                     &ctx.parse_buf,
                     PARSE_BUFFER_SIZE,
