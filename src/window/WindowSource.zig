@@ -441,7 +441,7 @@ const LineIterator = struct {
     }
 
     const Result = struct {
-        ids: []IDs,
+        ids: []const IDs,
         code_point: u21,
     };
 
@@ -455,8 +455,13 @@ const LineIterator = struct {
         var ids_index: usize = 0;
         for (captures[self.captures_start..], 0..) |cap, i| {
             if (cap.start_col > self.col) break;
-            self.captures_start = i;
 
+            if (cap.end_col <= self.col) {
+                self.captures_start = i + 1;
+                continue;
+            }
+
+            self.captures_start = i;
             self.ids_buf[ids_index] = IDs{ .capture_id = cap.capture_id, .query_id = cap.query_index };
             ids_index += 1;
         }
@@ -476,11 +481,55 @@ test LineIterator {
         defer ws.deinit();
         try eqStr("const a = 10;\nvar not_false = true;\n", ws.contents);
 
-        const line_0_captures = ws.cap_list.get(0).?;
+        try testLineIter(&ws, 0, &.{
+            .{ "const", &.{"type.qualifier"} },
+            .{ " ", &.{} },
+            .{ "a", &.{"variable"} },
+            .{ " = ", &.{} },
+            .{ "10", &.{"number"} },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
+        try testLineIter(&ws, 1, &.{
+            .{ "var", &.{"type.qualifier"} },
+            .{ " ", &.{} },
+            .{ "not_false", &.{"variable"} },
+            .{ " = ", &.{} },
+            .{ "true", &.{"boolean"} },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
+    }
+}
 
-        var iter = try LineIterator.init(&ws, 0, 0);
-        const result_1 = iter.next(line_0_captures);
-        try eq('c', result_1.?.code_point);
-        try eqSlice(IDs, &.{.{ .query_id = 0, .capture_id = 28 }}, result_1.?.ids);
+const Expected = struct { []const u8, []const []const u8 };
+
+fn testLineIter(ws: *const WindowSource, line: usize, exp: []const ?Expected) !void {
+    const captures = ws.cap_list.get(line).?;
+    var iter = try LineIterator.init(ws, line, 0);
+    for (exp, 0..) |may_e, clump_index| {
+        if (may_e == null) {
+            try eq(null, iter.next(captures));
+            return;
+        }
+        const e = may_e.?;
+        for (e[0]) |char| {
+            const result = iter.next(captures).?;
+            errdefer {
+                std.debug.print("failed at line '{d}' | clump_index = '{d}'\n", .{ line, clump_index });
+                for (0..result.ids.len) |i| {
+                    const r = result.ids[i];
+                    const capture_name = ws.ls.?.queries.values()[r.query_id].query.getCaptureNameForId(r.capture_id);
+                    std.debug.print("missed capture name: '{s}';\n", .{capture_name});
+                }
+            }
+            try eq(@as(u21, @intCast(char)), result.code_point);
+            try eq(e[1].len, result.ids.len);
+            for (0..result.ids.len) |i| {
+                const r = result.ids[i];
+                const capture_name = ws.ls.?.queries.values()[r.query_id].query.getCaptureNameForId(r.capture_id);
+                try eqStr(e[1][i], capture_name);
+            }
+        }
     }
 }
