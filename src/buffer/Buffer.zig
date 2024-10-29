@@ -30,7 +30,7 @@ const assert = std.debug.assert;
 
 const RopeMan = @import("RopeMan");
 pub const InitFrom = RopeMan.InitFrom;
-const CursorPoint = RopeMan.CursorPoint;
+pub const CursorPoint = RopeMan.CursorPoint;
 const LangSuite = @import("LangSuite");
 const ts = LangSuite.ts;
 

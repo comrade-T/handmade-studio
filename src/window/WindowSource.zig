@@ -30,6 +30,7 @@ const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
+const CursorPoint = Buffer.CursorPoint;
 const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
 const LinkedList = @import("LinkedList.zig").LinkedList;
@@ -190,6 +191,19 @@ fn getCaptures(self: *@This(), entire_file: []const u8, start: usize, end: usize
     return map;
 }
 
+const dummy_2_lines_first_line_matches: []const StoredCapture = &.{
+    .{ .start_col = 0, .end_col = 5, .query_index = 0, .capture_id = 28 }, // @type.qualifier
+    .{ .start_col = 6, .end_col = 7, .query_index = 0, .capture_id = 2 }, // @variable
+    .{ .start_col = 10, .end_col = 12, .query_index = 0, .capture_id = 12 }, // number
+    .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
+};
+const dummy_2_lines_second_line_matches: []const StoredCapture = &.{
+    .{ .start_col = 0, .end_col = 3, .query_index = 0, .capture_id = 28 }, // @type.qualifier
+    .{ .start_col = 4, .end_col = 13, .query_index = 0, .capture_id = 2 }, // @variable
+    .{ .start_col = 16, .end_col = 20, .query_index = 0, .capture_id = 14 }, // boolean
+    .{ .start_col = 20, .end_col = 21, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
+};
+
 test getCaptures {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
@@ -206,19 +220,6 @@ test getCaptures {
             \\
         , source);
 
-        const first_line_matches: []const StoredCapture = &.{
-            .{ .start_col = 0, .end_col = 5, .query_index = 0, .capture_id = 28 }, // @type.qualifier
-            .{ .start_col = 6, .end_col = 7, .query_index = 0, .capture_id = 2 }, // @variable
-            .{ .start_col = 10, .end_col = 12, .query_index = 0, .capture_id = 12 }, // number
-            .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
-        };
-        const second_line_matches: []const StoredCapture = &.{
-            .{ .start_col = 0, .end_col = 3, .query_index = 0, .capture_id = 28 }, // @type.qualifier
-            .{ .start_col = 4, .end_col = 13, .query_index = 0, .capture_id = 2 }, // @variable
-            .{ .start_col = 16, .end_col = 20, .query_index = 0, .capture_id = 14 }, // boolean
-            .{ .start_col = 20, .end_col = 21, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
-        };
-
         try eqStr("type.qualifier", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(28));
         try eqStr("variable", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(2));
         try eqStr("number", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(12));
@@ -233,8 +234,8 @@ test getCaptures {
             }
 
             try eq(3, map.keys().len);
-            try eqSlice(StoredCapture, first_line_matches, map.get(0).?.items);
-            try eqSlice(StoredCapture, second_line_matches, map.get(1).?.items);
+            try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, map.get(0).?.items);
+            try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, map.get(1).?.items);
             try eqSlice(StoredCapture, &.{}, map.get(2).?.items);
         }
 
@@ -246,12 +247,12 @@ test getCaptures {
             }
 
             try eq(1, map.keys().len);
-            try eqSlice(StoredCapture, first_line_matches, map.get(0).?.items);
+            try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, map.get(0).?.items);
         }
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// populateCapListWithAllCaptures
+////////////////////////////////////////////////////////////////////////////////////////////// cap_list related
 
 fn populateCapListWithAllCaptures(self: *@This()) !void {
     assert(self.buf.tstree != null);
@@ -262,6 +263,79 @@ fn populateCapListWithAllCaptures(self: *@This()) !void {
 
     assert(self.cap_list.len == 0);
     for (map.values()) |*list| try self.cap_list.append(try list.toOwnedSlice(self.a));
+}
+
+fn joinTSRanges(ranges: []const LangSuite.ts.Range) struct { usize, usize } {
+    var start_line: usize = 0;
+    var end_line: usize = 0;
+    for (ranges) |r| {
+        start_line = @min(start_line, r.start_point.row);
+        end_line = @max(end_line, r.end_point.row);
+    }
+    return .{ start_line, end_line };
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// insertChars()
+
+pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
+    assert(destinations.len > 0);
+
+    const points, const ts_ranges = try self.buf.insertChars(self.a, chars, destinations);
+    defer self.a.free(points);
+
+    assert(points.len == destinations.len);
+    self.a.free(self.contents);
+    self.contents = try self.buf.ropeman.toString(self.a, .lf);
+
+    if (self.buf.tstree == null) return;
+
+    assert(ts_ranges != null and self.buf.tstree != null);
+    const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
+
+    var map = try self.getCaptures(self.contents, start_line, end_line);
+    defer map.deinit();
+
+    assert(start_line <= end_line);
+    const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
+    defer self.a.free(new_values);
+    for (map.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
+
+    const replace_start = destinations[0].line;
+    const replace_len = destinations[destinations.len - 1].line - replace_start + 1;
+    assert(replace_start < self.cap_list.len and replace_start + replace_len < self.cap_list.len);
+    {
+        var current = self.cap_list.getNode(replace_start) orelse unreachable;
+        for (0..replace_len) |_| {
+            self.a.free(current.value);
+            current = current.next orelse break;
+        }
+    }
+    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+}
+
+test insertChars {
+    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
+    defer lang_hub.deinit();
+    {
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
+
+        try ws.insertChars("// ", &.{.{ .line = 0, .col = 0 }});
+        try eqStr("// const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
+
+        try eqStr("comment", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(0));
+        try eqStr("spell", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(1));
+
+        try eqSlice(StoredCapture, &.{
+            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 0 },
+            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 1 },
+        }, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.get(1).?);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
