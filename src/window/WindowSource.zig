@@ -145,72 +145,13 @@ fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void
     try self.buf.initiateTreeSitter(self.ls.?);
 }
 
-fn getCapturesDemo(self: *@This()) !void {
-    assert(self.ls != null and self.buf.tstree != null);
-    const ls = self.ls orelse return;
-    const tree = self.buf.tstree orelse return;
-
-    const entire_file = try self.buf.ropeman.toString(self.a, .lf);
-    defer self.a.free(entire_file);
-
-    const num_of_lines = self.buf.ropeman.root.value.weights().bols;
-    var lines_list = try ArrayList(StoredCaptureList).initCapacity(self.a, num_of_lines);
-    for (0..num_of_lines) |_| try lines_list.append(try StoredCaptureList.initCapacity(self.a, 8));
-
-    for (ls.queries.values(), 0..) |sq, query_index| {
-        var cursor = try LangSuite.ts.Query.Cursor.create();
-        cursor.execute(sq.query, tree.getRootNode());
-
-        var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
-        while (sq.filter.nextMatch(entire_file, 0, &targets_buf, cursor)) |match| {
-            if (!match.all_predicates_matched) continue;
-            for (match.targets) |target| {
-                for (target.start_line..target.end_line + 1) |linenr| {
-                    const cap = StoredCapture{
-                        .query_index = @intCast(query_index),
-                        .capture_id = target.capture_id,
-                        .start_col = if (linenr == target.start_line) target.start_col else 0,
-                        .end_col = if (linenr == target.end_line) target.end_col else max_int_u32,
-                    };
-                    try lines_list.items[linenr].append(self.a, cap);
-                }
-            }
-        }
-    }
-
-    for (lines_list.items) |*arr| {
-        const slice = try arr.toOwnedSlice(self.a);
-        std.mem.sort(StoredCapture, slice, {}, StoredCapture.lessThan);
-        try self.cap_list.append(slice);
-    }
-    lines_list.deinit();
-}
-
-test getCapturesDemo {
-    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
-    defer lang_hub.deinit();
-    {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_1_line.zig", &lang_hub);
-        defer ws.deinit();
-        try eqStr("const a = 10;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-
-        try ws.getCapturesDemo();
-        try eq(2, ws.cap_list.len);
-        try eqSlice(StoredCapture, &.{
-            .{ .start_col = 0, .end_col = 5, .query_index = 0, .capture_id = 28 },
-            .{ .start_col = 6, .end_col = 7, .query_index = 0, .capture_id = 2 },
-            .{ .start_col = 10, .end_col = 12, .query_index = 0, .capture_id = 12 },
-            .{ .start_col = 12, .end_col = 13, .query_index = 0, .capture_id = 33 },
-        }, ws.cap_list.get(0).?);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(1).?);
-    }
-}
+////////////////////////////////////////////////////////////////////////////////////////////// getCaptures
 
 const CapturedLinesMap = std.AutoArrayHashMap(usize, StoredCaptureList);
 const StoredCaptureList = std.ArrayListUnmanaged(StoredCapture);
 const max_int_u32 = std.math.maxInt(u32);
 
-fn getCaptures(self: *@This(), source: []const u8, start: usize, end: usize) !CapturedLinesMap {
+fn getCaptures(self: *@This(), entire_file: []const u8, start: usize, end: usize) !CapturedLinesMap {
     assert(self.ls != null and self.buf.tstree != null);
 
     var map = CapturedLinesMap.init(self.a);
@@ -228,7 +169,7 @@ fn getCaptures(self: *@This(), source: []const u8, start: usize, end: usize) !Ca
         );
 
         var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
-        while (sq.filter.nextMatch(source, 0, &targets_buf, cursor)) |match| {
+        while (sq.filter.nextMatch(entire_file, 0, &targets_buf, cursor)) |match| {
             if (!match.all_predicates_matched) continue;
             for (match.targets) |target| {
                 for (target.start_line..target.end_line + 1) |linenr| {
