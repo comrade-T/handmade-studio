@@ -31,6 +31,7 @@ const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
 const CursorPoint = Buffer.CursorPoint;
+const CursorRange = Buffer.CursorRange;
 const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
 const LinkedList = @import("LinkedList.zig").LinkedList;
@@ -204,6 +205,15 @@ const dummy_2_lines_second_line_matches: []const StoredCapture = &.{
     .{ .start_col = 20, .end_col = 21, .query_index = 0, .capture_id = 33 }, // punctuation.delimiter
 };
 
+const dummy_2_lines_commented_first_line_matches: []const StoredCapture = &.{
+    .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 0 },
+    .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 1 },
+};
+const dummy_2_lines_commented_second_line_matches: []const StoredCapture = &.{
+    .{ .start_col = 0, .end_col = 24, .query_index = 0, .capture_id = 0 },
+    .{ .start_col = 0, .end_col = 24, .query_index = 0, .capture_id = 1 },
+};
+
 test getCaptures {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
@@ -282,6 +292,11 @@ fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
     ws.a.free(value);
 }
 
+fn updateContents(self: *@This()) !void {
+    self.a.free(self.contents);
+    self.contents = try self.buf.ropeman.toString(self.a, .lf);
+}
+
 pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
     assert(destinations.len > 0);
 
@@ -289,24 +304,23 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
     defer self.a.free(points);
 
     assert(points.len == destinations.len);
-    self.a.free(self.contents);
-    self.contents = try self.buf.ropeman.toString(self.a, .lf);
+    try self.updateContents();
 
     if (self.buf.tstree == null) return;
 
     assert(ts_ranges != null and self.buf.tstree != null);
     const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
+    assert(start_line <= end_line);
 
     var map = try self.getCaptures(self.contents, start_line, end_line);
     defer map.deinit();
 
-    assert(start_line <= end_line);
     const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
     defer self.a.free(new_values);
     for (map.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
 
     const replace_start = destinations[0].line;
-    const replace_len = destinations[destinations.len - 1].line - replace_start + 1;
+    const replace_len = destinations[destinations.len - 1].line + 1 - replace_start;
     assert(replace_start < self.cap_list.len and replace_start + replace_len < self.cap_list.len);
     try self.cap_list.repaceRangeWithCallback(replace_start, replace_len, new_values, freeStoredCaptureSlice, self);
 }
@@ -327,10 +341,7 @@ test insertChars {
         try eqStr("comment", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(0));
         try eqStr("spell", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(1));
 
-        try eqSlice(StoredCapture, &.{
-            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 0 },
-            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 1 },
-        }, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.get(0).?);
         try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.get(1).?);
         try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
     }
@@ -348,14 +359,78 @@ test insertChars {
         , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.len);
 
-        try eqSlice(StoredCapture, &.{
-            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 0 },
-            .{ .start_col = 0, .end_col = 16, .query_index = 0, .capture_id = 1 },
-        }, ws.cap_list.get(0).?);
-        try eqSlice(StoredCapture, &.{
-            .{ .start_col = 0, .end_col = 24, .query_index = 0, .capture_id = 0 },
-            .{ .start_col = 0, .end_col = 24, .query_index = 0, .capture_id = 1 },
-        }, ws.cap_list.get(1).?);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.get(1).?);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges()
+
+pub fn deleteRanges(self: *@This(), ranges: []const CursorRange) !void {
+    assert(ranges.len > 0);
+
+    const points, const ts_ranges = try self.buf.deleteRanges(self.a, ranges);
+    defer self.a.free(points);
+
+    assert(points.len == ranges.len);
+    try self.updateContents();
+
+    assert(ts_ranges != null and self.buf.tstree != null);
+    const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
+    assert(start_line <= end_line);
+
+    var map = try self.getCaptures(self.contents, start_line, end_line);
+    defer map.deinit();
+
+    const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
+    defer self.a.free(new_values);
+    for (map.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
+
+    const replace_start = ranges[0].start.line;
+    const replace_len = ranges[ranges.len - 1].start.line + 1 - replace_start;
+    assert(replace_start < self.cap_list.len and replace_start + replace_len < self.cap_list.len);
+    try self.cap_list.repaceRangeWithCallback(replace_start, replace_len, new_values, freeStoredCaptureSlice, self);
+}
+
+test deleteRanges {
+    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
+    defer lang_hub.deinit();
+    {
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("// const a = 10;\n// var not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+
+        try ws.deleteRanges(&.{.{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 } }});
+        try eqStr(
+            \\const a = 10;
+            \\// var not_false = true;
+            \\
+        , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
+
+        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.get(1).?);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+    }
+    {
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
+        defer ws.deinit();
+        try eqStr("// const a = 10;\n// var not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+
+        try ws.deleteRanges(&.{
+            .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 } },
+            .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 3 } },
+        });
+        try eqStr(
+            \\const a = 10;
+            \\var not_false = true;
+            \\
+        , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
+        try eq(3, ws.cap_list.len);
+
+        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.get(0).?);
+        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.get(1).?);
         try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
     }
 }

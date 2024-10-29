@@ -31,6 +31,7 @@ const assert = std.debug.assert;
 const RopeMan = @import("RopeMan");
 pub const InitFrom = RopeMan.InitFrom;
 pub const CursorPoint = RopeMan.CursorPoint;
+pub const CursorRange = RopeMan.CursorRange;
 const LangSuite = @import("LangSuite");
 const ts = LangSuite.ts;
 
@@ -287,7 +288,7 @@ test "insertChars - 3 cursors - case 3" {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges
 
-pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const RopeMan.CursorRange) !struct { []CursorPoint, ?[]const ts.Range } {
+pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const CursorRange) !struct { []CursorPoint, ?[]const ts.Range } {
     assert(ranges.len > 0);
     if (ranges.len == 0) return .{ &.{}, null };
 
