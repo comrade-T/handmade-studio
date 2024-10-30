@@ -95,8 +95,6 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = undo_tree;
 
-    _ = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
-
     /////////////////////////////
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
@@ -110,12 +108,21 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
+    const linked_list = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
+
     const window_source = addTestableModule(&bops, "src/window/WindowSource.zig", &.{
         .{ .name = "Buffer", .module = buffer.module },
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "LinkedList", .module = linked_list.module },
     }, zig_build_test_step);
-    _ = window_source;
+
+    const window = addTestableModule(&bops, "src/window/Window.zig", &.{
+        .{ .name = "LangSuite", .module = langsuite.module },
+        .{ .name = "WindowSource", .module = window_source.module },
+        .{ .name = "LinkedList", .module = linked_list.module },
+    }, zig_build_test_step);
+    _ = window;
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 

@@ -35,7 +35,7 @@ const CursorPoint = Buffer.CursorPoint;
 const CursorRange = Buffer.CursorRange;
 const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
-const LinkedList = @import("LinkedList.zig").LinkedList;
+const LinkedList = @import("LinkedList").LinkedList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
