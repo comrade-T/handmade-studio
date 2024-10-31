@@ -121,12 +121,11 @@ pub fn build(b: *std.Build) void {
     _ = colorscheme_store;
 
     const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, zig_build_test_step);
-    _ = font_store;
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
-        .{ .name = "LinkedList", .module = linked_list.module },
+        .{ .name = "FontStore", .module = font_store.module },
     }, zig_build_test_step);
     _ = window;
 
@@ -193,6 +192,26 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
+
+    {
+        const path = "src/window/Window.zig";
+        const exe = b.addExecutable(.{
+            .name = "testing out window",
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.root_module.addImport("LangSuite", langsuite.module);
+        exe.root_module.addImport("WindowSource", window_source.module);
+        exe.root_module.addImport("FontStore", font_store.module);
+        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
+
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+        const run_step = b.step(path, path);
+        run_step.dependOn(&run_cmd.step);
+    }
 
     ///////////////////////////// Raylib
 

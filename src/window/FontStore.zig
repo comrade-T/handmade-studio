@@ -42,29 +42,29 @@ pub fn getDefaultFont(self: *@This()) ?*Font {
     return if (self.default_idx < fonts.len) &fonts[self.default_idx] else null;
 }
 
-pub fn addNewFont(self: *@This(), font_name: []const u8, base_size: i32) !void {
+pub fn addNewFont(self: *@This(), font_name: []const u8, base_size: f32) !void {
     try self.map.put(self.a, font_name, Font{ .base_size = base_size, .glyph_map = Font.GlyphMap{} });
 }
 
 pub fn addGlyphDataToFont(self: *@This(), font_name: []const u8, code_point: i32, data: Font.GlyphData) !void {
     assert(self.map.getPtr(font_name) != null);
     var font = self.map.getPtr(font_name) orelse return;
-    font.glyph_map.put(self.a, code_point, data);
+    try font.glyph_map.put(self.a, code_point, data);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const FontMap = std.StringArrayHashMapUnmanaged(Font);
 
-const Font = struct {
+pub const Font = struct {
     const GlyphMap = std.AutoHashMapUnmanaged(i32, GlyphData);
 
-    const GlyphData = struct {
-        advanceX: i32,
-        offsetX: i32,
-        value: i32,
+    pub const GlyphData = struct {
+        advanceX: f32,
+        offsetX: f32,
+        width: f32,
     };
 
-    base_size: i32,
+    base_size: f32,
     glyph_map: GlyphMap,
 };

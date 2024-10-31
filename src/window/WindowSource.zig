@@ -418,14 +418,14 @@ const IDs = struct {
     capture_id: u16,
 };
 
-const LineIterator = struct {
+pub const LineIterator = struct {
     col: usize,
     cp_iter: code_point.Iterator,
 
     captures_start: usize = 0,
     ids_buf: [8]IDs = undefined,
 
-    fn init(ws: *const WindowSource, line: usize, col: usize) !LineIterator {
+    pub fn init(ws: *const WindowSource, line: usize, col: usize) !LineIterator {
         const start_byte = try ws.buf.ropeman.getByteOffsetOfRoot(line, col);
         return LineIterator{
             .col = col,
@@ -438,7 +438,7 @@ const LineIterator = struct {
         code_point: u21,
     };
 
-    fn next(self: *@This(), captures: []StoredCapture) ?Result {
+    pub fn next(self: *@This(), captures: []StoredCapture) ?Result {
         if (captures.len == 0) return null;
         const cp = self.cp_iter.next() orelse return null;
         if (cp.code == '\n') return null;
