@@ -16,14 +16,8 @@ const LinkedList = @import("LinkedList").LinkedList;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
+attr: Attributes,
 ws: *WindowSource,
-
-pos: Position,
-padding: Padding,
-
-bounds: Bounds,
-bounded: bool,
-
 rcb: ?*RenderCallbacks,
 
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions) !*Window {
@@ -32,11 +26,12 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions) !*Window {
         .a = a,
         .ws = ws,
 
-        .pos = opts.pos,
-        .padding = if (opts.padding) |p| p else Padding{},
-
-        .bounds = if (opts.bounds) |b| b else Bounds{},
-        .bounded = if (opts.bounds) |_| true else false,
+        .attr = .{
+            .pos = opts.pos,
+            .padding = if (opts.padding) |p| p else Padding{},
+            .bounds = if (opts.bounds) |b| b else Bounds{},
+            .bounded = if (opts.bounds) |_| true else false,
+        },
 
         .rcb = opts.render_callbacks,
     };
@@ -124,6 +119,13 @@ const SpawnOptions = struct {
     padding: ?Padding = null,
 
     render_callbacks: ?*RenderCallbacks = null,
+};
+
+const Attributes = struct {
+    pos: Position,
+    padding: Padding,
+    bounds: Bounds,
+    bounded: bool,
 };
 
 const Position = struct {

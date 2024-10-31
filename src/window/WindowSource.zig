@@ -35,7 +35,6 @@ const CursorPoint = Buffer.CursorPoint;
 const CursorRange = Buffer.CursorRange;
 const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
-const LinkedList = @import("LinkedList").LinkedList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -50,7 +49,7 @@ buf: *Buffer,
 ls: ?*LangSuite = null,
 cap_list: CapList,
 
-const CapList = LinkedList([]StoredCapture);
+const CapList = ArrayList([]StoredCapture);
 
 pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSuite.LangHub) !WindowSource {
     var self = WindowSource{
@@ -80,28 +79,22 @@ test init {
         var ws = try WindowSource.init(testing_allocator, .string, "hello world", &lang_hub);
         defer ws.deinit();
         try eq(null, ws.buf.tstree);
-        try eq(0, ws.cap_list.len);
+        try eq(0, ws.cap_list.items.len);
         try eqStr("hello world", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
     }
     { // with Tree Sitter
         var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.deinit();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
     }
 }
 
 pub fn deinit(self: *@This()) void {
     self.buf.destroy();
     self.a.free(self.contents);
-    { // cap list
-        var current = self.cap_list.head;
-        while (current) |node| {
-            self.a.free(node.value);
-            current = node.next;
-        }
-        self.cap_list.deinit();
-    }
+    for (self.cap_list.items) |slice| self.a.free(slice);
+    self.cap_list.deinit();
 }
 
 fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void {
@@ -234,7 +227,7 @@ fn populateCapListWithAllCaptures(self: *@This()) !void {
     defer map.deinit();
     assert(map.values().len == self.buf.ropeman.getNumOfLines());
 
-    assert(self.cap_list.len == 0);
+    assert(self.cap_list.items.len == 0);
     for (map.values()) |*list| try self.cap_list.append(try list.toOwnedSlice(self.a));
 }
 
@@ -284,8 +277,8 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
 
     const replace_start = destinations[0].line;
     const replace_len = destinations[destinations.len - 1].line + 1 - replace_start;
-    assert(replace_start < self.cap_list.len and replace_start + replace_len < self.cap_list.len);
-    try self.cap_list.repaceRangeWithCallback(replace_start, replace_len, new_values, freeStoredCaptureSlice, self);
+    for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
+    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
 }
 
 test insertChars {
@@ -295,24 +288,24 @@ test insertChars {
         var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.deinit();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
 
         try ws.insertChars("// ", &.{.{ .line = 0, .col = 0 }});
         try eqStr("// const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
 
         try eqStr("comment", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(0));
         try eqStr("spell", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(1));
 
-        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.get(0).?);
-        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.get(1).?);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.items[0]);
+        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.items[1]);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
     { // replace 2 lines in single call
         var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.deinit();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
 
         try ws.insertChars("// ", &.{ .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 } });
         try eqStr(
@@ -320,11 +313,11 @@ test insertChars {
             \\// var not_false = true;
             \\
         , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
 
-        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.get(0).?);
-        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.get(1).?);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.items[0]);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.items[1]);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
 }
 
@@ -352,8 +345,8 @@ pub fn deleteRanges(self: *@This(), ranges: []const CursorRange) !void {
 
     const replace_start = ranges[0].start.line;
     const replace_len = ranges[ranges.len - 1].start.line + 1 - replace_start;
-    assert(replace_start < self.cap_list.len and replace_start + replace_len < self.cap_list.len);
-    try self.cap_list.repaceRangeWithCallback(replace_start, replace_len, new_values, freeStoredCaptureSlice, self);
+    for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
+    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
 }
 
 test deleteRanges {
@@ -370,11 +363,11 @@ test deleteRanges {
             \\// var not_false = true;
             \\
         , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
 
-        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.get(0).?);
-        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.get(1).?);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.items[0]);
+        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.items[1]);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
     {
         var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
@@ -390,11 +383,11 @@ test deleteRanges {
             \\var not_false = true;
             \\
         , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.len);
+        try eq(3, ws.cap_list.items.len);
 
-        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.get(0).?);
-        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.get(1).?);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.get(2).?);
+        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.items[0]);
+        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.items[1]);
+        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
 }
 
@@ -504,7 +497,7 @@ test LineIterator {
 const Expected = struct { []const u8, []const []const u8 };
 
 fn testLineIter(ws: *const WindowSource, line: usize, exp: []const ?Expected) !void {
-    const captures = ws.cap_list.get(line).?;
+    const captures = ws.cap_list.items[line];
     var iter = try LineIterator.init(ws, line, 0);
     for (exp, 0..) |may_e, clump_index| {
         if (may_e == null) {
