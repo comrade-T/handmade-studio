@@ -120,6 +120,9 @@ pub fn build(b: *std.Build) void {
     const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
     _ = colorscheme_store;
 
+    const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, zig_build_test_step);
+    _ = font_store;
+
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
