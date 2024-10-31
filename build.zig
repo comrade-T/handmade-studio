@@ -117,6 +117,9 @@ pub fn build(b: *std.Build) void {
         .{ .name = "LinkedList", .module = linked_list.module },
     }, zig_build_test_step);
 
+    const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
+    _ = colorscheme_store;
+
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
