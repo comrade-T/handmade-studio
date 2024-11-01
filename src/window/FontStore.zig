@@ -42,7 +42,7 @@ pub fn getDefaultFont(self: *@This()) ?*Font {
     return if (self.default_idx < fonts.len) &fonts[self.default_idx] else null;
 }
 
-pub fn addNewFont(self: *@This(), rl_font: *anyopaque, font_name: []const u8, base_size: f32) !void {
+pub fn addNewFont(self: *@This(), rl_font: ?*anyopaque, font_name: []const u8, base_size: f32) !void {
     try self.map.put(self.a, font_name, Font{
         .base_size = base_size,
         .glyph_map = Font.GlyphMap{},

@@ -42,7 +42,7 @@ a: Allocator,
 attr: Attributes,
 ws: *WindowSource,
 rcb: ?*const RenderCallbacks,
-line_size_list: LineSizeList,
+cached: CachedSizes,
 defaults: Defaults,
 
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, super_market: SuperMarket) !*Window {
@@ -57,7 +57,11 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, super_market:
             .bounded = if (opts.bounds) |_| true else false,
         },
         .rcb = opts.render_callbacks,
-        .line_size_list = try LineSizeList.initCapacity(a, ws.buf.ropeman.getNumOfLines()),
+        .cached = CachedSizes{
+            .width = 0,
+            .height = 0,
+            .lines = try LineSizeList.initCapacity(a, ws.buf.ropeman.getNumOfLines()),
+        },
         .defaults = Defaults{},
     };
 
@@ -67,7 +71,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, super_market:
 }
 
 pub fn destroy(self: *@This()) void {
-    self.line_size_list.deinit(self.a);
+    self.cached.lines.deinit(self.a);
     self.a.destroy(self);
 }
 
@@ -79,10 +83,27 @@ pub fn render(self: *@This(), super_market: SuperMarket, view: ScreenView) void 
 
     const font = super_market.font_store.getDefaultFont() orelse unreachable;
     const font_size = self.defaults.font_size;
+    const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
 
     rcb.drawCodePoint(font, 'x', 100, 100, font_size, self.defaults.color);
 
-    std.debug.print("view: {any}\n", .{view});
+    /////////////////////////////
+
+    if (self.attr.pos.x > view.end.x) return;
+    if (self.attr.pos.y > view.end.y) return;
+
+    for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
+        var line_width: f32 = 0;
+        var iter = try WindowSource.LineIterator.init(self.ws, linenr, 0);
+        while (iter.next(self.ws.cap_list.items[linenr])) |result| {
+            const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
+            line_width += width;
+
+            // TODO:
+        }
+
+        // TODO:
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Create Line Size List
@@ -100,7 +121,6 @@ fn createInitialLineSizeList(self: *@This(), super_market: SuperMarket) !void {
 
     const font = super_market.font_store.getDefaultFont() orelse unreachable;
     const font_size = self.defaults.font_size;
-
     const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
@@ -110,7 +130,9 @@ fn createInitialLineSizeList(self: *@This(), super_market: SuperMarket) !void {
             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
             line_width += width;
         }
-        try self.line_size_list.append(self.a, .{ .width = line_width, .height = font_size });
+        try self.cached.lines.append(self.a, .{ .width = line_width, .height = font_size });
+        self.cached.width = @max(self.cached.width, line_width);
+        self.cached.height += font_size;
     }
 }
 
@@ -129,14 +151,22 @@ test createInitialLineSizeList {
         var win = try Window.create(testing_allocator, &ws, .{}, .{ .font_store = &font_store });
         defer win.destroy();
 
-        try eq(3, win.line_size_list.items.len);
-        try eq(LineSize{ .width = 13 * 15, .height = 40 }, win.line_size_list.items[0]);
-        try eq(LineSize{ .width = 21 * 15, .height = 40 }, win.line_size_list.items[1]);
-        try eq(LineSize{ .width = 0, .height = 40 }, win.line_size_list.items[2]);
+        try eq(3, win.cached.lines.items.len);
+        try eq(21 * 15, win.cached.width);
+        try eq(3 * 40, win.cached.height);
+        try eq(LineSize{ .width = 13 * 15, .height = 40 }, win.cached.lines.items[0]);
+        try eq(LineSize{ .width = 21 * 15, .height = 40 }, win.cached.lines.items[1]);
+        try eq(LineSize{ .width = 0, .height = 40 }, win.cached.lines.items[2]);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
+
+const CachedSizes = struct {
+    width: f32,
+    height: f32,
+    lines: LineSizeList,
+};
 
 const LineSizeList = std.ArrayListUnmanaged(LineSize);
 const LineSize = struct {
@@ -195,7 +225,7 @@ pub const SuperMarket = struct {
 
 fn createMockFontStore(a: Allocator) !FontStore {
     var font_store = try FontStore.init(a);
-    try font_store.addNewFont("Test", 40);
+    try font_store.addNewFont(null, "Test", 40);
     const f = font_store.getDefaultFont() orelse unreachable;
     for (32..126) |i| try f.addGlyph(a, @intCast(i), .{ .offsetX = 0, .width = 1.1e1, .advanceX = 15 });
     return font_store;
