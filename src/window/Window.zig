@@ -73,7 +73,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), super_market: SuperMarket) void {
+pub fn render(self: *@This(), super_market: SuperMarket, view: ScreenView) void {
     assert(self.rcb != null);
     const rcb = self.rcb orelse return;
 
@@ -81,9 +81,18 @@ pub fn render(self: *@This(), super_market: SuperMarket) void {
     const font_size = self.defaults.font_size;
 
     rcb.drawCodePoint(font, 'x', 100, 100, font_size, self.defaults.color);
+
+    std.debug.print("view: {any}\n", .{view});
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Create Line Size List
+
+fn calculateGlyphWidth(font: *const FontStore.Font, font_size: f32, iter_result: WindowSource.LineIterator.Result, default_glyph_data: FontStore.Font.GlyphData) f32 {
+    const glyph = font.glyph_map.get(iter_result.code_point) orelse default_glyph_data;
+    const scale_factor: f32 = font_size / font.base_size;
+    const width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
+    return width * scale_factor;
+}
 
 fn createInitialLineSizeList(self: *@This(), super_market: SuperMarket) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.createInitialLineSizeList()", 0xFF0000);
@@ -92,16 +101,13 @@ fn createInitialLineSizeList(self: *@This(), super_market: SuperMarket) !void {
     const font = super_market.font_store.getDefaultFont() orelse unreachable;
     const font_size = self.defaults.font_size;
 
-    const default_glyph_data = font.glyph_map.get('?') orelse unreachable;
+    const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
         var line_width: f32 = 0;
         var iter = try WindowSource.LineIterator.init(self.ws, linenr, 0);
         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
-            const glyph = font.glyph_map.get(result.code_point) orelse default_glyph_data;
-            const scale_factor: f32 = font_size / font.base_size;
-            var width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
-            width = width * scale_factor;
+            const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
             line_width += width;
         }
         try self.line_size_list.append(self.a, .{ .width = line_width, .height = font_size });

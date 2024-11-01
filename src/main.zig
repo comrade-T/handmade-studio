@@ -4,6 +4,8 @@ const assert = std.debug.assert;
 const ztracy = @import("ztracy");
 const rl = @import("raylib");
 
+const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
+
 const LangSuite = @import("LangSuite");
 const FontStore = @import("FontStore");
 
@@ -26,6 +28,14 @@ pub fn main() anyerror!void {
 
     rl.setTargetFPS(60);
     rl.setExitKey(rl.KeyboardKey.key_null);
+
+    ///////////////////////////// Camera2D
+
+    var smooth_cam = Smooth2DCamera{};
+    var screen_view = ScreenView{
+        .width = @as(f32, @floatFromInt(rl.getScreenWidth())),
+        .height = @as(f32, @floatFromInt(rl.getScreenHeight())),
+    };
 
     ///////////////////////////// GPA
 
@@ -65,13 +75,29 @@ pub fn main() anyerror!void {
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
+
+        ///////////////////////////// Update
+
+        smooth_cam.updateOnNewFrame();
+        screen_view.update(smooth_cam.camera);
+
+        ///////////////////////////// Draw
+
         rl.beginDrawing();
         defer rl.endDrawing();
         {
             rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
 
-            window.render(super_market);
+            {
+                rl.beginMode2D(smooth_cam.camera);
+                defer rl.endMode2D();
+
+                window.render(super_market, .{
+                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.x },
+                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.x },
+                });
+            }
         }
     }
 }
@@ -95,3 +121,20 @@ fn drawCodePoint(font: *const FontStore.Font, code_point: u21, x: f32, y: f32, f
     const rl_font = @as(*rl.Font, @ptrCast(@alignCast(font.rl_font)));
     rl.drawTextCodepoint(rl_font.*, @intCast(code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(color));
 }
+
+const ScreenView = struct {
+    start: rl.Vector2 = .{ .x = 0, .y = 0 },
+    end: rl.Vector2 = .{ .x = 0, .y = 0 },
+    width: f32,
+    height: f32,
+
+    pub fn update(self: *@This(), camera: rl.Camera2D) void {
+        self.start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
+        self.end = rl.getScreenToWorld2D(.{
+            .x = @as(f32, @floatFromInt(rl.getScreenWidth())),
+            .y = @as(f32, @floatFromInt(rl.getScreenHeight())),
+        }, camera);
+        self.width = self.end.x - self.start.x;
+        self.height = self.end.y - self.start.y;
+    }
+};

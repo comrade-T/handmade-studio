@@ -433,7 +433,7 @@ pub const LineIterator = struct {
         };
     }
 
-    const Result = struct {
+    pub const Result = struct {
         ids: []const IDs,
         code_point: u21,
     };
