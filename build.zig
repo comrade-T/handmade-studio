@@ -37,6 +37,7 @@ pub fn build(b: *std.Build) void {
     const regex = b.addModule("regex", .{ .root_source_file = b.path("submodules/regex/src/regex.zig") });
 
     const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
+    _ = s2s;
 
     const ztracy = b.dependency("ztracy", .{
         .enable_ztracy = true,
@@ -62,7 +63,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(tree_sitter);
     tree_sitter.installHeadersDirectory(b.path("submodules/tree-sitter/lib/include/tree_sitter"), "tree_sitter", .{});
 
-    ////////////////////////////////////////////////////////////////////////////// Local Modules - New
+    ////////////////////////////////////////////////////////////////////////////// Local Modules
 
     const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
         .{ .name = "regex", .module = regex },
@@ -77,25 +78,11 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     langsuite.module.linkLibrary(tree_sitter);
 
-    const style_parser = addTestableModule(&bops, "src/tree-sitter/StyleParser.zig", &.{
-        .{ .name = "regex", .module = regex },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
-    style_parser.compile.linkLibrary(tree_sitter);
-
     const rc_rope = addTestableModule(&bops, "src/buffer/RcRope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
     _ = rc_rope;
-
-    const undo_tree = addTestableModule(&bops, "src/buffer/UndoTree.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
-    _ = undo_tree;
-
-    /////////////////////////////
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
@@ -129,67 +116,7 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = window;
 
-    ////////////////////////////////////////////////////////////////////////////// Local Modules
-
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
-
-    const the_list = addTestableModule(&bops, "src/components/TheList.zig", &.{}, zig_build_test_step);
-
-    _ = addTestableModule(&bops, "src/demos/write_struct_to_file.zig", &.{
-        .{ .name = "s2s", .module = s2s },
-    }, zig_build_test_step);
-
-    _ = addTestableModule(&bops, "src/window/neo_cell.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
-
-    const rope = addTestableModule(&bops, "src/buffer/rope.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
-
-    _ = addTestableModule(&bops, "src/fs.zig", &.{}, zig_build_test_step);
-
-    const ts_predicates = addTestableModule(&bops, "src/tree-sitter/predicates.zig", &.{
-        .{ .name = "regex", .module = regex },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
-    ts_predicates.compile.linkLibrary(tree_sitter);
-
-    const ts = addTestableModule(&bops, "src/tree-sitter/ts.zig", &.{
-        .{ .name = "regex", .module = regex },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-    ts.module.linkLibrary(tree_sitter);
-
-    const neo_buffer = addTestableModule(&bops, "src/buffer/neo_buffer.zig", &.{
-        .{ .name = "rope", .module = rope.module },
-        .{ .name = "ts", .module = ts.module },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
-
-    const virtuous_window = addTestableModule(&bops, "src/window/virtuous_window.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        .{ .name = "input_processor", .module = input_processor.module },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-
-    const display_cache_pool = addTestableModule(&bops, "src/window/DisplayCachePool.zig", &.{
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-        .{ .name = "ts", .module = ts.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
-
-    const window_manager = addTestableModule(&bops, "src/window/window_manager.zig", &.{
-        .{ .name = "ts", .module = ts.module },
-        .{ .name = "neo_buffer", .module = neo_buffer.module },
-        .{ .name = "DisplayCachePool", .module = display_cache_pool.module },
-        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 
@@ -216,104 +143,28 @@ pub fn build(b: *std.Build) void {
     ///////////////////////////// Raylib
 
     {
-        const path = "src/style_parser_test.zig";
-        const exe = b.addExecutable(.{
-            .name = "style_parser_test",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.root_module.addImport("LangSuite", langsuite.module);
-        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
-        addRunnableRaylibFile(b, exe, raylib, path);
-    }
-
-    // {
-    //     const path = "src/window_test.zig";
-    //     const exe = b.addExecutable(.{
-    //         .name = "window_test",
-    //         .root_source_file = b.path(path),
-    //         .target = target,
-    //         .optimize = optimize,
-    //     });
-    //     exe.root_module.addImport("window", window.module);
-    //     exe.root_module.addImport("ztracy", ztracy.module("root"));
-    //     exe.root_module.addImport("input_processor", input_processor.module);
-    //     exe.root_module.linkLibrary(ztracy.artifact("tracy"));
-    //     exe.root_module.addImport("ts", ts.module);
-    //     addRunnableRaylibFile(b, exe, raylib, path);
-    //
-    //     b.installArtifact(exe);
-    // }
-
-    {
-        const path = "src/new_mapping_methods.zig";
-        const exe = b.addExecutable(.{
-            .name = "new_mapping_methods",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
-        exe.root_module.addImport("input_processor", input_processor.module);
-        exe.root_module.addImport("window_manager", window_manager.module);
-        exe.root_module.addImport("TheList", the_list.module);
-        exe.root_module.addImport("virtuous_window", virtuous_window.module);
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.linkLibrary(tree_sitter);
-        exe.linkLibrary(ztracy.artifact("tracy"));
-        addRunnableRaylibFile(b, exe, raylib, path);
-    }
-
-    {
         const path = "src/demos/spawn_rec_by_clicking.zig";
-        const spawn_rec_by_clicking_exe = b.addExecutable(.{
-            .name = "spawn_rec_by_clicking",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "spawn_rec_by_clicking", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
-
     {
         const path = "src/demos/camera2d_example.zig";
-        const spawn_rec_by_clicking_exe = b.addExecutable(.{
-            .name = "camera2d_example",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "camera2d_example", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
         const path = "src/demos/drag_camera_example.zig";
-        const spawn_rec_by_clicking_exe = b.addExecutable(.{
-            .name = "drag_camera_example",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "drag_camera_example", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
         const path = "src/demos/camera3d_example.zig";
-        const spawn_rec_by_clicking_exe = b.addExecutable(.{
-            .name = "camera3d_example",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "camera3d_example", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
     {
         const path = "src/demos/bunnymark.zig";
-        const spawn_rec_by_clicking_exe = b.addExecutable(.{
-            .name = "bunnymark",
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-        });
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "bunnymark", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
 
@@ -326,10 +177,8 @@ pub fn build(b: *std.Build) void {
         });
 
         exe.root_module.addImport("input_processor", input_processor.module);
-        exe.root_module.addImport("neo_buffer", neo_buffer.module);
-        exe.root_module.addImport("virtuous_window", virtuous_window.module);
+
         exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.linkLibrary(tree_sitter);
         exe.linkLibrary(ztracy.artifact("tracy"));
 
         exe.linkLibrary(raylib.artifact("raylib"));
