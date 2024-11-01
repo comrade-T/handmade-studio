@@ -41,7 +41,7 @@ pub fn main() !void {
 a: Allocator,
 attr: Attributes,
 ws: *WindowSource,
-rcb: ?*RenderCallbacks,
+rcb: ?*const RenderCallbacks,
 line_size_list: LineSizeList,
 defaults: Defaults,
 
@@ -69,6 +69,18 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, super_market:
 pub fn destroy(self: *@This()) void {
     self.line_size_list.deinit(self.a);
     self.a.destroy(self);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Render
+
+pub fn render(self: *@This(), super_market: SuperMarket) void {
+    assert(self.rcb != null);
+    const rcb = self.rcb orelse return;
+
+    const font = super_market.font_store.getDefaultFont() orelse unreachable;
+    const font_size = self.defaults.font_size;
+
+    rcb.drawCodePoint(font, 'x', 100, 100, font_size, self.defaults.color);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Create Line Size List
@@ -136,7 +148,7 @@ const SpawnOptions = struct {
     bounds: ?Attributes.Bounds = null,
     padding: ?Attributes.Padding = null,
 
-    render_callbacks: ?*RenderCallbacks = null,
+    render_callbacks: ?*const RenderCallbacks = null,
 };
 
 const Attributes = struct {
@@ -171,7 +183,7 @@ const Attributes = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// SuperMarket
 
-const SuperMarket = struct {
+pub const SuperMarket = struct {
     font_store: *FontStore,
 };
 
@@ -185,20 +197,8 @@ fn createMockFontStore(a: Allocator) !FontStore {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
 
-const RenderCallbacks = struct {
-    drawCodePoint: *const fn (ctx: *anyopaque, code_point: u21, font_face: []const u8, font_size: f32, color: u32, x: f32, y: f32) void,
-    drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
-
-    camera: *anyopaque,
-    getMousePositionOnScreen: *const fn (camera: *anyopaque) struct { f32, f32 },
-
-    smooth_cam: *anyopaque,
-    setSmoothCamTarget: *const fn (ctx: *anyopaque, x: f32, y: f32) void,
-    changeTargetXBy: *const fn (ctx: *anyopaque, by: f32) void,
-    changeTargetYBy: *const fn (ctx: *anyopaque, by: f32) void,
-
-    screen_view: *anyopaque,
-    getScreenView: *const fn (ctx: *anyopaque) ScreenView,
+pub const RenderCallbacks = struct {
+    drawCodePoint: *const fn (font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void,
 };
 
 const ScreenView = struct {
