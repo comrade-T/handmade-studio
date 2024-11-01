@@ -113,8 +113,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
         .{ .name = "FontStore", .module = font_store.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
-    _ = window;
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
@@ -177,6 +177,9 @@ pub fn build(b: *std.Build) void {
         });
 
         exe.root_module.addImport("input_processor", input_processor.module);
+        exe.root_module.addImport("LangSuite", langsuite.module);
+        exe.root_module.addImport("Window", window.module);
+        exe.root_module.addImport("FontStore", font_store.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));

@@ -11,7 +11,7 @@ const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
 const LangSuite = @import("LangSuite");
-const WindowSource = @import("WindowSource");
+pub const WindowSource = @import("WindowSource");
 const FontStore = @import("FontStore");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -178,7 +178,8 @@ const SuperMarket = struct {
 fn createMockFontStore(a: Allocator) !FontStore {
     var font_store = try FontStore.init(a);
     try font_store.addNewFont("Test", 40);
-    for (32..126) |i| try font_store.addGlyphDataToFont("Test", @intCast(i), .{ .offsetX = 0, .width = 1.1e1, .advanceX = 15 });
+    const f = font_store.getDefaultFont() orelse unreachable;
+    for (32..126) |i| try f.addGlyph(a, @intCast(i), .{ .offsetX = 0, .width = 1.1e1, .advanceX = 15 });
     return font_store;
 }
 

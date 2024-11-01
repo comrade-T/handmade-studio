@@ -46,18 +46,12 @@ pub fn addNewFont(self: *@This(), font_name: []const u8, base_size: f32) !void {
     try self.map.put(self.a, font_name, Font{ .base_size = base_size, .glyph_map = Font.GlyphMap{} });
 }
 
-pub fn addGlyphDataToFont(self: *@This(), font_name: []const u8, code_point: i32, data: Font.GlyphData) !void {
-    assert(self.map.getPtr(font_name) != null);
-    var font = self.map.getPtr(font_name) orelse return;
-    try font.glyph_map.put(self.a, code_point, data);
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const FontMap = std.StringArrayHashMapUnmanaged(Font);
 
 pub const Font = struct {
-    const GlyphMap = std.AutoHashMapUnmanaged(i32, GlyphData);
+    const GlyphMap = std.AutoArrayHashMapUnmanaged(i32, GlyphData);
 
     pub const GlyphData = struct {
         advanceX: f32,
@@ -67,4 +61,8 @@ pub const Font = struct {
 
     base_size: f32,
     glyph_map: GlyphMap,
+
+    pub fn addGlyph(self: *@This(), a: Allocator, code_point: i32, data: GlyphData) !void {
+        try self.glyph_map.put(a, code_point, data);
+    }
 };
