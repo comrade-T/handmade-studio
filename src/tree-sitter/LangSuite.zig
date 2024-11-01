@@ -22,7 +22,6 @@ const ArrayList = std.ArrayList;
 
 pub const ts = @import("bindings.zig");
 pub const QueryFilter = @import("QueryFilter.zig");
-pub const StyleParser = @import("StyleParser.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
