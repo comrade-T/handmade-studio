@@ -105,14 +105,13 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
-    _ = colorscheme_store;
-
     const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, zig_build_test_step);
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
         .{ .name = "FontStore", .module = font_store.module },
+        .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
@@ -132,6 +131,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("LangSuite", langsuite.module);
         exe.root_module.addImport("WindowSource", window_source.module);
         exe.root_module.addImport("FontStore", font_store.module);
+        exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
         exe.root_module.linkLibrary(ztracy.artifact("tracy"));
 
         const run_cmd = b.addRunArtifact(exe);
@@ -180,6 +180,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("LangSuite", langsuite.module);
         exe.root_module.addImport("Window", window.module);
         exe.root_module.addImport("FontStore", font_store.module);
+        exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));

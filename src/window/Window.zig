@@ -13,6 +13,7 @@ const assert = std.debug.assert;
 const LangSuite = @import("LangSuite");
 pub const WindowSource = @import("WindowSource");
 const FontStore = @import("FontStore");
+const ColorschemeStore = @import("ColorschemeStore");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -45,7 +46,7 @@ rcb: ?*const RenderCallbacks,
 cached: CachedSizes,
 defaults: Defaults,
 
-pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, super_market: SuperMarket) !*Window {
+pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, supermarket: Supermarket) !*Window {
     var self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -65,7 +66,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, super_market:
         .defaults = Defaults{},
     };
 
-    try self.createInitialLineSizeList(super_market);
+    try self.createInitialLineSizeList(supermarket);
 
     return self;
 }
@@ -77,13 +78,15 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), super_market: SuperMarket, view: ScreenView) void {
+pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
     assert(self.rcb != null);
     const rcb = self.rcb orelse return;
 
-    const font = super_market.font_store.getDefaultFont() orelse unreachable;
+    const font = supermarket.font_store.getDefaultFont() orelse unreachable;
     const font_size = self.defaults.font_size;
     const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
+
+    const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
 
     var chars_rendered: usize = 0;
     defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
@@ -115,7 +118,16 @@ pub fn render(self: *@This(), super_market: SuperMarket, view: ScreenView) void 
             if (x > view.end.x) break;
             if (x + width < view.start.x) continue;
 
-            rcb.drawCodePoint(font, result.code_point, x, y, font_size, self.defaults.color);
+            var color = self.defaults.color;
+            for (result.ids) |ids| {
+                const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
+                if (colorscheme.get(group_name)) |c| {
+                    color = c;
+                    break;
+                }
+            }
+
+            rcb.drawCodePoint(font, result.code_point, x, y, font_size, color);
             chars_rendered += 1;
         }
     }
@@ -130,11 +142,11 @@ fn calculateGlyphWidth(font: *const FontStore.Font, font_size: f32, iter_result:
     return width * scale_factor;
 }
 
-fn createInitialLineSizeList(self: *@This(), super_market: SuperMarket) !void {
+fn createInitialLineSizeList(self: *@This(), supermarket: Supermarket) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.createInitialLineSizeList()", 0xFF0000);
     defer zone.End();
 
-    const font = super_market.font_store.getDefaultFont() orelse unreachable;
+    const font = supermarket.font_store.getDefaultFont() orelse unreachable;
     const font_size = self.defaults.font_size;
     const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
 
@@ -155,15 +167,15 @@ test createInitialLineSizeList {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
 
-    var font_store = try createMockFontStore(testing_allocator);
-    defer font_store.deinit();
+    const supermarket = try createMockSuperMarket(testing_allocator);
+    defer deinitSuperMarket(testing_allocator, supermarket);
 
     var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
     defer ws.deinit();
     try eqStr("const a = 10;\nvar not_false = true;\n", ws.contents);
 
     {
-        var win = try Window.create(testing_allocator, &ws, .{}, .{ .font_store = &font_store });
+        var win = try Window.create(testing_allocator, &ws, .{}, supermarket);
         defer win.destroy();
 
         try eq(3, win.cached.lines.items.len);
@@ -234,9 +246,31 @@ const Attributes = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// SuperMarket
 
-pub const SuperMarket = struct {
+pub const Supermarket = struct {
     font_store: *FontStore,
+    colorscheme_store: *ColorschemeStore,
 };
+
+fn deinitSuperMarket(a: Allocator, sp: Supermarket) void {
+    sp.font_store.deinit();
+    sp.colorscheme_store.deinit();
+    a.destroy(sp.font_store);
+    a.destroy(sp.colorscheme_store);
+}
+
+fn createMockSuperMarket(a: Allocator) !Supermarket {
+    const font_store = try a.create(FontStore);
+    font_store.* = try createMockFontStore(a);
+
+    const colorscheme_store = try a.create(ColorschemeStore);
+    colorscheme_store.* = try ColorschemeStore.init(a);
+    try colorscheme_store.initializeNightflyColorscheme();
+
+    return Supermarket{
+        .font_store = font_store,
+        .colorscheme_store = colorscheme_store,
+    };
+}
 
 fn createMockFontStore(a: Allocator) !FontStore {
     var font_store = try FontStore.init(a);

@@ -469,9 +469,9 @@ test LineIterator {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
     {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig", &lang_hub);
         defer ws.deinit();
-        try eqStr("const a = 10;\nvar not_false = true;\n", ws.contents);
+        try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", ws.contents);
 
         try testLineIter(&ws, 0, &.{
             .{ "const", &.{"type.qualifier"} },
@@ -488,6 +488,19 @@ test LineIterator {
             .{ "not_false", &.{"variable"} },
             .{ " = ", &.{} },
             .{ "true", &.{"boolean"} },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
+        try testLineIter(&ws, 2, &.{
+            .{ "const", &.{"type.qualifier"} },
+            .{ " ", &.{} },
+            .{ "Allocator", &.{ "variable", "type" } },
+            .{ " = ", &.{} },
+            .{ "std", &.{"variable"} },
+            .{ ".", &.{"punctuation.delimiter"} },
+            .{ "mem", &.{"field"} },
+            .{ ".", &.{"punctuation.delimiter"} },
+            .{ "Allocator", &.{ "field", "type" } },
             .{ ";", &.{"punctuation.delimiter"} },
             null,
         });
