@@ -401,7 +401,7 @@ const StoredCapture = struct {
 
     fn lessThan(_: void, a: StoredCapture, b: StoredCapture) bool {
         if (a.start_col < b.start_col) return true;
-        if (a.start_col == b.start_col) return a.end_col > b.end_col;
+        if (a.start_col == b.start_col) return a.end_col < b.end_col;
         return false;
     }
 };

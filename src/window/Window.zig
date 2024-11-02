@@ -119,7 +119,11 @@ pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
             if (x + width < view.start.x) continue;
 
             var color = self.defaults.color;
-            for (result.ids) |ids| {
+
+            var i: usize = result.ids.len;
+            while (i > 0) {
+                i -= 1;
+                const ids = result.ids[i];
                 const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
                 if (colorscheme.get(group_name)) |c| {
                     color = c;

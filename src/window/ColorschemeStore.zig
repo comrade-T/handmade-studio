@@ -74,8 +74,12 @@ pub fn initializeNightflyColorscheme(self: *@This()) !void {
     try map.put(self.a, "keyword", @intFromEnum(Nightfly.violet));
     try map.put(self.a, "keyword.modifier", @intFromEnum(Nightfly.violet));
     try map.put(self.a, "keyword.function", @intFromEnum(Nightfly.violet));
+    try map.put(self.a, "keyword.operator", @intFromEnum(Nightfly.violet));
+    try map.put(self.a, "keyword.return", @intFromEnum(Nightfly.violet));
     try map.put(self.a, "attribute", @intFromEnum(Nightfly.violet));
     try map.put(self.a, "type.qualifier", @intFromEnum(Nightfly.violet));
+    try map.put(self.a, "conditional", @intFromEnum(Nightfly.violet));
+    try map.put(self.a, "repeat", @intFromEnum(Nightfly.violet));
 
     try map.put(self.a, "type", @intFromEnum(Nightfly.emerald));
     try map.put(self.a, "type.builtin", @intFromEnum(Nightfly.emerald));
