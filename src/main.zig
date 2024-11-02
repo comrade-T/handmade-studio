@@ -17,6 +17,7 @@ const WindowSource = Window.WindowSource;
 
 const screen_width = 1920;
 const screen_height = 1080;
+const FONT_BASE_SIZE = 200;
 
 pub fn main() anyerror!void {
 
@@ -56,9 +57,8 @@ pub fn main() anyerror!void {
     defer colorscheme_store.deinit();
     try colorscheme_store.initializeNightflyColorscheme();
 
-    const meslo_base_size = 40;
-    var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", meslo_base_size, null);
-    try addRaylibFontToFontStore(&meslo, "Meslo", meslo_base_size, &font_store);
+    var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
+    try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
     var ws = try WindowSource.init(gpa, .file, "src/outdated/window/old_window.zig", &lang_hub);
     defer ws.deinit();
@@ -110,8 +110,10 @@ pub fn main() anyerror!void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn addRaylibFontToFontStore(rl_font: *rl.Font, name: []const u8, base_size: f32, store: *FontStore) !void {
-    try store.addNewFont(rl_font, name, base_size);
+fn addRaylibFontToFontStore(rl_font: *rl.Font, name: []const u8, store: *FontStore) !void {
+    rl.setTextureFilter(rl_font.texture, .texture_filter_trilinear);
+
+    try store.addNewFont(rl_font, name, FONT_BASE_SIZE);
     const f = store.map.getPtr(name) orelse unreachable;
     for (0..@intCast(rl_font.glyphCount)) |i| {
         try f.addGlyph(store.a, rl_font.glyphs[i].value, .{
