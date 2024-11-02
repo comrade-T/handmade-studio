@@ -85,24 +85,39 @@ pub fn render(self: *@This(), super_market: SuperMarket, view: ScreenView) void 
     const font_size = self.defaults.font_size;
     const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
 
-    rcb.drawCodePoint(font, 'x', 100, 100, font_size, self.defaults.color);
+    var chars_rendered: usize = 0;
+    defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
 
     /////////////////////////////
 
     if (self.attr.pos.x > view.end.x) return;
     if (self.attr.pos.y > view.end.y) return;
 
+    if (self.attr.pos.x + self.cached.width < view.start.x) return;
+    if (self.attr.pos.y + self.cached.height < view.start.y) return;
+
+    var x: f32 = self.attr.pos.x;
+    var y: f32 = self.attr.pos.y;
+
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        var line_width: f32 = 0;
-        var iter = try WindowSource.LineIterator.init(self.ws, linenr, 0);
+        defer x = self.attr.pos.x;
+        defer y += font_size;
+
+        if (y > view.end.y) return;
+        if (x + self.cached.lines.items[linenr].width < view.start.x) continue;
+        if (y + self.cached.lines.items[linenr].height < view.start.y) continue;
+
+        var iter = WindowSource.LineIterator.init(self.ws, linenr, 0) catch continue;
         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
-            line_width += width;
+            defer x += width;
 
-            // TODO:
+            if (x > view.end.x) break;
+            if (x + width < view.start.x) continue;
+
+            rcb.drawCodePoint(font, result.code_point, x, y, font_size, self.defaults.color);
+            chars_rendered += 1;
         }
-
-        // TODO:
     }
 }
 

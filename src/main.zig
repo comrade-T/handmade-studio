@@ -94,8 +94,8 @@ pub fn main() anyerror!void {
                 defer rl.endMode2D();
 
                 window.render(super_market, .{
-                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.x },
-                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.x },
+                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });
             }
         }
