@@ -130,8 +130,9 @@ fn getCaptures(self: *@This(), start: usize, end: usize) !CapturedLinesMap {
             .{ .row = @intCast(end + 1), .column = 0 },
         );
 
-        var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
-        while (sq.filter.nextMatch(callback, self, &targets_buf, cursor)) |match| {
+        const targets_buf_capacity = 8;
+        var targets_buf: [@sizeOf(LangSuite.QueryFilter.CapturedTarget) * targets_buf_capacity]u8 = undefined;
+        while (sq.filter.nextMatch(callback, self, &targets_buf, targets_buf_capacity, cursor)) |match| {
             if (!match.all_predicates_matched) continue;
             for (match.targets) |target| {
                 for (target.start_line..target.end_line + 1) |linenr| {

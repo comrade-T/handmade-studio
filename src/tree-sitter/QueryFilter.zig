@@ -274,9 +274,12 @@ pub const MatchResult = struct {
 
 pub const ContentCallback = *const fn (ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8;
 
-pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
+pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_buf: []u8, targets_buf_capacity: usize, cursor: *Query.Cursor) ?MatchResult {
     const big_zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
     defer big_zone.End();
+
+    var fba = std.heap.FixedBufferAllocator.init(targets_buf);
+    var targets = ArrayList(CapturedTarget).initCapacity(fba.allocator(), targets_buf_capacity) catch unreachable;
 
     var content_buf: [1024]u8 = undefined;
     var match: ts.Query.Match = undefined;
@@ -287,7 +290,6 @@ pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_b
     }
 
     const predicates_map = self.patterns[match.pattern_index];
-    var target_index: usize = 0;
     var all_predicates_matched = true;
 
     for (match.captures()) |cap| {
@@ -313,20 +315,19 @@ pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_b
         if (cap_name[0] != '_') {
             const start_point = cap.node.getStartPoint();
             const end_point = cap.node.getEndPoint();
-            targets_buf[target_index] = CapturedTarget{
+            targets.append(CapturedTarget{
                 .capture_id = @intCast(cap.id),
                 .start_line = start_point.row,
                 .start_col = start_point.column,
                 .end_line = end_point.row,
                 .end_col = end_point.column,
-            };
-            target_index += 1;
+            }) catch break;
         }
     }
 
     return MatchResult{
         .all_predicates_matched = all_predicates_matched,
-        .targets = targets_buf[0..target_index],
+        .targets = targets.toOwnedSlice() catch unreachable,
         .pattern_index = @intCast(match.pattern_index),
     };
 }
@@ -605,9 +606,10 @@ fn testFilter(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8, 
 
     var ctx = GetRangeForTestingCtx{ .source = source };
 
-    var targets_buf: [8]CapturedTarget = undefined;
+    const target_buf_capacity = 8;
+    var targets_buf: [@sizeOf(CapturedTarget) * target_buf_capacity]u8 = undefined;
     var i: usize = 0;
-    while (filter.nextMatch(GetRangeForTestingCtx.getRange, &ctx, &targets_buf, cursor)) |match| {
+    while (filter.nextMatch(GetRangeForTestingCtx.getRange, &ctx, &targets_buf, target_buf_capacity, cursor)) |match| {
         if (!match.all_predicates_matched) continue;
         try eq(expected[i].targets.len, match.targets.len);
         for (0..expected[i].targets.len) |j| {
