@@ -47,7 +47,7 @@ test forwardByWord {
     // .end
     {
         var mock = try Mockery.init(testing_allocator, "hello world");
-        //                                                              4     0
+        //                                                  4     0
         defer mock.deinit();
         try testForwardByWord(.{ 0, 4 }, .end, &mock, 0, 0, 3);
         try testForwardByWord(.{ 0, 10 }, .end, &mock, 0, 4, 10);
@@ -55,7 +55,7 @@ test forwardByWord {
     }
     {
         var mock = try Mockery.init(testing_allocator, "one#two--3|||four;;;;");
-        //                                                            23  6 89  2   6   0
+        //                                                23  6 89  2   6   0
         defer mock.deinit();
         try testForwardByWord(.{ 0, 2 }, .end, &mock, 0, 0, 1);
         try testForwardByWord(.{ 0, 3 }, .end, &mock, 0, 2, 2);
@@ -68,7 +68,7 @@ test forwardByWord {
     }
     {
         var mock = try Mockery.init(testing_allocator, "draw forth\nmy map");
-        //                                                             3     9   1   5
+        //                                                 3     9   1   5
         defer mock.deinit();
         try testForwardByWord(.{ 0, 3 }, .end, &mock, 0, 0, 2);
         try testForwardByWord(.{ 0, 9 }, .end, &mock, 0, 3, 8);
@@ -81,7 +81,7 @@ test forwardByWord {
     {
         {
             var mock = try Mockery.init(testing_allocator, "hello world");
-            //                                                                6   0
+            //                                                    6   0
             defer mock.deinit();
             try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
             try testForwardByWord(.{ 0, 10 }, .start, &mock, 0, 6, 9);
@@ -89,7 +89,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "hello; world");
-            //                                                               5 7   1
+            //                                                   5 7   1
             defer mock.deinit();
             try testForwardByWord(.{ 0, 5 }, .start, &mock, 0, 0, 4);
             try testForwardByWord(.{ 0, 7 }, .start, &mock, 0, 5, 6);
@@ -97,7 +97,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "hello ; world");
-            //                                                                6 8   2
+            //                                                    6 8   2
             defer mock.deinit();
             try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
             try testForwardByWord(.{ 0, 8 }, .start, &mock, 0, 6, 7);
@@ -105,7 +105,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "hello ;; world");
-            //                                                                6  9   3
+            //                                                    6  9   3
             defer mock.deinit();
             try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
             try testForwardByWord(.{ 0, 9 }, .start, &mock, 0, 6, 8);
@@ -113,7 +113,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "hello  world one  two");
-            //                                                                 7     3    8 0
+            //                                                     7     3    8 0
             defer mock.deinit();
             try testForwardByWord(.{ 0, 7 }, .start, &mock, 0, 0, 6);
             try testForwardByWord(.{ 0, 13 }, .start, &mock, 0, 7, 12);
@@ -122,7 +122,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "one|two||3|||four");
-            //                                                             34  7 90  3  6
+            //                                                 34  7 90  3  6
             defer mock.deinit();
             try testForwardByWord(.{ 0, 3 }, .start, &mock, 0, 0, 2);
             try testForwardByWord(.{ 0, 4 }, .start, &mock, 0, 3, 3);
@@ -134,7 +134,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "const std = @import(\"std\");\nconst");
-            //                                                          0     6   0 2      9  1   4    0   4
+            //                                              0     6   0 2      9  1   4    0   4
             defer mock.deinit();
             try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
             try testForwardByWord(.{ 0, 10 }, .start, &mock, 0, 6, 9);
@@ -149,7 +149,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "hello\nworld\nvenus\nmars");
-            //                                                          0      0      0      0  3
+            //                                              0      0      0      0  3
             defer mock.deinit();
             try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 0, 4);
             try testForwardByWord(.{ 2, 0 }, .start, &mock, 1, 0, 4);
@@ -159,7 +159,7 @@ test forwardByWord {
         }
         {
             var mock = try Mockery.init(testing_allocator, "hello world\nvenus and mars");
-            //                                                          0     6      0     6   0  3
+            //                                              0     6      0     6   0  3
             defer mock.deinit();
             try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
             try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 6, 10);
@@ -169,7 +169,7 @@ test forwardByWord {
         }
         { // empty line check
             var mock = try Mockery.init(testing_allocator, "hello world\n\nand mars");
-            //                                                          0     6      0 0   4  7
+            //                                              0     6      0 0   4  7
             defer mock.deinit();
             try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
             try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 6, 10);

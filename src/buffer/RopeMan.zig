@@ -91,9 +91,9 @@ pub fn getNumOfLines(self: *@This()) usize {
     return self.root.value.weights().bols;
 }
 
-pub fn getLineAlloc(self: *@This(), a: Allocator, linenr: usize) ![]const u8 {
-    return try rcr.getLineAlloc(a, self.root, linenr);
-}
+// pub fn getLineAlloc(self: *@This(), a: Allocator, linenr: usize) ![]const u8 {
+//     return try rcr.getLineAlloc(a, self.root, linenr);
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
 
