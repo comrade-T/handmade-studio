@@ -272,10 +272,14 @@ pub const MatchResult = struct {
     pattern_index: u16,
 };
 
-// TODO: pass in a callback function to get content instead of passing in []const u8 + offset
-pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
+pub const ContentCallback = *const fn (ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8, buf_size: usize) []const u8;
+
+pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
     const big_zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
     defer big_zone.End();
+
+    const buf_size = 1024;
+    var buf: [buf_size]u8 = undefined;
 
     var match: ts.Query.Match = undefined;
     {
@@ -289,24 +293,15 @@ pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf:
     var all_predicates_matched = true;
 
     for (match.captures()) |cap| {
-        const node_start_byte = cap.node.getStartByte();
-        const node_end_byte = cap.node.getEndByte();
-
-        if (node_start_byte < offset or node_end_byte < offset) {
-            all_predicates_matched = false;
-            break;
-        }
-
-        const start_byte = node_start_byte - offset;
-        const end_byte = node_end_byte - offset;
-
-        assert(end_byte <= source.len);
-        if (end_byte > source.len) {
-            all_predicates_matched = false;
-            break;
-        }
-
-        const node_contents = source[start_byte..end_byte];
+        const start = cap.node.getStartPoint();
+        const end = cap.node.getEndPoint();
+        const node_contents = cb(
+            ctx,
+            .{ @intCast(start.row), @intCast(start.column) },
+            .{ @intCast(end.row), @intCast(end.col) },
+            &buf,
+            buf_size,
+        );
         const cap_name = self.query.getCaptureNameForId(cap.id);
 
         if (predicates_map.get(cap.id)) |predicates| {

@@ -23,7 +23,7 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Window Initialization
 
-    rl.setConfigFlags(.{ .window_transparent = true });
+    rl.setConfigFlags(.{ .window_transparent = false, .vsync_hint = true });
 
     rl.initWindow(screen_width, screen_height, "Handmade Studio");
     defer rl.closeWindow();
