@@ -88,8 +88,8 @@ pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
 
     const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
 
-    var chars_rendered: usize = 0;
-    defer std.debug.print("chars_rendered: {d}\n", .{chars_rendered});
+    var chars_rendered: i64 = 0;
+    defer ztracy.PlotI("chars_rendered", chars_rendered);
 
     /////////////////////////////
 

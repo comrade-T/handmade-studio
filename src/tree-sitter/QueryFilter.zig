@@ -272,6 +272,7 @@ pub const MatchResult = struct {
     pattern_index: u16,
 };
 
+// TODO: pass in a callback function to get content instead of passing in []const u8 + offset
 pub fn nextMatch(self: *@This(), source: []const u8, offset: usize, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
     const big_zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
     defer big_zone.End();

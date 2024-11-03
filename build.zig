@@ -115,6 +115,11 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
+    const vim_move = addTestableModule(&bops, "src/window/vim_move.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
+    _ = vim_move;
+
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
