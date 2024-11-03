@@ -272,15 +272,13 @@ pub const MatchResult = struct {
     pattern_index: u16,
 };
 
-pub const ContentCallback = *const fn (ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8, buf_size: usize) []const u8;
+pub const ContentCallback = *const fn (ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8;
 
 pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_buf: []CapturedTarget, cursor: *Query.Cursor) ?MatchResult {
     const big_zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
     defer big_zone.End();
 
-    const buf_size = 1024;
-    var buf: [buf_size]u8 = undefined;
-
+    var content_buf: [1024]u8 = undefined;
     var match: ts.Query.Match = undefined;
     {
         const cursor_match = ztracy.ZoneNC(@src(), "cursor.nextMatch()", 0xFF9999);
@@ -298,9 +296,8 @@ pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_b
         const node_contents = cb(
             ctx,
             .{ @intCast(start.row), @intCast(start.column) },
-            .{ @intCast(end.row), @intCast(end.col) },
-            &buf,
-            buf_size,
+            .{ @intCast(end.row), @intCast(end.column) },
+            &content_buf,
         );
         const cap_name = self.query.getCaptureNameForId(cap.id);
 
@@ -554,52 +551,6 @@ test "get return type for functions that are not named 'callAddExample'" {
     }
 }
 
-///////////////////////////// Offset
-
-test "get directives within certain range" {
-    {
-        const patterns =
-            \\(
-            \\  FnProto
-            \\    (IDENTIFIER) @fn_name (#not-eq? @fn_name "callAddExample")
-            \\    _?
-            \\    (ErrorUnionExpr
-            \\      (SuffixExpr
-            \\        (BuildinTypeExpr) @return_type
-            \\      )
-            \\    )
-            \\)
-        ;
-        try testFilter(test_source, .{
-            .offset = getByteOffsetForSkippingLines(test_source, 6),
-            .start_line = 6,
-            .end_line = 21,
-        }, patterns, &.{
-            .{
-                .targets = &.{ "fn_name", "return_type" },
-                .contents = &.{ "sub", "f64" },
-            },
-        });
-    }
-    {
-        const patterns = "((IDENTIFIER) @variable)";
-        try testFilter(test_source, .{
-            .offset = getByteOffsetForSkippingLines(test_source, 6),
-            .start_line = 6,
-            .end_line = 13,
-        }, patterns, &.{
-            .{ .targets = &.{"variable"}, .contents = &.{"sub"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"a"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"b"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"_"} },
-            .{ .targets = &.{"variable"}, .contents = &.{"add"} },
-        });
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Measuring Contest
 
 test {
@@ -610,7 +561,6 @@ test {
 ////////////////////////////////////////////////////////////////////////////////////////////// Test Helpers
 
 pub const MatchLimit = struct {
-    offset: usize,
     start_line: usize,
     end_line: usize,
 };
@@ -620,16 +570,44 @@ const Expected = struct {
     contents: []const []const u8,
 };
 
+pub const GetRangeForTestingCtx = struct {
+    source: []const u8,
+
+    fn getRange(ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8 {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        var fba = std.heap.FixedBufferAllocator.init(buf);
+        var list = ArrayList(u8).initCapacity(fba.allocator(), buf.len) catch unreachable;
+
+        var split_iter = std.mem.split(u8, self.source, "\n");
+        var i: usize = 0;
+        while (split_iter.next()) |line| {
+            defer i += 1;
+            if (i < start[0]) continue;
+            if (i == start[0] and start[0] == end[0]) {
+                list.appendSlice(line[start[1]..end[1]]) catch unreachable;
+                continue;
+            }
+            if (i == start[0]) {
+                list.appendSlice(line[start[1]..]) catch unreachable;
+                continue;
+            }
+            if (i == end[0]) list.appendSlice(line[0..end[1]]) catch unreachable;
+        }
+
+        return list.toOwnedSlice() catch unreachable;
+    }
+};
+
 fn testFilter(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8, expected: []const Expected) !void {
     const query, const cursor = try setupTestWithNoCleanUp(source, may_limit, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
-    const offset = if (may_limit) |limit| limit.offset else 0;
+    var ctx = GetRangeForTestingCtx{ .source = source };
 
     var targets_buf: [8]CapturedTarget = undefined;
     var i: usize = 0;
-    while (filter.nextMatch(source[offset..], offset, &targets_buf, cursor)) |match| {
+    while (filter.nextMatch(GetRangeForTestingCtx.getRange, &ctx, &targets_buf, cursor)) |match| {
         if (!match.all_predicates_matched) continue;
         try eq(expected[i].targets.len, match.targets.len);
         for (0..expected[i].targets.len) |j| {
@@ -675,15 +653,4 @@ fn setupTestWithNoCleanUp(source: []const u8, may_limit: ?MatchLimit, patterns: 
     }
     cursor.execute(query, tree.getRootNode());
     return .{ query, cursor };
-}
-
-fn getByteOffsetForSkippingLines(source: []const u8, lines_to_skip: usize) usize {
-    var offset: usize = 0;
-    var i: usize = 0;
-    for (source) |char| {
-        offset += 1;
-        if (char == '\n') i += 1;
-        if (i == lines_to_skip) break;
-    }
-    return offset;
 }
