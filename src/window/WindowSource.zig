@@ -415,22 +415,19 @@ const IDs = struct {
 
 pub const LineIterator = struct {
     col: usize = 0,
-    contents: []const u8,
-    cp_iter: code_point.Iterator,
+    contents: []const u8 = undefined,
+    cp_iter: code_point.Iterator = undefined,
 
     captures_start: usize = 0,
     ids_buf: [8]IDs = undefined,
+    content_buf: [1024]u8 = undefined,
 
-    pub fn init(a: Allocator, ws: *const WindowSource, linenr: usize) !LineIterator {
-        const line_contents = try ws.buf.ropeman.getLineAlloc(a, linenr);
-        return LineIterator{
-            .contents = line_contents,
-            .cp_iter = code_point.Iterator{ .bytes = line_contents },
-        };
-    }
-
-    pub fn deinit(self: *@This(), a: Allocator) void {
-        a.free(self.contents);
+    pub fn init(ws: *const WindowSource, linenr: usize) !LineIterator {
+        var self = LineIterator{};
+        var fba = std.heap.FixedBufferAllocator.init(&self.content_buf);
+        self.contents = try ws.buf.ropeman.getLineAlloc(fba.allocator(), linenr);
+        self.cp_iter = code_point.Iterator{ .bytes = self.contents };
+        return self;
     }
 
     pub const Result = struct {
@@ -511,8 +508,7 @@ const Expected = struct { []const u8, []const []const u8 };
 
 fn testLineIter(ws: *const WindowSource, line: usize, exp: []const ?Expected) !void {
     const captures = ws.cap_list.items[line];
-    var iter = try LineIterator.init(testing_allocator, ws, line);
-    defer iter.deinit(testing_allocator);
+    var iter = try LineIterator.init(ws, line);
     for (exp, 0..) |may_e, clump_index| {
         if (may_e == null) {
             try eq(null, iter.next(captures));

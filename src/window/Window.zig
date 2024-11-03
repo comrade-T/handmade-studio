@@ -80,6 +80,9 @@ pub fn destroy(self: *@This()) void {
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
+    const zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
+    defer zone.End();
+
     assert(self.rcb != null);
     const rcb = self.rcb orelse return;
 
@@ -111,8 +114,7 @@ pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
         if (x + self.cached.lines.items[linenr].width < view.start.x) continue;
         if (y + self.cached.lines.items[linenr].height < view.start.y) continue;
 
-        var iter = WindowSource.LineIterator.init(self.a, self.ws, linenr) catch continue;
-        defer iter.deinit(self.a);
+        var iter = WindowSource.LineIterator.init(self.ws, linenr) catch continue;
         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
             defer x += width;
@@ -158,8 +160,7 @@ fn createInitialLineSizeList(self: *@This(), supermarket: Supermarket) !void {
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
         var line_width: f32 = 0;
-        var iter = try WindowSource.LineIterator.init(self.a, self.ws, linenr);
-        defer iter.deinit(self.a);
+        var iter = try WindowSource.LineIterator.init(self.ws, linenr);
         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
             line_width += width;
