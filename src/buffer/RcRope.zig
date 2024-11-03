@@ -2000,12 +2000,10 @@ fn __inputCharsOneAfterAnotherAt0Position(a: Allocator, arena: *ArenaAllocator, 
 ////////////////////////////////////////////////////////////////////////////////////////////// GetRange
 
 const GetRangeCtx = struct {
-    buf_anchor: usize = 0,
-    buf: []u8,
-    buf_size: usize,
+    list: *ArrayList(u8),
 
     col: usize,
-    should_stop: bool = false,
+    out_of_memory: bool = false,
     out_of_bounds: bool = false,
 
     last_line: bool = false,
@@ -2013,14 +2011,6 @@ const GetRangeCtx = struct {
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-        defer {
-            ctx.col -|= leaf.noc;
-            if (ctx.buf_size - ctx.buf_anchor == 0) ctx.should_stop = true;
-            if (leaf.eol and ctx.buf_anchor < ctx.buf_size and (ctx.last_line_col == null)) {
-                ctx.buf[ctx.buf_anchor] = '\n';
-                ctx.buf_anchor += 1;
-            }
-        }
 
         if ((leaf.eol or ctx.last_line) and (ctx.col > 0) and (leaf.noc <= ctx.col)) {
             ctx.out_of_bounds = true;
@@ -2028,35 +2018,25 @@ const GetRangeCtx = struct {
         }
 
         if (leaf.noc < ctx.col) return WalkResult.keep_walking;
+        if (ctx.out_of_memory) return WalkResult.stop;
 
-        var buf_start: usize = 0;
-        if (ctx.col > 0) {
-            var iter = code_point.Iterator{ .bytes = leaf.buf };
-            while (iter.next()) |cp| {
-                if (iter.i - 1 == ctx.col) {
-                    buf_start = cp.offset;
-                    break;
-                }
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        while (iter.next()) |cp| {
+            if (ctx.last_line_col) |limit| if (iter.i >= limit + 1) break;
+            if (iter.i - 1 >= ctx.col) {
+                ctx.list.appendSlice(leaf.buf[cp.offset .. cp.offset + cp.len]) catch {
+                    ctx.out_of_memory = true;
+                    return WalkResult.stop;
+                };
             }
         }
 
-        var buf_end: usize = 0;
-
-        if (leaf.buf.len + ctx.buf_anchor > ctx.buf_size or ctx.last_line_col != null) {
-            var iter = code_point.Iterator{ .bytes = leaf.buf, .i = @intCast(ctx.col) };
-            while (iter.next()) |cp| {
-                if (ctx.last_line_col) |limit| if (iter.i >= limit + 1) break;
-                if (ctx.buf_anchor + cp.offset + cp.len - buf_start > ctx.buf_size) break;
-                buf_end = cp.offset + cp.len;
-            }
-        } else {
-            buf_end = leaf.buf.len;
-        }
-
-        if (buf_end > buf_start) {
-            const cpy_len = buf_end - buf_start;
-            @memcpy(ctx.buf[ctx.buf_anchor .. ctx.buf_anchor + cpy_len], leaf.buf[buf_start..buf_end]);
-            ctx.buf_anchor += cpy_len;
+        ctx.col -|= leaf.noc;
+        if (leaf.eol and ctx.last_line_col == null) {
+            ctx.list.append('\n') catch {
+                ctx.out_of_memory = true;
+                return WalkResult.stop;
+            };
         }
 
         if (leaf.eol) return WalkResult.stop;
@@ -2064,11 +2044,14 @@ const GetRangeCtx = struct {
     }
 };
 
-pub fn getRange(node: RcNode, start: CursorPoint, end: ?CursorPoint, buf: []u8, buf_size: usize) []const u8 {
+pub fn getRange(node: RcNode, start: CursorPoint, end: ?CursorPoint, buf: []u8) []const u8 {
     const num_of_lines = node.value.weights().bols;
     if (start.line > num_of_lines -| 1) return "";
 
-    var ctx: GetRangeCtx = .{ .col = start.col, .buf = buf, .buf_size = buf_size };
+    var fba = std.heap.FixedBufferAllocator.init(buf);
+    var list = ArrayList(u8).initCapacity(fba.allocator(), buf.len) catch unreachable;
+
+    var ctx: GetRangeCtx = .{ .col = start.col, .list = &list };
     const end_range = if (end == null) num_of_lines else end.?.line + 1;
 
     for (start.line..end_range) |i| {
@@ -2078,9 +2061,9 @@ pub fn getRange(node: RcNode, start: CursorPoint, end: ?CursorPoint, buf: []u8, 
         }
         const result = walkFromLineBegin(idc_if_it_leaks, node, i, GetRangeCtx.walker, &ctx) catch unreachable;
         if (!result.found or ctx.out_of_bounds) return "";
-        if (ctx.should_stop) break;
+        if (ctx.out_of_memory) break;
     }
-    return buf[0..ctx.buf_anchor];
+    return list.toOwnedSlice() catch unreachable;
 }
 
 test "getRange no end" {
@@ -2145,7 +2128,7 @@ fn testGetRange(source: []const u8, expected_str: []const u8, start: CursorPoint
     var buf: [buf_size]u8 = undefined;
     const root = try Node.fromString(testing_allocator, &content_arena, source);
     defer freeRcNode(testing_allocator, root);
-    const result = getRange(root, start, end, &buf, buf_size);
+    const result = getRange(root, start, end, &buf);
     try eqStr(expected_str, result);
 }
 
