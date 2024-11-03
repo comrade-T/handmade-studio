@@ -481,8 +481,9 @@ fn parse(self: *@This()) ?[]const ts.Range {
         .read = struct {
             fn read(payload: ?*anyopaque, _: u32, ts_point: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
                 const ctx: *ParseCtx = @ptrCast(@alignCast(payload orelse return ""));
-                const result = ctx.buf.ropeman.dump(
+                const result = ctx.buf.ropeman.getRange(
                     .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.column) },
+                    null,
                     &ctx.parse_buf,
                     PARSE_BUFFER_SIZE,
                 );

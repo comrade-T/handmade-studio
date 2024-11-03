@@ -1997,23 +1997,26 @@ fn __inputCharsOneAfterAnotherAt0Position(a: Allocator, arena: *ArenaAllocator, 
     return root;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Dump
+////////////////////////////////////////////////////////////////////////////////////////////// GetRange
 
-const DumpCtx = struct {
+const GetRangeCtx = struct {
     buf_anchor: usize = 0,
     buf: []u8,
     buf_size: usize,
+
     col: usize,
     should_stop: bool = false,
     out_of_bounds: bool = false,
+
     last_line: bool = false,
+    last_line_col: ?usize = null,
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         defer {
             ctx.col -|= leaf.noc;
             if (ctx.buf_size - ctx.buf_anchor == 0) ctx.should_stop = true;
-            if (leaf.eol and ctx.buf_anchor < ctx.buf_size) {
+            if (leaf.eol and ctx.buf_anchor < ctx.buf_size and (ctx.last_line_col == null)) {
                 ctx.buf[ctx.buf_anchor] = '\n';
                 ctx.buf_anchor += 1;
             }
@@ -2038,9 +2041,11 @@ const DumpCtx = struct {
         }
 
         var buf_end: usize = 0;
-        if (leaf.buf.len + ctx.buf_anchor > ctx.buf_size) {
+
+        if (leaf.buf.len + ctx.buf_anchor > ctx.buf_size or ctx.last_line_col != null) {
             var iter = code_point.Iterator{ .bytes = leaf.buf, .i = @intCast(ctx.col) };
             while (iter.next()) |cp| {
+                if (ctx.last_line_col) |limit| if (iter.i >= limit + 1) break;
                 if (ctx.buf_anchor + cp.offset + cp.len - buf_start > ctx.buf_size) break;
                 buf_end = cp.offset + cp.len;
             }
@@ -2059,41 +2064,47 @@ const DumpCtx = struct {
     }
 };
 
-pub fn dump(node: RcNode, target: CursorPoint, buf: []u8, buf_size: usize) []const u8 {
+pub fn getRange(node: RcNode, start: CursorPoint, end: ?CursorPoint, buf: []u8, buf_size: usize) []const u8 {
     const num_of_lines = node.value.weights().bols;
-    if (target.line > num_of_lines -| 1) return "";
-    var ctx: DumpCtx = .{ .col = target.col, .buf = buf, .buf_size = buf_size };
-    for (target.line..num_of_lines) |i| {
-        if (i == num_of_lines -| 1) ctx.last_line = true;
-        const result = walkFromLineBegin(idc_if_it_leaks, node, i, DumpCtx.walker, &ctx) catch unreachable;
+    if (start.line > num_of_lines -| 1) return "";
+
+    var ctx: GetRangeCtx = .{ .col = start.col, .buf = buf, .buf_size = buf_size };
+    const end_range = if (end == null) num_of_lines else end.?.line + 1;
+
+    for (start.line..end_range) |i| {
+        if (i == end_range -| 1) {
+            ctx.last_line = true;
+            if (end) |e| ctx.last_line_col = e.col;
+        }
+        const result = walkFromLineBegin(idc_if_it_leaks, node, i, GetRangeCtx.walker, &ctx) catch unreachable;
         if (!result.found or ctx.out_of_bounds) return "";
         if (ctx.should_stop) break;
     }
     return buf[0..ctx.buf_anchor];
 }
 
-test dump {
-    try testDump("hello\nworld", "hello\nworld", .{ .line = 0, .col = 0 }, 1024);
-    try testDump("hello\nworld", "ello\nworld", .{ .line = 0, .col = 1 }, 1024);
-    try testDump("hello\nworld", "world", .{ .line = 1, .col = 0 }, 1024);
-    try testDump("hello\nworld", "orld", .{ .line = 1, .col = 1 }, 1024);
+test "getRange no end" {
+    try testGetRangeNoEnd("hello\nworld", "hello\nworld", .{ .line = 0, .col = 0 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "ello\nworld", .{ .line = 0, .col = 1 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "world", .{ .line = 1, .col = 0 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "orld", .{ .line = 1, .col = 1 }, 1024);
 
-    try testDump("hello\nworld", "hell", .{ .line = 0, .col = 0 }, 4);
-    try testDump("hello\nworld", "ello", .{ .line = 0, .col = 1 }, 4);
-    try testDump("hello\nworld", "llo\n", .{ .line = 0, .col = 2 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "hell", .{ .line = 0, .col = 0 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "ello", .{ .line = 0, .col = 1 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "llo\n", .{ .line = 0, .col = 2 }, 4);
 
-    try testDump("hello\nworld", "worl", .{ .line = 1, .col = 0 }, 4);
-    try testDump("hello\nworld", "orld", .{ .line = 1, .col = 1 }, 4);
-    try testDump("hello\nworld", "rld", .{ .line = 1, .col = 2 }, 4);
-    try testDump("hello\nworld", "ld", .{ .line = 1, .col = 3 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "worl", .{ .line = 1, .col = 0 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "orld", .{ .line = 1, .col = 1 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "rld", .{ .line = 1, .col = 2 }, 4);
+    try testGetRangeNoEnd("hello\nworld", "ld", .{ .line = 1, .col = 3 }, 4);
 
     // out of bounds
-    try testDump("hello\nworld", "", .{ .line = 0, .col = 5 }, 1024);
-    try testDump("hello\nworld", "", .{ .line = 0, .col = 6 }, 1024);
-    try testDump("hello\nworld", "", .{ .line = 1, .col = 5 }, 1024);
-    try testDump("hello\nworld", "", .{ .line = 1, .col = 6 }, 1024);
-    try testDump("hello\nworld", "", .{ .line = 2, .col = 0 }, 1024);
-    try testDump("hello\nworld", "", .{ .line = 100, .col = 0 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 0, .col = 5 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 0, .col = 6 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 1, .col = 5 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 1, .col = 6 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 2, .col = 0 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 100, .col = 0 }, 1024);
 
     {
         const source =
@@ -2102,7 +2113,7 @@ test dump {
             \\
             \\const c = 50;
         ;
-        try testDump(source,
+        try testGetRangeNoEnd(source,
             \\const a = 10;
             \\const b = 20;
             \\
@@ -2111,14 +2122,35 @@ test dump {
     }
 }
 
-fn testDump(source: []const u8, expected_str: []const u8, point: CursorPoint, comptime buf_size: usize) !void {
+test "getRange() with end point" {
+    try testGetRange("hello\nworld", "hello", .{ .line = 0, .col = 0 }, .{ .line = 0, .col = 5 }, 1024);
+    try testGetRange("hello\nworld", "hello\n", .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 }, 1024);
+    try testGetRange("hello\nworld", "hello\nworld", .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 5 }, 1024);
+    try testGetRange("hello\nworld", "wo", .{ .line = 1, .col = 0 }, .{ .line = 1, .col = 2 }, 1024);
+
+    try testGetRange("const a = 10;", "const", .{ .line = 0, .col = 0 }, .{ .line = 0, .col = 5 }, 1024);
+
+    try testGetRange("hello\nworld\nand\nvenus", "world\nand", .{ .line = 1, .col = 0 }, .{ .line = 2, .col = 3 }, 1024);
+    try testGetRange("hello\nworld\nand\nvenus", "world\nand\n", .{ .line = 1, .col = 0 }, .{ .line = 3, .col = 0 }, 1024);
+
+    // end col out of bounds
+    try testGetRange("hello\nworld", "world", .{ .line = 1, .col = 0 }, .{ .line = 1, .col = 6 }, 1024);
+    try testGetRange("hello\nworld", "world", .{ .line = 1, .col = 0 }, .{ .line = 1, .col = 8 }, 1024);
+    try testGetRange("hello\nworld", "world", .{ .line = 1, .col = 0 }, .{ .line = 1, .col = 1000 }, 1024);
+}
+
+fn testGetRange(source: []const u8, expected_str: []const u8, start: CursorPoint, end: ?CursorPoint, comptime buf_size: usize) !void {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
     var buf: [buf_size]u8 = undefined;
     const root = try Node.fromString(testing_allocator, &content_arena, source);
     defer freeRcNode(testing_allocator, root);
-    const result = dump(root, point, &buf, buf_size);
+    const result = getRange(root, start, end, &buf, buf_size);
     try eqStr(expected_str, result);
+}
+
+fn testGetRangeNoEnd(source: []const u8, expected_str: []const u8, start: CursorPoint, comptime buf_size: usize) !void {
+    try testGetRange(source, expected_str, start, null, buf_size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Line u21 alloc
