@@ -2138,31 +2138,31 @@ fn testGetRangeNoEnd(source: []const u8, expected_str: []const u8, start: Cursor
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Line u21 alloc
 
-const GetLineU21AllocCtx = struct {
-    list: ArrayList(u21),
+const GetLineAllocCtx = struct {
+    list: ArrayList(u8),
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         var iter = code_point.Iterator{ .bytes = leaf.buf };
-        while (iter.next()) |cp| try ctx.list.append(cp.code);
+        while (iter.next()) |cp| try ctx.list.appendSlice(leaf.buf[cp.offset .. cp.offset + cp.len]);
         if (leaf.eol) return WalkResult.stop;
         return WalkResult.keep_walking;
     }
 };
 
-pub fn getLineU21Alloc(a: Allocator, node: RcNode, line: usize) ![]const u21 {
-    var ctx: GetLineU21AllocCtx = .{ .list = try ArrayList(u21).initCapacity(a, 1024) };
+pub fn getLineAlloc(a: Allocator, node: RcNode, line: usize) ![]const u8 {
+    var ctx: GetLineAllocCtx = .{ .list = try ArrayList(u8).initCapacity(a, 1024) };
     errdefer ctx.list.deinit();
-    const result = try walkFromLineBegin(a, node, line, GetLineU21AllocCtx.walker, &ctx);
+    const result = try walkFromLineBegin(a, node, line, GetLineAllocCtx.walker, &ctx);
     if (!result.found) return error.NotFound;
     return try ctx.list.toOwnedSlice();
 }
 
-test getLineU21Alloc {
+test getLineAlloc {
     var content_arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
     const root = try Node.fromString(idc_if_it_leaks, &content_arena, "hello\nworld");
-    try eqStrU21("hello", try getLineU21Alloc(idc_if_it_leaks, root, 0));
-    try eqStrU21("world", try getLineU21Alloc(idc_if_it_leaks, root, 1));
+    try eqStrU21("hello", try getLineAlloc(idc_if_it_leaks, root, 0));
+    try eqStrU21("world", try getLineAlloc(idc_if_it_leaks, root, 1));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

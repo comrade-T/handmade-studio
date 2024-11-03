@@ -35,6 +35,7 @@ const CursorPoint = Buffer.CursorPoint;
 const CursorRange = Buffer.CursorRange;
 const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
+const ContentCallback = LangSuite.QueryFilter.ContentCallback;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -42,8 +43,6 @@ a: Allocator,
 
 from: InitFrom,
 path: []const u8 = "",
-
-contents: []const u8 = undefined,
 
 buf: *Buffer,
 ls: ?*LangSuite = null,
@@ -59,12 +58,9 @@ pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSui
         .cap_list = CapList.init(a),
     };
     switch (from) {
-        .string => {
-            self.contents = try self.a.dupe(u8, source);
-        },
+        .string => {},
         .file => {
             self.path = source;
-            self.contents = try self.buf.ropeman.toString(self.a, .lf);
             try self.initiateTreeSitterForFile(lang_hub);
             try self.populateCapListWithAllCaptures();
         },
@@ -92,7 +88,6 @@ test init {
 
 pub fn deinit(self: *@This()) void {
     self.buf.destroy();
-    self.a.free(self.contents);
     for (self.cap_list.items) |slice| self.a.free(slice);
     self.cap_list.deinit();
 }
@@ -109,7 +104,16 @@ const CapturedLinesMap = std.AutoArrayHashMap(usize, StoredCaptureList);
 const StoredCaptureList = std.ArrayListUnmanaged(StoredCapture);
 const max_int_u32 = std.math.maxInt(u32);
 
-fn getCaptures(self: *@This(), entire_file: []const u8, start: usize, end: usize) !CapturedLinesMap {
+fn callback(ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8 {
+    const self = @as(*WindowSource, @ptrCast(@alignCast(ctx)));
+    return self.buf.ropeman.getRange(
+        .{ .line = start[0], .col = start[1] },
+        .{ .line = end[0], .col = end[1] },
+        buf,
+    );
+}
+
+fn getCaptures(self: *@This(), start: usize, end: usize) !CapturedLinesMap {
     assert(self.ls != null and self.buf.tstree != null);
 
     var map = CapturedLinesMap.init(self.a);
@@ -127,7 +131,7 @@ fn getCaptures(self: *@This(), entire_file: []const u8, start: usize, end: usize
         );
 
         var targets_buf: [8]LangSuite.QueryFilter.CapturedTarget = undefined;
-        while (sq.filter.nextMatch(entire_file, 0, &targets_buf, cursor)) |match| {
+        while (sq.filter.nextMatch(callback, self, &targets_buf, cursor)) |match| {
             if (!match.all_predicates_matched) continue;
             for (match.targets) |target| {
                 for (target.start_line..target.end_line + 1) |linenr| {
@@ -193,7 +197,7 @@ test getCaptures {
         try eqStr("punctuation.delimiter", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(33));
 
         { // entire file
-            var map = try ws.getCaptures(source, 0, ws.buf.ropeman.root.value.weights().bols - 1);
+            var map = try ws.getCaptures(0, ws.buf.ropeman.root.value.weights().bols - 1);
             defer {
                 for (map.values()) |*list| list.deinit(testing_allocator);
                 map.deinit();
@@ -206,7 +210,7 @@ test getCaptures {
         }
 
         { // only 1st line
-            var map = try ws.getCaptures(source, 0, 0);
+            var map = try ws.getCaptures(0, 0);
             defer {
                 for (map.values()) |*list| list.deinit(testing_allocator);
                 map.deinit();
@@ -223,7 +227,7 @@ test getCaptures {
 fn populateCapListWithAllCaptures(self: *@This()) !void {
     assert(self.buf.tstree != null);
 
-    var map = try self.getCaptures(self.contents, 0, self.buf.ropeman.getNumOfLines() - 1);
+    var map = try self.getCaptures(0, self.buf.ropeman.getNumOfLines() - 1);
     defer map.deinit();
     assert(map.values().len == self.buf.ropeman.getNumOfLines());
 
@@ -248,11 +252,6 @@ fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
     ws.a.free(value);
 }
 
-fn updateContents(self: *@This()) !void {
-    self.a.free(self.contents);
-    self.contents = try self.buf.ropeman.toString(self.a, .lf);
-}
-
 pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
     assert(destinations.len > 0);
 
@@ -260,15 +259,13 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
     defer self.a.free(points);
 
     assert(points.len == destinations.len);
-    try self.updateContents();
-
     if (self.buf.tstree == null) return;
 
     assert(ts_ranges != null and self.buf.tstree != null);
     const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
     assert(start_line <= end_line);
 
-    var map = try self.getCaptures(self.contents, start_line, end_line);
+    var map = try self.getCaptures(start_line, end_line);
     defer map.deinit();
 
     const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
@@ -330,13 +327,11 @@ pub fn deleteRanges(self: *@This(), ranges: []const CursorRange) !void {
     defer self.a.free(points);
 
     assert(points.len == ranges.len);
-    try self.updateContents();
-
     assert(ts_ranges != null and self.buf.tstree != null);
     const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
     assert(start_line <= end_line);
 
-    var map = try self.getCaptures(self.contents, start_line, end_line);
+    var map = try self.getCaptures(start_line, end_line);
     defer map.deinit();
 
     const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
@@ -419,18 +414,23 @@ const IDs = struct {
 };
 
 pub const LineIterator = struct {
-    col: usize,
+    col: usize = 0,
+    contents: []const u8,
     cp_iter: code_point.Iterator,
 
     captures_start: usize = 0,
     ids_buf: [8]IDs = undefined,
 
-    pub fn init(ws: *const WindowSource, line: usize, col: usize) !LineIterator {
-        const start_byte = try ws.buf.ropeman.getByteOffsetOfRoot(line, col);
+    pub fn init(a: Allocator, ws: *const WindowSource, linenr: usize) !LineIterator {
+        const line_contents = try ws.buf.ropeman.getLineAlloc(a, linenr);
         return LineIterator{
-            .col = col,
-            .cp_iter = code_point.Iterator{ .bytes = ws.contents[start_byte..] },
+            .contents = line_contents,
+            .cp_iter = code_point.Iterator{ .bytes = line_contents },
         };
+    }
+
+    pub fn deinit(self: *@This(), a: Allocator) void {
+        a.free(self.contents);
     }
 
     pub const Result = struct {
@@ -471,7 +471,7 @@ test LineIterator {
     {
         var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig", &lang_hub);
         defer ws.deinit();
-        try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", ws.contents);
+        try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
         try testLineIter(&ws, 0, &.{
             .{ "const", &.{"type.qualifier"} },
@@ -511,7 +511,8 @@ const Expected = struct { []const u8, []const []const u8 };
 
 fn testLineIter(ws: *const WindowSource, line: usize, exp: []const ?Expected) !void {
     const captures = ws.cap_list.items[line];
-    var iter = try LineIterator.init(ws, line, 0);
+    var iter = try LineIterator.init(testing_allocator, ws, line);
+    defer iter.deinit(testing_allocator);
     for (exp, 0..) |may_e, clump_index| {
         if (may_e == null) {
             try eq(null, iter.next(captures));

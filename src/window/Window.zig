@@ -5,6 +5,7 @@ const ztracy = @import("ztracy");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
+const idc_if_it_leaks = std.heap.page_allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
@@ -110,7 +111,8 @@ pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
         if (x + self.cached.lines.items[linenr].width < view.start.x) continue;
         if (y + self.cached.lines.items[linenr].height < view.start.y) continue;
 
-        var iter = WindowSource.LineIterator.init(self.ws, linenr, 0) catch continue;
+        var iter = WindowSource.LineIterator.init(self.a, self.ws, linenr) catch continue;
+        defer iter.deinit(self.a);
         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
             defer x += width;
@@ -156,7 +158,8 @@ fn createInitialLineSizeList(self: *@This(), supermarket: Supermarket) !void {
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
         var line_width: f32 = 0;
-        var iter = try WindowSource.LineIterator.init(self.ws, linenr, 0);
+        var iter = try WindowSource.LineIterator.init(self.a, self.ws, linenr);
+        defer iter.deinit(self.a);
         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
             line_width += width;
@@ -176,7 +179,7 @@ test createInitialLineSizeList {
 
     var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
     defer ws.deinit();
-    try eqStr("const a = 10;\nvar not_false = true;\n", ws.contents);
+    try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
     {
         var win = try Window.create(testing_allocator, &ws, .{}, supermarket);

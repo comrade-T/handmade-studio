@@ -485,7 +485,6 @@ fn parse(self: *@This()) ?[]const ts.Range {
                     .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.column) },
                     null,
                     &ctx.parse_buf,
-                    PARSE_BUFFER_SIZE,
                 );
 
                 bytes_read.* = @intCast(result.len);

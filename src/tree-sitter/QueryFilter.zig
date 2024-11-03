@@ -570,7 +570,7 @@ const Expected = struct {
     contents: []const []const u8,
 };
 
-pub const GetRangeForTestingCtx = struct {
+const GetRangeForTestingCtx = struct {
     source: []const u8,
 
     fn getRange(ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8 {
