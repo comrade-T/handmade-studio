@@ -11,9 +11,197 @@ const testing_allocator = std.testing.allocator;
 
 const GetLineCallback = *const fn (a: Allocator, ctx: *anyopaque, linenr: usize) []const u21;
 
+pub fn forwardByWord(
+    a: Allocator,
+    destination: WordBoundaryType,
+    ctx: *anyopaque,
+    cb: GetLineCallback,
+    last_linenr: usize,
+    last_colnr_of_last_line: usize,
+    input_linenr: usize,
+    input_colnr: usize,
+) struct { usize, usize } {
+    var linenr = input_linenr;
+    var colnr = input_colnr + 1;
+    if (linenr >= last_linenr and colnr >= last_colnr_of_last_line) return .{ last_linenr, last_colnr_of_last_line };
+
+    while (true) {
+        var line = cb(a, ctx, linenr);
+        defer a.free(line);
+
+        defer colnr += 1;
+        if (colnr >= line.len) {
+            if (linenr == last_linenr) return .{ linenr, line.len -| 1 };
+
+            linenr += 1;
+            a.free(line);
+            line = cb(a, ctx, linenr);
+            colnr = 0;
+        }
+
+        if (foundTargetBoundary(line, colnr, destination)) return .{ linenr, colnr };
+    }
+}
+
+test forwardByWord {
+    // .end
+    {
+        var mock = try Mockery.init(testing_allocator, "hello world");
+        //                                                              4     0
+        defer mock.deinit();
+        try testForwardByWord(.{ 0, 4 }, .end, &mock, 0, 0, 3);
+        try testForwardByWord(.{ 0, 10 }, .end, &mock, 0, 4, 10);
+        try testForwardByWord(.{ 0, 10 }, .end, &mock, 0, 11, 100); // out of bounds
+    }
+    {
+        var mock = try Mockery.init(testing_allocator, "one#two--3|||four;;;;");
+        //                                                            23  6 89  2   6   0
+        defer mock.deinit();
+        try testForwardByWord(.{ 0, 2 }, .end, &mock, 0, 0, 1);
+        try testForwardByWord(.{ 0, 3 }, .end, &mock, 0, 2, 2);
+        try testForwardByWord(.{ 0, 6 }, .end, &mock, 0, 3, 5);
+        try testForwardByWord(.{ 0, 8 }, .end, &mock, 0, 6, 7);
+        try testForwardByWord(.{ 0, 9 }, .end, &mock, 0, 8, 8);
+        try testForwardByWord(.{ 0, 12 }, .end, &mock, 0, 9, 11);
+        try testForwardByWord(.{ 0, 16 }, .end, &mock, 0, 12, 15);
+        try testForwardByWord(.{ 0, 20 }, .end, &mock, 0, 16, 19);
+    }
+    {
+        var mock = try Mockery.init(testing_allocator, "draw forth\nmy map");
+        //                                                             3     9   1   5
+        defer mock.deinit();
+        try testForwardByWord(.{ 0, 3 }, .end, &mock, 0, 0, 2);
+        try testForwardByWord(.{ 0, 9 }, .end, &mock, 0, 3, 8);
+        try testForwardByWord(.{ 1, 1 }, .end, &mock, 0, 9, 9);
+        try testForwardByWord(.{ 1, 1 }, .end, &mock, 1, 0, 0);
+        try testForwardByWord(.{ 1, 5 }, .end, &mock, 1, 1, 4);
+        try testForwardByWord(.{ 1, 5 }, .end, &mock, 1, 5, 100); // out of bounds
+    }
+    // start
+    {
+        {
+            var mock = try Mockery.init(testing_allocator, "hello world");
+            //                                                                6   0
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
+            try testForwardByWord(.{ 0, 10 }, .start, &mock, 0, 6, 9);
+            try testForwardByWord(.{ 0, 10 }, .start, &mock, 0, 10, 100); // out of bounds
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "hello; world");
+            //                                                               5 7   1
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 5 }, .start, &mock, 0, 0, 4);
+            try testForwardByWord(.{ 0, 7 }, .start, &mock, 0, 5, 6);
+            try testForwardByWord(.{ 0, 11 }, .start, &mock, 0, 7, 11);
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "hello ; world");
+            //                                                                6 8   2
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
+            try testForwardByWord(.{ 0, 8 }, .start, &mock, 0, 6, 7);
+            try testForwardByWord(.{ 0, 12 }, .start, &mock, 0, 8, 12);
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "hello ;; world");
+            //                                                                6  9   3
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
+            try testForwardByWord(.{ 0, 9 }, .start, &mock, 0, 6, 8);
+            try testForwardByWord(.{ 0, 13 }, .start, &mock, 0, 9, 13);
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "hello  world one  two");
+            //                                                                 7     3    8 0
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 7 }, .start, &mock, 0, 0, 6);
+            try testForwardByWord(.{ 0, 13 }, .start, &mock, 0, 7, 12);
+            try testForwardByWord(.{ 0, 18 }, .start, &mock, 0, 13, 17);
+            try testForwardByWord(.{ 0, 20 }, .start, &mock, 0, 18, 20);
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "one|two||3|||four");
+            //                                                             34  7 90  3  6
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 3 }, .start, &mock, 0, 0, 2);
+            try testForwardByWord(.{ 0, 4 }, .start, &mock, 0, 3, 3);
+            try testForwardByWord(.{ 0, 7 }, .start, &mock, 0, 4, 6);
+            try testForwardByWord(.{ 0, 9 }, .start, &mock, 0, 7, 8);
+            try testForwardByWord(.{ 0, 10 }, .start, &mock, 0, 9, 9);
+            try testForwardByWord(.{ 0, 13 }, .start, &mock, 0, 10, 12);
+            try testForwardByWord(.{ 0, 16 }, .start, &mock, 0, 13, 16);
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "const std = @import(\"std\");\nconst");
+            //                                                          0     6   0 2      9  1   4    0   4
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
+            try testForwardByWord(.{ 0, 10 }, .start, &mock, 0, 6, 9);
+            try testForwardByWord(.{ 0, 12 }, .start, &mock, 0, 10, 11);
+            try testForwardByWord(.{ 0, 19 }, .start, &mock, 0, 12, 18);
+            try testForwardByWord(.{ 0, 21 }, .start, &mock, 0, 19, 20);
+            try testForwardByWord(.{ 0, 24 }, .start, &mock, 0, 21, 23);
+            try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 24, 26);
+            try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 27, 100); // out of bounds on line 0
+            try testForwardByWord(.{ 1, 4 }, .start, &mock, 1, 0, 3);
+            try testForwardByWord(.{ 1, 4 }, .start, &mock, 1, 4, 100); // out of bounds on line 1
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "hello\nworld\nvenus\nmars");
+            //                                                          0      0      0      0  3
+            defer mock.deinit();
+            try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 0, 4);
+            try testForwardByWord(.{ 2, 0 }, .start, &mock, 1, 0, 4);
+            try testForwardByWord(.{ 3, 0 }, .start, &mock, 2, 0, 4);
+            try testForwardByWord(.{ 3, 3 }, .start, &mock, 3, 0, 2);
+            try testForwardByWord(.{ 3, 3 }, .start, &mock, 3, 3, 100); // out of bouds on line 3
+        }
+        {
+            var mock = try Mockery.init(testing_allocator, "hello world\nvenus and mars");
+            //                                                          0     6      0     6   0  3
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
+            try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 6, 10);
+            try testForwardByWord(.{ 1, 6 }, .start, &mock, 1, 0, 5);
+            try testForwardByWord(.{ 1, 10 }, .start, &mock, 1, 6, 9);
+            try testForwardByWord(.{ 1, 13 }, .start, &mock, 1, 10, 13);
+        }
+        { // empty line check
+            var mock = try Mockery.init(testing_allocator, "hello world\n\nand mars");
+            //                                                          0     6      0 0   4  7
+            defer mock.deinit();
+            try testForwardByWord(.{ 0, 6 }, .start, &mock, 0, 0, 5);
+            try testForwardByWord(.{ 1, 0 }, .start, &mock, 0, 6, 10);
+            try testForwardByWord(.{ 2, 0 }, .start, &mock, 1, 0, 0);
+            try testForwardByWord(.{ 2, 4 }, .start, &mock, 2, 0, 3);
+            try testForwardByWord(.{ 2, 7 }, .start, &mock, 2, 4, 7);
+        }
+    }
+}
+
+fn testForwardByWord(expected: struct { usize, usize }, boundary_type: WordBoundaryType, mock: *Mockery, linenr: usize, start_col: usize, end_col: usize) !void {
+    for (start_col..end_col + 1) |colnr| {
+        const result = forwardByWord(
+            testing_allocator,
+            boundary_type,
+            mock,
+            Mockery.getLine,
+            mock.lines.len - 1,
+            mock.lines[mock.lines.len - 1].len - 1,
+            linenr,
+            colnr,
+        );
+        try eq(expected, result);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 pub fn backwardsByWord(a: Allocator, destination: WordBoundaryType, ctx: *anyopaque, cb: GetLineCallback, input_linenr: usize, input_colnr: usize) struct { usize, usize } {
     var linenr = input_linenr;
     var colnr = input_colnr -| 1;
+
     while (true) {
         var line = cb(a, ctx, linenr);
         defer a.free(line);
@@ -31,6 +219,7 @@ pub fn backwardsByWord(a: Allocator, destination: WordBoundaryType, ctx: *anyopa
 
         if (foundTargetBoundary(line, colnr, destination)) return .{ linenr, colnr };
     }
+
     return .{ linenr, colnr };
 }
 
