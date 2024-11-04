@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) void {
 
     const cursor_manager = addTestableModule(&bops, "src/window/CursorManager.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "RopeMan", .module = ropeman.module },
     }, zig_build_test_step);
     _ = cursor_manager;
 
