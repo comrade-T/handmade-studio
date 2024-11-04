@@ -50,22 +50,54 @@ const Cursor = struct {
 
     ///////////////////////////// w/W
 
-    pub fn forwardWord(self: *@This(), a: Allocator, count: usize, line_cb: GetLineCallback, ctx: *anyopaque) void {
-        const line = line_cb(ctx, a, self.line);
-        defer a.free(line);
+    pub fn forwardWord(self: *@This(), a: Allocator, count: usize, nol_cb: GetNumOfLinesCallback, line_cb: GetLineCallback, ctx: *anyopaque) void {
+        for (0..count) |_| self.forwardWordSingle(a, nol_cb, line_cb, ctx);
+    }
+
+    fn forwardWordSingle(self: *@This(), a: Allocator, nol_cb: GetNumOfLinesCallback, line_cb: GetLineCallback, ctx: *anyopaque) !void {
+        var start_col_byte_kind = CharKind.not_found;
+        var has_iterated_past_a_space = false;
+
+        const num_of_lines = nol_cb(ctx);
+        for (self.line..num_of_lines) |linenr| {
+            const line = line_cb(ctx, a, linenr);
+            defer a.free(line);
+
+            self.line = linenr;
+            switch (findForwardTargetInLine(self.col, line, &start_col_byte_kind, &has_iterated_past_a_space)) {
+                .not_found => self.col = if (self.line + 1 >= num_of_lines) line.len else 0,
+                .found => |colnr| self.col = colnr,
+            }
+        }
+    }
+
+    const FindForwardTargetInLineResult = union(enum) { not_found, found: usize };
+    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, start_col_byte_kind: *CharKind, has_iterated_past_a_space: *bool) FindForwardTargetInLineResult {
+        if (line.len == 0) {
+            has_iterated_past_a_space.* = true;
+            return .not_found;
+        }
 
         var iter = code_point.Iterator{ .bytes = line };
         var i: usize = 0;
-        var current_col_byte_kind = ByteKind.not_found;
         while (iter.next()) |cp| {
             defer i += 1;
-            if (i == self.col) current_col_byte_kind = getByteType(u21, cp.code);
+            const byte_type = getCharKind(u21, cp.code);
+
+            if (start_col_byte_kind == .not_found) {
+                if (i == cursor_col) start_col_byte_kind.* = byte_type;
+                continue;
+            }
+
+            switch (byte_type) {
+                .not_found => unreachable,
+                .spacing => has_iterated_past_a_space.* = true,
+                .char => if (has_iterated_past_a_space or start_col_byte_kind == .symbol) return .{ .found = i },
+                .symbol => if (has_iterated_past_a_space or start_col_byte_kind == .char) return .{ .found = i },
+            }
         }
 
-        assert(current_col_byte_kind != .not_found);
-        std.debug.print("current_col_byte_kind: '{any}'\n", .{current_col_byte_kind});
-
-        _ = count;
+        return .not_found;
     }
 };
 
@@ -133,9 +165,9 @@ test "Cursor - Vim w/W" {
     }
 }
 
-const ByteKind = enum { spacing, symbol, maybe_char, not_found };
+const CharKind = enum { spacing, symbol, char, not_found };
 
-fn getByteType(T: type, b: T) ByteKind {
+fn getCharKind(T: type, b: T) CharKind {
     return switch (b) {
         ' ' => .spacing,
         '\t' => .spacing,
@@ -163,7 +195,7 @@ fn getByteType(T: type, b: T) ByteKind {
         '#' => .symbol,
         '-' => .symbol,
 
-        else => .maybe_char,
+        else => .char,
     };
 }
 
