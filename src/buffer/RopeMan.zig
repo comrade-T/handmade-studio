@@ -87,13 +87,17 @@ pub fn getByteOffsetOfPosition(node: RcNode, line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(node, line, col);
 }
 
-pub fn getNumOfLines(self: *@This()) usize {
+pub fn getNumOfLines(self: *const @This()) usize {
     return self.root.value.weights().bols;
 }
 
-// pub fn getLineAlloc(self: *@This(), a: Allocator, linenr: usize) ![]const u8 {
-//     return try rcr.getLineAlloc(a, self.root, linenr);
-// }
+pub fn getNumOfCharsInLine(self: *const @This(), line: usize) usize {
+    return rcr.getNumOfCharsInLine(self.root, line);
+}
+
+pub fn getLineAlloc(self: *const @This(), a: Allocator, linenr: usize, capacity: usize) ![]const u8 {
+    return rcr.getLineAlloc(a, self.root, linenr, capacity);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
 
