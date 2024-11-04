@@ -51,11 +51,11 @@ const Cursor = struct {
 
     ///////////////////////////// w/W
 
-    pub fn forwardWord(self: *@This(), a: Allocator, count: usize, ropeman: *const RopeMan) void {
-        for (0..count) |_| self.forwardWordSingleTime(a, ropeman);
+    pub fn forwardWord(self: *@This(), a: Allocator, count: usize, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
+        for (0..count) |_| self.forwardWordSingleTime(a, boundary_kind, ropeman);
     }
 
-    fn forwardWordSingleTime(self: *@This(), a: Allocator, ropeman: *const RopeMan) void {
+    fn forwardWordSingleTime(self: *@This(), a: Allocator, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
         var start_kind = CharKind.not_found;
         var passed_a_space = false;
 
@@ -65,7 +65,7 @@ const Cursor = struct {
             defer a.free(line);
 
             self.line = linenr;
-            switch (findForwardTargetInLine(self.col, line, &start_kind, &passed_a_space)) {
+            switch (findForwardTargetInLine(self.col, line, boundary_kind, &start_kind, &passed_a_space)) {
                 .not_found => self.col = if (self.line + 1 >= num_of_lines) line.len else 0,
                 .found => |colnr| {
                     self.col = colnr;
@@ -75,8 +75,9 @@ const Cursor = struct {
         }
     }
 
+    const BoundaryKind = enum { word, BIG_WORD };
     const FindForwardTargetInLineResult = union(enum) { not_found, found: usize };
-    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, start_kind: *CharKind, passed_a_space: *bool) FindForwardTargetInLineResult {
+    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, boundary_kind: BoundaryKind, start_kind: *CharKind, passed_a_space: *bool) FindForwardTargetInLineResult {
         if (start_kind.* != .not_found) passed_a_space.* = true;
         if (line.len == 0) return .not_found;
 
@@ -94,8 +95,8 @@ const Cursor = struct {
             switch (byte_type) {
                 .not_found => unreachable,
                 .spacing => passed_a_space.* = true,
-                .char => if (passed_a_space.* or start_kind.* == .symbol) return .{ .found = i },
-                .symbol => if (passed_a_space.* or start_kind.* == .char) return .{ .found = i },
+                .char => if (passed_a_space.* or (boundary_kind == .word and start_kind.* == .symbol)) return .{ .found = i },
+                .symbol => if (passed_a_space.* or (boundary_kind == .word and start_kind.* == .char)) return .{ .found = i },
             }
         }
 
@@ -165,88 +166,113 @@ test "Cursor - forwardWord()" {
         {
             var c = Cursor{ .line = 0, .col = 0 };
 
-            c.forwardWord(testing_allocator, 1, &ropeman);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
             try eq(Cursor{ .line = 0, .col = 6 }, c);
 
-            c.forwardWord(testing_allocator, 1, &ropeman);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 0 }, c);
 
-            c.forwardWord(testing_allocator, 1, &ropeman);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 3 }, c);
 
-            c.forwardWord(testing_allocator, 1, &ropeman);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 8 }, c);
         }
         {
             var c = Cursor{ .line = 0, .col = 0 };
 
-            c.forwardWord(testing_allocator, 2, &ropeman);
+            c.forwardWord(testing_allocator, 2, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 0 }, c);
 
-            c.forwardWord(testing_allocator, 2, &ropeman);
+            c.forwardWord(testing_allocator, 2, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 8 }, c);
 
-            c.forwardWord(testing_allocator, 100, &ropeman);
+            c.forwardWord(testing_allocator, 100, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 8 }, c);
         }
         {
             var c = Cursor{ .line = 0, .col = 0 };
 
-            c.forwardWord(testing_allocator, 100, &ropeman);
+            c.forwardWord(testing_allocator, 100, .word, &ropeman);
             try eq(Cursor{ .line = 1, .col = 8 }, c);
         }
     }
     {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi venus");
         defer ropeman.deinit();
-        var c = Cursor{ .line = 0, .col = 0 };
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 5 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 5 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 7 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 7 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 12 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 12 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 1, .col = 0 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 0 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 1, .col = 3 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 3 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 1, .col = 8 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 8 }, c);
+        }
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
+
+            c.forwardWord(testing_allocator, 1, .BIG_WORD, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 7 }, c);
+
+            c.forwardWord(testing_allocator, 1, .BIG_WORD, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 0 }, c);
+
+            c.forwardWord(testing_allocator, 1, .BIG_WORD, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 3 }, c);
+
+            c.forwardWord(testing_allocator, 1, .BIG_WORD, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 8 }, c);
+        }
     }
     {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one;two--3|||four;");
         defer ropeman.deinit();
-        var c = Cursor{ .line = 0, .col = 0 };
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 3 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 3 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 4 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 4 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 7 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 7 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 9 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 9 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 10 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 10 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 13 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 13 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 17 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 17 }, c);
 
-        c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 18 }, c);
+            c.forwardWord(testing_allocator, 1, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 18 }, c);
+        }
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
+
+            c.forwardWord(testing_allocator, 1, .BIG_WORD, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 18 }, c);
+        }
     }
 }
 
