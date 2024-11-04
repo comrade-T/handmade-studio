@@ -56,8 +56,8 @@ const Cursor = struct {
     }
 
     fn forwardWordSingleTime(self: *@This(), a: Allocator, ropeman: *const RopeMan) void {
-        var start_col_byte_kind = CharKind.not_found;
-        var has_iterated_past_a_space = false;
+        var start_kind = CharKind.not_found;
+        var passed_a_space = false;
 
         const num_of_lines = ropeman.getNumOfLines();
         for (self.line..num_of_lines) |linenr| {
@@ -65,7 +65,7 @@ const Cursor = struct {
             defer a.free(line);
 
             self.line = linenr;
-            switch (findForwardTargetInLine(self.col, line, &start_col_byte_kind, &has_iterated_past_a_space)) {
+            switch (findForwardTargetInLine(self.col, line, &start_kind, &passed_a_space)) {
                 .not_found => self.col = if (self.line + 1 >= num_of_lines) line.len else 0,
                 .found => |colnr| {
                     self.col = colnr;
@@ -76,8 +76,8 @@ const Cursor = struct {
     }
 
     const FindForwardTargetInLineResult = union(enum) { not_found, found: usize };
-    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, start_col_byte_kind: *CharKind, has_iterated_past_a_space: *bool) FindForwardTargetInLineResult {
-        if (start_col_byte_kind.* != .not_found) has_iterated_past_a_space.* = true;
+    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, start_kind: *CharKind, passed_a_space: *bool) FindForwardTargetInLineResult {
+        if (start_kind.* != .not_found) passed_a_space.* = true;
         if (line.len == 0) return .not_found;
 
         var iter = code_point.Iterator{ .bytes = line };
@@ -86,16 +86,16 @@ const Cursor = struct {
             defer i += 1;
             const byte_type = getCharKind(u21, cp.code);
 
-            if (start_col_byte_kind.* == .not_found) {
-                if (i == cursor_col) start_col_byte_kind.* = byte_type;
+            if (start_kind.* == .not_found) {
+                if (i == cursor_col) start_kind.* = byte_type;
                 continue;
             }
 
             switch (byte_type) {
                 .not_found => unreachable,
-                .spacing => has_iterated_past_a_space.* = true,
-                .char => if (has_iterated_past_a_space.* or start_col_byte_kind.* == .symbol) return .{ .found = i },
-                .symbol => if (has_iterated_past_a_space.* or start_col_byte_kind.* == .char) return .{ .found = i },
+                .spacing => passed_a_space.* = true,
+                .char => if (passed_a_space.* or start_kind.* == .symbol) return .{ .found = i },
+                .symbol => if (passed_a_space.* or start_kind.* == .char) return .{ .found = i },
             }
         }
 
@@ -158,14 +158,57 @@ test "Cursor - basic hjkl movements" {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Vim Movements
 
-test "Cursor - Vim w/W" {
-    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
-    defer ropeman.deinit();
-    var c = Cursor{ .line = 0, .col = 0 };
-
+test "Cursor - forwardWord()" {
     {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
+        defer ropeman.deinit();
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
+
+            c.forwardWord(testing_allocator, 1, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 6 }, c);
+
+            c.forwardWord(testing_allocator, 1, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 0 }, c);
+
+            c.forwardWord(testing_allocator, 1, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 3 }, c);
+
+            c.forwardWord(testing_allocator, 1, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 8 }, c);
+        }
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
+
+            c.forwardWord(testing_allocator, 2, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 0 }, c);
+
+            c.forwardWord(testing_allocator, 2, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 8 }, c);
+
+            c.forwardWord(testing_allocator, 100, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 8 }, c);
+        }
+        {
+            var c = Cursor{ .line = 0, .col = 0 };
+
+            c.forwardWord(testing_allocator, 100, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 8 }, c);
+        }
+    }
+    {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi venus");
+        defer ropeman.deinit();
+        var c = Cursor{ .line = 0, .col = 0 };
+
         c.forwardWord(testing_allocator, 1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 6 }, c);
+        try eq(Cursor{ .line = 0, .col = 5 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 7 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 12 }, c);
 
         c.forwardWord(testing_allocator, 1, &ropeman);
         try eq(Cursor{ .line = 1, .col = 0 }, c);
@@ -173,7 +216,37 @@ test "Cursor - Vim w/W" {
         c.forwardWord(testing_allocator, 1, &ropeman);
         try eq(Cursor{ .line = 1, .col = 3 }, c);
 
-        std.debug.print("hello?\n", .{});
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 1, .col = 8 }, c);
+    }
+    {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one;two--3|||four;");
+        defer ropeman.deinit();
+        var c = Cursor{ .line = 0, .col = 0 };
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 3 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 4 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 7 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 9 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 10 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 13 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 17 }, c);
+
+        c.forwardWord(testing_allocator, 1, &ropeman);
+        try eq(Cursor{ .line = 0, .col = 18 }, c);
     }
 }
 
