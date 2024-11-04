@@ -2138,34 +2138,28 @@ fn testGetRangeNoEnd(source: []const u8, expected_str: []const u8, start: Cursor
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Line u21 alloc
 
-pub fn GetLineGeneric(T: type) type {
-    return struct {
-        const GetLineAllocCtx = struct {
-            list: ArrayList(T),
+const GetLineAllocCtx = struct {
+    list: ArrayList(u8),
 
-            fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-                var iter = code_point.Iterator{ .bytes = leaf.buf };
-                while (iter.next()) |cp| try ctx.list.appendSlice(leaf.buf[cp.offset .. cp.offset + cp.len]);
-                if (leaf.eol) return WalkResult.stop;
-                return WalkResult.keep_walking;
-            }
-        };
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        try ctx.list.appendSlice(leaf.buf);
+        if (leaf.eol) return WalkResult.stop;
+        return WalkResult.keep_walking;
+    }
+};
 
-        fn getLineAlloc(a: Allocator, node: RcNode, line: usize, capacity: usize) ![]const T {
-            var ctx: GetLineAllocCtx = .{ .list = try ArrayList(T).initCapacity(a, capacity) };
-            errdefer ctx.list.deinit();
-            const result = try walkFromLineBegin(a, node, line, GetLineAllocCtx.walker, &ctx);
-            if (!result.found) return error.NotFound;
-            return try ctx.list.toOwnedSlice();
-        }
-    };
+pub fn getLineAlloc(a: Allocator, node: RcNode, line: usize, capacity: usize) ![]const u8 {
+    var ctx: GetLineAllocCtx = .{ .list = try ArrayList(u8).initCapacity(a, capacity) };
+    errdefer ctx.list.deinit();
+    const result = try walkFromLineBegin(a, node, line, GetLineAllocCtx.walker, &ctx);
+    if (!result.found) return error.NotFound;
+    return try ctx.list.toOwnedSlice();
 }
 
-test GetLineGeneric {
+test getLineAlloc {
     var content_arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
     const root = try Node.fromString(idc_if_it_leaks, &content_arena, "hello\nworld");
-    const getLineAlloc = GetLineGeneric(u8).getLineAlloc;
     try eqStr("hello", try getLineAlloc(idc_if_it_leaks, root, 0, 1024));
     try eqStr("world", try getLineAlloc(idc_if_it_leaks, root, 1, 1024));
 }
