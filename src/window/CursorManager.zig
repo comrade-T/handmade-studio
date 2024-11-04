@@ -49,7 +49,108 @@ const Cursor = struct {
         if (self.col > noc) self.col = noc;
     }
 
-    ///////////////////////////// w/W
+    ///////////////////////////// b/B
+
+    pub fn backwardsWord(self: *@This(), a: Allocator, count: usize, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
+        for (0..count) |_| self.backwardsWordSingleTime(a, start_or_end, boundary_kind, ropeman);
+    }
+
+    fn backwardsWordSingleTime(self: *@This(), a: Allocator, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
+        var start_char_kind = CharKind.not_found;
+        var passed_a_space = false;
+
+        var linenr: usize = self.line + 1;
+        var first_time = true;
+        while (linenr > 0) {
+            defer first_time = false;
+            linenr -= 1;
+            const line = ropeman.getLineAlloc(a, linenr, 1024) catch return;
+            defer a.free(line);
+
+            self.line = linenr;
+            if (!first_time) self.col = line.len;
+            switch (findBackwardsTargetInLine(self.col, line, start_or_end, boundary_kind, &start_char_kind, &passed_a_space)) {
+                .not_found => {},
+                .found => |colnr| {
+                    self.col = colnr;
+                    return;
+                },
+            }
+        }
+    }
+
+    fn findBackwardsTargetInLine(cursor_col: usize, line: []const u8, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, start_char_kind: *CharKind, passed_a_space: *bool) FindWordInLineResult {
+        if (start_char_kind.* != .not_found) passed_a_space.* = true;
+        if (line.len == 0 or cursor_col == 0) return .not_found;
+
+        var offset = line.len - 1;
+        var col: usize = cursor_col;
+        if (start_char_kind.* == .not_found) {
+            col = 0;
+            var iter = code_point.Iterator{ .bytes = line };
+            while (iter.next()) |cp| {
+                col += 1;
+                if (iter.i - 1 == cursor_col) {
+                    start_char_kind.* = getCharKind(u21, cp.code);
+                    offset = cp.offset;
+                    break;
+                }
+            }
+        }
+        assert(col > 0);
+        col -= 1;
+
+        _ = boundary_kind;
+
+        var encountered_non_spacing = false;
+        var last_char_kind = CharKind.not_found;
+        while (offset > 0) {
+            offset -= 1;
+            const cp_len = getCodePointLenFromByte(line[offset]);
+            if (cp_len == 0) continue;
+
+            col -= 1;
+
+            const char_kind = getCharKind(u8, line[offset]);
+            defer last_char_kind = char_kind;
+
+            if (char_kind == .spacing) passed_a_space.* = true;
+            switch (char_kind) {
+                .not_found => unreachable,
+                .spacing => passed_a_space.* = true,
+                .symbol => encountered_non_spacing = true,
+                .char => encountered_non_spacing = true,
+            }
+
+            switch (start_or_end) {
+                .start => {
+                    if (col == 0 and encountered_non_spacing) return .{ .found = 0 };
+
+                    switch (char_kind) {
+                        .not_found => unreachable,
+                        .spacing => if (last_char_kind != .not_found and last_char_kind != .spacing) return .{ .found = col + 1 },
+                        .char => {},
+                        .symbol => {},
+                    }
+                },
+                .end => unreachable,
+            }
+        }
+
+        return .not_found;
+    }
+
+    fn getCodePointLenFromByte(byte: u8) usize {
+        if (byte < 128) return 1;
+        return switch (byte) {
+            0b1100_0000...0b1101_1111 => 2,
+            0b1110_0000...0b1110_1111 => 3,
+            0b1111_0000...0b1111_0111 => 4,
+            else => 0,
+        };
+    }
+
+    ///////////////////////////// w/W e/E
 
     pub fn forwardWord(self: *@This(), a: Allocator, count: usize, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
         for (0..count) |_| self.forwardWordSingleTime(a, start_or_end, boundary_kind, ropeman);
@@ -77,25 +178,24 @@ const Cursor = struct {
 
     const StartOrEnd = enum { start, end };
     const BoundaryKind = enum { word, BIG_WORD };
-    const FindForwardTargetInLineResult = union(enum) { not_found, found: usize };
-    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, start_char_kind: *CharKind, passed_a_space: *bool) FindForwardTargetInLineResult {
+    const FindWordInLineResult = union(enum) { not_found, found: usize };
+    fn findForwardTargetInLine(cursor_col: usize, line: []const u8, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, start_char_kind: *CharKind, passed_a_space: *bool) FindWordInLineResult {
         if (start_char_kind.* != .not_found) passed_a_space.* = true;
         if (line.len == 0) return .not_found;
 
         var iter = code_point.Iterator{ .bytes = line };
-        var i: usize = 0;
         while (iter.next()) |cp| {
-            defer i += 1;
-            const char_type = getCharKind(u21, cp.code);
+            const i = iter.i - 1;
+            const char_kind = getCharKind(u8, line[cp.offset]);
 
             if (start_char_kind.* == .not_found) {
-                if (i == cursor_col) start_char_kind.* = char_type;
+                if (i == cursor_col) start_char_kind.* = char_kind;
                 continue;
             }
 
             switch (start_or_end) {
                 .start => {
-                    switch (char_type) {
+                    switch (char_kind) {
                         .not_found => unreachable,
                         .spacing => passed_a_space.* = true,
                         .char => if (passed_a_space.* or (boundary_kind == .word and start_char_kind.* == .symbol)) return .{ .found = i },
@@ -103,13 +203,13 @@ const Cursor = struct {
                     }
                 },
                 .end => {
-                    if (char_type == .spacing) continue;
+                    if (char_kind == .spacing) continue;
                     const peek_result = iter.peek() orelse return .{ .found = i };
-                    const peek_char_type = getCharKind(u21, peek_result.code);
+                    const peek_char_type = getCharKind(u8, line[peek_result.offset]);
                     switch (peek_char_type) {
                         .not_found => unreachable,
                         .spacing => return .{ .found = i },
-                        else => if (boundary_kind == .word and char_type != peek_char_type) return .{ .found = i },
+                        else => if (boundary_kind == .word and char_kind != peek_char_type) return .{ .found = i },
                     }
                 },
             }
@@ -173,6 +273,46 @@ test "Cursor - basic hjkl movements" {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Vim Movements
+
+test "Cursor - backwardsWord()" {
+    {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
+        defer ropeman.deinit();
+        {
+            var c = Cursor{ .line = 1, .col = 8 };
+
+            c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 3 }, c);
+
+            c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+            try eq(Cursor{ .line = 1, .col = 0 }, c);
+
+            c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 6 }, c);
+
+            c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+            try eq(Cursor{ .line = 0, .col = 0 }, c);
+        }
+    }
+    // {
+    //     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi||;; venus");
+    //     defer ropeman.deinit();
+    //     {
+    //         var c = Cursor{ .line = 1, .col = "hi||;;venus".len };
+    //
+    //         c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+    //         try eq(Cursor{ .line = 1, .col = 7 }, c);
+    //
+    //         c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+    //         try eq(Cursor{ .line = 1, .col = 2 }, c);
+    //
+    //         c.backwardsWord(testing_allocator, 1, .start, .word, &ropeman);
+    //         try eq(Cursor{ .line = 1, .col = 0 }, c);
+    //
+    //         // TODO:
+    //     }
+    // }
+}
 
 test "Cursor - forwardWord()" {
     {
