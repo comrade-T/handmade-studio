@@ -35,7 +35,6 @@ const CursorPoint = Buffer.CursorPoint;
 const CursorRange = Buffer.CursorRange;
 const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
-const ContentCallback = LangSuite.QueryFilter.ContentCallback;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -104,15 +103,6 @@ const CapturedLinesMap = std.AutoArrayHashMap(usize, StoredCaptureList);
 const StoredCaptureList = std.ArrayListUnmanaged(StoredCapture);
 const max_int_u32 = std.math.maxInt(u32);
 
-fn callback(ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8 {
-    const self = @as(*WindowSource, @ptrCast(@alignCast(ctx)));
-    return self.buf.ropeman.getRange(
-        .{ .line = start[0], .col = start[1] },
-        .{ .line = end[0], .col = end[1] },
-        buf,
-    );
-}
-
 fn getCaptures(self: *@This(), start: usize, end: usize) !CapturedLinesMap {
     assert(self.ls != null and self.buf.tstree != null);
 
@@ -132,7 +122,7 @@ fn getCaptures(self: *@This(), start: usize, end: usize) !CapturedLinesMap {
 
         const targets_buf_capacity = 8;
         var targets_buf: [@sizeOf(LangSuite.QueryFilter.CapturedTarget) * targets_buf_capacity]u8 = undefined;
-        while (sq.filter.nextMatch(callback, self, &targets_buf, targets_buf_capacity, cursor)) |match| {
+        while (sq.filter.nextMatch(&self.buf.ropeman, &targets_buf, targets_buf_capacity, cursor)) |match| {
             if (!match.all_predicates_matched) continue;
             for (match.targets) |target| {
                 for (target.start_line..target.end_line + 1) |linenr| {
@@ -426,7 +416,7 @@ pub const LineIterator = struct {
     pub fn init(ws: *const WindowSource, linenr: usize) !LineIterator {
         var self = LineIterator{};
         var fba = std.heap.FixedBufferAllocator.init(&self.content_buf);
-        self.contents = try ws.buf.ropeman.getLineAlloc(fba.allocator(), linenr);
+        self.contents = try ws.buf.ropeman.getLineAlloc(fba.allocator(), linenr, self.content_buf.len);
         self.cp_iter = code_point.Iterator{ .bytes = self.contents };
         return self;
     }

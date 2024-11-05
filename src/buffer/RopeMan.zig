@@ -71,15 +71,15 @@ pub fn initFrom(a: Allocator, from: InitFrom, source: []const u8) !RopeMan {
     return ropeman;
 }
 
-pub fn toString(self: *@This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
+pub fn toString(self: *const @This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
     return self.root.value.toString(a, eol_mode);
 }
 
-pub fn getRange(self: *@This(), start: CursorPoint, end: ?CursorPoint, buf: []u8) []const u8 {
+pub fn getRange(self: *const @This(), start: CursorPoint, end: ?CursorPoint, buf: []u8) []const u8 {
     return rcr.getRange(self.root, start, end, buf);
 }
 
-pub fn getByteOffsetOfRoot(self: *@This(), line: usize, col: usize) !usize {
+pub fn getByteOffsetOfRoot(self: *const @This(), line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(self.root, line, col);
 }
 

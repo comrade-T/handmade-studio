@@ -65,15 +65,22 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
+    const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+    }, zig_build_test_step);
+
     const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
         .{ .name = "regex", .module = regex },
         .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "RopeMan", .module = ropeman.module },
     }, zig_build_test_step);
     query_filter.compile.linkLibrary(tree_sitter);
 
     const langsuite = addTestableModule(&bops, "src/tree-sitter/LangSuite.zig", &.{
         .{ .name = "regex", .module = regex },
         .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "RopeMan", .module = ropeman.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
     }, zig_build_test_step);
     langsuite.module.linkLibrary(tree_sitter);
@@ -83,11 +90,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
     _ = rc_rope;
-
-    const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
 
     const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
         .{ .name = "RopeMan", .module = ropeman.module },

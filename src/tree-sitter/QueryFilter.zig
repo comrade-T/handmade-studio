@@ -32,6 +32,7 @@ const Query = ts.Query;
 const PredicateStep = ts.Query.PredicateStep;
 
 const Regex = @import("regex").Regex;
+const RopeMan = @import("RopeMan");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// init()
 
@@ -274,7 +275,7 @@ pub const MatchResult = struct {
 
 pub const ContentCallback = *const fn (ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8;
 
-pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_buf: []u8, targets_buf_capacity: usize, cursor: *Query.Cursor) ?MatchResult {
+pub fn nextMatch(self: *@This(), ropeman: *const RopeMan, targets_buf: []u8, targets_buf_capacity: usize, cursor: *Query.Cursor) ?MatchResult {
     const big_zone = ztracy.ZoneNC(@src(), "QueryFilter.nextMatch()", 0xF00000);
     defer big_zone.End();
 
@@ -295,10 +296,9 @@ pub fn nextMatch(self: *@This(), cb: ContentCallback, ctx: *anyopaque, targets_b
     for (match.captures()) |cap| {
         const start = cap.node.getStartPoint();
         const end = cap.node.getEndPoint();
-        const node_contents = cb(
-            ctx,
-            .{ @intCast(start.row), @intCast(start.column) },
-            .{ @intCast(end.row), @intCast(end.column) },
+        const node_contents = ropeman.getRange(
+            .{ .line = @intCast(start.row), .col = @intCast(start.column) },
+            .{ .line = @intCast(end.row), .col = @intCast(end.column) },
             &content_buf,
         );
         const cap_name = self.query.getCaptureNameForId(cap.id);
@@ -571,45 +571,18 @@ const Expected = struct {
     contents: []const []const u8,
 };
 
-const GetRangeForTestingCtx = struct {
-    source: []const u8,
-
-    fn getRange(ctx: *anyopaque, start: struct { usize, usize }, end: struct { usize, usize }, buf: []u8) []const u8 {
-        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-        var fba = std.heap.FixedBufferAllocator.init(buf);
-        var list = ArrayList(u8).initCapacity(fba.allocator(), buf.len) catch unreachable;
-
-        var split_iter = std.mem.split(u8, self.source, "\n");
-        var i: usize = 0;
-        while (split_iter.next()) |line| {
-            defer i += 1;
-            if (i < start[0]) continue;
-            if (i == start[0] and start[0] == end[0]) {
-                list.appendSlice(line[start[1]..end[1]]) catch unreachable;
-                continue;
-            }
-            if (i == start[0]) {
-                list.appendSlice(line[start[1]..]) catch unreachable;
-                continue;
-            }
-            if (i == end[0]) list.appendSlice(line[0..end[1]]) catch unreachable;
-        }
-
-        return list.toOwnedSlice() catch unreachable;
-    }
-};
-
 fn testFilter(source: []const u8, may_limit: ?MatchLimit, patterns: []const u8, expected: []const Expected) !void {
     const query, const cursor = try setupTestWithNoCleanUp(source, may_limit, patterns);
     var filter = try QueryFilter.init(testing_allocator, query);
     defer filter.deinit();
 
-    var ctx = GetRangeForTestingCtx{ .source = source };
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, source);
+    defer ropeman.deinit();
 
     const target_buf_capacity = 8;
     var targets_buf: [@sizeOf(CapturedTarget) * target_buf_capacity]u8 = undefined;
     var i: usize = 0;
-    while (filter.nextMatch(GetRangeForTestingCtx.getRange, &ctx, &targets_buf, target_buf_capacity, cursor)) |match| {
+    while (filter.nextMatch(&ropeman, &targets_buf, target_buf_capacity, cursor)) |match| {
         if (!match.all_predicates_matched) continue;
         try eq(expected[i].targets.len, match.targets.len);
         for (0..expected[i].targets.len) |j| {
