@@ -51,7 +51,10 @@ pub fn destroy(self: *@This()) void {
 
 pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
     defer self.cursor_id_count += 1;
-    try self.cursors.put(self.cursor_id_count, Cursor{ .line = line, .col = col });
+    try self.cursors.put(self.cursor_id_count, Cursor{
+        .start = Anchor{ .line = line, .col = col },
+        .end = Anchor{ .line = line, .col = col + 1 },
+    });
     if (make_main) self.main_cursor_id = self.cursor_id_count;
 }
 
@@ -66,8 +69,8 @@ const CursorMapSortContext = struct {
     cursors: []Cursor,
 
     pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-        const a = ctx.cursors[a_index];
-        const b = ctx.cursors[b_index];
+        const a = ctx.cursors[a_index].start;
+        const b = ctx.cursors[b_index].start;
         if (a.line == b.line) return a.col < b.col;
         return a.line < b.col;
     }
@@ -78,30 +81,44 @@ test CursorMap {
     defer cm.destroy();
 
     try eq(1, cm.cursors.values().len);
-    try eq(Cursor{ .line = 0, .col = 0 }, cm.cursors.get(cm.main_cursor_id).?);
+    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.get(cm.main_cursor_id).?.start);
 
     // update
-    cm.mainCursor().update(100, 100);
-    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?);
+    cm.mainCursor().start.update(100, 100);
+    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
 
     // addCursor
     try cm.addCursor(0, 0, false);
-    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?);
+    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
 
-    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.values()[0]);
-    try eq(Cursor{ .line = 0, .col = 0 }, cm.cursors.values()[1]);
+    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.values()[0].start);
+    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[1].start);
 
     // still okay to use `main_cursor_id` after sort
     cm.cursors.sort(CursorMapSortContext{ .cursors = cm.cursors.values() });
-    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?);
+    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
 
-    try eq(Cursor{ .line = 0, .col = 0 }, cm.cursors.values()[0]);
-    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.values()[1]);
+    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.values()[1].start);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const Cursor = struct {
+    start: Anchor,
+    end: Anchor,
+    mode: enum { single, range } = .single,
+    current_anchor: enum { start, end } = .start,
+};
+
+test {
+    // 8 * 2 * 2 = 32 + 8 => 40
+    try eq(40, @sizeOf(Cursor));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const Anchor = struct {
     line: usize,
     col: usize,
 
@@ -331,53 +348,53 @@ const Cursor = struct {
 test "Cursor - basic hjkl movements" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hi\nworld\nhello\nx");
     defer ropeman.deinit();
-    var c = Cursor{ .line = 0, .col = 0 };
+    var c = Anchor{ .line = 0, .col = 0 };
 
     // moveRight()
     {
         c.moveRight(1, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 1 }, c);
+        try eq(Anchor{ .line = 0, .col = 1 }, c);
 
         c.moveRight(2, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 2 }, c);
 
         c.moveRight(100, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 2 }, c);
     }
 
     // moveLeft()
     {
         c.moveLeft(1);
-        try eq(Cursor{ .line = 0, .col = 1 }, c);
+        try eq(Anchor{ .line = 0, .col = 1 }, c);
         c.moveLeft(100);
-        try eq(Cursor{ .line = 0, .col = 0 }, c);
+        try eq(Anchor{ .line = 0, .col = 0 }, c);
     }
 
     // moveDown()
     {
         c.moveRight(100, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 2 }, c);
 
         c.moveDown(1, &ropeman);
-        try eq(Cursor{ .line = 1, .col = 2 }, c);
+        try eq(Anchor{ .line = 1, .col = 2 }, c);
 
         c.moveDown(1, &ropeman);
-        try eq(Cursor{ .line = 2, .col = 2 }, c);
+        try eq(Anchor{ .line = 2, .col = 2 }, c);
 
         c.moveDown(100, &ropeman);
-        try eq(Cursor{ .line = 3, .col = 1 }, c);
+        try eq(Anchor{ .line = 3, .col = 1 }, c);
     }
 
     // moveUp()
     {
         c.moveUp(1, &ropeman);
-        try eq(Cursor{ .line = 2, .col = 1 }, c);
+        try eq(Anchor{ .line = 2, .col = 1 }, c);
 
         c.moveRight(100, &ropeman);
-        try eq(Cursor{ .line = 2, .col = 5 }, c);
+        try eq(Anchor{ .line = 2, .col = 5 }, c);
 
         c.moveUp(100, &ropeman);
-        try eq(Cursor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 2 }, c);
     }
 }
 
@@ -388,7 +405,7 @@ test "Cursor - backwardsWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 1, .col = 8 };
+            var c = Anchor{ .line = 1, .col = 8 };
             try testBackwardsWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 1, .col = 3 },
                 .{ .line = 1, .col = 0 },
@@ -401,7 +418,7 @@ test "Cursor - backwardsWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi||;; venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 1, .col = "hi||;; venus".len };
+            var c = Anchor{ .line = 1, .col = "hi||;; venus".len };
             try testBackwardsWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 1, .col = 7 },
                 .{ .line = 1, .col = 2 },
@@ -417,7 +434,7 @@ test "Cursor - backwardsWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;;\nhi||;; venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 1, .col = "hi||;; venus".len };
+            var c = Anchor{ .line = 1, .col = "hi||;; venus".len };
             try testBackwardsWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 1, .col = 7 },
                 .{ .line = 1, .col = 2 },
@@ -429,7 +446,7 @@ test "Cursor - backwardsWord()" {
             });
         }
         {
-            var c = Cursor{ .line = 1, .col = "hi||;; venus".len };
+            var c = Anchor{ .line = 1, .col = "hi||;; venus".len };
             try testBackwardsWord(&c, .start, .BIG_WORD, &ropeman, &.{
                 .{ .line = 1, .col = 7 },
                 .{ .line = 1, .col = 0 },
@@ -442,7 +459,7 @@ test "Cursor - backwardsWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi||| venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 1, .col = "hi||| venus".len - 1 };
+            var c = Anchor{ .line = 1, .col = "hi||| venus".len - 1 };
             try testBackwardsWord(&c, .end, .word, &ropeman, &.{
                 .{ .line = 1, .col = 4 },
                 .{ .line = 1, .col = 1 },
@@ -454,7 +471,7 @@ test "Cursor - backwardsWord()" {
             });
         }
         { // .BIG_WORD
-            var c = Cursor{ .line = 1, .col = "hi||| venus".len - 1 };
+            var c = Anchor{ .line = 1, .col = "hi||| venus".len - 1 };
             try testBackwardsWord(&c, .end, .BIG_WORD, &ropeman, &.{
                 .{ .line = 1, .col = 4 },
                 .{ .line = 0, .col = 12 },
@@ -467,7 +484,7 @@ test "Cursor - backwardsWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "okay bye\nhello; world;\nhi||| venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 2, .col = "hi||| venus".len - 1 };
+            var c = Anchor{ .line = 2, .col = "hi||| venus".len - 1 };
             try testBackwardsWord(&c, .end, .word, &ropeman, &.{
                 .{ .line = 2, .col = 4 },
                 .{ .line = 2, .col = 1 },
@@ -485,7 +502,7 @@ test "Cursor - backwardsWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one;two--3|||four;\nhello there");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 1, .col = 0 };
+            var c = Anchor{ .line = 1, .col = 0 };
 
             try testBackwardsWord(&c, .end, .word, &ropeman, &.{
                 .{ .line = 0, .col = 17 },
@@ -502,10 +519,10 @@ test "Cursor - backwardsWord()" {
     }
 }
 
-fn testBackwardsWord(c: *Cursor, start_or_end: Cursor.StartOrEnd, boundary_kind: Cursor.BoundaryKind, ropeman: *const RopeMan, expected: []const Cursor) !void {
+fn testBackwardsWord(anchor: *Anchor, start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, ropeman: *const RopeMan, expected: []const Anchor) !void {
     for (expected) |e| {
-        c.backwardsWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman);
-        try eq(e, c.*);
+        anchor.backwardsWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman);
+        try eq(e, anchor.*);
     }
 }
 
@@ -514,7 +531,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 0, .col = 6 },
                 .{ .line = 1, .col = 0 },
@@ -527,7 +544,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 0, .col = 5 },
                 .{ .line = 0, .col = 7 },
@@ -538,7 +555,7 @@ test "Cursor - forwardWord()" {
             });
         }
         { // .BIG_WORD
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .BIG_WORD, &ropeman, &.{
                 .{ .line = 0, .col = 7 },
                 .{ .line = 1, .col = 0 },
@@ -551,7 +568,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello;  world;\nhi   venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 0, .col = 5 },
                 .{ .line = 0, .col = 8 },
@@ -562,7 +579,7 @@ test "Cursor - forwardWord()" {
             });
         }
         { // .BIG_WORD
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .BIG_WORD, &ropeman, &.{
                 .{ .line = 0, .col = 8 },
                 .{ .line = 1, .col = 0 },
@@ -575,7 +592,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one;two--3|||four;");
         defer ropeman.deinit();
         { // .word
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .word, &ropeman, &.{
                 .{ .line = 0, .col = 3 },
                 .{ .line = 0, .col = 4 },
@@ -588,7 +605,7 @@ test "Cursor - forwardWord()" {
             });
         }
         { // .BIG_WORD
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .BIG_WORD, &ropeman, &.{
                 .{ .line = 0, .col = 18 },
             });
@@ -601,7 +618,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .end, .word, &ropeman, &.{
                 .{ .line = 0, .col = 4 },
                 .{ .line = 0, .col = 10 },
@@ -614,7 +631,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello;; world;\nhi;;; venus");
         defer ropeman.deinit();
         {
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .end, .word, &ropeman, &.{
                 .{ .line = 0, .col = 4 },
                 .{ .line = 0, .col = 6 },
@@ -630,7 +647,7 @@ test "Cursor - forwardWord()" {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello;;  world;\nhi;;;   venus");
         defer ropeman.deinit();
         { // .word
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .end, .word, &ropeman, &.{
                 .{ .line = 0, .col = 4 },
                 .{ .line = 0, .col = 6 },
@@ -642,7 +659,7 @@ test "Cursor - forwardWord()" {
             });
         }
         { // .BIG_WORD
-            var c = Cursor{ .line = 0, .col = 0 };
+            var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .end, .BIG_WORD, &ropeman, &.{
                 .{ .line = 0, .col = 6 },
                 .{ .line = 0, .col = 14 },
@@ -653,10 +670,10 @@ test "Cursor - forwardWord()" {
     }
 }
 
-fn testForwardWord(c: *Cursor, start_or_end: Cursor.StartOrEnd, boundary_kind: Cursor.BoundaryKind, ropeman: *const RopeMan, expected: []const Cursor) !void {
+fn testForwardWord(anchor: *Anchor, start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, ropeman: *const RopeMan, expected: []const Anchor) !void {
     for (expected) |e| {
-        c.forwardWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman);
-        try eq(e, c.*);
+        anchor.forwardWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman);
+        try eq(e, anchor.*);
     }
 }
 
