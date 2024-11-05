@@ -26,7 +26,7 @@ const assert = std.debug.assert;
 const code_point = @import("code_point");
 const RopeMan = @import("RopeMan");
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// CursorManager
 
 a: Allocator,
 
@@ -62,7 +62,7 @@ pub fn mainCursor(self: *@This()) *Cursor {
     return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// CursorMap
 
 const CursorMap = std.AutoArrayHashMap(usize, Cursor);
 const CursorMapSortContext = struct {
@@ -84,7 +84,7 @@ test CursorMap {
     try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.get(cm.main_cursor_id).?.start);
 
     // update
-    cm.mainCursor().start.update(100, 100);
+    cm.mainCursor().update(100, 100);
     try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
 
     // addCursor
@@ -102,21 +102,42 @@ test CursorMap {
     try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.values()[1].start);
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Cursor
 
 const Cursor = struct {
     start: Anchor,
     end: Anchor,
     mode: enum { single, range } = .single,
     current_anchor: enum { start, end } = .start,
+
+    pub fn setActiveAnchor(self: *@This(), line: usize, col: usize) void {
+        self.activeAnchor().update(line, col);
+    }
+
+    pub fn startRangeMode(self: *@This()) void {
+        self.mode = .range;
+        self.end = Anchor{ .line = self.start.line, .col = self.start.col + 1 };
+    }
+
+    pub fn stopRangeMode(self: *@This()) void {
+        self.mode = .single;
+    }
+
+    pub fn setRange(self: *@This(), start: struct { usize, usize }, end: struct { usize, usize }) !void {
+        self.mode = .range;
+        self.start.line, self.start.col = start;
+        self.end.line, self.end.col = end;
+    }
+
+    fn activeAnchor(self: *@This()) *Anchor {
+        return switch (self.mode) {
+            .single => &self.start,
+            .range => if (self.current_anchor == .start) &self.start else &self.end,
+        };
+    }
 };
 
-test {
-    // 8 * 2 * 2 = 32 + 8 => 40
-    try eq(40, @sizeOf(Cursor));
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Anchor
 
 const Anchor = struct {
     line: usize,
@@ -345,7 +366,7 @@ const Anchor = struct {
     }
 };
 
-test "Cursor - basic hjkl movements" {
+test "Anchor - basic hjkl movements" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hi\nworld\nhello\nx");
     defer ropeman.deinit();
     var c = Anchor{ .line = 0, .col = 0 };
@@ -400,7 +421,7 @@ test "Cursor - basic hjkl movements" {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Vim Movements
 
-test "Cursor - backwardsWord()" {
+test "Anchor - backwardsWord()" {
     {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
         defer ropeman.deinit();
@@ -526,7 +547,7 @@ fn testBackwardsWord(anchor: *Anchor, start_or_end: Anchor.StartOrEnd, boundary_
     }
 }
 
-test "Cursor - forwardWord()" {
+test "Anchor - forwardWord()" {
     {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhi venus");
         defer ropeman.deinit();
