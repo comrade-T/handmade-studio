@@ -35,28 +35,6 @@ const ColorschemeStore = @import("ColorschemeStore");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn main() !void {
-    var gpa_ = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa_.deinit();
-    const gpa = gpa_.allocator();
-
-    var lang_hub = try LangSuite.LangHub.init(gpa);
-    defer lang_hub.deinit();
-
-    var font_store = try createMockFontStore(gpa);
-    defer font_store.deinit();
-
-    var ws = try WindowSource.init(gpa, .file, "src/window/old_window.zig", &lang_hub);
-    defer ws.deinit();
-
-    var win = try Window.create(gpa, &ws, .{}, .{ .font_store = &font_store });
-    defer win.destroy();
-
-    std.debug.print("done\n", .{});
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 a: Allocator,
 attr: Attributes,
 ws: *WindowSource,

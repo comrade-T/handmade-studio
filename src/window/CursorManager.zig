@@ -28,15 +28,87 @@ const RopeMan = @import("RopeMan");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-cursors: ArrayList(Cursor),
+a: Allocator,
 
-const GetNumOfLinesCallback = *const fn (ctx: *anyopaque) usize;
-const GetNocInLineCallback = *const fn (ctx: *anyopaque, linenr: usize) usize;
-const GetLineCallback = *const fn (ctx: *anyopaque, a: Allocator, linenr: usize) []const u8;
+main_cursor_id: usize = 0,
+cursor_id_count: usize = 0,
+cursors: CursorMap,
+
+pub fn create(a: Allocator) !*CursorManager {
+    var self = try a.create(@This());
+    self.* = .{
+        .a = a,
+        .cursors = CursorMap.init(self.a),
+    };
+    try self.addCursor(0, 0, true);
+    return self;
+}
+
+pub fn destroy(self: *@This()) void {
+    self.cursors.deinit();
+    self.a.destroy(self);
+}
+
+pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
+    defer self.cursor_id_count += 1;
+    try self.cursors.put(self.cursor_id_count, Cursor{ .line = line, .col = col });
+    if (make_main) self.main_cursor_id = self.cursor_id_count;
+}
+
+pub fn mainCursor(self: *@This()) *Cursor {
+    return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const CursorMap = std.AutoArrayHashMap(usize, Cursor);
+const CursorMapSortContext = struct {
+    cursors: []Cursor,
+
+    pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+        const a = ctx.cursors[a_index];
+        const b = ctx.cursors[b_index];
+        if (a.line == b.line) return a.col < b.col;
+        return a.line < b.col;
+    }
+};
+
+test CursorMap {
+    var cm = try CursorManager.create(testing_allocator);
+    defer cm.destroy();
+
+    try eq(1, cm.cursors.values().len);
+    try eq(Cursor{ .line = 0, .col = 0 }, cm.cursors.get(cm.main_cursor_id).?);
+
+    // update
+    cm.mainCursor().update(100, 100);
+    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?);
+
+    // addCursor
+    try cm.addCursor(0, 0, false);
+    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?);
+
+    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.values()[0]);
+    try eq(Cursor{ .line = 0, .col = 0 }, cm.cursors.values()[1]);
+
+    // still okay to use `main_cursor_id` after sort
+    cm.cursors.sort(CursorMapSortContext{ .cursors = cm.cursors.values() });
+    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?);
+
+    try eq(Cursor{ .line = 0, .col = 0 }, cm.cursors.values()[0]);
+    try eq(Cursor{ .line = 100, .col = 100 }, cm.cursors.values()[1]);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 const Cursor = struct {
     line: usize,
     col: usize,
+
+    pub fn update(self: *@This(), line: usize, col: usize) void {
+        self.line = line;
+        self.col = col;
+    }
 
     ///////////////////////////// hjkl
 
