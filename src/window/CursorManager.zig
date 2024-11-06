@@ -21,6 +21,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
+const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const code_point = @import("code_point");
@@ -49,20 +50,58 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+pub fn mainCursor(self: *@This()) *Cursor {
+    return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
+}
+
 pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
+    // TODO: check for overlaps
+
     defer self.cursor_id_count += 1;
     try self.cursors.put(self.cursor_id_count, Cursor{
         .start = Anchor{ .line = line, .col = col },
         .end = Anchor{ .line = line, .col = col + 1 },
     });
     if (make_main) self.main_cursor_id = self.cursor_id_count;
+    self.cursors.sort(CursorMapSortContext{ .cursors = self.cursors.values() });
 }
 
-pub fn mainCursor(self: *@This()) *Cursor {
-    return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
+test addCursor {
+    {
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // initital cursor position is line=0 col=0 on CursorManager.create()
+        try eq(1, cm.cursors.values().len);
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor().*);
+
+        // add 2nd cursor AFTER the initial cursor
+        try cm.addCursor(0, 5, true);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor().*);
+
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.getPtr(0).?.activeAnchor().*);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.getPtr(1).?.activeAnchor().*);
+    }
+    {
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // update the initial cursor
+        cm.mainCursor().setActiveAnchor(0, 5);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor().*);
+
+        // add 2nd cursor BEFORE the initial cursor
+        try cm.addCursor(0, 0, true);
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor().*);
+        // make sure the cursors are sorted
+        try eqSlice(usize, &.{ 1, 0 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].activeAnchor().*);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].activeAnchor().*);
+    }
 }
 
-///////////////////////////// CursorMap
+///////////////////////////// CursorMap / CursorMapSortContext
 
 const CursorMap = std.AutoArrayHashMap(usize, Cursor);
 const CursorMapSortContext = struct {
@@ -76,32 +115,6 @@ const CursorMapSortContext = struct {
     }
 };
 
-test CursorMap {
-    var cm = try CursorManager.create(testing_allocator);
-    defer cm.destroy();
-
-    try eq(1, cm.cursors.values().len);
-    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.get(cm.main_cursor_id).?.start);
-
-    // update
-    cm.mainCursor().update(100, 100);
-    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
-
-    // addCursor
-    try cm.addCursor(0, 0, false);
-    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
-
-    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.values()[0].start);
-    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[1].start);
-
-    // still okay to use `main_cursor_id` after sort
-    cm.cursors.sort(CursorMapSortContext{ .cursors = cm.cursors.values() });
-    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.get(cm.main_cursor_id).?.start);
-
-    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
-    try eq(Anchor{ .line = 100, .col = 100 }, cm.cursors.values()[1].start);
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Cursor
 
 const Cursor = struct {
@@ -111,7 +124,7 @@ const Cursor = struct {
     current_anchor: enum { start, end } = .start,
 
     pub fn setActiveAnchor(self: *@This(), line: usize, col: usize) void {
-        self.activeAnchor().update(line, col);
+        self.activeAnchor().set(line, col);
     }
 
     pub fn startRangeMode(self: *@This()) void {
@@ -143,7 +156,7 @@ const Anchor = struct {
     line: usize,
     col: usize,
 
-    pub fn update(self: *@This(), line: usize, col: usize) void {
+    pub fn set(self: *@This(), line: usize, col: usize) void {
         self.line = line;
         self.col = col;
     }
