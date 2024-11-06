@@ -55,15 +55,18 @@ pub fn mainCursor(self: *@This()) *Cursor {
 }
 
 pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
-    // TODO: check for overlaps
-
-    defer self.cursor_id_count += 1;
-    try self.cursors.put(self.cursor_id_count, Cursor{
+    const new_cursor = Cursor{
         .start = Anchor{ .line = line, .col = col },
         .end = Anchor{ .line = line, .col = col + 1 },
-    });
+    };
+
+    const existing_index = std.sort.binarySearch(Cursor, new_cursor, self.cursors.values(), {}, CursorMapContext.order);
+    if (existing_index != null) return;
+
+    defer self.cursor_id_count += 1;
+    try self.cursors.put(self.cursor_id_count, new_cursor);
     if (make_main) self.main_cursor_id = self.cursor_id_count;
-    self.cursors.sort(CursorMapSortContext{ .cursors = self.cursors.values() });
+    self.cursors.sort(CursorMapContext{ .cursors = self.cursors.values() });
 }
 
 test addCursor {
@@ -99,12 +102,28 @@ test addCursor {
         try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].activeAnchor().*);
         try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].activeAnchor().*);
     }
+    { // cursor position already exist
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+
+        try cm.addCursor(0, 0, true);
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+
+        try cm.addCursor(0, 5, true);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+
+        try cm.addCursor(0, 0, true);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try cm.addCursor(0, 5, true);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+    }
 }
 
-///////////////////////////// CursorMap / CursorMapSortContext
+///////////////////////////// CursorMap / CursorMapSortContext / CursorMapBinarySearchContext
 
 const CursorMap = std.AutoArrayHashMap(usize, Cursor);
-const CursorMapSortContext = struct {
+const CursorMapContext = struct {
     cursors: []Cursor,
 
     pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
@@ -112,6 +131,11 @@ const CursorMapSortContext = struct {
         const b = ctx.cursors[b_index].start;
         if (a.line == b.line) return a.col < b.col;
         return a.line < b.col;
+    }
+
+    pub fn order(_: void, a: Cursor, b: Cursor) std.math.Order {
+        if (a.start.line == b.start.line) return std.math.order(a.start.col, b.start.col);
+        return std.math.order(a.start.line, b.start.line);
     }
 };
 
