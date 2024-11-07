@@ -126,19 +126,27 @@ test addCursor {
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
 pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithCallback(by, ropeman, Anchor.moveUp);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveUp);
 }
 
 pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithCallback(by, ropeman, Anchor.moveDown);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveDown);
 }
 
 pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithCallback(by, ropeman, Anchor.moveRight);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveRight);
 }
 
 pub fn moveLeft(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithCallback(by, ropeman, Anchor.moveLeft);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveLeft);
+}
+
+pub fn forwardWord(self: *@This(), start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, count: usize, ropeman: *const RopeMan) void {
+    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, ropeman, Anchor.forwardWord);
+}
+
+pub fn backwardsWord(self: *@This(), start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, count: usize, ropeman: *const RopeMan) void {
+    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, count, ropeman, Anchor.backwardsWord);
 }
 
 test moveUp {
@@ -386,11 +394,56 @@ test moveLeft {
     }
 }
 
+test forwardWord {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
+    defer ropeman.deinit();
+
+    { // single .point cursor
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // forwardWord
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[0].start);
+
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
+    }
+}
+
 ///////////////////////////// moveCursorWithCallback
 
-const MoveAnchorCallback = *const fn (anchor: *Anchor, by: usize, ropeman: *const RopeMan) void;
+const VimCallback = *const fn (
+    anchor: *Anchor,
+    a: Allocator,
+    count: usize,
+    start_or_end: Anchor.StartOrEnd,
+    boundary_kind: Anchor.BoundaryKind,
+    ropeman: *const RopeMan,
+) void;
 
-fn moveCursorWithCallback(self: *@This(), by: usize, ropeman: *const RopeMan, cb: MoveAnchorCallback) void {
+fn moveCursorWithVimCallback(
+    self: *@This(),
+    a: Allocator,
+    count: usize,
+    start_or_end: Anchor.StartOrEnd,
+    boundary_kind: Anchor.BoundaryKind,
+    ropeman: *const RopeMan,
+    cb: VimCallback,
+) void {
+    // move all cursors
+    for (self.cursors.values()) |*cursor| {
+        cb(cursor.activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman);
+        cursor.ensureAnchorOrder(self);
+    }
+
+    // handle collisions
+    self.mergeCursorsIfOverlap();
+}
+
+const HJKLCallback = *const fn (anchor: *Anchor, count: usize, ropeman: *const RopeMan) void;
+
+fn moveCursorWithHJKLCallback(self: *@This(), by: usize, ropeman: *const RopeMan, cb: HJKLCallback) void {
     // move all cursors
     for (self.cursors.values()) |*cursor| {
         cb(cursor.activeAnchor(self), by, ropeman);
@@ -398,14 +451,18 @@ fn moveCursorWithCallback(self: *@This(), by: usize, ropeman: *const RopeMan, cb
     }
 
     // handle collisions
+    self.mergeCursorsIfOverlap();
+}
+
+fn mergeCursorsIfOverlap(self: *@This()) void {
     var i: usize = self.cursors.values().len;
     while (i > 0) {
         i -= 1;
-        self.mergeCursorsIfOverlaps(i);
+        self._mergeTwoCursorsIfOverlaps(i);
     }
 }
 
-fn mergeCursorsIfOverlaps(self: *@This(), i: usize) void {
+fn _mergeTwoCursorsIfOverlaps(self: *@This(), i: usize) void {
     const cursors = self.cursors.values();
     assert(cursors.len > 0);
     assert(i < cursors.len);
