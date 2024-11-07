@@ -409,6 +409,65 @@ test forwardWord {
         cm.forwardWord(.start, .word, 1, &ropeman);
         try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
     }
+
+    { // multiple .point cursors
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // add 2nd cursor
+        try cm.addCursor(0, 6, true);
+        try cm.addCursor(1, 0, true);
+        try cm.addCursor(2, 0, true);
+        try eqSlice(usize, &.{ 0, 1, 2, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[3].start);
+
+        // forwardWord
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 1, .col = 6 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 2, .col = 6 }, cm.cursors.values()[3].start);
+
+        // forwardWord
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 6 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 2, .col = 9 }, cm.cursors.values()[3].start);
+
+        // forwardWord, cursor id=3 stays at eol
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eq(Anchor{ .line = 1, .col = 6 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 2, .col = 6 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 2, .col = 9 }, cm.cursors.values()[3].start);
+
+        // forwardWord, cursor id=3 gets merged with id=2
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eqSlice(usize, &.{ 0, 1, 2 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 6 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 2, .col = 9 }, cm.cursors.values()[2].start);
+
+        // forwardWord, cursor id=2 gets merged with id=1
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 2, .col = 6 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 9 }, cm.cursors.values()[1].start);
+
+        // forwardWord, cursor id=1 gets merged with id=0
+        cm.forwardWord(.start, .word, 1, &ropeman);
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+        try eq(Anchor{ .line = 2, .col = 9 }, cm.cursors.values()[0].start);
+
+        // forwardWord, stays the same due to reached end of file
+        cm.forwardWord(.start, .word, 100, &ropeman);
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+        try eq(Anchor{ .line = 2, .col = 9 }, cm.cursors.values()[0].start);
+    }
 }
 
 ///////////////////////////// moveCursorWithCallback
@@ -748,7 +807,7 @@ const Anchor = struct {
 
             self.line = linenr;
             switch (findForwardTargetInLine(self.col, line, start_or_end, boundary_kind, &start_char_kind, &passed_a_space)) {
-                .not_found => self.col = if (self.line + 1 >= num_of_lines) line.len else 0,
+                .not_found => self.col = if (self.line + 1 >= num_of_lines) line.len -| 1 else 0,
                 .found => |colnr| {
                     self.col = colnr;
                     return;
@@ -910,6 +969,8 @@ test "Anchor - backwardsWord()" {
             });
         }
     }
+
+    // .end
     {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello; world;\nhi||| venus");
         defer ropeman.deinit();
@@ -991,7 +1052,7 @@ test "Anchor - forwardWord()" {
                 .{ .line = 0, .col = 6 },
                 .{ .line = 1, .col = 0 },
                 .{ .line = 1, .col = 3 },
-                .{ .line = 1, .col = 8 },
+                .{ .line = 1, .col = 7 },
             });
         }
     }
@@ -1006,7 +1067,7 @@ test "Anchor - forwardWord()" {
                 .{ .line = 0, .col = 12 },
                 .{ .line = 1, .col = 0 },
                 .{ .line = 1, .col = 3 },
-                .{ .line = 1, .col = 8 },
+                .{ .line = 1, .col = 7 },
             });
         }
         { // .BIG_WORD
@@ -1015,7 +1076,7 @@ test "Anchor - forwardWord()" {
                 .{ .line = 0, .col = 7 },
                 .{ .line = 1, .col = 0 },
                 .{ .line = 1, .col = 3 },
-                .{ .line = 1, .col = 8 },
+                .{ .line = 1, .col = 7 },
             });
         }
     }
@@ -1030,7 +1091,7 @@ test "Anchor - forwardWord()" {
                 .{ .line = 0, .col = 13 },
                 .{ .line = 1, .col = 0 },
                 .{ .line = 1, .col = 5 },
-                .{ .line = 1, .col = 10 },
+                .{ .line = 1, .col = 9 },
             });
         }
         { // .BIG_WORD
@@ -1039,7 +1100,7 @@ test "Anchor - forwardWord()" {
                 .{ .line = 0, .col = 8 },
                 .{ .line = 1, .col = 0 },
                 .{ .line = 1, .col = 5 },
-                .{ .line = 1, .col = 10 },
+                .{ .line = 1, .col = 9 },
             });
         }
     }
@@ -1056,13 +1117,13 @@ test "Anchor - forwardWord()" {
                 .{ .line = 0, .col = 10 },
                 .{ .line = 0, .col = 13 },
                 .{ .line = 0, .col = 17 },
-                .{ .line = 0, .col = 18 },
+                .{ .line = 0, .col = 17 },
             });
         }
         { // .BIG_WORD
             var c = Anchor{ .line = 0, .col = 0 };
             try testForwardWord(&c, .start, .BIG_WORD, &ropeman, &.{
-                .{ .line = 0, .col = 18 },
+                .{ .line = 0, .col = 17 },
             });
         }
     }
