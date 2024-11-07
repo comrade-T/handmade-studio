@@ -32,7 +32,7 @@ const RopeMan = @import("RopeMan");
 a: Allocator,
 
 cursor_mode: CursorMode = .point,
-uniform_mode: UniformMode = .single,
+uniform_mode: UniformMode = .uniformed,
 
 main_cursor_id: usize = 0,
 cursor_id_count: usize = 0,
@@ -55,6 +55,22 @@ pub fn destroy(self: *@This()) void {
 
 pub fn mainCursor(self: *@This()) *Cursor {
     return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
+}
+
+pub fn activateSingleMode(self: *@This()) void {
+    assert(self.uniform_mode == .uniformed);
+    self.uniform_mode = .single;
+}
+
+pub fn activateUniformedMode(self: *@This()) void {
+    assert(self.uniform_mode == .single);
+    self.uniform_mode = .uniformed;
+}
+
+pub fn setActiveCursor(self: *@This(), cursor_id: usize) void {
+    assert(self.cursors.contains(cursor_id));
+    if (!self.cursors.contains(cursor_id)) return;
+    self.main_cursor_id = cursor_id;
 }
 
 pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
@@ -123,6 +139,22 @@ test addCursor {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Selection
+
+pub fn addSelection(self: *@This()) !void {
+    _ = self;
+}
+
+test "selection test" {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
+    defer ropeman.deinit();
+
+    { // single .point cursor
+        // TODO: turn cursor id=0 to a selection
+        // TODO: implement addSelection() method
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
 pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
@@ -169,7 +201,7 @@ test moveUp {
         try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
     }
 
-    { // multiple .point cursors
+    { // uniformed multiple u .point cursors
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
@@ -218,7 +250,7 @@ test moveDown {
         try eq(Anchor{ .line = 2, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
     }
 
-    { // 2x .point cursors
+    { // 2x uniformed .point cursors
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
@@ -240,7 +272,7 @@ test moveDown {
         try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[0].start);
     }
 
-    { // 3x .point cursors, 2 will collide, 1 won't
+    { // 3x uniformed .point cursors, 2 will collide, 1 won't
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
@@ -289,7 +321,7 @@ test moveRight {
         try eq('d', "hello world"[10]);
     }
 
-    { // multiple .point cursors
+    { // multiple uniformed .point cursors
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
@@ -346,7 +378,7 @@ test moveLeft {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nbye");
     defer ropeman.deinit();
 
-    { // multiple .point cursors
+    { // multiple uniformed .point cursors
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
@@ -410,7 +442,7 @@ test forwardWord {
         try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
     }
 
-    { // multiple .point cursors
+    { // multiple uniformed .point cursors
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
@@ -470,6 +502,47 @@ test forwardWord {
     }
 }
 
+test "hjkl with uniform_mode == .single" {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars\nclub penguin");
+    defer ropeman.deinit();
+
+    var cm = try CursorManager.create(testing_allocator);
+    defer cm.destroy();
+    cm.activateSingleMode();
+
+    // add 2 more cursors
+    try cm.addCursor(0, 5, true);
+    try cm.addCursor(1, 0, true);
+    try eq(2, cm.main_cursor_id);
+    try eqSlice(usize, &.{ 0, 1, 2 }, cm.cursors.keys());
+    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+    try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].start);
+    try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[2].start);
+
+    // moveDown, only cursor id=2 moves
+    cm.moveDown(1, &ropeman);
+    try eqSlice(usize, &.{ 0, 1, 2 }, cm.cursors.keys());
+    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+    try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].start);
+    try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[2].start);
+
+    // moveDown, only cursor id=1 moves
+    cm.setActiveCursor(1);
+    cm.moveDown(1, &ropeman);
+    try eqSlice(usize, &.{ 0, 1, 2 }, cm.cursors.keys());
+    try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+    try eq(Anchor{ .line = 1, .col = 5 }, cm.cursors.values()[1].start);
+    try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[2].start);
+
+    // back to uniformed mode
+    cm.activateUniformedMode();
+    cm.moveDown(1, &ropeman);
+    try eqSlice(usize, &.{ 0, 1, 2 }, cm.cursors.keys());
+    try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
+    try eq(Anchor{ .line = 2, .col = 5 }, cm.cursors.values()[1].start);
+    try eq(Anchor{ .line = 3, .col = 0 }, cm.cursors.values()[2].start);
+}
+
 ///////////////////////////// moveCursorWithCallback
 
 const VimCallback = *const fn (
@@ -491,9 +564,17 @@ fn moveCursorWithVimCallback(
     cb: VimCallback,
 ) void {
     // move all cursors
-    for (self.cursors.values()) |*cursor| {
-        cb(cursor.activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman);
-        cursor.ensureAnchorOrder(self);
+    switch (self.uniform_mode) {
+        .uniformed => {
+            for (self.cursors.values()) |*cursor| {
+                cb(cursor.activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman);
+                cursor.ensureAnchorOrder(self);
+            }
+        },
+        .single => {
+            cb(self.mainCursor().activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman);
+            self.mainCursor().ensureAnchorOrder(self);
+        },
     }
 
     // handle collisions
@@ -502,11 +583,19 @@ fn moveCursorWithVimCallback(
 
 const HJKLCallback = *const fn (anchor: *Anchor, count: usize, ropeman: *const RopeMan) void;
 
-fn moveCursorWithHJKLCallback(self: *@This(), by: usize, ropeman: *const RopeMan, cb: HJKLCallback) void {
+fn moveCursorWithHJKLCallback(self: *@This(), count: usize, ropeman: *const RopeMan, cb: HJKLCallback) void {
     // move all cursors
-    for (self.cursors.values()) |*cursor| {
-        cb(cursor.activeAnchor(self), by, ropeman);
-        cursor.ensureAnchorOrder(self);
+    switch (self.uniform_mode) {
+        .uniformed => {
+            for (self.cursors.values()) |*cursor| {
+                cb(cursor.activeAnchor(self), count, ropeman);
+                cursor.ensureAnchorOrder(self);
+            }
+        },
+        .single => {
+            cb(self.mainCursor().activeAnchor(self), count, ropeman);
+            self.mainCursor().ensureAnchorOrder(self);
+        },
     }
 
     // handle collisions
