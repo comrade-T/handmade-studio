@@ -125,20 +125,49 @@ test addCursor {
 
 ///////////////////////////// Movement
 
-const MoveAnchorCallback = *const fn (anchor: *Anchor, ropeman: *const RopeMan) void;
+pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    self.moveCursorWithCallback(by, ropeman, Anchor.moveUp);
+}
 
-fn genericFunction(self: *@This(), by: usize, ropeman: *const RopeMan, cb: MoveAnchorCallback) !void {
+test moveUp {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
+    defer ropeman.deinit();
+
+    { // single .point cursor
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // update the initial cursor
+        cm.mainCursor().setActiveAnchor(cm, 1, 5);
+        try eq(Anchor{ .line = 1, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
+
+        // moveUp
+        cm.moveUp(1, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
+
+        cm.moveUp(10, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
+    }
+}
+
+///////////////////////////// moveCursorWithCallback
+
+const MoveAnchorCallback = *const fn (anchor: *Anchor, by: usize, ropeman: *const RopeMan) void;
+
+fn moveCursorWithCallback(self: *@This(), by: usize, ropeman: *const RopeMan, cb: MoveAnchorCallback) void {
+    // move all cursors
     for (self.cursors.values()) |*cursor| {
-        cb(cursor.activeAnchor(), by, ropeman);
-        cursor.ensureAnchorOrder();
+        cb(cursor.activeAnchor(self), by, ropeman);
+        cursor.ensureAnchorOrder(self);
     }
 
     // handle collisions
+    var i: usize = self.cursors.values().len;
+    while (i > 0) {
+        i -= 1;
+        self.mergeCursorsIfOverlaps(i);
+    }
 }
-
-// pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-//     // TODO:
-// }
 
 fn mergeCursorsIfOverlaps(self: *@This(), i: usize) void {
     const cursors = self.cursors.values();
@@ -151,7 +180,7 @@ fn mergeCursorsIfOverlaps(self: *@This(), i: usize) void {
     const next = cursors[i + 1];
 
     switch (self.cursor_mode) {
-        .single => if (curr.start == next.start) self.cursors.orderedRemoveAt(i + 1),
+        .point => if (curr.start.isEqual(next.start)) self.cursors.orderedRemoveAt(i + 1),
         .range => {
             assert(curr.start.isBefore(curr.end));
             assert(next.start.isBefore(next.end));
@@ -227,7 +256,7 @@ const Cursor = struct {
         }
     }
 
-    fn rangeOverlapsWith(self: *const @This(), other: *const @This()) bool {
+    fn rangeOverlapsWith(self: *const @This(), other: @This()) bool {
         return (other.start.isBeforeOrEqual(self.start) or
             other.start.isBeforeOrEqual(self.end) or
             other.end.isBeforeOrEqual(self.start) or
@@ -241,49 +270,49 @@ const Anchor = struct {
     line: usize,
     col: usize,
 
-    pub fn set(self: *@This(), line: usize, col: usize) void {
+    fn set(self: *@This(), line: usize, col: usize) void {
         self.line = line;
         self.col = col;
     }
 
-    fn isBeforeOrEqual(self: *const @This(), other: *const @This()) bool {
+    fn isBeforeOrEqual(self: *const @This(), other: @This()) bool {
         if (self.line == other.line) return self.col <= other.col;
         return self.line < other.line;
     }
 
-    fn isEqual(self: *const @This(), other: *const @This()) bool {
+    fn isEqual(self: *const @This(), other: @This()) bool {
         return self.line == other.line and self.col == other.col;
     }
 
-    fn isBefore(self: *const @This(), other: *const @This()) bool {
+    fn isBefore(self: *const @This(), other: @This()) bool {
         if (self.line == other.line) return self.col < other.col;
         return self.line < other.line;
     }
 
     ///////////////////////////// hjkl
 
-    pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
         self.line -|= by;
         self.restrictCol(ropeman);
     }
 
-    pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
         self.line += by;
         const nol = ropeman.getNumOfLines();
         if (self.line >= nol) self.line = nol -| 1;
         self.restrictCol(ropeman);
     }
 
-    pub fn moveLeft(self: *@This(), by: usize) void {
+    fn moveLeft(self: *@This(), by: usize) void {
         self.col -|= by;
     }
 
-    pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
         self.col += by;
         self.restrictCol(ropeman);
     }
 
-    pub fn restrictCol(self: *@This(), ropeman: *const RopeMan) void {
+    fn restrictCol(self: *@This(), ropeman: *const RopeMan) void {
         const noc = ropeman.getNumOfCharsInLine(self.line);
         if (self.col > noc) self.col = noc;
     }
