@@ -137,6 +137,10 @@ pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithCallback(by, ropeman, Anchor.moveRight);
 }
 
+pub fn moveLeft(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    self.moveCursorWithCallback(by, ropeman, Anchor.moveLeft);
+}
+
 test moveUp {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
     defer ropeman.deinit();
@@ -330,6 +334,58 @@ test moveRight {
     }
 }
 
+test moveLeft {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nbye");
+    defer ropeman.deinit();
+
+    { // multiple .point cursors
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // update 1st cursor
+        cm.mainCursor().setActiveAnchor(cm, 0, 5);
+
+        // add 3 more cursors
+        try cm.addCursor(0, 2, true);
+        try cm.addCursor(0, 7, true);
+        try cm.addCursor(1, 2, true);
+        try eqSlice(usize, &.{ 1, 0, 2, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 2 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 7 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 2 }, cm.cursors.values()[3].start);
+
+        // moveLeft
+        cm.moveLeft(1, &ropeman);
+        try eqSlice(usize, &.{ 1, 0, 2, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 1 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 4 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 1 }, cm.cursors.values()[3].start);
+
+        // moveLeft
+        cm.moveLeft(1, &ropeman);
+        try eqSlice(usize, &.{ 1, 0, 2, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 3 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[3].start);
+
+        // moveLeft by 3, cursor id=0 gets merged with cursor id=1 due to overlap
+        cm.moveLeft(3, &ropeman);
+        try eqSlice(usize, &.{ 1, 2, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 2 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[2].start);
+
+        // moveLeft by 100, cursor id=2 gets merged with cursor id=1 due to overlap
+        cm.moveLeft(100, &ropeman);
+        try eqSlice(usize, &.{ 1, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[1].start);
+    }
+}
+
 ///////////////////////////// moveCursorWithCallback
 
 const MoveAnchorCallback = *const fn (anchor: *Anchor, by: usize, ropeman: *const RopeMan) void;
@@ -483,7 +539,7 @@ const Anchor = struct {
         self.restrictCol(ropeman);
     }
 
-    fn moveLeft(self: *@This(), by: usize) void {
+    fn moveLeft(self: *@This(), by: usize, _: *const RopeMan) void {
         self.col -|= by;
     }
 
@@ -706,9 +762,9 @@ test "Anchor - basic hjkl movements" {
 
     // moveLeft()
     {
-        c.moveLeft(1);
+        c.moveLeft(1, &ropeman);
         try eq(Anchor{ .line = 0, .col = 0 }, c);
-        c.moveLeft(100);
+        c.moveLeft(100, &ropeman);
         try eq(Anchor{ .line = 0, .col = 0 }, c);
     }
 
