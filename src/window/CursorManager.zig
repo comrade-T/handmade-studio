@@ -123,7 +123,7 @@ test addCursor {
     }
 }
 
-///////////////////////////// Movement
+////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
 pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithCallback(by, ropeman, Anchor.moveUp);
@@ -131,6 +131,10 @@ pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
 
 pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithCallback(by, ropeman, Anchor.moveDown);
+}
+
+pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    self.moveCursorWithCallback(by, ropeman, Anchor.moveRight);
 }
 
 test moveUp {
@@ -248,6 +252,81 @@ test moveDown {
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
         try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 2, .col = 5 }, cm.cursors.values()[1].start);
+    }
+}
+
+test moveRight {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nbye");
+    defer ropeman.deinit();
+
+    { // single .point cursor
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        cm.moveRight(1, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 1 }, cm.mainCursor().activeAnchor(cm).*);
+
+        cm.moveRight(2, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 3 }, cm.mainCursor().activeAnchor(cm).*);
+
+        cm.moveRight(3, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.mainCursor().activeAnchor(cm).*);
+
+        cm.moveRight(100, &ropeman);
+        try eq(Anchor{ .line = 0, .col = 10 }, cm.mainCursor().activeAnchor(cm).*);
+        try eq('d', "hello world"[10]);
+    }
+
+    { // multiple .point cursors
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // add 3 more cursors
+        try cm.addCursor(0, 5, true);
+        try cm.addCursor(0, 3, true);
+        try cm.addCursor(1, 1, true);
+        try eqSlice(usize, &.{ 0, 2, 1, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 3 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 1 }, cm.cursors.values()[3].start);
+
+        // moveRight
+        cm.moveRight(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 2, 1, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 1 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 4 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 2 }, cm.cursors.values()[3].start);
+
+        // moveRight, cursor id=3 stuck at limit '2'
+        cm.moveRight(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 2, 1, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 2 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 7 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 2 }, cm.cursors.values()[3].start);
+
+        // moveRight, cursor id=1 stuct at limit '10'
+        cm.moveRight(4, &ropeman);
+        try eqSlice(usize, &.{ 0, 2, 1, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 9 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 0, .col = 10 }, cm.cursors.values()[2].start);
+        try eq(Anchor{ .line = 1, .col = 2 }, cm.cursors.values()[3].start);
+
+        // moveRight, cursor id=2 gets merged with id=1
+        cm.moveRight(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 2, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 7 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 0, .col = 10 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 1, .col = 2 }, cm.cursors.values()[2].start);
+
+        // moveRight, cursor id=0 gets merged with id=2
+        cm.moveRight(10, &ropeman);
+        try eqSlice(usize, &.{ 0, 3 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 10 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 2 }, cm.cursors.values()[1].start);
     }
 }
 
@@ -415,7 +494,7 @@ const Anchor = struct {
 
     fn restrictCol(self: *@This(), ropeman: *const RopeMan) void {
         const noc = ropeman.getNumOfCharsInLine(self.line);
-        if (self.col > noc) self.col = noc;
+        if (self.col >= noc) self.col = noc -| 1;
     }
 
     ///////////////////////////// b/B
@@ -619,16 +698,16 @@ test "Anchor - basic hjkl movements" {
         try eq(Anchor{ .line = 0, .col = 1 }, c);
 
         c.moveRight(2, &ropeman);
-        try eq(Anchor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 1 }, c);
 
         c.moveRight(100, &ropeman);
-        try eq(Anchor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 1 }, c);
     }
 
     // moveLeft()
     {
         c.moveLeft(1);
-        try eq(Anchor{ .line = 0, .col = 1 }, c);
+        try eq(Anchor{ .line = 0, .col = 0 }, c);
         c.moveLeft(100);
         try eq(Anchor{ .line = 0, .col = 0 }, c);
     }
@@ -636,28 +715,28 @@ test "Anchor - basic hjkl movements" {
     // moveDown()
     {
         c.moveRight(100, &ropeman);
-        try eq(Anchor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 1 }, c);
 
         c.moveDown(1, &ropeman);
-        try eq(Anchor{ .line = 1, .col = 2 }, c);
+        try eq(Anchor{ .line = 1, .col = 1 }, c);
 
         c.moveDown(1, &ropeman);
-        try eq(Anchor{ .line = 2, .col = 2 }, c);
+        try eq(Anchor{ .line = 2, .col = 1 }, c);
 
         c.moveDown(100, &ropeman);
-        try eq(Anchor{ .line = 3, .col = 1 }, c);
+        try eq(Anchor{ .line = 3, .col = 0 }, c);
     }
 
     // moveUp()
     {
         c.moveUp(1, &ropeman);
-        try eq(Anchor{ .line = 2, .col = 1 }, c);
+        try eq(Anchor{ .line = 2, .col = 0 }, c);
 
         c.moveRight(100, &ropeman);
-        try eq(Anchor{ .line = 2, .col = 5 }, c);
+        try eq(Anchor{ .line = 2, .col = 4 }, c);
 
         c.moveUp(100, &ropeman);
-        try eq(Anchor{ .line = 0, .col = 2 }, c);
+        try eq(Anchor{ .line = 0, .col = 1 }, c);
     }
 }
 
