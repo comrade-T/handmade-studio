@@ -129,6 +129,10 @@ pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithCallback(by, ropeman, Anchor.moveUp);
 }
 
+pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    self.moveCursorWithCallback(by, ropeman, Anchor.moveDown);
+}
+
 test moveUp {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
     defer ropeman.deinit();
@@ -173,6 +177,77 @@ test moveUp {
         cm.moveUp(1, &ropeman);
         try eqSlice(usize, &.{0}, cm.cursors.keys());
         try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[0].start);
+
+        cm.moveUp(100, &ropeman);
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[0].start);
+    }
+}
+
+test moveDown {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
+    defer ropeman.deinit();
+
+    { // single .point cursor
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        cm.moveDown(1, &ropeman);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
+
+        cm.moveDown(1, &ropeman);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
+
+        cm.moveDown(100, &ropeman);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
+    }
+
+    { // 2x .point cursors
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // add 2nd cursor
+        try cm.addCursor(1, 0, true);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[1].start);
+
+        // moveDown
+        cm.moveDown(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[1].start);
+
+        // moveDown again, cursors should merge due to overlap
+        cm.moveDown(1, &ropeman);
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[0].start);
+    }
+
+    { // 3x .point cursors, 2 will collide, 1 won't
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // add 2nd & 3rd cursors
+        try cm.addCursor(1, 5, true);
+        try cm.addCursor(1, 0, true);
+        try eqSlice(usize, &.{ 0, 2, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 1, .col = 5 }, cm.cursors.values()[2].start);
+
+        // moveDown
+        cm.moveDown(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 2, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[1].start);
+        try eq(Anchor{ .line = 2, .col = 5 }, cm.cursors.values()[2].start);
+
+        // moveDown again, cursors should merge due to overlap
+        cm.moveDown(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 2, .col = 0 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 5 }, cm.cursors.values()[1].start);
     }
 }
 
