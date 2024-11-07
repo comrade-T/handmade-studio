@@ -31,8 +31,10 @@ const RopeMan = @import("RopeMan");
 
 a: Allocator,
 
+cursor_mode: CursorMode = .point,
+uniform_mode: UniformMode = .single,
+
 main_cursor_id: usize = 0,
-mode: CursorMode = .single,
 cursor_id_count: usize = 0,
 cursors: CursorMap,
 
@@ -77,31 +79,31 @@ test addCursor {
 
         // initital cursor position is line=0 col=0 on CursorManager.create()
         try eq(1, cm.cursors.values().len);
-        try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor(cm.mode).*);
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
 
         // add 2nd cursor AFTER the initial cursor
         try cm.addCursor(0, 5, true);
-        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm.mode).*);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
 
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
-        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.getPtr(0).?.activeAnchor(cm.mode).*);
-        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.getPtr(1).?.activeAnchor(cm.mode).*);
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.getPtr(0).?.activeAnchor(cm).*);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.getPtr(1).?.activeAnchor(cm).*);
     }
     {
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
         // update the initial cursor
-        cm.mainCursor().setActiveAnchor(cm.mode, 0, 5);
-        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm.mode).*);
+        cm.mainCursor().setActiveAnchor(cm, 0, 5);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
 
         // add 2nd cursor BEFORE the initial cursor
         try cm.addCursor(0, 0, true);
-        try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor(cm.mode).*);
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
         // make sure the cursors are sorted
         try eqSlice(usize, &.{ 1, 0 }, cm.cursors.keys());
-        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].activeAnchor(cm.mode).*);
-        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].activeAnchor(cm.mode).*);
+        try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].activeAnchor(cm).*);
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].activeAnchor(cm).*);
     }
     { // cursor position already exist
         var cm = try CursorManager.create(testing_allocator);
@@ -123,35 +125,32 @@ test addCursor {
 
 ///////////////////////////// Movement
 
+const MoveAnchorCallback = *const fn (anchor: *Anchor, ropeman: *const RopeMan) void;
+
+fn genericFunction(self: *@This(), by: usize, ropeman: *const RopeMan, cb: MoveAnchorCallback) !void {
+    for (self.cursors.values()) |*cursor| cb(cursor.activeAnchor(), by, ropeman);
+
+    // handle collisions
+}
+
 // pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-//     var i: usize = self.cursors.values().len;
-//
-//     // move all the cursors first
-//     for (self.cursors.values()) |*cursor| cursor.activeAnchor().moveUp(by, ropeman);
-//
-//     // handle collisions later
-//     while (i > 0) {
-//         i -= 1;
-//
-//         // removeNextCursorIfOverlaps()
-//
-//         // TODO: handle .single overlaps
-//         // TODO: handle .range start overlaps with .range end
-//         // TODO: handle .range overlaps with another .range
-//     }
+//     // TODO:
 // }
-//
-// fn removeNextCursorIfOverlaps(self: *@This(), i: usize) void {
-//     const cursors = self.cursors.values();
-//     assert(cursors.len > 0);
-//     assert(i < cursors.len);
-//
-//     if (cursors.len == 0 or i >= cursors.len - 1) return;
-//
-//     if (CursorMapContext.order({}, cursors[i], cursors[i + 1]) == .eq) {
-//         self.cursors.orderedRemoveAt(i + 1);
-//     }
-// }
+
+fn removeNextCursorIfOverlaps(self: *@This(), i: usize) void {
+    const cursors = self.cursors.values();
+    assert(cursors.len > 0);
+    assert(i < cursors.len);
+
+    if (cursors.len == 0 or i >= cursors.len - 1) return;
+
+    switch (self.mode) {
+        // TODO:
+    }
+
+    const condition = false;
+    if (condition) self.cursors.orderedRemoveAt(i + 1);
+}
 
 ///////////////////////////// CursorMap / CursorMapSortContext / CursorMapBinarySearchContext
 
@@ -174,15 +173,16 @@ const CursorMapContext = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Cursor
 
-const CursorMode = enum { single, range };
+const UniformMode = enum { single, uniformed };
+const CursorMode = enum { point, range };
 
 const Cursor = struct {
     start: Anchor,
     end: Anchor,
     current_anchor: enum { start, end } = .start,
 
-    pub fn setActiveAnchor(self: *@This(), mode: CursorMode, line: usize, col: usize) void {
-        self.activeAnchor(mode).set(line, col);
+    pub fn setActiveAnchor(self: *@This(), cm: *const CursorManager, line: usize, col: usize) void {
+        self.activeAnchor(cm).set(line, col);
     }
 
     pub fn setRange(self: *@This(), start: struct { usize, usize }, end: struct { usize, usize }) !void {
@@ -190,9 +190,9 @@ const Cursor = struct {
         self.end.line, self.end.col = end;
     }
 
-    fn activeAnchor(self: *@This(), mode: CursorMode) *Anchor {
-        return switch (mode) {
-            .single => &self.start,
+    fn activeAnchor(self: *@This(), cm: *const CursorManager) *Anchor {
+        return switch (cm.cursor_mode) {
+            .point => &self.start,
             .range => if (self.current_anchor == .start) &self.start else &self.end,
         };
     }
