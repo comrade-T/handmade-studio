@@ -128,7 +128,10 @@ test addCursor {
 const MoveAnchorCallback = *const fn (anchor: *Anchor, ropeman: *const RopeMan) void;
 
 fn genericFunction(self: *@This(), by: usize, ropeman: *const RopeMan, cb: MoveAnchorCallback) !void {
-    for (self.cursors.values()) |*cursor| cb(cursor.activeAnchor(), by, ropeman);
+    for (self.cursors.values()) |*cursor| {
+        cb(cursor.activeAnchor(), by, ropeman);
+        cursor.ensureAnchorOrder();
+    }
 
     // handle collisions
 }
@@ -137,19 +140,33 @@ fn genericFunction(self: *@This(), by: usize, ropeman: *const RopeMan, cb: MoveA
 //     // TODO:
 // }
 
-fn removeNextCursorIfOverlaps(self: *@This(), i: usize) void {
+fn mergeCursorsIfOverlaps(self: *@This(), i: usize) void {
     const cursors = self.cursors.values();
     assert(cursors.len > 0);
     assert(i < cursors.len);
 
     if (cursors.len == 0 or i >= cursors.len - 1) return;
 
-    switch (self.mode) {
-        // TODO:
-    }
+    const curr = cursors[i];
+    const next = cursors[i + 1];
 
-    const condition = false;
-    if (condition) self.cursors.orderedRemoveAt(i + 1);
+    switch (self.cursor_mode) {
+        .single => if (curr.start == next.start) self.cursors.orderedRemoveAt(i + 1),
+        .range => {
+            assert(curr.start.isBefore(curr.end));
+            assert(next.start.isBefore(next.end));
+
+            if (curr.rangeOverlapsWith(next)) {
+                const start = if (next.start.isBefore(curr.start)) next.start else curr.start;
+                const end = if (next.end.isBefore(curr.end)) curr.end else next.end;
+
+                self.cursors.values()[i].start = start;
+                self.cursors.values()[i].end = end;
+
+                self.cursors.orderedRemoveAt(i + 1);
+            }
+        },
+    }
 }
 
 ///////////////////////////// CursorMap / CursorMapSortContext / CursorMapBinarySearchContext
@@ -196,6 +213,26 @@ const Cursor = struct {
             .range => if (self.current_anchor == .start) &self.start else &self.end,
         };
     }
+
+    fn ensureAnchorOrder(self: *@This(), cm: *const CursorManager) void {
+        if (cm.cursor_mode == .point) return;
+        if (self.start.isEqual(self.end)) {
+            self.end.col += 1;
+            return;
+        }
+        if (self.end.isBefore(self.start)) {
+            const start_cpy = self.start;
+            self.start = self.end;
+            self.end = start_cpy;
+        }
+    }
+
+    fn rangeOverlapsWith(self: *const @This(), other: *const @This()) bool {
+        return (other.start.isBeforeOrEqual(self.start) or
+            other.start.isBeforeOrEqual(self.end) or
+            other.end.isBeforeOrEqual(self.start) or
+            other.end.isBeforeOrEqual(self.end));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Anchor
@@ -207,6 +244,20 @@ const Anchor = struct {
     pub fn set(self: *@This(), line: usize, col: usize) void {
         self.line = line;
         self.col = col;
+    }
+
+    fn isBeforeOrEqual(self: *const @This(), other: *const @This()) bool {
+        if (self.line == other.line) return self.col <= other.col;
+        return self.line < other.line;
+    }
+
+    fn isEqual(self: *const @This(), other: *const @This()) bool {
+        return self.line == other.line and self.col == other.col;
+    }
+
+    fn isBefore(self: *const @This(), other: *const @This()) bool {
+        if (self.line == other.line) return self.col < other.col;
+        return self.line < other.line;
     }
 
     ///////////////////////////// hjkl
