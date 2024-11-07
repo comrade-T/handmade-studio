@@ -148,6 +148,32 @@ test moveUp {
         cm.moveUp(10, &ropeman);
         try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
     }
+
+    { // multiple .point cursors
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        // update the initial cursor
+        cm.mainCursor().setActiveAnchor(cm, 1, 5);
+        try eq(Anchor{ .line = 1, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
+
+        // add 2nd cursor
+        try cm.addCursor(2, 5, true);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 1, .col = 5 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 2, .col = 5 }, cm.cursors.values()[1].start);
+
+        // moveUp
+        cm.moveUp(1, &ropeman);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[0].start);
+        try eq(Anchor{ .line = 1, .col = 5 }, cm.cursors.values()[1].start);
+
+        // moveUp again, cursors should merge due to overlap
+        cm.moveUp(1, &ropeman);
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+        try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[0].start);
+    }
 }
 
 ///////////////////////////// moveCursorWithCallback
@@ -208,7 +234,7 @@ const CursorMapContext = struct {
         const a = ctx.cursors[a_index].start;
         const b = ctx.cursors[b_index].start;
         if (a.line == b.line) return a.col < b.col;
-        return a.line < b.col;
+        return a.line < b.line;
     }
 
     pub fn order(_: void, a: Cursor, b: Cursor) std.math.Order {
