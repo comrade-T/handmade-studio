@@ -30,8 +30,10 @@ const assert = std.debug.assert;
 
 const LangSuite = @import("LangSuite");
 pub const WindowSource = @import("WindowSource");
-const FontStore = @import("FontStore");
-const ColorschemeStore = @import("ColorschemeStore");
+pub const FontStore = @import("FontStore");
+pub const ColorschemeStore = @import("ColorschemeStore");
+
+const WindowCache = @import("WindowCache.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -170,8 +172,8 @@ test createInitialLineSizeList {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
 
-    const supermarket = try createMockSuperMarket(testing_allocator);
-    defer deinitSuperMarket(testing_allocator, supermarket);
+    const supermarket = try createMockSupermarket(testing_allocator);
+    defer deinitMockSupermarket(testing_allocator, supermarket);
 
     var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
     defer ws.deinit();
@@ -254,14 +256,14 @@ pub const Supermarket = struct {
     colorscheme_store: *ColorschemeStore,
 };
 
-fn deinitSuperMarket(a: Allocator, sp: Supermarket) void {
+fn deinitMockSupermarket(a: Allocator, sp: Supermarket) void {
     sp.font_store.deinit();
     sp.colorscheme_store.deinit();
     a.destroy(sp.font_store);
     a.destroy(sp.colorscheme_store);
 }
 
-fn createMockSuperMarket(a: Allocator) !Supermarket {
+fn createMockSupermarket(a: Allocator) !Supermarket {
     const font_store = try a.create(FontStore);
     font_store.* = try createMockFontStore(a);
 
@@ -293,3 +295,9 @@ const ScreenView = struct {
     start: struct { x: f32 = 0, y: f32 = 0 },
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// Test Referencing
+
+test {
+    std.testing.refAllDeclsRecursive(WindowCache);
+}
