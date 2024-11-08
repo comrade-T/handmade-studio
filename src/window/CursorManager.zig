@@ -67,6 +67,22 @@ pub fn activateUniformedMode(self: *@This()) void {
     self.uniform_mode = .uniformed;
 }
 
+pub fn activatePointMode(self: *@This()) void {
+    assert(self.cursor_mode == .range);
+    self.cursor_mode = .point;
+    for (self.cursors.values()) |*cursor| cursor.current_anchor = .start;
+}
+
+pub fn activateRangeMode(self: *@This()) void {
+    assert(self.cursor_mode == .point);
+    self.cursor_mode = .range;
+    for (self.cursors.values()) |*cursor| {
+        cursor.current_anchor = .end;
+        cursor.end.line = cursor.start.line;
+        cursor.end.col = cursor.start.col + 1;
+    }
+}
+
 pub fn setActiveCursor(self: *@This(), cursor_id: usize) void {
     assert(self.cursors.contains(cursor_id));
     if (!self.cursors.contains(cursor_id)) return;
@@ -145,14 +161,30 @@ pub fn addSelection(self: *@This()) !void {
     _ = self;
 }
 
-test "selection test" {
+test "range test" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
     defer ropeman.deinit();
 
     { // single .point cursor
-        // TODO: turn cursor id=0 to a selection
-        // TODO: implement addSelection() method
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
+        cm.activateRangeMode();
+        try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor());
+
+        cm.moveRight(1, &ropeman);
+        try eqCursor(.{ 0, 0, 0, 2 }, cm.mainCursor());
+
+        cm.moveDown(1, &ropeman);
+        try eqCursor(.{ 0, 0, 1, 2 }, cm.mainCursor());
     }
+
+    // TODO: implement addSelection() method
+}
+
+fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: *const Cursor) !void {
+    try eq(.{ expected[0], expected[1] }, .{ cursor.start.line, cursor.start.col });
+    try eq(.{ expected[2], expected[3] }, .{ cursor.end.line, cursor.end.col });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
