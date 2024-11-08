@@ -108,6 +108,10 @@ pub fn build(b: *std.Build) void {
 
     const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
     const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, zig_build_test_step);
+    const style_store = addTestableModule(&bops, "src/window/StyleStore.zig", &.{
+        .{ .name = "FontStore", .module = font_store.module },
+        .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
+    }, zig_build_test_step);
 
     const cursor_manager = addTestableModule(&bops, "src/window/CursorManager.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
@@ -116,11 +120,12 @@ pub fn build(b: *std.Build) void {
     _ = cursor_manager;
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
+        .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
         .{ .name = "FontStore", .module = font_store.module },
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
-        .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "StyleStore", .module = style_store.module },
     }, zig_build_test_step);
 
     const vim_move = addTestableModule(&bops, "src/window/vim_move.zig", &.{

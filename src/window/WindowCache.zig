@@ -38,6 +38,29 @@ fn init(a: Allocator, win: *const Window) !WindowCache {
     return self;
 }
 
+// TODO: add `getDefaultGlyph()`
+// `default_glyph` should be of code_point '?' of the default raylib font.
+// it should never fail.
+
+///////////////////////////// it used to be this
+
+// const font = supermarket.font_store.getDefaultFont() orelse unreachable;
+// const font_size = self.defaults.font_size;
+// const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
+// const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
+
+// => `getDefaultFont()` should always return raylib default font.
+
+// TODO: refresh my memory on how to decide which `font` to pick
+// TODO: refresh my memory on how to decide which `font_size` to pick
+
+/////////////////////////////
+
+// TODO: figure out where to get:
+// - `font`
+// - `font_size`
+// for `calculateLineSize()`
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const Font = Window.FontStore.Font;

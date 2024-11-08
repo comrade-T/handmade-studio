@@ -23,7 +23,7 @@ const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const assert = std.debug.assert;
 
-const Colorscheme = std.StringArrayHashMapUnmanaged(u32);
+pub const Colorscheme = std.StringArrayHashMapUnmanaged(u32);
 const ColorschemeMap = std.StringArrayHashMapUnmanaged(Colorscheme);
 
 //////////////////////////////////////////////////////////////////////////////////////////////
