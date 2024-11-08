@@ -32,6 +32,7 @@ const LangSuite = @import("LangSuite");
 pub const WindowSource = @import("WindowSource");
 pub const FontStore = @import("FontStore");
 pub const ColorschemeStore = @import("ColorschemeStore");
+pub const StyleStore = @import("StyleStore");
 
 const WindowCache = @import("WindowCache.zig");
 
@@ -43,6 +44,11 @@ ws: *WindowSource,
 rcb: ?*const RenderCallbacks,
 cached: CachedSizes,
 defaults: Defaults,
+
+// experimental
+subscribed_style_sets: SubscribedStyleSets,
+
+const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
 
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, supermarket: Supermarket) !*Window {
     var self = try a.create(@This());
@@ -62,6 +68,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, supermarket: 
             .lines = try LineSizeList.initCapacity(a, ws.buf.ropeman.getNumOfLines()),
         },
         .defaults = Defaults{},
+        .subscribed_style_sets = SubscribedStyleSets{},
     };
 
     try self.createInitialLineSizeList(supermarket);
@@ -71,6 +78,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, supermarket: 
 
 pub fn destroy(self: *@This()) void {
     self.cached.lines.deinit(self.a);
+    self.subscribed_style_sets.deinit(self.a);
     self.a.destroy(self);
 }
 

@@ -18,40 +18,66 @@
 const StyleStore = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const assert = std.debug.assert;
+
 const FontStore = @import("FontStore");
 const ColorschemeStore = @import("ColorschemeStore");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
+
+font_store: *FontStore,
+colorscheme_store: *ColorschemeStore,
+
 fonts: FontMap = undefined,
+font_sizes: FontSizeMap = undefined,
 colorschemes: ColorschemeMap = undefined,
 
-const StyleKey = struct {
+const FontMap = std.AutoArrayHashMapUnmanaged(StyleKey, u16);
+const FontSizeMap = std.AutoArrayHashMapUnmanaged(StyleKey, f32);
+const ColorschemeMap = std.AutoArrayHashMapUnmanaged(StyleKey, u16);
+pub const StyleKey = struct {
     query_id: u16,
     capture_id: u16,
     styleset_id: u16,
 };
-const FontMap = std.AutoArrayHashMapUnmanaged(StyleKey, u16);
-const ColorschemeMap = std.AutoArrayHashMapUnmanaged(StyleKey, u16);
 
 pub fn init(a: Allocator) !StyleStore {
     return StyleStore{
         .a = a,
         .fonts = FontMap{},
+        .font_sizes = FontSizeMap{},
         .colorschemes = ColorschemeMap{},
     };
 }
 
 pub fn deinit(self: *@This()) void {
     self.fonts.deinit(self.a);
+    self.font_sizes.deinit(self.a);
     self.colorschemes.deinit(self.a);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn addFontStyle(self: *@This(), key: StyleKey, font_index: u16) !void {
     try self.fonts.put(self.a, key, @intCast(font_index));
 }
 
-pub fn addColorscheme(self: *@This(), key: StyleKey, colorscheme_index: u16) !void {
+pub fn addColorschemeStyle(self: *@This(), key: StyleKey, colorscheme_index: u16) !void {
     try self.colorschemes.put(self.a, key, @intCast(colorscheme_index));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn getFont(self: *@This(), key: StyleKey) ?*const FontStore.Font {
+    const index = self.fonts.get(key) orelse return null;
+    assert(index < self.font_store.map.values().len);
+    return &self.font_store.map.values()[index];
+}
+
+pub fn getColorscheme(self: *@This(), key: StyleKey) ?*const FontStore.Font {
+    const index = self.colorschemes.get(key) orelse return null;
+    assert(index < self.colorscheme_store.map.values().len);
+    return &self.colorscheme_store.map.values()[index];
 }

@@ -38,35 +38,51 @@ fn init(a: Allocator, win: *const Window) !WindowCache {
     return self;
 }
 
-// TODO: add `getDefaultGlyph()`
-// `default_glyph` should be of code_point '?' of the default raylib font.
-// it should never fail.
-
-///////////////////////////// it used to be this
-
-// const font = supermarket.font_store.getDefaultFont() orelse unreachable;
-// const font_size = self.defaults.font_size;
-// const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
-// const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
-
-// => `getDefaultFont()` should always return raylib default font.
-
-// TODO: refresh my memory on how to decide which `font` to pick
-// TODO: refresh my memory on how to decide which `font_size` to pick
-
-/////////////////////////////
-
-// TODO: figure out where to get:
-// - `font`
-// - `font_size`
-// for `calculateLineSize()`
-
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const LineIterator = Window.WindowSource.LineIterator;
+const StyleStore = Window.StyleStore;
+const StyleKey = StyleStore.StyleKey;
 const Font = Window.FontStore.Font;
 const GlyphData = Window.FontStore.Font.GlyphData;
-const WindowSource = Window.WindowSource;
-const IterResult = WindowSource.LineIterator.Result;
+
+fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) struct { usize, usize } {
+    var line_width: f32 = 0;
+    var line_height: f32 = 0;
+    var iter = try LineIterator.init(win.ws, linenr);
+    while (iter.next(win.ws.cap_list.items[linenr])) |r| {
+        const font = getFont(win, r, style_store) orelse default_font;
+        const font_size = getFontSize(win, r, style_store) orelse win.defaults.font_size;
+        const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
+        line_width += width;
+        line_height = @max(line_height, font_size);
+    }
+    return .{ line_width, line_height };
+}
+
+fn getFontSize(win: *const Window, r: LineIterator.Result, style_store: *const StyleStore) ?f32 {
+    var i: usize = r.ids.len;
+    while (i > 0) {
+        i -= 1;
+        const ids = r.ids[i];
+        for (win.subscribed_style_sets.items) |styleset_id| {
+            const key = StyleKey{ .query_id = ids.query_id, .capture_id = ids.capture_id, .styleset_id = styleset_id };
+            if (style_store.getFontSize(key)) |font_size| return font_size;
+        }
+    }
+}
+
+fn getFont(win: *const Window, r: LineIterator.Result, style_store: *const StyleStore) ?*const Font {
+    var i: usize = r.ids.len;
+    while (i > 0) {
+        i -= 1;
+        const ids = r.ids[i];
+        for (win.subscribed_style_sets.items) |styleset_id| {
+            const key = StyleKey{ .query_id = ids.query_id, .capture_id = ids.capture_id, .styleset_id = styleset_id };
+            if (style_store.getFont(key)) |f| return f;
+        }
+    }
+}
 
 fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, default_glyph: GlyphData) f32 {
     const glyph = font.glyph_map.get(code_point) orelse default_glyph;
@@ -75,19 +91,8 @@ fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, defau
     return width * scale_factor;
 }
 
-fn calculateLineSize(win: *const Window, linenr: usize, default_glyph: GlyphData) struct { usize, usize } {
-    const font = undefined;
-    const font_size = undefined;
-
-    var line_width: f32 = 0;
-    var iter = try WindowSource.LineIterator.init(win.ws, linenr);
-    while (iter.next(win.ws.cap_list.items[linenr])) |r| {
-        const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-        line_width += width;
-    }
-    const line_height = font_size;
-
-    return .{ line_width, line_height };
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+test {
+    std.debug.print("hello\n", .{});
+}
