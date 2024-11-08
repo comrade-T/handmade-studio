@@ -53,6 +53,36 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+/// Allocate & set `RopeMan.CursorPoint` slice from cursors.
+/// Temporary solution to avoid circular references between `CursorManager` & `RopeMan` modules.
+/// Would love to have a solution where I don't have to allocate memory.
+pub fn produceCursorPoints(self: *@This(), a: Allocator) ![]RopeMan.CursorPoint {
+    assert(self.cursor_mode == .point);
+    var points = a.alloc(RopeMan.CursorPoint, self.cursors.values().len);
+    for (self.cursors.values(), 0..) |*cursor, i| {
+        points[i] = .{
+            .line = cursor.start.line,
+            .col = cursor.start.col,
+        };
+    }
+    return points;
+}
+
+/// Allocate & set `RopeMan.CursorRange` slice from cursors.
+/// Temporary solution to avoid circular references between `CursorManager` & `RopeMan` modules.
+/// Would love to have a solution where I don't have to allocate memory.
+pub fn produceCursorRanges(self: *@This(), a: Allocator) ![]RopeMan.CursorRange {
+    assert(self.cursor_mode == .range);
+    var ranges = a.alloc(RopeMan.CursorRange, self.cursors.values().len);
+    for (self.cursors.values(), 0..) |*cursor, i| {
+        ranges[i] = .{
+            .start = .{ .line = cursor.start.line, .col = cursor.start.col },
+            .end = .{ .line = cursor.end.line, .col = cursor.end.col },
+        };
+    }
+    return ranges;
+}
+
 pub fn mainCursor(self: *@This()) *Cursor {
     return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
 }
