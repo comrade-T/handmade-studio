@@ -44,7 +44,7 @@ pub fn create(a: Allocator) !*CursorManager {
         .a = a,
         .cursors = CursorMap.init(self.a),
     };
-    try self.addCursor(0, 0, true);
+    try self.addPointCursor(0, 0, true);
     return self;
 }
 
@@ -106,7 +106,8 @@ pub fn setActiveCursor(self: *@This(), cursor_id: usize) void {
     self.main_cursor_id = cursor_id;
 }
 
-pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
+pub fn addPointCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void {
+    assert(self.cursor_mode == .point);
     const new_cursor = Cursor{
         .start = Anchor{ .line = line, .col = col },
         .end = Anchor{ .line = line, .col = col + 1 },
@@ -125,7 +126,7 @@ fn addNewCursorThenSortAllCursors(self: *@This(), new_cursor: Cursor, make_main:
     self.cursors.sort(CursorMapContext{ .cursors = self.cursors.values() });
 }
 
-test addCursor {
+test addPointCursor {
     {
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
@@ -135,7 +136,7 @@ test addCursor {
         try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
 
         // add 2nd cursor AFTER the initial cursor
-        try cm.addCursor(0, 5, true);
+        try cm.addPointCursor(0, 5, true);
         try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
 
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
@@ -151,7 +152,7 @@ test addCursor {
         try eq(Anchor{ .line = 0, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
 
         // add 2nd cursor BEFORE the initial cursor
-        try cm.addCursor(0, 0, true);
+        try cm.addPointCursor(0, 0, true);
         try eq(Anchor{ .line = 0, .col = 0 }, cm.mainCursor().activeAnchor(cm).*);
         // make sure the cursors are sorted
         try eqSlice(usize, &.{ 1, 0 }, cm.cursors.keys());
@@ -163,22 +164,22 @@ test addCursor {
         defer cm.destroy();
         try eqSlice(usize, &.{0}, cm.cursors.keys());
 
-        try cm.addCursor(0, 0, true);
+        try cm.addPointCursor(0, 0, true);
         try eqSlice(usize, &.{0}, cm.cursors.keys());
 
-        try cm.addCursor(0, 5, true);
+        try cm.addPointCursor(0, 5, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
 
-        try cm.addCursor(0, 0, true);
+        try cm.addPointCursor(0, 0, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
-        try cm.addCursor(0, 5, true);
+        try cm.addPointCursor(0, 5, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Selection
 
-pub fn addRange(self: *@This(), start: struct { usize, usize }, end: struct { usize, usize }, make_main: bool) !void {
+pub fn addRangeCursor(self: *@This(), start: struct { usize, usize }, end: struct { usize, usize }, make_main: bool) !void {
     assert(self.cursor_mode == .range);
     const new_cursor = Cursor{
         .start = Anchor{ .line = start[0], .col = start[1] },
@@ -189,7 +190,7 @@ pub fn addRange(self: *@This(), start: struct { usize, usize }, end: struct { us
     self.mergeCursorsIfOverlap();
 }
 
-test addRange {
+test addRangeCursor {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
     defer ropeman.deinit();
 
@@ -201,7 +202,7 @@ test addRange {
         try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor().*);
 
         // addRange
-        try cm.addRange(.{ 1, 0 }, .{ 1, 1 }, true);
+        try cm.addRangeCursor(.{ 1, 0 }, .{ 1, 1 }, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
         try eqCursor(.{ 0, 0, 0, 1 }, cm.cursors.values()[0]);
         try eqCursor(.{ 1, 0, 1, 1 }, cm.cursors.values()[1]);
@@ -278,7 +279,7 @@ test moveUp {
         try eq(Anchor{ .line = 1, .col = 5 }, cm.mainCursor().activeAnchor(cm).*);
 
         // add 2nd cursor
-        try cm.addCursor(2, 5, true);
+        try cm.addPointCursor(2, 5, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
         try eq(Anchor{ .line = 1, .col = 5 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 2, .col = 5 }, cm.cursors.values()[1].start);
@@ -323,7 +324,7 @@ test moveDown {
         defer cm.destroy();
 
         // add 2nd cursor
-        try cm.addCursor(1, 0, true);
+        try cm.addPointCursor(1, 0, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
         try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[1].start);
@@ -345,8 +346,8 @@ test moveDown {
         defer cm.destroy();
 
         // add 2nd & 3rd cursors
-        try cm.addCursor(1, 5, true);
-        try cm.addCursor(1, 0, true);
+        try cm.addPointCursor(1, 5, true);
+        try cm.addPointCursor(1, 0, true);
         try eqSlice(usize, &.{ 0, 2, 1 }, cm.cursors.keys());
         try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 1, .col = 0 }, cm.cursors.values()[1].start);
@@ -394,9 +395,9 @@ test moveRight {
         defer cm.destroy();
 
         // add 3 more cursors
-        try cm.addCursor(0, 5, true);
-        try cm.addCursor(0, 3, true);
-        try cm.addCursor(1, 1, true);
+        try cm.addPointCursor(0, 5, true);
+        try cm.addPointCursor(0, 3, true);
+        try cm.addPointCursor(1, 1, true);
         try eqSlice(usize, &.{ 0, 2, 1, 3 }, cm.cursors.keys());
         try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 0, .col = 3 }, cm.cursors.values()[1].start);
@@ -454,9 +455,9 @@ test moveLeft {
         cm.mainCursor().setActiveAnchor(cm, 0, 5);
 
         // add 3 more cursors
-        try cm.addCursor(0, 2, true);
-        try cm.addCursor(0, 7, true);
-        try cm.addCursor(1, 2, true);
+        try cm.addPointCursor(0, 2, true);
+        try cm.addPointCursor(0, 7, true);
+        try cm.addPointCursor(1, 2, true);
         try eqSlice(usize, &.{ 1, 0, 2, 3 }, cm.cursors.keys());
         try eq(Anchor{ .line = 0, .col = 2 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 0, .col = 5 }, cm.cursors.values()[1].start);
@@ -515,9 +516,9 @@ test forwardWord {
         defer cm.destroy();
 
         // add 2nd cursor
-        try cm.addCursor(0, 6, true);
-        try cm.addCursor(1, 0, true);
-        try cm.addCursor(2, 0, true);
+        try cm.addPointCursor(0, 6, true);
+        try cm.addPointCursor(1, 0, true);
+        try cm.addPointCursor(2, 0, true);
         try eqSlice(usize, &.{ 0, 1, 2, 3 }, cm.cursors.keys());
         try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
         try eq(Anchor{ .line = 0, .col = 6 }, cm.cursors.values()[1].start);
@@ -579,8 +580,8 @@ test "hjkl with uniform_mode == .single" {
     cm.activateSingleMode();
 
     // add 2 more cursors
-    try cm.addCursor(0, 5, true);
-    try cm.addCursor(1, 0, true);
+    try cm.addPointCursor(0, 5, true);
+    try cm.addPointCursor(1, 0, true);
     try eq(2, cm.main_cursor_id);
     try eqSlice(usize, &.{ 0, 1, 2 }, cm.cursors.keys());
     try eq(Anchor{ .line = 0, .col = 0 }, cm.cursors.values()[0].start);
