@@ -83,6 +83,23 @@ pub fn activateRangeMode(self: *@This()) void {
     }
 }
 
+test activateRangeMode {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
+    defer ropeman.deinit();
+
+    var cm = try CursorManager.create(testing_allocator);
+    defer cm.destroy();
+
+    cm.activateRangeMode();
+    try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor().*);
+
+    cm.moveRight(1, &ropeman);
+    try eqCursor(.{ 0, 0, 0, 2 }, cm.mainCursor().*);
+
+    cm.moveDown(1, &ropeman);
+    try eqCursor(.{ 0, 0, 1, 2 }, cm.mainCursor().*);
+}
+
 pub fn setActiveCursor(self: *@This(), cursor_id: usize) void {
     assert(self.cursors.contains(cursor_id));
     if (!self.cursors.contains(cursor_id)) return;
@@ -98,6 +115,10 @@ pub fn addCursor(self: *@This(), line: usize, col: usize, make_main: bool) !void
     const existing_index = std.sort.binarySearch(Cursor, new_cursor, self.cursors.values(), {}, CursorMapContext.order);
     if (existing_index != null) return;
 
+    try self.addNewCursorThenSortAllCursors(new_cursor, make_main);
+}
+
+fn addNewCursorThenSortAllCursors(self: *@This(), new_cursor: Cursor, make_main: bool) !void {
     defer self.cursor_id_count += 1;
     try self.cursors.put(self.cursor_id_count, new_cursor);
     if (make_main) self.main_cursor_id = self.cursor_id_count;
@@ -157,32 +178,47 @@ test addCursor {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Selection
 
-pub fn addSelection(self: *@This()) !void {
-    _ = self;
+pub fn addRange(self: *@This(), start: struct { usize, usize }, end: struct { usize, usize }, make_main: bool) !void {
+    assert(self.cursor_mode == .range);
+    const new_cursor = Cursor{
+        .start = Anchor{ .line = start[0], .col = start[1] },
+        .end = Anchor{ .line = end[0], .col = end[1] },
+        .current_anchor = .end,
+    };
+    try self.addNewCursorThenSortAllCursors(new_cursor, make_main);
+    self.mergeCursorsIfOverlap();
 }
 
-test "range test" {
+test addRange {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hello world\nhello venus\nhello mars");
     defer ropeman.deinit();
 
-    { // single .point cursor
+    { // 2x .range cursors
         var cm = try CursorManager.create(testing_allocator);
         defer cm.destroy();
 
         cm.activateRangeMode();
-        try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor());
+        try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor().*);
 
+        // addRange
+        try cm.addRange(.{ 1, 0 }, .{ 1, 1 }, true);
+        try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
+        try eqCursor(.{ 0, 0, 0, 1 }, cm.cursors.values()[0]);
+        try eqCursor(.{ 1, 0, 1, 1 }, cm.cursors.values()[1]);
+
+        // moveRight
         cm.moveRight(1, &ropeman);
-        try eqCursor(.{ 0, 0, 0, 2 }, cm.mainCursor());
+        try eqCursor(.{ 0, 0, 0, 2 }, cm.cursors.values()[0]);
+        try eqCursor(.{ 1, 0, 1, 2 }, cm.cursors.values()[1]);
 
+        // moveDown, id=0 overlaps with id=1 -> gets merged together
         cm.moveDown(1, &ropeman);
-        try eqCursor(.{ 0, 0, 1, 2 }, cm.mainCursor());
+        try eqSlice(usize, &.{0}, cm.cursors.keys());
+        try eqCursor(.{ 0, 0, 2, 2 }, cm.cursors.values()[0]);
     }
-
-    // TODO: implement addSelection() method
 }
 
-fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: *const Cursor) !void {
+fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: Cursor) !void {
     try eq(.{ expected[0], expected[1] }, .{ cursor.start.line, cursor.start.col });
     try eq(.{ expected[2], expected[3] }, .{ cursor.end.line, cursor.end.col });
 }
