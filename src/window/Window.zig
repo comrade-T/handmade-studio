@@ -139,13 +139,6 @@ pub fn destroy(self: *@This()) void {
 //     }
 // }
 
-fn calculateGlyphWidth(font: *const FontStore.Font, font_size: f32, iter_result: WindowSource.LineIterator.Result, default_glyph_data: FontStore.Font.GlyphData) f32 {
-    const glyph = font.glyph_map.get(iter_result.code_point) orelse default_glyph_data;
-    const scale_factor: f32 = font_size / font.base_size;
-    const width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
-    return width * scale_factor;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
 const Defaults = struct {

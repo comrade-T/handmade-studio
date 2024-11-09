@@ -57,8 +57,9 @@ fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const Styl
     var line_height: f32 = win.defaults.font_size;
     var iter = try LineIterator.init(win.ws, linenr);
     while (iter.next(win.ws.cap_list.items[linenr])) |r| {
-        const font = getFont(win, r, style_store) orelse default_font;
-        const font_size = getFontSize(win, r, style_store) orelse win.defaults.font_size;
+        const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
+        const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
+
         const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
         line_width += width;
         line_height = @max(line_height, font_size);
@@ -66,27 +67,18 @@ fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const Styl
     return .{ line_width, line_height };
 }
 
-fn getFontSize(win: *const Window, r: LineIterator.Result, style_store: *const StyleStore) ?f32 {
+fn getStyleFromStore(T: type, win: *const Window, r: LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
     var i: usize = r.ids.len;
     while (i > 0) {
         i -= 1;
         const ids = r.ids[i];
         for (win.subscribed_style_sets.items) |styleset_id| {
-            const key = StyleKey{ .query_id = ids.query_id, .capture_id = ids.capture_id, .styleset_id = styleset_id };
-            if (style_store.getFontSize(key)) |font_size| return font_size;
-        }
-    }
-    return null;
-}
-
-fn getFont(win: *const Window, r: LineIterator.Result, style_store: *const StyleStore) ?*const Font {
-    var i: usize = r.ids.len;
-    while (i > 0) {
-        i -= 1;
-        const ids = r.ids[i];
-        for (win.subscribed_style_sets.items) |styleset_id| {
-            const key = StyleKey{ .query_id = ids.query_id, .capture_id = ids.capture_id, .styleset_id = styleset_id };
-            if (style_store.getFont(key)) |f| return f;
+            const key = StyleKey{
+                .query_id = ids.query_id,
+                .capture_id = ids.capture_id,
+                .styleset_id = styleset_id,
+            };
+            if (cb(style_store, key)) |value| return value;
         }
     }
     return null;
