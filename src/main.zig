@@ -61,6 +61,12 @@ pub fn main() anyerror!void {
     // adding custom rules
     try style_store.addFontSizeStyle(.{
         .query_id = 0,
+        .capture_id = 5,
+        .styleset_id = 0,
+    }, 60);
+
+    try style_store.addFontSizeStyle(.{
+        .query_id = 0,
         .capture_id = 0,
         .styleset_id = 0,
     }, 80);
@@ -83,10 +89,9 @@ pub fn main() anyerror!void {
     var window = try Window.create(gpa, &ws, .{
         .pos = .{ .x = 100, .y = 100 },
         .render_callbacks = &render_callbacks,
+        .subscribed_style_sets = &.{0},
     }, &style_store);
     defer window.destroy();
-
-    try window.subscribeToStyleSet(0);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -105,21 +110,18 @@ pub fn main() anyerror!void {
             rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
 
-            const width = rl.measureText("one", 40);
+            {
+                rl.beginMode2D(smooth_cam.camera);
+                defer rl.endMode2D();
 
-            rl.drawText("one", 100, 100, 40, rl.Color.ray_white);
-            rl.drawText("noe", 100, 140, 40, rl.Color.ray_white);
-            rl.drawText("two", 100 + width, 100, 80, rl.Color.ray_white);
+                rl.drawRectangle(200, 100, 2, 60, rl.Color.ray_white);
+                rl.drawRectangle(100, 120, 2, 40, rl.Color.ray_white);
 
-            // {
-            //     rl.beginMode2D(smooth_cam.camera);
-            //     defer rl.endMode2D();
-            //
-            //     window.render(&style_store, .{
-            //         .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
-            //         .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
-            //     });
-            // }
+                window.render(&style_store, .{
+                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
+                });
+            }
         }
     }
 }

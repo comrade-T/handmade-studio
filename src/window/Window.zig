@@ -61,7 +61,12 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: 
         .defaults = opts.defaults,
         .subscribed_style_sets = SubscribedStyleSets{},
     };
+
+    if (opts.subscribed_style_sets) |slice| try self.subscribed_style_sets.appendSlice(self.a, slice);
+
+    // this must be called last
     self.cached = try WindowCache.init(self.a, self, style_store);
+
     return self;
 }
 
@@ -71,9 +76,9 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
-pub fn subscribeToStyleSet(self: *@This(), styleset_id: u16) !void {
-    try self.subscribed_style_sets.append(self.a, styleset_id);
-}
+// pub fn subscribeToStyleSet(self: *@This(), styleset_id: u16) !void {
+//     try self.subscribed_style_sets.append(self.a, styleset_id);
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
@@ -109,8 +114,10 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
     var y: f32 = self.attr.pos.y;
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
+        const line_height = self.cached.line_sizes.items[linenr].height;
+
         defer x = self.attr.pos.x;
-        defer y += self.cached.line_sizes.items[linenr].height;
+        defer y += line_height;
 
         if (y > view.end.y) return;
         if (x + self.cached.line_sizes.items[linenr].width < view.start.x) continue;
@@ -141,7 +148,9 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
                 }
             }
 
-            rcb.drawCodePoint(font, r.code_point, x, y, font_size, color);
+            assert(line_height >= font_size);
+            const char_y = y + line_height - font_size;
+            rcb.drawCodePoint(font, r.code_point, x, char_y, font_size, color);
             chars_rendered += 1;
         }
     }
@@ -219,7 +228,6 @@ fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const Styl
     while (iter.next(win.ws.cap_list.items[linenr])) |r| {
         const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
         const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
-
         const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
         line_width += width;
         line_height = @max(line_height, font_size);
@@ -263,6 +271,8 @@ const SpawnOptions = struct {
     bounds: ?Attributes.Bounds = null,
     padding: ?Attributes.Padding = null,
     defaults: Defaults = Defaults{},
+
+    subscribed_style_sets: ?[]const u16 = null,
 
     render_callbacks: ?*const RenderCallbacks = null,
 };
