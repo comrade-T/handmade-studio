@@ -19,6 +19,8 @@ const StyleStore = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
+const testing_allocator = std.testing.allocator;
+const eq = std.testing.expectEqual;
 
 const FontStore = @import("FontStore");
 const ColorschemeStore = @import("ColorschemeStore");
@@ -43,9 +45,13 @@ pub const StyleKey = struct {
     styleset_id: u16,
 };
 
-pub fn init(a: Allocator) !StyleStore {
+pub fn init(a: Allocator, font_store: *FontStore, colorscheme_store: *ColorschemeStore) StyleStore {
     return StyleStore{
         .a = a,
+
+        .font_store = font_store,
+        .colorscheme_store = colorscheme_store,
+
         .fonts = FontMap{},
         .font_sizes = FontSizeMap{},
         .colorschemes = ColorschemeMap{},
@@ -80,4 +86,40 @@ pub fn getColorscheme(self: *@This(), key: StyleKey) ?*const FontStore.Font {
     const index = self.colorschemes.get(key) orelse return null;
     assert(index < self.colorscheme_store.map.values().len);
     return &self.colorscheme_store.map.values()[index];
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test StyleStore {
+    // setup font_store
+    var font_store = try FontStore.init(testing_allocator);
+    defer font_store.deinit();
+
+    var dummy_font: void = {};
+    try font_store.addNewFont(&dummy_font, "Meslo", 40);
+    try font_store.addNewFont(&dummy_font, "Inter", 80);
+
+    // setup colorscheme_store
+    var colorscheme_store = try ColorschemeStore.init(testing_allocator);
+    defer colorscheme_store.deinit();
+    try colorscheme_store.initializeNightflyColorscheme();
+
+    // style_store
+    var style_store = StyleStore.init(testing_allocator, &font_store, &colorscheme_store);
+    defer style_store.deinit();
+
+    // addFontStyle()
+    try style_store.addFontStyle(.{ .query_id = 0, .capture_id = 0, .styleset_id = 0 }, 0);
+    try style_store.addFontStyle(.{ .query_id = 0, .capture_id = 0, .styleset_id = 1 }, 1);
+
+    { // getFont()
+        const meslo = style_store.getFont(.{ .query_id = 0, .capture_id = 0, .styleset_id = 0 });
+        try eq(40, meslo.?.base_size);
+
+        const inter = style_store.getFont(.{ .query_id = 0, .capture_id = 0, .styleset_id = 1 });
+        try eq(80, inter.?.base_size);
+
+        const not_exist = style_store.getFont(.{ .query_id = 0, .capture_id = 0, .styleset_id = 100 });
+        try eq(null, not_exist);
+    }
 }
