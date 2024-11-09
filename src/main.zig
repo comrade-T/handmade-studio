@@ -6,10 +6,11 @@ const rl = @import("raylib");
 
 const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 
-const LangSuite = @import("LangSuite");
 const FontStore = @import("FontStore");
 const ColorschemeStore = @import("ColorschemeStore");
+const StyleStore = @import("StyleStore");
 
+const LangSuite = @import("LangSuite");
 const Window = @import("Window");
 const WindowSource = Window.WindowSource;
 
@@ -45,10 +46,7 @@ pub fn main() anyerror!void {
     defer _ = gpa__.deinit();
     const gpa = gpa__.allocator();
 
-    ///////////////////////////// Models
-
-    var lang_hub = try LangSuite.LangHub.init(gpa);
-    defer lang_hub.deinit();
+    ///////////////////////////// Stores
 
     var font_store = try FontStore.init(gpa);
     defer font_store.deinit();
@@ -56,6 +54,14 @@ pub fn main() anyerror!void {
     var colorscheme_store = try ColorschemeStore.init(gpa);
     defer colorscheme_store.deinit();
     try colorscheme_store.initializeNightflyColorscheme();
+
+    var style_store = StyleStore.init(gpa, &font_store, &colorscheme_store);
+    defer style_store.deinit();
+
+    ///////////////////////////// Models
+
+    var lang_hub = try LangSuite.LangHub.init(gpa);
+    defer lang_hub.deinit();
 
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
@@ -67,15 +73,10 @@ pub fn main() anyerror!void {
         .drawCodePoint = drawCodePoint,
     };
 
-    const supermarket = Window.Supermarket{
-        .font_store = &font_store,
-        .colorscheme_store = &colorscheme_store,
-    };
-
     var window = try Window.create(gpa, &ws, .{
         .pos = .{ .x = 100, .y = 100 },
         .render_callbacks = &render_callbacks,
-    }, supermarket);
+    }, &style_store);
     defer window.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
@@ -99,7 +100,7 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                window.render(supermarket, .{
+                window.render(&style_store, .{
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });

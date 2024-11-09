@@ -199,6 +199,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("Window", window.module);
         exe.root_module.addImport("FontStore", font_store.module);
         exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
+        exe.root_module.addImport("StyleStore", style_store.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));

@@ -67,7 +67,7 @@ fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const Styl
     return .{ line_width, line_height };
 }
 
-fn getStyleFromStore(T: type, win: *const Window, r: LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
+pub fn getStyleFromStore(T: type, win: *const Window, r: LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
     var i: usize = r.ids.len;
     while (i > 0) {
         i -= 1;
@@ -84,7 +84,7 @@ fn getStyleFromStore(T: type, win: *const Window, r: LineIterator.Result, style_
     return null;
 }
 
-fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, default_glyph: GlyphData) f32 {
+pub fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, default_glyph: GlyphData) f32 {
     const glyph = font.glyph_map.get(code_point) orelse default_glyph;
     const scale_factor: f32 = font_size / font.base_size;
     const width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;

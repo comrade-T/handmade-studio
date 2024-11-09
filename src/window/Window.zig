@@ -77,67 +77,77 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-// pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
-//     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
-//     defer zone.End();
-//
-//     assert(self.rcb != null);
-//     const rcb = self.rcb orelse return;
-//
-//     const font = supermarket.font_store.getDefaultFont() orelse unreachable;
-//     const font_size = self.defaults.font_size;
-//     const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
-//
-//     const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
-//
-//     var chars_rendered: i64 = 0;
-//     defer ztracy.PlotI("chars_rendered", chars_rendered);
-//
-//     /////////////////////////////
-//
-//     if (self.attr.pos.x > view.end.x) return;
-//     if (self.attr.pos.y > view.end.y) return;
-//
-//     if (self.attr.pos.x + self.cached.width < view.start.x) return;
-//     if (self.attr.pos.y + self.cached.height < view.start.y) return;
-//
-//     var x: f32 = self.attr.pos.x;
-//     var y: f32 = self.attr.pos.y;
-//
-//     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-//         defer x = self.attr.pos.x;
-//         defer y += font_size;
-//
-//         if (y > view.end.y) return;
-//         if (x + self.cached.lines.items[linenr].width < view.start.x) continue;
-//         if (y + self.cached.lines.items[linenr].height < view.start.y) continue;
-//
-//         var iter = WindowSource.LineIterator.init(self.ws, linenr) catch continue;
-//         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
-//             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
-//             defer x += width;
-//
-//             if (x > view.end.x) break;
-//             if (x + width < view.start.x) continue;
-//
-//             var color = self.defaults.color;
-//
-//             var i: usize = result.ids.len;
-//             while (i > 0) {
-//                 i -= 1;
-//                 const ids = result.ids[i];
-//                 const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
-//                 if (colorscheme.get(group_name)) |c| {
-//                     color = c;
-//                     break;
-//                 }
-//             }
-//
-//             rcb.drawCodePoint(font, result.code_point, x, y, font_size, color);
-//             chars_rendered += 1;
-//         }
-//     }
-// }
+pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) void {
+
+    ///////////////////////////// Profiling
+
+    const render_zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
+    defer render_zone.End();
+
+    var chars_rendered: i64 = 0;
+    defer ztracy.PlotI("chars_rendered", chars_rendered);
+
+    ///////////////////////////// Temporary Setup
+
+    const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
+    const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
+
+    const colorscheme = style_store.colorscheme_store.getDefaultColorscheme() orelse unreachable;
+
+    assert(self.rcb != null);
+    const rcb = self.rcb orelse return;
+
+    ///////////////////////////// Culling & Render
+
+    if (self.attr.pos.x > view.end.x) return;
+    if (self.attr.pos.y > view.end.y) return;
+
+    if (self.attr.pos.x + self.cached.width < view.start.x) return;
+    if (self.attr.pos.y + self.cached.height < view.start.y) return;
+
+    var x: f32 = self.attr.pos.x;
+    var y: f32 = self.attr.pos.y;
+
+    for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
+        var line_height: f32 = self.defaults.font_size;
+
+        defer x = self.attr.pos.x;
+        defer y += line_height;
+
+        if (y > view.end.y) return;
+        if (x + self.cached.line_size_list.items[linenr].width < view.start.x) continue;
+        if (y + self.cached.line_size_list.items[linenr].height < view.start.y) continue;
+
+        var iter = WindowSource.LineIterator.init(self.ws, linenr) catch continue;
+        while (iter.next(self.ws.cap_list.items[linenr])) |r| {
+            const font = WindowCache.getStyleFromStore(*const FontStore.Font, self, r, style_store, StyleStore.getFont) orelse default_font;
+            const font_size = WindowCache.getStyleFromStore(f32, self, r, style_store, StyleStore.getFontSize) orelse self.defaults.font_size;
+            line_height = @max(line_height, font_size);
+
+            const width = WindowCache.calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
+            defer x += width;
+
+            if (x > view.end.x) break;
+            if (x + width < view.start.x) continue;
+
+            var color = self.defaults.color;
+
+            var i: usize = r.ids.len;
+            while (i > 0) {
+                i -= 1;
+                const ids = r.ids[i];
+                const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
+                if (colorscheme.get(group_name)) |c| {
+                    color = c;
+                    break;
+                }
+            }
+
+            rcb.drawCodePoint(font, r.code_point, x, y, font_size, color);
+            chars_rendered += 1;
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
