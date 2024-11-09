@@ -28,7 +28,7 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
-const LangSuite = @import("LangSuite");
+pub const LangSuite = @import("LangSuite");
 pub const WindowSource = @import("WindowSource");
 pub const FontStore = @import("FontStore");
 pub const ColorschemeStore = @import("ColorschemeStore");
@@ -42,7 +42,7 @@ a: Allocator,
 attr: Attributes,
 ws: *WindowSource,
 rcb: ?*const RenderCallbacks,
-cached: CachedSizes,
+cached: WindowCache = undefined,
 defaults: Defaults,
 
 // experimental
@@ -50,7 +50,7 @@ subscribed_style_sets: SubscribedStyleSets,
 
 const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
 
-pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, supermarket: Supermarket) !*Window {
+pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: *const StyleStore) !*Window {
     var self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -62,91 +62,82 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, supermarket: 
             .bounded = if (opts.bounds) |_| true else false,
         },
         .rcb = opts.render_callbacks,
-        .cached = CachedSizes{
-            .width = 0,
-            .height = 0,
-            .lines = try LineSizeList.initCapacity(a, ws.buf.ropeman.getNumOfLines()),
-        },
         .defaults = Defaults{},
         .subscribed_style_sets = SubscribedStyleSets{},
     };
-
-    try self.createInitialLineSizeList(supermarket);
-
+    self.cached = try WindowCache.init(self.a, self, style_store);
     return self;
 }
 
 pub fn destroy(self: *@This()) void {
-    self.cached.lines.deinit(self.a);
+    self.cached.deinit(self.a);
     self.subscribed_style_sets.deinit(self.a);
     self.a.destroy(self);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
-    const zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
-    defer zone.End();
-
-    assert(self.rcb != null);
-    const rcb = self.rcb orelse return;
-
-    const font = supermarket.font_store.getDefaultFont() orelse unreachable;
-    const font_size = self.defaults.font_size;
-    const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
-
-    const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
-
-    var chars_rendered: i64 = 0;
-    defer ztracy.PlotI("chars_rendered", chars_rendered);
-
-    /////////////////////////////
-
-    if (self.attr.pos.x > view.end.x) return;
-    if (self.attr.pos.y > view.end.y) return;
-
-    if (self.attr.pos.x + self.cached.width < view.start.x) return;
-    if (self.attr.pos.y + self.cached.height < view.start.y) return;
-
-    var x: f32 = self.attr.pos.x;
-    var y: f32 = self.attr.pos.y;
-
-    for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        defer x = self.attr.pos.x;
-        defer y += font_size;
-
-        if (y > view.end.y) return;
-        if (x + self.cached.lines.items[linenr].width < view.start.x) continue;
-        if (y + self.cached.lines.items[linenr].height < view.start.y) continue;
-
-        var iter = WindowSource.LineIterator.init(self.ws, linenr) catch continue;
-        while (iter.next(self.ws.cap_list.items[linenr])) |result| {
-            const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
-            defer x += width;
-
-            if (x > view.end.x) break;
-            if (x + width < view.start.x) continue;
-
-            var color = self.defaults.color;
-
-            var i: usize = result.ids.len;
-            while (i > 0) {
-                i -= 1;
-                const ids = result.ids[i];
-                const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
-                if (colorscheme.get(group_name)) |c| {
-                    color = c;
-                    break;
-                }
-            }
-
-            rcb.drawCodePoint(font, result.code_point, x, y, font_size, color);
-            chars_rendered += 1;
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Create Line Size List
+// pub fn render(self: *@This(), supermarket: Supermarket, view: ScreenView) void {
+//     const zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
+//     defer zone.End();
+//
+//     assert(self.rcb != null);
+//     const rcb = self.rcb orelse return;
+//
+//     const font = supermarket.font_store.getDefaultFont() orelse unreachable;
+//     const font_size = self.defaults.font_size;
+//     const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
+//
+//     const colorscheme = supermarket.colorscheme_store.getDefaultColorscheme() orelse unreachable;
+//
+//     var chars_rendered: i64 = 0;
+//     defer ztracy.PlotI("chars_rendered", chars_rendered);
+//
+//     /////////////////////////////
+//
+//     if (self.attr.pos.x > view.end.x) return;
+//     if (self.attr.pos.y > view.end.y) return;
+//
+//     if (self.attr.pos.x + self.cached.width < view.start.x) return;
+//     if (self.attr.pos.y + self.cached.height < view.start.y) return;
+//
+//     var x: f32 = self.attr.pos.x;
+//     var y: f32 = self.attr.pos.y;
+//
+//     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
+//         defer x = self.attr.pos.x;
+//         defer y += font_size;
+//
+//         if (y > view.end.y) return;
+//         if (x + self.cached.lines.items[linenr].width < view.start.x) continue;
+//         if (y + self.cached.lines.items[linenr].height < view.start.y) continue;
+//
+//         var iter = WindowSource.LineIterator.init(self.ws, linenr) catch continue;
+//         while (iter.next(self.ws.cap_list.items[linenr])) |result| {
+//             const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
+//             defer x += width;
+//
+//             if (x > view.end.x) break;
+//             if (x + width < view.start.x) continue;
+//
+//             var color = self.defaults.color;
+//
+//             var i: usize = result.ids.len;
+//             while (i > 0) {
+//                 i -= 1;
+//                 const ids = result.ids[i];
+//                 const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
+//                 if (colorscheme.get(group_name)) |c| {
+//                     color = c;
+//                     break;
+//                 }
+//             }
+//
+//             rcb.drawCodePoint(font, result.code_point, x, y, font_size, color);
+//             chars_rendered += 1;
+//         }
+//     }
+// }
 
 fn calculateGlyphWidth(font: *const FontStore.Font, font_size: f32, iter_result: WindowSource.LineIterator.Result, default_glyph_data: FontStore.Font.GlyphData) f32 {
     const glyph = font.glyph_map.get(iter_result.code_point) orelse default_glyph_data;
@@ -155,64 +146,7 @@ fn calculateGlyphWidth(font: *const FontStore.Font, font_size: f32, iter_result:
     return width * scale_factor;
 }
 
-fn createInitialLineSizeList(self: *@This(), supermarket: Supermarket) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.createInitialLineSizeList()", 0xFF0000);
-    defer zone.End();
-
-    const font = supermarket.font_store.getDefaultFont() orelse unreachable;
-    const font_size = self.defaults.font_size;
-    const default_glyph_data = font.glyph_map.get('?') orelse unreachable; // TODO: get data from default Raylib font
-
-    for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        var line_width: f32 = 0;
-        var iter = try WindowSource.LineIterator.init(self.ws, linenr);
-        while (iter.next(self.ws.cap_list.items[linenr])) |result| {
-            const width = calculateGlyphWidth(font, font_size, result, default_glyph_data);
-            line_width += width;
-        }
-        try self.cached.lines.append(self.a, .{ .width = line_width, .height = font_size });
-        self.cached.width = @max(self.cached.width, line_width);
-        self.cached.height += font_size;
-    }
-}
-
-test createInitialLineSizeList {
-    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
-    defer lang_hub.deinit();
-
-    const supermarket = try createMockSupermarket(testing_allocator);
-    defer deinitMockSupermarket(testing_allocator, supermarket);
-
-    var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-    defer ws.deinit();
-    try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-
-    {
-        var win = try Window.create(testing_allocator, &ws, .{}, supermarket);
-        defer win.destroy();
-
-        try eq(3, win.cached.lines.items.len);
-        try eq(21 * 15, win.cached.width);
-        try eq(3 * 40, win.cached.height);
-        try eq(LineSize{ .width = 13 * 15, .height = 40 }, win.cached.lines.items[0]);
-        try eq(LineSize{ .width = 21 * 15, .height = 40 }, win.cached.lines.items[1]);
-        try eq(LineSize{ .width = 0, .height = 40 }, win.cached.lines.items[2]);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
-
-const CachedSizes = struct {
-    width: f32,
-    height: f32,
-    lines: LineSizeList,
-};
-
-const LineSizeList = std.ArrayListUnmanaged(LineSize);
-const LineSize = struct {
-    width: f32,
-    height: f32,
-};
 
 const Defaults = struct {
     font_size: f32 = 40,
@@ -257,42 +191,6 @@ const Attributes = struct {
     };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// SuperMarket
-
-pub const Supermarket = struct {
-    font_store: *FontStore,
-    colorscheme_store: *ColorschemeStore,
-};
-
-fn deinitMockSupermarket(a: Allocator, sp: Supermarket) void {
-    sp.font_store.deinit();
-    sp.colorscheme_store.deinit();
-    a.destroy(sp.font_store);
-    a.destroy(sp.colorscheme_store);
-}
-
-fn createMockSupermarket(a: Allocator) !Supermarket {
-    const font_store = try a.create(FontStore);
-    font_store.* = try createMockFontStore(a);
-
-    const colorscheme_store = try a.create(ColorschemeStore);
-    colorscheme_store.* = try ColorschemeStore.init(a);
-    try colorscheme_store.initializeNightflyColorscheme();
-
-    return Supermarket{
-        .font_store = font_store,
-        .colorscheme_store = colorscheme_store,
-    };
-}
-
-fn createMockFontStore(a: Allocator) !FontStore {
-    var font_store = try FontStore.init(a);
-    try font_store.addNewFont(null, "Test", 40);
-    const f = font_store.getDefaultFont() orelse unreachable;
-    for (32..126) |i| try f.addGlyph(a, @intCast(i), .{ .offsetX = 0, .width = 1.1e1, .advanceX = 15 });
-    return font_store;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
 
 pub const RenderCallbacks = struct {
@@ -304,7 +202,7 @@ const ScreenView = struct {
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Test Referencing
+////////////////////////////////////////////////////////////////////////////////////////////// Reference for Testing
 
 test {
     std.testing.refAllDeclsRecursive(WindowCache);

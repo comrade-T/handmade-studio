@@ -76,16 +76,55 @@ pub fn addColorschemeStyle(self: *@This(), key: StyleKey, colorscheme_index: u16
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn getFont(self: *@This(), key: StyleKey) ?*const FontStore.Font {
+pub fn getFont(self: *const @This(), key: StyleKey) ?*const FontStore.Font {
     const index = self.fonts.get(key) orelse return null;
     assert(index < self.font_store.map.values().len);
     return &self.font_store.map.values()[index];
 }
 
-pub fn getColorscheme(self: *@This(), key: StyleKey) ?*const FontStore.Font {
+pub fn getFontSize(self: *const @This(), key: StyleKey) ?f32 {
+    return self.font_sizes.get(key);
+}
+
+pub fn getColorscheme(self: *const @This(), key: StyleKey) ?*const FontStore.Font {
     const index = self.colorschemes.get(key) orelse return null;
     assert(index < self.colorscheme_store.map.values().len);
     return &self.colorscheme_store.map.values()[index];
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn createMockFontStore(a: Allocator) !FontStore {
+    var font_store = try FontStore.init(a);
+    try font_store.addNewFont(null, "Test", 40);
+    const f = font_store.getDefaultFont() orelse unreachable;
+    for (32..126) |i| try f.addGlyph(a, @intCast(i), .{ .offsetX = 0, .width = 1.1e1, .advanceX = 15 });
+    return font_store;
+}
+
+pub fn createStyleStoreForTesting(a: Allocator) !*StyleStore {
+    const font_store = try a.create(FontStore);
+    font_store.* = try createMockFontStore(a);
+
+    const colorscheme_store = try a.create(ColorschemeStore);
+    colorscheme_store.* = try ColorschemeStore.init(a);
+    try colorscheme_store.initializeNightflyColorscheme();
+
+    const style_store = try a.create(StyleStore);
+    style_store.* = StyleStore.init(a, font_store, colorscheme_store);
+
+    return style_store;
+}
+
+pub fn freeTestStyleStore(a: Allocator, style_store: *StyleStore) void {
+    style_store.font_store.deinit();
+    a.destroy(style_store.font_store);
+
+    style_store.colorscheme_store.deinit();
+    a.destroy(style_store.colorscheme_store);
+
+    style_store.deinit();
+    a.destroy(style_store);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,9 +134,8 @@ test StyleStore {
     var font_store = try FontStore.init(testing_allocator);
     defer font_store.deinit();
 
-    var dummy_font: void = {};
-    try font_store.addNewFont(&dummy_font, "Meslo", 40);
-    try font_store.addNewFont(&dummy_font, "Inter", 80);
+    try font_store.addNewFont(null, "Meslo", 40);
+    try font_store.addNewFont(null, "Inter", 80);
 
     // setup colorscheme_store
     var colorscheme_store = try ColorschemeStore.init(testing_allocator);
