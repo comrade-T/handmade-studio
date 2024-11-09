@@ -70,6 +70,10 @@ pub fn addFontStyle(self: *@This(), key: StyleKey, font_index: u16) !void {
     try self.fonts.put(self.a, key, @intCast(font_index));
 }
 
+pub fn addFontSizeStyle(self: *@This(), key: StyleKey, font_size: f32) !void {
+    try self.font_sizes.put(self.a, key, font_size);
+}
+
 pub fn addColorschemeStyle(self: *@This(), key: StyleKey, colorscheme_index: u16) !void {
     try self.colorschemes.put(self.a, key, @intCast(colorscheme_index));
 }

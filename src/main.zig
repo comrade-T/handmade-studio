@@ -58,6 +58,13 @@ pub fn main() anyerror!void {
     var style_store = StyleStore.init(gpa, &font_store, &colorscheme_store);
     defer style_store.deinit();
 
+    // adding custom rules
+    try style_store.addFontSizeStyle(.{
+        .query_id = 0,
+        .capture_id = 0,
+        .styleset_id = 0,
+    }, 80);
+
     ///////////////////////////// Models
 
     var lang_hub = try LangSuite.LangHub.init(gpa);
@@ -79,6 +86,8 @@ pub fn main() anyerror!void {
     }, &style_store);
     defer window.destroy();
 
+    try window.subscribeToStyleSet(0);
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
@@ -96,15 +105,21 @@ pub fn main() anyerror!void {
             rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
 
-            {
-                rl.beginMode2D(smooth_cam.camera);
-                defer rl.endMode2D();
+            const width = rl.measureText("one", 40);
 
-                window.render(&style_store, .{
-                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
-                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
-                });
-            }
+            rl.drawText("one", 100, 100, 40, rl.Color.ray_white);
+            rl.drawText("noe", 100, 140, 40, rl.Color.ray_white);
+            rl.drawText("two", 100 + width, 100, 80, rl.Color.ray_white);
+
+            // {
+            //     rl.beginMode2D(smooth_cam.camera);
+            //     defer rl.endMode2D();
+            //
+            //     window.render(&style_store, .{
+            //         .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+            //         .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
+            //     });
+            // }
         }
     }
 }

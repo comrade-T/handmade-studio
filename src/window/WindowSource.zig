@@ -411,12 +411,11 @@ pub const LineIterator = struct {
 
     captures_start: usize = 0,
     ids_buf: [8]IDs = undefined,
-    content_buf: [1024]u8 = undefined,
 
-    pub fn init(ws: *const WindowSource, linenr: usize) !LineIterator {
+    pub fn init(ws: *const WindowSource, linenr: usize, buf: []u8) !LineIterator {
         var self = LineIterator{};
-        var fba = std.heap.FixedBufferAllocator.init(&self.content_buf);
-        self.contents = try ws.buf.ropeman.getLineAlloc(fba.allocator(), linenr, self.content_buf.len);
+        var fba = std.heap.FixedBufferAllocator.init(buf);
+        self.contents = try ws.buf.ropeman.getLineAlloc(fba.allocator(), linenr, buf.len);
         self.cp_iter = code_point.Iterator{ .bytes = self.contents };
         return self;
     }

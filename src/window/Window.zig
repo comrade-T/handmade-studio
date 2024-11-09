@@ -42,8 +42,6 @@ ws: *WindowSource,
 rcb: ?*const RenderCallbacks,
 cached: WindowCache = undefined,
 defaults: Defaults,
-
-// experimental
 subscribed_style_sets: SubscribedStyleSets,
 
 const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
@@ -60,7 +58,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: 
             .bounded = if (opts.bounds) |_| true else false,
         },
         .rcb = opts.render_callbacks,
-        .defaults = Defaults{},
+        .defaults = opts.defaults,
         .subscribed_style_sets = SubscribedStyleSets{},
     };
     self.cached = try WindowCache.init(self.a, self, style_store);
@@ -71,6 +69,10 @@ pub fn destroy(self: *@This()) void {
     self.cached.deinit(self.a);
     self.subscribed_style_sets.deinit(self.a);
     self.a.destroy(self);
+}
+
+pub fn subscribeToStyleSet(self: *@This(), styleset_id: u16) !void {
+    try self.subscribed_style_sets.append(self.a, styleset_id);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -107,20 +109,18 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
     var y: f32 = self.attr.pos.y;
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        var line_height: f32 = self.defaults.font_size;
-
         defer x = self.attr.pos.x;
-        defer y += line_height;
+        defer y += self.cached.line_sizes.items[linenr].height;
 
         if (y > view.end.y) return;
-        if (x + self.cached.line_size_list.items[linenr].width < view.start.x) continue;
-        if (y + self.cached.line_size_list.items[linenr].height < view.start.y) continue;
+        if (x + self.cached.line_sizes.items[linenr].width < view.start.x) continue;
+        if (y + self.cached.line_sizes.items[linenr].height < view.start.y) continue;
 
-        var iter = WindowSource.LineIterator.init(self.ws, linenr) catch continue;
+        var content_buf: [1024]u8 = undefined;
+        var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
         while (iter.next(self.ws.cap_list.items[linenr])) |r| {
             const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, StyleStore.getFont) orelse default_font;
             const font_size = getStyleFromStore(f32, self, r, style_store, StyleStore.getFontSize) orelse self.defaults.font_size;
-            line_height = @max(line_height, font_size);
 
             const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
             defer x += width;
@@ -152,7 +152,7 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
 const WindowCache = struct {
     width: f32 = 0,
     height: f32 = 0,
-    line_size_list: LineSizeList,
+    line_sizes: LineSizeList,
 
     const LineSizeList = std.ArrayListUnmanaged(LineSize);
     const LineSize = struct { width: f32, height: f32 };
@@ -162,11 +162,11 @@ const WindowCache = struct {
         const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
         const num_of_lines = win.ws.buf.ropeman.getNumOfLines();
-        var self = WindowCache{ .line_size_list = try LineSizeList.initCapacity(a, num_of_lines) };
+        var self = WindowCache{ .line_sizes = try LineSizeList.initCapacity(a, num_of_lines) };
 
         for (0..num_of_lines) |linenr| {
             const line_width, const line_height = try calculateLineSize(win, linenr, style_store, default_font, default_glyph);
-            try self.line_size_list.append(a, LineSize{
+            try self.line_sizes.append(a, LineSize{
                 .width = line_width,
                 .height = line_height,
             });
@@ -178,7 +178,7 @@ const WindowCache = struct {
     }
 
     fn deinit(self: *@This(), a: Allocator) void {
-        self.line_size_list.deinit(a);
+        self.line_sizes.deinit(a);
     }
 
     test WindowCache {
@@ -196,12 +196,12 @@ const WindowCache = struct {
             var win = try Window.create(testing_allocator, &ws, .{}, style_store);
             defer win.destroy();
 
-            try eq(3, win.cached.line_size_list.items.len);
+            try eq(3, win.cached.line_sizes.items.len);
             try eq(21 * 15, win.cached.width);
             try eq(3 * 40, win.cached.height);
-            try eq(LineSize{ .width = 13 * 15, .height = 40 }, win.cached.line_size_list.items[0]);
-            try eq(LineSize{ .width = 21 * 15, .height = 40 }, win.cached.line_size_list.items[1]);
-            try eq(LineSize{ .width = 0, .height = 40 }, win.cached.line_size_list.items[2]);
+            try eq(LineSize{ .width = 13 * 15, .height = 40 }, win.cached.line_sizes.items[0]);
+            try eq(LineSize{ .width = 21 * 15, .height = 40 }, win.cached.line_sizes.items[1]);
+            try eq(LineSize{ .width = 0, .height = 40 }, win.cached.line_sizes.items[2]);
         }
     }
 };
@@ -214,7 +214,8 @@ const GlyphData = Font.GlyphData;
 fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !struct { f32, f32 } {
     var line_width: f32 = 0;
     var line_height: f32 = win.defaults.font_size;
-    var iter = try WindowSource.LineIterator.init(win.ws, linenr);
+    var content_buf: [1024]u8 = undefined;
+    var iter = try WindowSource.LineIterator.init(win.ws, linenr, &content_buf);
     while (iter.next(win.ws.cap_list.items[linenr])) |r| {
         const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
         const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
@@ -261,6 +262,7 @@ const SpawnOptions = struct {
     pos: Attributes.Position = .{},
     bounds: ?Attributes.Bounds = null,
     padding: ?Attributes.Padding = null,
+    defaults: Defaults = Defaults{},
 
     render_callbacks: ?*const RenderCallbacks = null,
 };
