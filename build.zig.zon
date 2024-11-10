@@ -1,24 +1,16 @@
 .{
-    .name = "communism",
+    .name = "handmade-studio",
 
     .version = "0.0.0",
 
     .dependencies = .{
-        // .pretty = .{
-        //     .url = "https://github.com/timfayz/pretty/archive/v0.10.2.tar.gz",
-        //     .hash = "12201325c0651a8cc167d1d3bd07a71aa3b87b91065d45a64298a3e1d5716d62ed85",
-        // },
         .zg = .{
             .url = "https://codeberg.org/dude_the_builder/zg/archive/v0.13.2.tar.gz",
             .hash = "122055beff332830a391e9895c044d33b15ea21063779557024b46169fb1984c6e40",
         },
         .@"raylib-zig" = .{
-            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
-            .hash = "12202b55e516247ae27b38919685b8da1543467cfd15cd92d4d4a840dc236d9dc754",
-        },
-        .logz = .{
-            .url = "https://github.com/karlseguin/log.zig/archive/master.tar.gz",
-            .hash = "1220996bf8517c7785a577811f6ee39574c274151a350e2be1896359e878e1ef9aa9",
+            .url = "https://github.com/comrade-T/raylib-zig/archive/devel.tar.gz",
+            .hash = "122068d73abbd37bde306d564ad6b1d40d34353db2e469325e45671c08ce4fc5f48d",
         },
         .ztracy = .{
             .path = "copied-libs/ztracy",

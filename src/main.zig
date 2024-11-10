@@ -18,7 +18,7 @@ const WindowSource = Window.WindowSource;
 
 const screen_width = 1920;
 const screen_height = 1080;
-const FONT_BASE_SIZE = 200;
+const FONT_BASE_SIZE = 100;
 
 pub fn main() anyerror!void {
 
@@ -114,13 +114,27 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                rl.drawRectangle(200, 100, 2, 60, rl.Color.ray_white);
-                rl.drawRectangle(100, 120, 2, 40, rl.Color.ray_white);
-
                 window.render(&style_store, .{
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });
+
+                { // experiment
+                    { // 60
+                        const capital_W_height: f32 = 60 * 47 / 100;
+                        const adapted_ascent: f32 = 60 * @as(f32, @floatFromInt(meslo.ascent)) / 100;
+                        rl.drawRectangleV(.{ .x = 210, .y = 100 }, .{ .x = 2, .y = adapted_ascent - capital_W_height }, rl.Color.ray_white);
+                        rl.drawRectangleV(.{ .x = 200, .y = 100 }, .{ .x = 2, .y = adapted_ascent }, rl.Color.ray_white);
+                        rl.drawRectangleV(.{ .x = 200, .y = 100 + adapted_ascent }, .{ .x = 50, .y = 1 }, rl.Color.init(255, 255, 255, 100));
+                        rl.drawRectangleV(.{ .x = 190, .y = 100 }, .{ .x = 2, .y = 60 }, rl.Color.ray_white);
+                    }
+                    { // 40
+                        const adapted_ascent: f32 = 40 * @as(f32, @floatFromInt(meslo.ascent)) / 100;
+                        rl.drawRectangleV(.{ .x = 110, .y = 120 }, .{ .x = 2, .y = adapted_ascent }, rl.Color.ray_white);
+                        rl.drawRectangleV(.{ .x = 110, .y = 120 + adapted_ascent }, .{ .x = 50, .y = 1 }, rl.Color.init(255, 255, 255, 100));
+                        rl.drawRectangleV(.{ .x = 100, .y = 120 }, .{ .x = 2, .y = 40 }, rl.Color.ray_white);
+                    }
+                }
             }
         }
     }
