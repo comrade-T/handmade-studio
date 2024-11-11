@@ -42,9 +42,10 @@ pub fn getDefaultFont(self: *@This()) ?*Font {
     return if (self.default_idx < fonts.len) &fonts[self.default_idx] else null;
 }
 
-pub fn addNewFont(self: *@This(), rl_font: ?*anyopaque, font_name: []const u8, base_size: f32) !void {
+pub fn addNewFont(self: *@This(), rl_font: ?*anyopaque, font_name: []const u8, base_size: f32, ascent: f32) !void {
     try self.map.put(self.a, font_name, Font{
         .base_size = base_size,
+        .ascent = ascent,
         .glyph_map = Font.GlyphMap{},
         .rl_font = rl_font,
     });
@@ -66,6 +67,7 @@ pub const Font = struct {
     rl_font: ?*anyopaque,
     base_size: f32,
     glyph_map: GlyphMap,
+    ascent: f32,
 
     pub fn addGlyph(self: *@This(), a: Allocator, code_point: i32, data: GlyphData) !void {
         try self.glyph_map.put(a, code_point, data);

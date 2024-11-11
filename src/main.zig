@@ -145,7 +145,7 @@ pub fn main() anyerror!void {
 fn addRaylibFontToFontStore(rl_font: *rl.Font, name: []const u8, store: *FontStore) !void {
     rl.setTextureFilter(rl_font.texture, .texture_filter_trilinear);
 
-    try store.addNewFont(rl_font, name, FONT_BASE_SIZE);
+    try store.addNewFont(rl_font, name, FONT_BASE_SIZE, @floatFromInt(rl_font.ascent));
     const f = store.map.getPtr(name) orelse unreachable;
     for (0..@intCast(rl_font.glyphCount)) |i| {
         try f.addGlyph(store.a, rl_font.glyphs[i].value, .{

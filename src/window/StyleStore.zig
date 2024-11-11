@@ -100,7 +100,7 @@ pub fn getColorscheme(self: *const @This(), key: StyleKey) ?*const FontStore.Fon
 
 fn createMockFontStore(a: Allocator) !FontStore {
     var font_store = try FontStore.init(a);
-    try font_store.addNewFont(null, "Test", 40);
+    try font_store.addNewFont(null, "Test", 40, 30);
     const f = font_store.getDefaultFont() orelse unreachable;
     for (32..126) |i| try f.addGlyph(a, @intCast(i), .{ .offsetX = 0, .width = 1.1e1, .advanceX = 15 });
     return font_store;

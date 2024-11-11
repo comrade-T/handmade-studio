@@ -114,14 +114,14 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
     var y: f32 = self.attr.pos.y;
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        const line_height = self.cached.line_sizes.items[linenr].height;
+        const line_height = self.cached.line_info.items[linenr].height;
 
         defer x = self.attr.pos.x;
         defer y += line_height;
 
         if (y > view.end.y) return;
-        if (x + self.cached.line_sizes.items[linenr].width < view.start.x) continue;
-        if (y + self.cached.line_sizes.items[linenr].height < view.start.y) continue;
+        if (x + self.cached.line_info.items[linenr].width < view.start.x) continue;
+        if (y + self.cached.line_info.items[linenr].height < view.start.y) continue;
 
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
@@ -161,33 +161,34 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
 const WindowCache = struct {
     width: f32 = 0,
     height: f32 = 0,
-    line_sizes: LineSizeList,
+    line_info: LineInfoList,
 
-    const LineSizeList = std.ArrayListUnmanaged(LineSize);
-    const LineSize = struct { width: f32, height: f32 };
+    const LineInfoList = std.ArrayListUnmanaged(LineInfo);
+    const LineInfo = struct {
+        width: f32,
+        height: f32,
+        base_line: f32,
+    };
 
     fn init(a: Allocator, win: *const Window, style_store: *const StyleStore) !WindowCache {
         const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
         const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
         const num_of_lines = win.ws.buf.ropeman.getNumOfLines();
-        var self = WindowCache{ .line_sizes = try LineSizeList.initCapacity(a, num_of_lines) };
+        var self = WindowCache{ .line_info = try LineInfoList.initCapacity(a, num_of_lines) };
 
         for (0..num_of_lines) |linenr| {
-            const line_width, const line_height = try calculateLineSize(win, linenr, style_store, default_font, default_glyph);
-            try self.line_sizes.append(a, LineSize{
-                .width = line_width,
-                .height = line_height,
-            });
-            self.width = @max(self.width, line_width);
-            self.height += line_height;
+            const info = try calculateLineInfo(win, linenr, style_store, default_font, default_glyph);
+            try self.line_info.append(a, info);
+            self.width = @max(self.width, info.width);
+            self.height += info.height;
         }
 
         return self;
     }
 
     fn deinit(self: *@This(), a: Allocator) void {
-        self.line_sizes.deinit(a);
+        self.line_info.deinit(a);
     }
 
     test WindowCache {
@@ -205,12 +206,12 @@ const WindowCache = struct {
             var win = try Window.create(testing_allocator, &ws, .{}, style_store);
             defer win.destroy();
 
-            try eq(3, win.cached.line_sizes.items.len);
+            try eq(3, win.cached.line_info.items.len);
             try eq(21 * 15, win.cached.width);
             try eq(3 * 40, win.cached.height);
-            try eq(LineSize{ .width = 13 * 15, .height = 40 }, win.cached.line_sizes.items[0]);
-            try eq(LineSize{ .width = 21 * 15, .height = 40 }, win.cached.line_sizes.items[1]);
-            try eq(LineSize{ .width = 0, .height = 40 }, win.cached.line_sizes.items[2]);
+            try eq(LineInfo{ .base_line = 30, .width = 13 * 15, .height = 40 }, win.cached.line_info.items[0]);
+            try eq(LineInfo{ .base_line = 30, .width = 21 * 15, .height = 40 }, win.cached.line_info.items[1]);
+            try eq(LineInfo{ .base_line = 0, .width = 0, .height = 40 }, win.cached.line_info.items[2]);
         }
     }
 };
@@ -220,19 +221,50 @@ const WindowCache = struct {
 const Font = FontStore.Font;
 const GlyphData = Font.GlyphData;
 
-fn calculateLineSize(win: *const Window, linenr: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !struct { f32, f32 } {
+fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !WindowCache.LineInfo {
     var line_width: f32 = 0;
     var line_height: f32 = win.defaults.font_size;
+
+    var max_font_size: f32 = 0;
+    var max_base_line: f32 = 0;
+    var base_line: f32 = 0;
+
     var content_buf: [1024]u8 = undefined;
     var iter = try WindowSource.LineIterator.init(win.ws, linenr, &content_buf);
     while (iter.next(win.ws.cap_list.items[linenr])) |r| {
+
+        // get font & font_size
         const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
         const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
+
+        // base_line management
+        assert(font_size > 0);
+        if (font_size >= max_font_size) blk: {
+            const adapted_base_line = font.ascent * font_size / font.base_size;
+            if (font_size > max_font_size) {
+                max_font_size = font_size;
+                max_base_line = adapted_base_line;
+                base_line = adapted_base_line;
+                break :blk;
+            }
+            base_line = @min(base_line, adapted_base_line);
+            max_base_line = @max(max_base_line, adapted_base_line);
+        }
+
+        // calculate width & height
         const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
         line_width += width;
         line_height = @max(line_height, font_size);
     }
-    return .{ line_width, line_height };
+
+    // update line_height if needed
+    line_height += max_base_line - base_line;
+
+    return WindowCache.LineInfo{
+        .width = line_width,
+        .height = line_height,
+        .base_line = base_line,
+    };
 }
 
 fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
