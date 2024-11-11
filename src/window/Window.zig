@@ -110,18 +110,19 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
     if (self.attr.pos.x + self.cached.width < view.start.x) return;
     if (self.attr.pos.y + self.cached.height < view.start.y) return;
 
-    var x: f32 = self.attr.pos.x;
-    var y: f32 = self.attr.pos.y;
+    var char_x: f32 = self.attr.pos.x;
+    var line_y: f32 = self.attr.pos.y;
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
         const line_height = self.cached.line_info.items[linenr].height;
+        const line_base = self.cached.line_info.items[linenr].base_line;
 
-        defer x = self.attr.pos.x;
-        defer y += line_height;
+        defer char_x = self.attr.pos.x;
+        defer line_y += line_height;
 
-        if (y > view.end.y) return;
-        if (x + self.cached.line_info.items[linenr].width < view.start.x) continue;
-        if (y + self.cached.line_info.items[linenr].height < view.start.y) continue;
+        if (line_y > view.end.y) return;
+        if (char_x + self.cached.line_info.items[linenr].width < view.start.x) continue;
+        if (line_y + self.cached.line_info.items[linenr].height < view.start.y) continue;
 
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
@@ -130,10 +131,10 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
             const font_size = getStyleFromStore(f32, self, r, style_store, StyleStore.getFontSize) orelse self.defaults.font_size;
 
             const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-            defer x += width;
+            defer char_x += width;
 
-            if (x > view.end.x) break;
-            if (x + width < view.start.x) continue;
+            if (char_x > view.end.x) break;
+            if (char_x + width < view.start.x) continue;
 
             var color = self.defaults.color;
 
@@ -149,8 +150,13 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
             }
 
             assert(line_height >= font_size);
-            const char_y = y + line_height - font_size;
-            rcb.drawCodePoint(font, r.code_point, x, char_y, font_size, color);
+
+            const height_deficit = line_height - font_size;
+            const char_base = font.getAdaptedBaseLine(font_size);
+            const char_shift = line_base - (height_deficit + char_base);
+            const char_y = line_y + height_deficit + char_shift;
+
+            rcb.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
             chars_rendered += 1;
         }
     }
@@ -254,7 +260,9 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
 }
 
 fn manageBaseLineInformation(font: *const Font, font_size: f32, max_font_size: *f32, min_base_line: *f32, max_base_line: *f32) void {
-    const adapted_base_line = font.ascent * font_size / font.base_size;
+    const adapted_base_line = font.getAdaptedBaseLine(font_size);
+
+    if (font_size < max_font_size.*) return;
 
     if (font_size > max_font_size.*) {
         max_font_size.* = font_size;

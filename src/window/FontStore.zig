@@ -72,4 +72,8 @@ pub const Font = struct {
     pub fn addGlyph(self: *@This(), a: Allocator, code_point: i32, data: GlyphData) !void {
         try self.glyph_map.put(a, code_point, data);
     }
+
+    pub fn getAdaptedBaseLine(self: *const @This(), font_size: f32) f32 {
+        return self.ascent * font_size / self.base_size;
+    }
 };
