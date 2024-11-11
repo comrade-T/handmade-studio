@@ -117,7 +117,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "RopeMan", .module = ropeman.module },
     }, zig_build_test_step);
-    _ = cursor_manager;
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },
@@ -126,6 +125,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "FontStore", .module = font_store.module },
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
         .{ .name = "StyleStore", .module = style_store.module },
+        .{ .name = "CursorManager", .module = cursor_manager.module },
     }, zig_build_test_step);
 
     const vim_move = addTestableModule(&bops, "src/window/vim_move.zig", &.{

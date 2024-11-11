@@ -34,6 +34,8 @@ pub const FontStore = @import("FontStore");
 pub const ColorschemeStore = @import("ColorschemeStore");
 pub const StyleStore = @import("StyleStore");
 
+const CursorManager = @import("CursorManager");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
@@ -43,6 +45,7 @@ rcb: ?*const RenderCallbacks,
 cached: WindowCache = undefined,
 defaults: Defaults,
 subscribed_style_sets: SubscribedStyleSets,
+cursor_manager: *CursorManager,
 
 const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
 
@@ -60,6 +63,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: 
         .rcb = opts.render_callbacks,
         .defaults = opts.defaults,
         .subscribed_style_sets = SubscribedStyleSets{},
+        .cursor_manager = try CursorManager.create(self.a),
     };
 
     if (opts.subscribed_style_sets) |slice| try self.subscribed_style_sets.appendSlice(self.a, slice);
@@ -73,6 +77,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: 
 pub fn destroy(self: *@This()) void {
     self.cached.deinit(self.a);
     self.subscribed_style_sets.deinit(self.a);
+    self.cursor_manager.destroy();
     self.a.destroy(self);
 }
 
@@ -126,7 +131,10 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
 
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
+        var colnr: usize = 0;
         while (iter.next(self.ws.cap_list.items[linenr])) |r| {
+            defer colnr += 1;
+
             const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, StyleStore.getFont) orelse default_font;
             const font_size = getStyleFromStore(f32, self, r, style_store, StyleStore.getFontSize) orelse self.defaults.font_size;
 
@@ -158,6 +166,22 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
 
             rcb.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
             chars_rendered += 1;
+
+            { // cursor stuff
+                for (self.cursor_manager.cursors.values()) |*cursor| {
+                    if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
+
+                    const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
+                    rcb.drawRectangle(char_x, char_y, char_width, line_height, self.defaults.color);
+                }
+            }
+        }
+
+        if (colnr == 0) {
+            for (self.cursor_manager.cursors.values()) |*cursor| {
+                if (cursor.start.line != linenr) continue;
+                rcb.drawRectangle(char_x, line_y, line_height / 2, line_height, self.defaults.color);
+            }
         }
     }
 }
@@ -351,6 +375,7 @@ const Attributes = struct {
 
 pub const RenderCallbacks = struct {
     drawCodePoint: *const fn (font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void,
+    drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
 };
 
 const ScreenView = struct {

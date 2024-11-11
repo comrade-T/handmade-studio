@@ -61,13 +61,19 @@ pub fn main() anyerror!void {
     // adding custom rules
     try style_store.addFontSizeStyle(.{
         .query_id = 0,
-        .capture_id = 5,
+        .capture_id = 5, // @type
+        .styleset_id = 0,
+    }, 50);
+
+    try style_store.addFontSizeStyle(.{
+        .query_id = 0,
+        .capture_id = 6, // @function
         .styleset_id = 0,
     }, 60);
 
     try style_store.addFontSizeStyle(.{
         .query_id = 0,
-        .capture_id = 0,
+        .capture_id = 0, // @comment
         .styleset_id = 0,
     }, 80);
 
@@ -84,6 +90,7 @@ pub fn main() anyerror!void {
 
     const render_callbacks = Window.RenderCallbacks{
         .drawCodePoint = drawCodePoint,
+        .drawRectangle = drawRectangle,
     };
 
     var window = try Window.create(gpa, &ws, .{
@@ -143,6 +150,16 @@ fn drawCodePoint(font: *const FontStore.Font, code_point: u21, x: f32, y: f32, f
     assert(font.rl_font != null);
     const rl_font = @as(*rl.Font, @ptrCast(@alignCast(font.rl_font)));
     rl.drawTextCodepoint(rl_font.*, @intCast(code_point), .{ .x = x, .y = y }, font_size, rl.Color.fromInt(color));
+}
+
+fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
+    rl.drawRectangle(
+        @as(i32, @intFromFloat(x)),
+        @as(i32, @intFromFloat(y)),
+        @as(i32, @intFromFloat(width)),
+        @as(i32, @intFromFloat(height)),
+        rl.Color.fromInt(color),
+    );
 }
 
 const ScreenView = struct {
