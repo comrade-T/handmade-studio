@@ -6,6 +6,9 @@ const rl = @import("raylib");
 
 const Smooth2DCamera = @import("raylib-related/Smooth2DCamera.zig");
 
+const ip = @import("input_processor");
+const InputRepeatManager = @import("raylib-related/InputRepeatManager.zig");
+
 const FontStore = @import("FontStore");
 const ColorschemeStore = @import("ColorschemeStore");
 const StyleStore = @import("StyleStore");
@@ -100,12 +103,35 @@ pub fn main() anyerror!void {
     }, &style_store);
     defer window.destroy();
 
+    ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
+
+    var council = try ip.MappingCouncil.init(gpa);
+    defer council.deinit();
+
+    var input_frame = try ip.InputFrame.init(gpa);
+    defer input_frame.deinit();
+
+    var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
+
+    ///////////////////////////// Mappings
+
+    try council.setActiveContext("normal");
+
+    try council.map("normal", &.{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
+    try council.map("normal", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
+    try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
+    try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
 
         ///////////////////////////// Update
 
+        // Inputs
+        try input_repeat_manager.updateInputState();
+
+        // Smooth Camera
         smooth_cam.updateOnNewFrame();
         screen_view.update(smooth_cam.camera);
 

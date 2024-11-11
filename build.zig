@@ -65,6 +65,8 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
+    const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
+
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "ztracy", .module = ztracy.module("root") },
@@ -126,14 +128,13 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
         .{ .name = "StyleStore", .module = style_store.module },
         .{ .name = "CursorManager", .module = cursor_manager.module },
+        .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
 
     const vim_move = addTestableModule(&bops, "src/window/vim_move.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
     _ = vim_move;
-
-    const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 
