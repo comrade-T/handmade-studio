@@ -189,6 +189,8 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
+///////////////////////////// Move hjkl
+
 pub fn moveCursorUp(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor_manager.moveUp(1, &self.ws.buf.ropeman);
@@ -207,6 +209,38 @@ pub fn moveCursorLeft(ctx: *anyopaque) !void {
 pub fn moveCursorRight(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cursor_manager.moveRight(1, &self.ws.buf.ropeman);
+}
+
+///////////////////////////// Move Word
+
+pub fn moveCursorForwardWordStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.forwardWord(.start, .word, 1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorForwardWordEnd(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.forwardWord(.end, .word, 1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorBackwardsWordStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.backwardsWord(.start, .word, 1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorForwardBIGWORDStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.forwardWord(.start, .BIG_WORD, 1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorForwardBIGWORDEnd(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.forwardWord(.end, .BIG_WORD, 1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.backwardsWord(.start, .BIG_WORD, 1, &self.ws.buf.ropeman);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache

@@ -277,7 +277,7 @@ pub fn forwardWord(self: *@This(), start_or_end: Anchor.StartOrEnd, boundary_kin
 }
 
 pub fn backwardsWord(self: *@This(), start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, count: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, count, ropeman, Anchor.backwardsWord);
+    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, ropeman, Anchor.backwardsWord);
 }
 
 test moveUp {

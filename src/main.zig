@@ -122,6 +122,14 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
     try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
 
+    try council.map("normal", &.{.w}, .{ .f = Window.moveCursorForwardWordStart, .ctx = window });
+    try council.map("normal", &.{.e}, .{ .f = Window.moveCursorForwardWordEnd, .ctx = window });
+    try council.map("normal", &.{.b}, .{ .f = Window.moveCursorBackwardsWordStart, .ctx = window });
+
+    try council.map("normal", &.{ .left_shift, .w }, .{ .f = Window.moveCursorForwardBIGWORDStart, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .e }, .{ .f = Window.moveCursorForwardBIGWORDEnd, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .b }, .{ .f = Window.moveCursorBackwardsBIGWORDStart, .ctx = window });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
