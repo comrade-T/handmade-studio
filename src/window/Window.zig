@@ -232,13 +232,14 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
         // get font & font_size
         const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
         const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
+        assert(font_size > 0);
 
         // base_line management
         manageBaseLineInformation(font, font_size, &max_font_size, &min_base_line, &max_base_line);
 
         // calculate width & height
-        const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-        line_width += width;
+        const glyph_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
+        line_width += glyph_width;
         line_height = @max(line_height, font_size);
     }
 
@@ -253,21 +254,17 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
 }
 
 fn manageBaseLineInformation(font: *const Font, font_size: f32, max_font_size: *f32, min_base_line: *f32, max_base_line: *f32) void {
-    assert(font_size > 0);
+    const adapted_base_line = font.ascent * font_size / font.base_size;
 
-    if (font_size >= max_font_size.*) blk: {
-        const adapted_base_line = font.ascent * font_size / font.base_size;
-
-        if (font_size > max_font_size.*) {
-            max_font_size.* = font_size;
-            max_base_line.* = adapted_base_line;
-            min_base_line.* = adapted_base_line;
-            break :blk;
-        }
-
-        min_base_line.* = @min(min_base_line.*, adapted_base_line);
-        max_base_line.* = @max(max_base_line.*, adapted_base_line);
+    if (font_size > max_font_size.*) {
+        max_font_size.* = font_size;
+        max_base_line.* = adapted_base_line;
+        min_base_line.* = adapted_base_line;
+        return;
     }
+
+    min_base_line.* = @min(min_base_line.*, adapted_base_line);
+    max_base_line.* = @max(max_base_line.*, adapted_base_line);
 }
 
 fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
