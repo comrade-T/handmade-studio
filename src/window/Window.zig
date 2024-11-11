@@ -172,7 +172,7 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
                     if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
 
                     const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-                    rcb.drawRectangle(char_x, char_y, char_width, line_height, self.defaults.color);
+                    rcb.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
                 }
             }
         }
@@ -180,10 +180,33 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
         if (colnr == 0) {
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 if (cursor.start.line != linenr) continue;
-                rcb.drawRectangle(char_x, line_y, line_height / 2, line_height, self.defaults.color);
+                const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
+                rcb.drawRectangle(char_x, line_y, char_width, line_height, self.defaults.color);
             }
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Inputs
+
+pub fn moveCursorUp(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.moveUp(1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorDown(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.moveDown(1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorLeft(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.moveLeft(1, &self.ws.buf.ropeman);
+}
+
+pub fn moveCursorRight(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cursor_manager.moveRight(1, &self.ws.buf.ropeman);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache
