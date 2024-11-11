@@ -222,12 +222,8 @@ const Font = FontStore.Font;
 const GlyphData = Font.GlyphData;
 
 fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !WindowCache.LineInfo {
-    var line_width: f32 = 0;
-    var line_height: f32 = win.defaults.font_size;
-
-    var max_font_size: f32 = 0;
-    var max_base_line: f32 = 0;
-    var base_line: f32 = 0;
+    var line_width: f32, var line_height: f32 = .{ 0, win.defaults.font_size };
+    var min_base_line: f32, var max_base_line: f32, var max_font_size: f32 = .{ 0, 0, 0 };
 
     var content_buf: [1024]u8 = undefined;
     var iter = try WindowSource.LineIterator.init(win.ws, linenr, &content_buf);
@@ -238,18 +234,7 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
         const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
 
         // base_line management
-        assert(font_size > 0);
-        if (font_size >= max_font_size) blk: {
-            const adapted_base_line = font.ascent * font_size / font.base_size;
-            if (font_size > max_font_size) {
-                max_font_size = font_size;
-                max_base_line = adapted_base_line;
-                base_line = adapted_base_line;
-                break :blk;
-            }
-            base_line = @min(base_line, adapted_base_line);
-            max_base_line = @max(max_base_line, adapted_base_line);
-        }
+        manageBaseLineInformation(font, font_size, &max_font_size, &min_base_line, &max_base_line);
 
         // calculate width & height
         const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
@@ -258,13 +243,31 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
     }
 
     // update line_height if needed
-    line_height += max_base_line - base_line;
+    line_height += max_base_line - min_base_line;
 
     return WindowCache.LineInfo{
         .width = line_width,
         .height = line_height,
-        .base_line = base_line,
+        .base_line = min_base_line,
     };
+}
+
+fn manageBaseLineInformation(font: *const Font, font_size: f32, max_font_size: *f32, min_base_line: *f32, max_base_line: *f32) void {
+    assert(font_size > 0);
+
+    if (font_size >= max_font_size.*) blk: {
+        const adapted_base_line = font.ascent * font_size / font.base_size;
+
+        if (font_size > max_font_size.*) {
+            max_font_size.* = font_size;
+            max_base_line.* = adapted_base_line;
+            min_base_line.* = adapted_base_line;
+            break :blk;
+        }
+
+        min_base_line.* = @min(min_base_line.*, adapted_base_line);
+        max_base_line.* = @max(max_base_line.*, adapted_base_line);
+    }
 }
 
 fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
