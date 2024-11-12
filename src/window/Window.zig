@@ -387,7 +387,7 @@ const Defaults = struct {
     color: u32 = 0xF5F5F5F5,
 };
 
-const SpawnOptions = struct {
+pub const SpawnOptions = struct {
     pos: Attributes.Position = .{},
     bounds: ?Attributes.Bounds = null,
     padding: ?Attributes.Padding = null,

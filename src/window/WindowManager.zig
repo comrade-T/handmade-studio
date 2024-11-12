@@ -23,23 +23,58 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
-const Window = @import("Window");
+const LangSuite = @import("LangSuite");
+const StyleStore = @import("StyleStore");
 const WindowSource = @import("WindowSource");
+const Window = @import("Window");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
+handlers: WindowSourceHandlerList,
 
-pub fn init() !void {
-    // TODO:
+pub fn init(a: Allocator) !WindowManager {
+    return WindowManager{
+        .a = a,
+        .handlers = WindowSourceHandlerList{},
+    };
 }
 
 pub fn deinit(self: *@This()) void {
-    _ = self;
+    for (self.handlers.items) |*handler| handler.deinit(self.a);
+    self.handlers.deinit(self.a);
 }
+
+// TODO: instead of having a filename as ID, we'd have a WindowSourceID type -> u32
 
 pub fn spawn(self: *@This()) !void {
     _ = self;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+const WindowSourceHandlerList = std.ArrayListUnmanaged(WindowSourceHandler);
+const WindowSourceHandler = struct {
+    source: *WindowSource,
+    windows: WindowList,
+
+    const WindowList = std.ArrayListUnmanaged(*Window);
+
+    fn init(a: Allocator, from: WindowSource.InitFrom, source: []const u8, lang_hub: *const LangSuite.LangHub) !WindowSourceHandler {
+        return WindowSourceHandler{
+            .source = try WindowSource.create(a, from, source, lang_hub),
+            .windows = WindowList{},
+        };
+    }
+
+    fn deinit(self: *@This(), a: Allocator) void {
+        for (self.windows.items) |*window| window.destroy();
+        self.windows.deinit(a);
+        self.source.destroy();
+    }
+
+    fn spawnWindow(self: *@This(), a: Allocator, opts: Window.SpawnOptions, style_store: *const StyleStore) !void {
+        const window = try Window.create(a, self.source, opts, style_store);
+        self.windows.append(a, window);
+    }
+};

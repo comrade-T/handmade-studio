@@ -31,9 +31,9 @@ const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
+pub const InitFrom = Buffer.InitFrom;
 const CursorPoint = Buffer.CursorPoint;
 const CursorRange = Buffer.CursorRange;
-const InitFrom = Buffer.InitFrom;
 const LangSuite = @import("LangSuite");
 
 //////////////////////////////////////////////////////////////////////////////////////////////

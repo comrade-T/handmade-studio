@@ -133,7 +133,9 @@ pub fn build(b: *std.Build) void {
 
     const window_manager = addTestableModule(&bops, "src/window/WindowManager.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
+        .{ .name = "StyleStore", .module = style_store.module },
         .{ .name = "Window", .module = window.module },
     }, zig_build_test_step);
     _ = window_manager;
