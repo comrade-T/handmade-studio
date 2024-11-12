@@ -381,7 +381,7 @@ test deleteRanges {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// StoredCapture
 
-const StoredCapture = struct {
+pub const StoredCapture = struct {
     query_index: u16,
     capture_id: u16,
     start_col: u32,

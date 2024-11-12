@@ -314,7 +314,8 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
 
     var content_buf: [1024]u8 = undefined;
     var iter = try WindowSource.LineIterator.init(win.ws, linenr, &content_buf);
-    while (iter.next(win.ws.cap_list.items[linenr])) |r| {
+    const captures: []WindowSource.StoredCapture = if (win.ws.ls != null) win.ws.cap_list.items[linenr] else &.{};
+    while (iter.next(captures)) |r| {
 
         // get font & font_size
         const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
