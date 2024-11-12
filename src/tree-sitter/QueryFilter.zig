@@ -97,6 +97,8 @@ const Predicate = union(enum) {
     not_eq: NotEqPredicate,
     any_of: AnyOfPredicate,
     match: MatchPredicate,
+    starts_with: StartsWithPredicate,
+    ends_with: EndsWithPredicate,
     unsupported,
 
     const CreationError = error{ InvalidAmountOfSteps, InvalidArgument, OutOfMemory, Unknown, RegexCompileError, Unsupported };
@@ -108,6 +110,8 @@ const Predicate = union(enum) {
         if (eql(u8, name, "any-of?")) return AnyOfPredicate.create(a, query, steps);
         if (eql(u8, name, "match?")) return MatchPredicate.create(a, query, steps, .match);
         if (eql(u8, name, "not-match?")) return MatchPredicate.create(a, query, steps, .not_match);
+        if (eql(u8, name, "starts-with?")) return StartsWithPredicate.create(query, steps);
+        if (eql(u8, name, "ends-with?")) return EndsWithPredicate.create(query, steps);
         return error.Unsupported;
     }
 
@@ -120,6 +124,8 @@ const Predicate = union(enum) {
             .not_eq => self.not_eq.eval(source),
             .any_of => self.any_of.eval(source),
             .match => self.match.eval(source),
+            .starts_with => self.starts_with.eval(source),
+            .ends_with => self.ends_with.eval(source),
             .unsupported => false,
         };
     }
@@ -248,6 +254,36 @@ const Predicate = union(enum) {
                 .match => result,
                 .not_match => !result,
             };
+        }
+    };
+
+    const StartsWithPredicate = struct {
+        target: []const u8,
+
+        fn create(query: *const Query, steps: []const PredicateStep) CreationError!CreationResult {
+            checkBodySteps("#starts-with?", steps, &.{ .capture, .string }) catch |err| return err;
+            const p = Predicate{ .starts_with = StartsWithPredicate{ .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))) } };
+            return .{ steps[1].value_id, p };
+        }
+
+        fn eval(self: *const StartsWithPredicate, source: []const u8) bool {
+            if (source.len < self.target.len) return false;
+            return eql(u8, source[0..self.target.len], self.target);
+        }
+    };
+
+    const EndsWithPredicate = struct {
+        target: []const u8,
+
+        fn create(query: *const Query, steps: []const PredicateStep) CreationError!CreationResult {
+            checkBodySteps("#ends-with?", steps, &.{ .capture, .string }) catch |err| return err;
+            const p = Predicate{ .ends_with = EndsWithPredicate{ .target = query.getStringValueForId(@as(u32, @intCast(steps[2].value_id))) } };
+            return .{ steps[1].value_id, p };
+        }
+
+        fn eval(self: *const EndsWithPredicate, source: []const u8) bool {
+            if (source.len < self.target.len) return false;
+            return eql(u8, source[source.len - self.target.len ..], self.target);
         }
     };
 };
@@ -487,6 +523,37 @@ test "#not-match?" {
         .{ .targets = &.{"variable"}, .contents = &.{"xxx"} },
         .{ .targets = &.{"variable"}, .contents = &.{"yyy"} },
     });
+}
+
+test "#starts-with?" {
+    const patterns =
+        \\ ((IDENTIFIER) @variable (#starts-with? @variable "x"))
+    ;
+    try testFilter(test_source, null, patterns, &.{
+        .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"x"} },
+        .{ .targets = &.{"variable"}, .contents = &.{"xxx"} },
+    });
+}
+
+test "#ends-with?" {
+    {
+        const patterns =
+            \\ ((IDENTIFIER) @variable (#ends-with? @variable "e"))
+        ;
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+            .{ .targets = &.{"variable"}, .contents = &.{"not_false"} },
+        });
+    }
+    {
+        const patterns =
+            \\ ((IDENTIFIER) @variable (#ends-with? @variable "le"))
+        ;
+        try testFilter(test_source, null, patterns, &.{
+            .{ .targets = &.{"variable"}, .contents = &.{"callAddExample"} },
+        });
+    }
 }
 
 ///////////////////////////// Multiple predicates in single pattern
