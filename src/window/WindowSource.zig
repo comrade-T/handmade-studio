@@ -49,8 +49,9 @@ cap_list: CapList,
 
 const CapList = ArrayList([]StoredCapture);
 
-pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSuite.LangHub) !WindowSource {
-    var self = WindowSource{
+pub fn create(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSuite.LangHub) !*WindowSource {
+    var self = try a.create(@This());
+    self.* = WindowSource{
         .a = a,
         .from = from,
         .buf = try Buffer.create(a, from, source),
@@ -67,28 +68,29 @@ pub fn init(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSui
     return self;
 }
 
-test init {
+test create {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
     { // no Tree Sitter
-        var ws = try WindowSource.init(testing_allocator, .string, "hello world", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .string, "hello world", &lang_hub);
+        defer ws.destroy();
         try eq(null, ws.buf.tstree);
         try eq(0, ws.cap_list.items.len);
         try eqStr("hello world", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
     }
     { // with Tree Sitter
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
     }
 }
 
-pub fn deinit(self: *@This()) void {
+pub fn destroy(self: *@This()) void {
     self.buf.destroy();
     for (self.cap_list.items) |slice| self.a.free(slice);
     self.cap_list.deinit();
+    self.a.destroy(self);
 }
 
 fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void {
@@ -170,8 +172,8 @@ test getCaptures {
     defer lang_hub.deinit();
 
     {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.destroy();
 
         const source = try ws.buf.ropeman.toString(testing_allocator, .lf);
         defer testing_allocator.free(source);
@@ -273,8 +275,8 @@ test insertChars {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
     { // replace 1 line
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
@@ -290,8 +292,8 @@ test insertChars {
         try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
     { // replace 2 lines in single call
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
@@ -339,8 +341,8 @@ test deleteRanges {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
     {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("// const a = 10;\n// var not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
         try ws.deleteRanges(&.{.{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 } }});
@@ -356,8 +358,8 @@ test deleteRanges {
         try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
     {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("// const a = 10;\n// var not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
         try ws.deleteRanges(&.{
@@ -456,11 +458,11 @@ test LineIterator {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
     {
-        var ws = try WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
-        try testLineIter(&ws, 0, &.{
+        try testLineIter(ws, 0, &.{
             .{ "const", &.{"type.qualifier"} },
             .{ " ", &.{} },
             .{ "a", &.{"variable"} },
@@ -469,7 +471,7 @@ test LineIterator {
             .{ ";", &.{"punctuation.delimiter"} },
             null,
         });
-        try testLineIter(&ws, 1, &.{
+        try testLineIter(ws, 1, &.{
             .{ "var", &.{"type.qualifier"} },
             .{ " ", &.{} },
             .{ "not_false", &.{"variable"} },
@@ -478,7 +480,7 @@ test LineIterator {
             .{ ";", &.{"punctuation.delimiter"} },
             null,
         });
-        try testLineIter(&ws, 2, &.{
+        try testLineIter(ws, 2, &.{
             .{ "const", &.{"type.qualifier"} },
             .{ " ", &.{} },
             .{ "Allocator", &.{ "variable", "type" } },
@@ -498,7 +500,8 @@ const Expected = struct { []const u8, []const []const u8 };
 
 fn testLineIter(ws: *const WindowSource, line: usize, exp: []const ?Expected) !void {
     const captures = ws.cap_list.items[line];
-    var iter = try LineIterator.init(ws, line);
+    var buf: [1024]u8 = undefined;
+    var iter = try LineIterator.init(ws, line, &buf);
     for (exp, 0..) |may_e, clump_index| {
         if (may_e == null) {
             try eq(null, iter.next(captures));

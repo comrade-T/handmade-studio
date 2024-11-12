@@ -88,15 +88,15 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
-    var ws = try WindowSource.init(gpa, .file, "src/outdated/window/old_window.zig", &lang_hub);
-    defer ws.deinit();
+    var ws = try WindowSource.create(gpa, .file, "src/outdated/window/old_window.zig", &lang_hub);
+    defer ws.destroy();
 
     const render_callbacks = Window.RenderCallbacks{
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
     };
 
-    var window = try Window.create(gpa, &ws, .{
+    var window = try Window.create(gpa, ws, .{
         .pos = .{ .x = 100, .y = 100 },
         .render_callbacks = &render_callbacks,
         .subscribed_style_sets = &.{0},

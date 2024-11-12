@@ -285,12 +285,12 @@ const WindowCache = struct {
         var lang_hub = try Window.LangSuite.LangHub.init(testing_allocator);
         defer lang_hub.deinit();
 
-        var ws = try Window.WindowSource.init(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.deinit();
+        var ws = try Window.WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
+        defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
         {
-            var win = try Window.create(testing_allocator, &ws, .{}, style_store);
+            var win = try Window.create(testing_allocator, ws, .{}, style_store);
             defer win.destroy();
 
             try eq(3, win.cached.line_info.items.len);

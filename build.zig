@@ -131,10 +131,12 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
 
-    const vim_move = addTestableModule(&bops, "src/window/vim_move.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
+    const window_manager = addTestableModule(&bops, "src/window/WindowManager.zig", &.{
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "WindowSource", .module = window_source.module },
+        .{ .name = "Window", .module = window.module },
     }, zig_build_test_step);
-    _ = vim_move;
+    _ = window_manager;
 
     ////////////////////////////////////////////////////////////////////////////// Executable
 
