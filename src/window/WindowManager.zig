@@ -99,16 +99,17 @@ pub fn render(self: *@This(), view: Window.ScreenView) void {
 
 ///////////////////////////// Insert
 
-pub fn insertCharTest(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn insertChars(self: *@This(), chars: []const u8) !void {
     const window = self.active_window orelse return;
-    try window.insertChars("/", self.style_store);
+    try window.insertChars(chars, self.style_store);
 }
 
-pub fn insertCharTestA(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.insertChars("a", self.style_store);
+pub fn enterInsertMode(ctx: *anyopaque) !void {
+    _ = ctx;
+}
+
+pub fn exitInsertMode(ctx: *anyopaque) !void {
+    _ = ctx;
 }
 
 ///////////////////////////// Move hjkl
