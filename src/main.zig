@@ -125,6 +125,9 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
     try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });
 
+    try council.map("normal", &.{.slash}, .{ .f = WindowManager.insertCharTest, .ctx = &wm });
+    try council.map("normal", &.{.a}, .{ .f = WindowManager.insertCharTestA, .ctx = &wm });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {

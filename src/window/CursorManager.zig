@@ -58,7 +58,7 @@ pub fn destroy(self: *@This()) void {
 /// Would love to have a solution where I don't have to allocate memory.
 pub fn produceCursorPoints(self: *@This(), a: Allocator) ![]RopeMan.CursorPoint {
     assert(self.cursor_mode == .point);
-    var points = a.alloc(RopeMan.CursorPoint, self.cursors.values().len);
+    var points = try a.alloc(RopeMan.CursorPoint, self.cursors.values().len);
     for (self.cursors.values(), 0..) |*cursor, i| {
         points[i] = .{
             .line = cursor.start.line,
@@ -73,7 +73,7 @@ pub fn produceCursorPoints(self: *@This(), a: Allocator) ![]RopeMan.CursorPoint 
 /// Would love to have a solution where I don't have to allocate memory.
 pub fn produceCursorRanges(self: *@This(), a: Allocator) ![]RopeMan.CursorRange {
     assert(self.cursor_mode == .range);
-    var ranges = a.alloc(RopeMan.CursorRange, self.cursors.values().len);
+    var ranges = try a.alloc(RopeMan.CursorRange, self.cursors.values().len);
     for (self.cursors.values(), 0..) |*cursor, i| {
         ranges[i] = .{
             .start = .{ .line = cursor.start.line, .col = cursor.start.col },

@@ -97,6 +97,20 @@ pub fn render(self: *@This(), view: Window.ScreenView) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
+///////////////////////////// Insert
+
+pub fn insertCharTest(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.insertChars("/", self.style_store);
+}
+
+pub fn insertCharTestA(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.insertChars("a", self.style_store);
+}
+
 ///////////////////////////// Move hjkl
 
 pub fn moveCursorUp(ctx: *anyopaque) !void {

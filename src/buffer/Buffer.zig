@@ -93,6 +93,9 @@ test initiateTreeSitter {
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
 
 pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) !struct { []CursorPoint, ?[]const ts.Range } {
+    const zone = ztracy.ZoneNC(@src(), "Buffer.insertChars()", 0x00AAFF);
+    defer zone.End();
+
     assert(chars.len > 0);
     assert(destinations.len > 0);
     if (destinations.len == 0) return .{ &.{}, null };

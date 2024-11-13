@@ -245,17 +245,26 @@ fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
     ws.a.free(value);
 }
 
-pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !void {
+/// Returns `replace_start` & `replace_len`
+pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !struct { usize, usize } {
+    const zone = ztracy.ZoneNC(@src(), "WindowSource.insertChars()", 0x533300);
+    defer zone.End();
+
     assert(destinations.len > 0);
 
     const points, const ts_ranges = try self.buf.insertChars(self.a, chars, destinations);
     defer self.a.free(points);
 
-    assert(points.len == destinations.len);
-    if (self.buf.tstree == null) return;
+    //////////////////////////////////////////////////////////////////////////////////////////////
 
-    assert(ts_ranges != null and self.buf.tstree != null);
-    const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
+    // TODO: update each range individually
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    assert(points.len == destinations.len);
+    if (self.buf.tstree == null) return .{ 0, 0 };
+
+    const start_line, const end_line = joinTSRanges(ts_ranges orelse return .{ 0, 0 });
     assert(start_line <= end_line);
 
     var map = try self.getCaptures(start_line, end_line);
@@ -269,6 +278,8 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
     const replace_len = destinations[destinations.len - 1].line + 1 - replace_start;
     for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
     try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+
+    return .{ replace_start, replace_len };
 }
 
 test insertChars {
@@ -428,9 +439,9 @@ pub const LineIterator = struct {
     };
 
     pub fn next(self: *@This(), captures: []StoredCapture) ?Result {
-        if (captures.len == 0) return null;
         const cp = self.cp_iter.next() orelse return null;
         if (cp.code == '\n') return null;
+        if (captures.len == 0) return Result{ .ids = &.{}, .code_point = cp.code };
 
         defer self.col += 1;
 

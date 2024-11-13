@@ -127,7 +127,8 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
         var colnr: usize = 0;
-        while (iter.next(self.ws.cap_list.items[linenr])) |r| {
+        const captures: []WindowSource.StoredCapture = if (self.ws.ls != null) self.ws.cap_list.items[linenr] else &.{};
+        while (iter.next(captures)) |r| {
             defer colnr += 1;
 
             const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, StyleStore.getFont) orelse default_font;
@@ -180,6 +181,32 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
             }
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
+
+pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
+    defer zone.End();
+
+    const points = try self.cursor_manager.produceCursorPoints(self.a);
+    defer self.a.free(points);
+
+    const replace_start, const replace_len = try self.ws.insertChars(chars, points);
+    if (replace_len == 0) return;
+
+    var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, replace_len);
+    defer replacements.deinit();
+
+    const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
+    const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
+
+    for (replace_start..replace_start + replace_len) |linenr| {
+        const info = try calculateLineInfo(self, linenr, style_store, default_font, default_glyph);
+        try replacements.append(info);
+    }
+
+    try self.cached.line_info.replaceRange(self.a, replace_start, replace_len, replacements.items);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache

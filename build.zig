@@ -106,6 +106,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "LinkedList", .module = linked_list.module },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
     const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
