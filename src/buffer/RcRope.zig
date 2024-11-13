@@ -2531,7 +2531,7 @@ const GetRangeCtx = struct {
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
 
-        if (leaf.noc == ctx.col and leaf.eol) {
+        if (leaf.noc == ctx.col and leaf.eol and ctx.last_line_col == null) {
             ctx.list.append('\n') catch {
                 ctx.out_of_memory = true;
                 return WalkResult.stop;
@@ -2542,6 +2542,7 @@ const GetRangeCtx = struct {
 
         if (!leaf.eol and leaf.noc < ctx.col) {
             ctx.col -= leaf.noc;
+            if (ctx.last_line_col) |*llc| llc.* -|= leaf.noc;
             return WalkResult.keep_walking;
         }
         if (ctx.out_of_memory) return WalkResult.stop;
@@ -2558,6 +2559,7 @@ const GetRangeCtx = struct {
         }
 
         ctx.col -|= leaf.noc;
+        if (ctx.last_line_col) |*llc| llc.* -|= leaf.noc;
         if (leaf.eol and ctx.last_line_col == null) {
             ctx.list.append('\n') catch {
                 ctx.out_of_memory = true;
@@ -2662,6 +2664,18 @@ test "getRange() with end point" {
 
     try testGetRange("hello\nworld\nand\nvenus", "world\nand", .{ .line = 1, .col = 0 }, .{ .line = 2, .col = 3 }, 1024);
     try testGetRange("hello\nworld\nand\nvenus", "world\nand\n", .{ .line = 1, .col = 0 }, .{ .line = 3, .col = 0 }, 1024);
+
+    {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+        var buf: [1024]u8 = undefined;
+
+        const root = try Node.fromString(idc_if_it_leaks, &content_arena, "const num = 10;");
+        _, _, const e1 = try insertChars(root, idc_if_it_leaks, &content_arena, "X", .{ .line = 0, .col = 6 });
+
+        try eqStr("const Xnum = 10;", try e1.value.toString(idc_if_it_leaks, .lf));
+        try eqStr("Xnum", getRange(e1, .{ .line = 0, .col = 6 }, .{ .line = 0, .col = 10 }, &buf));
+    }
 
     // end col out of bounds
     try testGetRange("hello\nworld", "world", .{ .line = 1, .col = 0 }, .{ .line = 1, .col = 6 }, 1024);
