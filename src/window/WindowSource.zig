@@ -245,8 +245,12 @@ fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
     ws.a.free(value);
 }
 
-/// Returns `replace_start` & `replace_len`
-pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !struct { usize, usize } {
+const InsertCharsResult = union(enum) {
+    range: struct { start: usize, end: usize },
+    ts: []const LangSuite.ts.Range,
+};
+
+pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !InsertCharsResult {
     const zone = ztracy.ZoneNC(@src(), "WindowSource.insertChars()", 0x533300);
     defer zone.End();
 
@@ -255,18 +259,21 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
     const points, const ts_ranges = try self.buf.insertChars(self.a, chars, destinations);
     defer self.a.free(points);
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
-
-    // TODO: update each range individually
-
-    //////////////////////////////////////////////////////////////////////////////////////////////
-
     assert(points.len == destinations.len);
-    if (self.buf.tstree == null) return .{ 0, 0 };
+    const start_line = destinations[0].line;
+    const end_line = destinations[destinations.len - 1].line;
 
-    const start_line, const end_line = joinTSRanges(ts_ranges orelse return .{ 0, 0 });
-    assert(start_line <= end_line);
+    if (self.buf.tstree == null) return InsertCharsResult{ .range = .{ .start = start_line, .end = end_line } };
+    if (ts_ranges == null) {
+        try self.updateCapList(start_line, end_line);
+        return InsertCharsResult{ .range = .{ .start = start_line, .end = end_line } };
+    }
 
+    for (ts_ranges.?) |range| try self.updateCapList(@intCast(range.start_point.row), @intCast(range.end_point.row));
+    return InsertCharsResult{ .ts = ts_ranges.? };
+}
+
+fn updateCapList(self: *@This(), start_line: usize, end_line: usize) !void {
     var map = try self.getCaptures(start_line, end_line);
     defer map.deinit();
 
@@ -274,12 +281,11 @@ pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const Curs
     defer self.a.free(new_values);
     for (map.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
 
-    const replace_start = destinations[0].line;
-    const replace_len = destinations[destinations.len - 1].line + 1 - replace_start;
-    for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
-    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+    assert(end_line >= start_line);
+    const replace_len = end_line - start_line + 1;
 
-    return .{ replace_start, replace_len };
+    for (start_line..start_line + replace_len) |i| self.a.free(self.cap_list.items[i]);
+    try self.cap_list.replaceRange(start_line, replace_len, new_values);
 }
 
 test insertChars {
@@ -291,7 +297,7 @@ test insertChars {
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
-        try ws.insertChars("// ", &.{.{ .line = 0, .col = 0 }});
+        _ = try ws.insertChars("// ", &.{.{ .line = 0, .col = 0 }});
         try eqStr("// const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
@@ -308,7 +314,7 @@ test insertChars {
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
-        try ws.insertChars("// ", &.{ .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 } });
+        _ = try ws.insertChars("// ", &.{ .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 } });
         try eqStr(
             \\// const a = 10;
             \\// var not_false = true;

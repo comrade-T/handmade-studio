@@ -192,21 +192,40 @@ pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleS
     const points = try self.cursor_manager.produceCursorPoints(self.a);
     defer self.a.free(points);
 
-    const replace_start, const replace_len = try self.ws.insertChars(chars, points);
-    if (replace_len == 0) return;
-
-    var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, replace_len);
-    defer replacements.deinit();
+    const result = try self.ws.insertChars(chars, points);
 
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
-    for (replace_start..replace_start + replace_len) |linenr| {
+    switch (result) {
+        .range => |r| {
+            try self.updateCacheLines(r.start, r.end, style_store, default_font, default_glyph);
+        },
+        .ts => |ranges| {
+            defer std.c.free(@as(*anyopaque, @ptrCast(@constCast(ranges.ptr))));
+            for (ranges) |r|
+                try self.updateCacheLines(
+                    @intCast(r.start_point.row),
+                    @intCast(r.end_point.row),
+                    style_store,
+                    default_font,
+                    default_glyph,
+                );
+        },
+    }
+}
+
+fn updateCacheLines(self: *@This(), start_line: usize, end_line: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
+    assert(end_line >= start_line);
+    const replace_len = end_line - start_line + 1;
+    var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, replace_len);
+    defer replacements.deinit();
+
+    for (start_line..start_line + replace_len) |linenr| {
         const info = try calculateLineInfo(self, linenr, style_store, default_font, default_glyph);
         try replacements.append(info);
     }
-
-    try self.cached.line_info.replaceRange(self.a, replace_start, replace_len, replacements.items);
+    try self.cached.line_info.replaceRange(self.a, start_line, replace_len, replacements.items);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache
