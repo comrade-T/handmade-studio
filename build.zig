@@ -138,32 +138,42 @@ pub fn build(b: *std.Build) void {
         .{ .name = "StyleStore", .module = style_store.module },
         .{ .name = "Window", .module = window.module },
     }, zig_build_test_step);
-    _ = window_manager;
 
-    ////////////////////////////////////////////////////////////////////////////// Executable
+    ////////////////////////////////////////////////////////////////////////////// Executables
+
+    ///////////////////////////// Main
 
     {
-        const path = "src/window/Window.zig";
         const exe = b.addExecutable(.{
-            .name = "testing out window",
-            .root_source_file = b.path(path),
+            .name = "main",
+            .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
         });
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
+
+        exe.root_module.addImport("input_processor", input_processor.module);
         exe.root_module.addImport("LangSuite", langsuite.module);
-        exe.root_module.addImport("WindowSource", window_source.module);
+        exe.root_module.addImport("Window", window.module);
         exe.root_module.addImport("FontStore", font_store.module);
         exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
-        exe.root_module.linkLibrary(ztracy.artifact("tracy"));
+        exe.root_module.addImport("StyleStore", style_store.module);
+        exe.root_module.addImport("WindowManager", window_manager.module);
+
+        exe.root_module.addImport("ztracy", ztracy.module("root"));
+        exe.linkLibrary(ztracy.artifact("tracy"));
+
+        exe.linkLibrary(raylib.artifact("raylib"));
+        exe.root_module.addImport("raylib", raylib.module("raylib"));
 
         const run_cmd = b.addRunArtifact(exe);
         run_cmd.step.dependOn(b.getInstallStep());
-        const run_step = b.step(path, path);
+        if (b.args) |args| run_cmd.addArgs(args);
+
+        const run_step = b.step("run", "Run Application");
         run_step.dependOn(&run_cmd.step);
     }
 
-    ///////////////////////////// Raylib
+    ///////////////////////////// Experiments
 
     {
         const path = "src/demos/spawn_rec_by_clicking.zig";
@@ -189,35 +199,6 @@ pub fn build(b: *std.Build) void {
         const path = "src/demos/bunnymark.zig";
         const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "bunnymark", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
-    }
-
-    {
-        const exe = b.addExecutable(.{
-            .name = "main",
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-
-        exe.root_module.addImport("input_processor", input_processor.module);
-        exe.root_module.addImport("LangSuite", langsuite.module);
-        exe.root_module.addImport("Window", window.module);
-        exe.root_module.addImport("FontStore", font_store.module);
-        exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
-        exe.root_module.addImport("StyleStore", style_store.module);
-
-        exe.root_module.addImport("ztracy", ztracy.module("root"));
-        exe.linkLibrary(ztracy.artifact("tracy"));
-
-        exe.linkLibrary(raylib.artifact("raylib"));
-        exe.root_module.addImport("raylib", raylib.module("raylib"));
-
-        const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(b.getInstallStep());
-        if (b.args) |args| run_cmd.addArgs(args);
-
-        const run_step = b.step("run", "Run Application");
-        run_step.dependOn(&run_cmd.step);
     }
 }
 

@@ -14,8 +14,7 @@ const ColorschemeStore = @import("ColorschemeStore");
 const StyleStore = @import("StyleStore");
 
 const LangSuite = @import("LangSuite");
-const Window = @import("Window");
-const WindowSource = Window.WindowSource;
+const WindowManager = @import("WindowManager");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -88,20 +87,16 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
-    var ws = try WindowSource.create(gpa, .file, "src/outdated/window/old_window.zig", &lang_hub);
-    defer ws.destroy();
-
-    const render_callbacks = Window.RenderCallbacks{
+    var wm = try WindowManager.init(gpa, &lang_hub, &style_store, .{
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
-    };
+    });
+    defer wm.deinit();
 
-    var window = try Window.create(gpa, ws, .{
+    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
         .pos = .{ .x = 100, .y = 100 },
-        .render_callbacks = &render_callbacks,
         .subscribed_style_sets = &.{0},
-    }, &style_store);
-    defer window.destroy();
+    }, true);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
@@ -117,18 +112,18 @@ pub fn main() anyerror!void {
 
     try council.setActiveContext("normal");
 
-    try council.map("normal", &.{.j}, .{ .f = Window.moveCursorDown, .ctx = window });
-    try council.map("normal", &.{.k}, .{ .f = Window.moveCursorUp, .ctx = window });
-    try council.map("normal", &.{.h}, .{ .f = Window.moveCursorLeft, .ctx = window });
-    try council.map("normal", &.{.l}, .{ .f = Window.moveCursorRight, .ctx = window });
+    try council.map("normal", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = &wm });
+    try council.map("normal", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = &wm });
+    try council.map("normal", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = &wm });
+    try council.map("normal", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = &wm });
 
-    try council.map("normal", &.{.w}, .{ .f = Window.moveCursorForwardWordStart, .ctx = window });
-    try council.map("normal", &.{.e}, .{ .f = Window.moveCursorForwardWordEnd, .ctx = window });
-    try council.map("normal", &.{.b}, .{ .f = Window.moveCursorBackwardsWordStart, .ctx = window });
+    try council.map("normal", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = &wm });
+    try council.map("normal", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = &wm });
+    try council.map("normal", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = &wm });
 
-    try council.map("normal", &.{ .left_shift, .w }, .{ .f = Window.moveCursorForwardBIGWORDStart, .ctx = window });
-    try council.map("normal", &.{ .left_shift, .e }, .{ .f = Window.moveCursorForwardBIGWORDEnd, .ctx = window });
-    try council.map("normal", &.{ .left_shift, .b }, .{ .f = Window.moveCursorBackwardsBIGWORDStart, .ctx = window });
+    try council.map("normal", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = &wm });
+    try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
+    try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
@@ -155,7 +150,7 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                window.render(&style_store, .{
+                wm.render(.{
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });

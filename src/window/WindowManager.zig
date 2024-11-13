@@ -35,15 +35,19 @@ a: Allocator,
 lang_hub: *LangHub,
 style_store: *const StyleStore,
 
+active_window: ?*Window = null,
+render_callbacks: Window.RenderCallbacks,
+
 handlers: WindowSourceHandlerList,
 fmap: FilePathToHandlerMap,
 wmap: WindowToHandlerMap,
 
-pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const StyleStore) !WindowManager {
+pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const StyleStore, render_callbacks: Window.RenderCallbacks) !WindowManager {
     return WindowManager{
         .a = a,
         .lang_hub = lang_hub,
         .style_store = style_store,
+        .render_callbacks = render_callbacks,
         .handlers = WindowSourceHandlerList{},
         .fmap = FilePathToHandlerMap{},
         .wmap = WindowToHandlerMap{},
@@ -57,12 +61,13 @@ pub fn deinit(self: *@This()) void {
     self.wmap.deinit(self.a);
 }
 
-pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions) !void {
+pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions, make_active: bool) !void {
     try self.handlers.append(self.a, try WindowSourceHandler.init(self, from, source, self.lang_hub));
     var handler = &self.handlers.items[self.handlers.items.len - 1];
     const window = try handler.spawnWindow(self.a, opts, self.style_store);
     try self.wmap.put(self.a, window, handler);
     if (from == .file) try self.fmap.put(self.a, source, handler);
+    if (make_active or self.active_window == null) self.active_window = window;
 }
 
 test spawnWindow {
@@ -84,7 +89,79 @@ test spawnWindow {
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Render
+
+pub fn render(self: *@This(), view: Window.ScreenView) void {
+    for (self.wmap.keys()) |window| window.render(self.style_store, view, self.render_callbacks);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Inputs
+
+///////////////////////////// Move hjkl
+
+pub fn moveCursorUp(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveUp(1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorDown(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveDown(1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorLeft(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveLeft(1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorRight(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveRight(1, &window.ws.buf.ropeman);
+}
+
+///////////////////////////// Move Word
+
+pub fn moveCursorForwardWordStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.forwardWord(.start, .word, 1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorForwardWordEnd(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.forwardWord(.end, .word, 1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorBackwardsWordStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.backwardsWord(.start, .word, 1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorForwardBIGWORDStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.forwardWord(.start, .BIG_WORD, 1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorForwardBIGWORDEnd(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.forwardWord(.end, .BIG_WORD, 1, &window.ws.buf.ropeman);
+}
+
+pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.backwardsWord(.start, .BIG_WORD, 1, &window.ws.buf.ropeman);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler
 
 const WindowToHandlerMap = std.AutoArrayHashMapUnmanaged(*Window, *WindowSourceHandler);
 const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandler);

@@ -41,7 +41,6 @@ const CursorManager = @import("CursorManager");
 a: Allocator,
 attr: Attributes,
 ws: *WindowSource,
-rcb: ?*const RenderCallbacks,
 cached: WindowCache = undefined,
 defaults: Defaults,
 subscribed_style_sets: SubscribedStyleSets,
@@ -60,7 +59,6 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: 
             .bounds = if (opts.bounds) |b| b else Attributes.Bounds{},
             .bounded = if (opts.bounds) |_| true else false,
         },
-        .rcb = opts.render_callbacks,
         .defaults = opts.defaults,
         .subscribed_style_sets = SubscribedStyleSets{},
         .cursor_manager = try CursorManager.create(self.a),
@@ -87,7 +85,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) void {
+pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, render_callbacks: RenderCallbacks) void {
 
     ///////////////////////////// Profiling
 
@@ -103,9 +101,6 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
     const colorscheme = style_store.colorscheme_store.getDefaultColorscheme() orelse unreachable;
-
-    assert(self.rcb != null);
-    const rcb = self.rcb orelse return;
 
     ///////////////////////////// Culling & Render
 
@@ -164,7 +159,7 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
             const char_shift = line_base - (height_deficit + char_base);
             const char_y = line_y + height_deficit + char_shift;
 
-            rcb.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
+            render_callbacks.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
             chars_rendered += 1;
 
             { // cursor stuff
@@ -172,7 +167,7 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
                     if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
 
                     const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-                    rcb.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
+                    render_callbacks.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
                 }
             }
         }
@@ -181,66 +176,10 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView) 
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 if (cursor.start.line != linenr) continue;
                 const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
-                rcb.drawRectangle(char_x, line_y, char_width, line_height, self.defaults.color);
+                render_callbacks.drawRectangle(char_x, line_y, char_width, line_height, self.defaults.color);
             }
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Inputs
-
-///////////////////////////// Move hjkl
-
-pub fn moveCursorUp(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.moveUp(1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorDown(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.moveDown(1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorLeft(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.moveLeft(1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorRight(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.moveRight(1, &self.ws.buf.ropeman);
-}
-
-///////////////////////////// Move Word
-
-pub fn moveCursorForwardWordStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.forwardWord(.start, .word, 1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorForwardWordEnd(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.forwardWord(.end, .word, 1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorBackwardsWordStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.backwardsWord(.start, .word, 1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorForwardBIGWORDStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.forwardWord(.start, .BIG_WORD, 1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorForwardBIGWORDEnd(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.forwardWord(.end, .BIG_WORD, 1, &self.ws.buf.ropeman);
-}
-
-pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.cursor_manager.backwardsWord(.start, .BIG_WORD, 1, &self.ws.buf.ropeman);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache
@@ -395,8 +334,6 @@ pub const SpawnOptions = struct {
     defaults: Defaults = Defaults{},
 
     subscribed_style_sets: ?[]const u16 = null,
-
-    render_callbacks: ?*const RenderCallbacks = null,
 };
 
 const Attributes = struct {
@@ -436,7 +373,7 @@ pub const RenderCallbacks = struct {
     drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
 };
 
-const ScreenView = struct {
+pub const ScreenView = struct {
     start: struct { x: f32 = 0, y: f32 = 0 },
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
