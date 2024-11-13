@@ -1321,10 +1321,11 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
 
             find_result: {
                 if (@abs(balance_factor) <= MAX_IMBALANCE) {
-                    if (!left_changed) left = left.retain();
-                    if (!right_changed) right = right.retain();
-
-                    result = try Node.new(a, left, right);
+                    result = try Node.new(
+                        a,
+                        if (!left_changed) left.retain() else left,
+                        if (!right_changed) right.retain() else right,
+                    );
                     break :find_result;
                 }
 
@@ -1333,7 +1334,11 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                     const right_balance_factor = calculateBalanceFactor(right.value.branch.left.value, right.value.branch.right.value);
                     if (right_balance_factor <= 0) {
                         if (left_changed or right_changed) {
-                            const temp = try Node.new(a, left, right);
+                            const temp = try Node.new(
+                                a,
+                                if (!left_changed) left.retain() else left,
+                                if (!right_changed) right.retain() else right,
+                            );
                             defer freeRcNode(a, temp);
                             result = try rotateLeft(a, temp);
                             break :find_result;
@@ -1345,7 +1350,7 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
 
                     const new_right = try rotateRight(a, right);
                     defer freeRcNode(a, right);
-                    const temp = try Node.new(a, left, new_right);
+                    const temp = try Node.new(a, if (!left_changed) left.retain() else left, new_right);
                     defer freeRcNode(a, temp);
                     result = try rotateLeft(a, temp);
                     break :find_result;
@@ -1355,7 +1360,11 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                 const left_balance_factor = calculateBalanceFactor(left.value.branch.left.value, left.value.branch.right.value);
                 if (left_balance_factor >= 0) {
                     if (left_changed or right_changed) {
-                        const temp = try Node.new(a, left, right);
+                        const temp = try Node.new(
+                            a,
+                            if (!left_changed) left.retain() else left,
+                            if (!right_changed) right.retain() else right,
+                        );
                         defer freeRcNode(a, temp);
                         result = try rotateRight(a, temp);
                         break :find_result;
@@ -1367,7 +1376,7 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
 
                 const new_left = try rotateLeft(a, left);
                 defer freeRcNode(a, left);
-                const temp = try Node.new(a, new_left, right);
+                const temp = try Node.new(a, new_left, if (!right_changed) right.retain() else right);
                 defer freeRcNode(a, temp);
                 result = try rotateRight(a, temp);
                 break :find_result;
@@ -1441,7 +1450,7 @@ test balance {
         try eqStr(
             \\4 1/5
             \\  3 1/3
-            \\    1 B| `1` Rc:5
+            \\    1 B| `1` Rc:6
             \\    2 0/2
             \\      1 `2` Rc:5
             \\      1 `3` Rc:3
@@ -1456,7 +1465,7 @@ test balance {
     _, _, const e6 = try insertChars(e5, testing_allocator, &content_arena, "6", .{ .line = 0, .col = 5 });
     try eqStr( // unbalanced
         \\6 1/6
-        \\  1 B| `1` Rc:6
+        \\  1 B| `1` Rc:7
         \\  5 0/5
         \\    1 `2` Rc:6
         \\    4 0/4
@@ -1474,8 +1483,8 @@ test balance {
         try eqStr(
             \\4 1/6
             \\  2 1/2
-            \\    1 B| `1` Rc:6
-            \\    1 `2` Rc:6
+            \\    1 B| `1` Rc:8
+            \\    1 `2` Rc:7
             \\  3 0/4
             \\    2 0/2
             \\      1 `3` Rc:5
@@ -1489,7 +1498,7 @@ test balance {
     freeRcNodes(testing_allocator, &.{ root, e1, e2, e3, e4, e4_balanced, e5, e5_balanced, e6, e6_balanced });
 }
 
-test "more balancing" {
+test "insert at beginning then balance, one character at a time" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
@@ -1588,11 +1597,418 @@ test "more balancing" {
 
     ///////////////////////////// e6
 
-    // TODO:
+    _, _, const e6 = try insertChars(e5b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e5b);
+    try eqStr(
+        \\5 1/17
+        \\  4 1/5
+        \\    3 1/3
+        \\      2 1/2
+        \\        1 B| `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\  2 0/12
+        \\    1 `/`
+        \\    1 `hello world`
+    , try debugStr(idc_if_it_leaks, e6));
+
+    const e6_rebalanced, const e6b = try balance(testing_allocator, e6);
+    {
+        try eq(true, e6_rebalanced);
+        freeRcNode(testing_allocator, e6);
+        try eqStr(
+            \\4 1/17
+            \\  3 1/3
+            \\    2 1/2
+            \\      1 B| `/`
+            \\      1 `/`
+            \\    1 `/`
+            \\  3 0/14
+            \\    2 0/2
+            \\      1 `/`
+            \\      1 `/`
+            \\    2 0/12
+            \\      1 `/`
+            \\      1 `hello world`
+        , try debugStr(idc_if_it_leaks, e6b));
+    }
+
+    ///////////////////////////// e7
+
+    _, _, const e7 = try insertChars(e6b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e6b);
+    // We can clearly see the imbalance `3 vs 1`.
+    // I'll leave it there for now, see if it resolves itself after a few more balances.
+    try eqStr(
+        \\5 1/18
+        \\  4 1/4
+        \\    3 1/3
+        \\      2 1/2
+        \\        1 B| `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    1 `/`
+        \\  3 0/14
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\    2 0/12
+        \\      1 `/`
+        \\      1 `hello world`
+    , try debugStr(idc_if_it_leaks, e7));
+
+    const e7_rebalanced, _ = try balance(testing_allocator, e7);
+    try eq(false, e7_rebalanced);
+
+    ///////////////////////////// e8
+
+    _, _, const e8 = try insertChars(e7, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e7);
+    try eqStr(
+        \\6 1/19
+        \\  5 1/5
+        \\    4 1/4
+        \\      3 1/3
+        \\        2 1/2
+        \\          1 B| `/`
+        \\          1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    1 `/`
+        \\  3 0/14
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\    2 0/12
+        \\      1 `/`
+        \\      1 `hello world`
+    , try debugStr(idc_if_it_leaks, e8));
+
+    const e8_rebalanced, const e8b = try balance(testing_allocator, e8);
+    {
+        try eq(true, e8_rebalanced);
+        freeRcNode(testing_allocator, e8);
+        try eqStr(
+            \\5 1/19
+            \\  4 1/5
+            \\    2 1/2
+            \\      1 B| `/`
+            \\      1 `/`
+            \\    3 0/3
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      1 `/`
+            \\  3 0/14
+            \\    2 0/2
+            \\      1 `/`
+            \\      1 `/`
+            \\    2 0/12
+            \\      1 `/`
+            \\      1 `hello world`
+        , try debugStr(idc_if_it_leaks, e8b));
+    }
+
+    ///////////////////////////// e9
+
+    _, _, const e9 = try insertChars(e8b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e8b);
+    try eqStr(
+        \\5 1/20
+        \\  4 1/6
+        \\    3 1/3
+        \\      2 1/2
+        \\        1 B| `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    3 0/3
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\  3 0/14
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\    2 0/12
+        \\      1 `/`
+        \\      1 `hello world`
+    , try debugStr(idc_if_it_leaks, e9));
+
+    const e9_rebalanced, _ = try balance(testing_allocator, e9);
+    try eq(false, e9_rebalanced);
+
+    ///////////////////////////// e10
+
+    _, _, const e10 = try insertChars(e9, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e9);
+    try eqStr(
+        \\6 1/21
+        \\  5 1/7
+        \\    4 1/4
+        \\      3 1/3
+        \\        2 1/2
+        \\          1 B| `/`
+        \\          1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    3 0/3
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\  3 0/14
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\    2 0/12
+        \\      1 `/`
+        \\      1 `hello world`
+    , try debugStr(idc_if_it_leaks, e10));
+
+    const e10_rebalanced, const e10b = try balance(testing_allocator, e10);
+    {
+        try eq(true, e10_rebalanced);
+        freeRcNode(testing_allocator, e10);
+        try eqStr(
+            \\5 1/21
+            \\  4 1/4
+            \\    3 1/3
+            \\      2 1/2
+            \\        1 B| `/`
+            \\        1 `/`
+            \\      1 `/`
+            \\    1 `/`
+            \\  4 0/17
+            \\    3 0/3
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      1 `/`
+            \\    3 0/14
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      2 0/12
+            \\        1 `/`
+            \\        1 `hello world`
+        , try debugStr(idc_if_it_leaks, e10b));
+    }
+
+    ///////////////////////////// e11
+
+    _, _, const e11 = try insertChars(e10b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e10b);
+    try eqStr(
+        \\6 1/22
+        \\  5 1/5
+        \\    4 1/4
+        \\      3 1/3
+        \\        2 1/2
+        \\          1 B| `/`
+        \\          1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    1 `/`
+        \\  4 0/17
+        \\    3 0/3
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    3 0/14
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      2 0/12
+        \\        1 `/`
+        \\        1 `hello world`
+    , try debugStr(idc_if_it_leaks, e11));
+
+    const e11_rebalanced, _ = try balance(testing_allocator, e9);
+    try eq(false, e11_rebalanced);
+
+    ///////////////////////////// e12
+
+    _, _, const e12 = try insertChars(e11, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e11);
+    try eqStr(
+        \\7 1/23
+        \\  6 1/6
+        \\    5 1/5
+        \\      4 1/4
+        \\        3 1/3
+        \\          2 1/2
+        \\            1 B| `/`
+        \\            1 `/`
+        \\          1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    1 `/`
+        \\  4 0/17
+        \\    3 0/3
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    3 0/14
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      2 0/12
+        \\        1 `/`
+        \\        1 `hello world`
+    , try debugStr(idc_if_it_leaks, e12));
+
+    const e12_rebalanced, const e12b = try balance(testing_allocator, e12);
+    {
+        try eq(true, e12_rebalanced);
+        freeRcNode(testing_allocator, e12);
+        try eqStr(
+            \\5 1/23
+            \\  4 1/6
+            \\    3 1/4
+            \\      2 1/2
+            \\        1 B| `/`
+            \\        1 `/`
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\    2 0/2
+            \\      1 `/`
+            \\      1 `/`
+            \\  4 0/17
+            \\    3 0/3
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      1 `/`
+            \\    3 0/14
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      2 0/12
+            \\        1 `/`
+            \\        1 `hello world`
+        , try debugStr(idc_if_it_leaks, e12b));
+    }
+
+    ///////////////////////////// e13
+
+    _, _, const e13 = try insertChars(e12b, testing_allocator, &content_arena, "a", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e12b);
+    try eqStr(
+        \\6 1/24
+        \\  5 1/7
+        \\    4 1/5
+        \\      3 1/3
+        \\        2 1/2
+        \\          1 B| `a`
+        \\          1 `/`
+        \\        1 `/`
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\  4 0/17
+        \\    3 0/3
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    3 0/14
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      2 0/12
+        \\        1 `/`
+        \\        1 `hello world`
+    , try debugStr(idc_if_it_leaks, e13));
+
+    const e13_rebalanced, _ = try balance(testing_allocator, e13);
+    try eq(false, e13_rebalanced);
+
+    ///////////////////////////// e14
+
+    _, _, const e14 = try insertChars(e13, testing_allocator, &content_arena, "a", .{ .line = 0, .col = 0 });
+    freeRcNode(testing_allocator, e13);
+    try eqStr(
+        \\7 1/25
+        \\  6 1/8
+        \\    5 1/6
+        \\      4 1/4
+        \\        3 1/3
+        \\          2 1/2
+        \\            1 B| `a`
+        \\            1 `a`
+        \\          1 `/`
+        \\        1 `/`
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\    2 0/2
+        \\      1 `/`
+        \\      1 `/`
+        \\  4 0/17
+        \\    3 0/3
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      1 `/`
+        \\    3 0/14
+        \\      2 0/2
+        \\        1 `/`
+        \\        1 `/`
+        \\      2 0/12
+        \\        1 `/`
+        \\        1 `hello world`
+    , try debugStr(idc_if_it_leaks, e14));
+
+    const e14_rebalanced, const e14b = try balance(testing_allocator, e14);
+    {
+        try eq(true, e14_rebalanced);
+        freeRcNode(testing_allocator, e14);
+        try eqStr(
+            \\5 1/25
+            \\  4 1/8
+            \\    3 1/4
+            \\      2 1/2
+            \\        1 B| `a`
+            \\        1 `a`
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\    3 0/4
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\  4 0/17
+            \\    3 0/3
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      1 `/`
+            \\    3 0/14
+            \\      2 0/2
+            \\        1 `/`
+            \\        1 `/`
+            \\      2 0/12
+            \\        1 `/`
+            \\        1 `hello world`
+        , try debugStr(idc_if_it_leaks, e14b));
+    }
 
     /////////////////////////////
 
-    freeRcNode(testing_allocator, e5b);
+    freeRcNode(testing_allocator, e14b);
 }
 
 fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
