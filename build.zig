@@ -100,12 +100,18 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     const linked_list = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
+    _ = linked_list;
+
+    const cursor_manager = addTestableModule(&bops, "src/window/CursorManager.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "RopeMan", .module = ropeman.module },
+    }, zig_build_test_step);
 
     const window_source = addTestableModule(&bops, "src/window/WindowSource.zig", &.{
         .{ .name = "Buffer", .module = buffer.module },
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "LinkedList", .module = linked_list.module },
+        .{ .name = "CursorManager", .module = cursor_manager.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
@@ -114,11 +120,6 @@ pub fn build(b: *std.Build) void {
     const style_store = addTestableModule(&bops, "src/window/StyleStore.zig", &.{
         .{ .name = "FontStore", .module = font_store.module },
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
-    }, zig_build_test_step);
-
-    const cursor_manager = addTestableModule(&bops, "src/window/CursorManager.zig", &.{
-        .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "RopeMan", .module = ropeman.module },
     }, zig_build_test_step);
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{

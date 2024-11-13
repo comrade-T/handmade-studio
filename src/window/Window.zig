@@ -189,15 +189,13 @@ pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleS
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
     defer zone.End();
 
-    const points = try self.cursor_manager.produceCursorPoints(self.a);
-    defer self.a.free(points);
-
-    const result = try self.ws.insertChars(chars, points);
+    const result = try self.ws.insertChars(chars, self.cursor_manager);
 
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
     switch (result) {
+        .none => {},
         .range => |r| {
             try self.updateCacheLines(r.start, r.end, style_store, default_font, default_glyph);
         },

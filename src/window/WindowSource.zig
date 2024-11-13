@@ -32,9 +32,9 @@ const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
 pub const InitFrom = Buffer.InitFrom;
-const CursorPoint = Buffer.CursorPoint;
 const CursorRange = Buffer.CursorRange;
 const LangSuite = @import("LangSuite");
+const CursorManager = @import("CursorManager");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -246,22 +246,33 @@ fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
 }
 
 const InsertCharsResult = union(enum) {
+    none,
     range: struct { start: usize, end: usize },
     ts: []const LangSuite.ts.Range,
 };
 
-pub fn insertChars(self: *@This(), chars: []const u8, destinations: []const CursorPoint) !InsertCharsResult {
+pub fn insertChars(self: *@This(), chars: []const u8, cm: *CursorManager) !InsertCharsResult {
     const zone = ztracy.ZoneNC(@src(), "WindowSource.insertChars()", 0x533300);
     defer zone.End();
 
-    assert(destinations.len > 0);
+    assert(cm.cursors.values().len > 0);
+    assert(cm.cursor_mode == .point);
+    if (cm.cursor_mode != .point) return InsertCharsResult.none;
 
-    const points, const ts_ranges = try self.buf.insertChars(self.a, chars, destinations);
-    defer self.a.free(points);
+    const input_points = try cm.produceCursorPoints(self.a);
+    defer self.a.free(input_points);
 
-    assert(points.len == destinations.len);
-    const start_line = destinations[0].line;
-    const end_line = destinations[destinations.len - 1].line;
+    const output_points, const ts_ranges = try self.buf.insertChars(self.a, chars, input_points);
+    defer self.a.free(output_points);
+
+    // update cursors
+    assert(input_points.len == output_points.len);
+    for (output_points, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
+
+    // updateCapList & return result
+    assert(output_points.len == input_points.len);
+    const start_line = input_points[0].line;
+    const end_line = input_points[input_points.len - 1].line;
 
     if (self.buf.tstree == null) return InsertCharsResult{ .range = .{ .start = start_line, .end = end_line } };
     if (ts_ranges == null) {
@@ -292,12 +303,15 @@ test insertChars {
     var lang_hub = try LangSuite.LangHub.init(testing_allocator);
     defer lang_hub.deinit();
     { // replace 1 line
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+
         var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
-        _ = try ws.insertChars("// ", &.{.{ .line = 0, .col = 0 }});
+        _ = try ws.insertChars("// ", cm);
         try eqStr("// const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
@@ -309,12 +323,16 @@ test insertChars {
         try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
     }
     { // replace 2 lines in single call
+        var cm = try CursorManager.create(testing_allocator);
+        defer cm.destroy();
+        try cm.addPointCursor(1, 0, true);
+
         var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
         defer ws.destroy();
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
         try eq(3, ws.cap_list.items.len);
 
-        _ = try ws.insertChars("// ", &.{ .{ .line = 0, .col = 0 }, .{ .line = 1, .col = 0 } });
+        _ = try ws.insertChars("// ", cm);
         try eqStr(
             \\// const a = 10;
             \\// var not_false = true;
