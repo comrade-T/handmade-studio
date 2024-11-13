@@ -2531,12 +2531,19 @@ const GetRangeCtx = struct {
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
 
-        if ((leaf.eol or ctx.last_line) and (ctx.col > 0) and (leaf.noc <= ctx.col)) {
-            ctx.out_of_bounds = true;
+        if (leaf.noc == ctx.col and leaf.eol) {
+            ctx.list.append('\n') catch {
+                ctx.out_of_memory = true;
+                return WalkResult.stop;
+            };
+            ctx.col = 0;
             return WalkResult.stop;
         }
 
-        if (leaf.noc < ctx.col) return WalkResult.keep_walking;
+        if (!leaf.eol and leaf.noc < ctx.col) {
+            ctx.col -= leaf.noc;
+            return WalkResult.keep_walking;
+        }
         if (ctx.out_of_memory) return WalkResult.stop;
 
         var iter = code_point.Iterator{ .bytes = leaf.buf };
@@ -2558,7 +2565,10 @@ const GetRangeCtx = struct {
             };
         }
 
-        if (leaf.eol) return WalkResult.stop;
+        if (leaf.eol) {
+            if (ctx.col > 0) ctx.out_of_bounds = true;
+            return WalkResult.stop;
+        }
         return WalkResult.keep_walking;
     }
 };
@@ -2600,14 +2610,6 @@ test "getRange no end" {
     try testGetRangeNoEnd("hello\nworld", "rld", .{ .line = 1, .col = 2 }, 4);
     try testGetRangeNoEnd("hello\nworld", "ld", .{ .line = 1, .col = 3 }, 4);
 
-    // out of bounds
-    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 0, .col = 5 }, 1024);
-    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 0, .col = 6 }, 1024);
-    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 1, .col = 5 }, 1024);
-    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 1, .col = 6 }, 1024);
-    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 2, .col = 0 }, 1024);
-    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 100, .col = 0 }, 1024);
-
     {
         const source =
             \\const a = 10;
@@ -2622,6 +2624,32 @@ test "getRange no end" {
             \\const c = 50;
         , .{ .line = 0, .col = 0 }, 1024);
     }
+
+    try testGetRangeNoEnd("const a = 10;//;", "//;", .{ .line = 0, .col = 13 }, 1024);
+    {
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+        var buf: [1024]u8 = undefined;
+
+        const root = try Node.fromString(idc_if_it_leaks, &content_arena, "const a = 10;");
+        _, _, const e1 = try insertChars(root, idc_if_it_leaks, &content_arena, ";", .{ .line = 0, .col = 12 });
+        _, _, const e2 = try insertChars(e1, idc_if_it_leaks, &content_arena, "/", .{ .line = 0, .col = 13 });
+        _, _, const e3 = try insertChars(e2, idc_if_it_leaks, &content_arena, "/", .{ .line = 0, .col = 14 });
+
+        try eqStr("const a = 10;//;", try e3.value.toString(idc_if_it_leaks, .lf));
+        try eqStr("//;", getRange(e3, .{ .line = 0, .col = 13 }, null, &buf));
+    }
+
+    // out of bounds
+    try testGetRangeNoEnd("hello\nworld", "\nworld", .{ .line = 0, .col = 5 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 0, .col = 6 }, 1024);
+
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 1, .col = 5 }, 1024);
+    try testGetRangeNoEnd("hello\nworld\nwide", "\nwide", .{ .line = 1, .col = 5 }, 1024);
+
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 1, .col = 6 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 2, .col = 0 }, 1024);
+    try testGetRangeNoEnd("hello\nworld", "", .{ .line = 100, .col = 0 }, 1024);
 }
 
 test "getRange() with end point" {
