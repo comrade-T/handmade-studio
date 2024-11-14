@@ -104,6 +104,12 @@ pub fn insertChars(self: *@This(), chars: []const u8) !void {
     try window.insertChars(chars, self.style_store);
 }
 
+pub fn backspace(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.backspace(self.style_store);
+}
+
 pub fn enterInsertMode(ctx: *anyopaque) !void {
     _ = ctx;
 }

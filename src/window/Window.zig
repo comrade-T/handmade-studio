@@ -190,7 +190,18 @@ pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleS
     defer zone.End();
 
     const result = try self.ws.insertChars(chars, self.cursor_manager);
+    try self.processEditResult(result, style_store);
+}
 
+pub fn backspace(self: *@This(), style_store: *const StyleStore) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.backspace()", 0x00AAFF);
+    defer zone.End();
+
+    const result = try self.ws.deleteRanges(self.cursor_manager, .backspace);
+    try self.processEditResult(result, style_store);
+}
+
+fn processEditResult(self: *@This(), result: WindowSource.EditResult, style_store: *const StyleStore) !void {
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 

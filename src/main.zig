@@ -132,6 +132,7 @@ pub fn main() anyerror!void {
     ///////////////////////////// Insert Mode
 
     try council.map("insert", &.{.escape}, .{ .f = WindowManager.exitInsertMode, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
+    try council.map("insert", &.{.backspace}, .{ .f = WindowManager.backspace, .ctx = &wm });
 
     const InsertCharsCb = struct {
         chars: []const u8,

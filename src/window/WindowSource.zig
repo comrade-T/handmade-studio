@@ -245,19 +245,19 @@ fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
     ws.a.free(value);
 }
 
-const InsertCharsResult = union(enum) {
+pub const EditResult = union(enum) {
     none,
     range: struct { start: usize, end: usize },
     ts: []const LangSuite.ts.Range,
 };
 
-pub fn insertChars(self: *@This(), chars: []const u8, cm: *CursorManager) !InsertCharsResult {
+pub fn insertChars(self: *@This(), chars: []const u8, cm: *CursorManager) !EditResult {
     const zone = ztracy.ZoneNC(@src(), "WindowSource.insertChars()", 0x533300);
     defer zone.End();
 
     assert(cm.cursors.values().len > 0);
     assert(cm.cursor_mode == .point);
-    if (cm.cursor_mode != .point) return InsertCharsResult.none;
+    if (cm.cursor_mode != .point) return EditResult.none;
 
     const input_points = try cm.produceCursorPoints(self.a);
     defer self.a.free(input_points);
@@ -270,18 +270,21 @@ pub fn insertChars(self: *@This(), chars: []const u8, cm: *CursorManager) !Inser
     for (output_points, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
 
     // updateCapList & return result
-    assert(output_points.len == input_points.len);
     const start_line = input_points[0].line;
     const end_line = input_points[input_points.len - 1].line;
 
-    if (self.buf.tstree == null) return InsertCharsResult{ .range = .{ .start = start_line, .end = end_line } };
+    return self.produceEditResult(start_line, end_line, ts_ranges);
+}
+
+fn produceEditResult(self: *@This(), start_line: usize, end_line: usize, ts_ranges: ?[]const LangSuite.ts.Range) !EditResult {
+    if (self.buf.tstree == null) return EditResult{ .range = .{ .start = start_line, .end = end_line } };
     if (ts_ranges == null) {
         try self.updateCapList(start_line, end_line);
-        return InsertCharsResult{ .range = .{ .start = start_line, .end = end_line } };
+        return EditResult{ .range = .{ .start = start_line, .end = end_line } };
     }
 
     for (ts_ranges.?) |range| try self.updateCapList(@intCast(range.start_point.row), @intCast(range.end_point.row));
-    return InsertCharsResult{ .ts = ts_ranges.? };
+    return EditResult{ .ts = ts_ranges.? };
 }
 
 fn updateCapList(self: *@This(), start_line: usize, end_line: usize) !void {
@@ -348,28 +351,40 @@ test insertChars {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges()
 
-pub fn deleteRanges(self: *@This(), ranges: []const CursorRange) !void {
-    assert(ranges.len > 0);
+pub fn deleteRanges(self: *@This(), cm: *CursorManager, kind: enum { backspace, range }) !EditResult {
+    const zone = ztracy.ZoneNC(@src(), "WindowSource.deleteRanges()", 0x00AAFF);
+    defer zone.End();
 
-    const points, const ts_ranges = try self.buf.deleteRanges(self.a, ranges);
-    defer self.a.free(points);
+    assert(cm.cursors.values().len > 0);
 
-    assert(points.len == ranges.len);
-    assert(ts_ranges != null and self.buf.tstree != null);
-    const start_line, const end_line = joinTSRanges(ts_ranges orelse return);
-    assert(start_line <= end_line);
+    var input_ranges: []CursorRange = undefined;
+    switch (kind) {
+        .backspace => {
+            input_ranges = try cm.produceBackspaceRanges(self.a, &self.buf.ropeman);
+            assert(cm.cursor_mode == .point);
+            if (cm.cursor_mode != .point) return EditResult.none;
+        },
+        .range => {
+            input_ranges = try cm.produceCursorRanges(self.a);
+            assert(cm.cursor_mode == .range);
+            if (cm.cursor_mode != .range) return EditResult.none;
+        },
+    }
+    defer self.a.free(input_ranges);
 
-    var map = try self.getCaptures(start_line, end_line);
-    defer map.deinit();
+    const output_points, const ts_ranges = try self.buf.deleteRanges(self.a, input_ranges);
+    defer self.a.free(output_points);
 
-    const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
-    defer self.a.free(new_values);
-    for (map.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
+    // update cursors
+    assert(input_ranges.len == output_points.len);
+    for (output_points, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
+    if (kind == .range) cm.activatePointMode();
 
-    const replace_start = ranges[0].start.line;
-    const replace_len = ranges[ranges.len - 1].start.line + 1 - replace_start;
-    for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
-    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+    // updateCapList & return result
+    const start_line = input_ranges[0].start.line;
+    const end_line = input_ranges[input_ranges.len - 1].start.line;
+
+    return self.produceEditResult(start_line, end_line, ts_ranges);
 }
 
 test deleteRanges {
