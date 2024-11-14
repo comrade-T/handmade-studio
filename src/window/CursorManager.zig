@@ -53,6 +53,8 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Producing Points & Ranges
+
 /// Allocate & set `RopeMan.CursorPoint` slice from cursors.
 /// Temporary solution to avoid circular references between `CursorManager` & `RopeMan` modules.
 /// Would love to have a solution where I don't have to allocate memory.
@@ -82,6 +84,35 @@ pub fn produceCursorRanges(self: *@This(), a: Allocator) ![]RopeMan.CursorRange 
     }
     return ranges;
 }
+
+pub fn produceBackspaceRanges(self: *@This(), a: Allocator, ropeman: *const RopeMan) ![]RopeMan.CursorRange {
+    var ranges = try a.alloc(RopeMan.CursorRange, self.cursors.values().len);
+    for (self.cursors.values(), 0..) |*cursor, i| {
+        if (cursor.start.line == 0 and cursor.start.col == 0) {
+            ranges[i] = .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } };
+            continue;
+        }
+
+        if (cursor.start.col == 0) {
+            const prev_linenr = cursor.start.line - 1;
+            const prev_line_noc = ropeman.getNumOfCharsInLine(prev_linenr);
+            ranges[i] = .{
+                .start = .{ .line = cursor.start.line - 1, .col = prev_line_noc },
+                .end = .{ .line = cursor.start.line, .col = 0 },
+            };
+            continue;
+        }
+
+        assert(cursor.start.col > 0);
+        ranges[i] = .{
+            .start = .{ .line = cursor.start.line, .col = cursor.start.col - 1 },
+            .end = .{ .line = cursor.start.line, .col = cursor.start.col },
+        };
+    }
+    return ranges;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn mainCursor(self: *@This()) *Cursor {
     return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
