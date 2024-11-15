@@ -212,8 +212,6 @@ fn processEditResult(self: *@This(), replace_infos: []const WindowSource.Replace
 fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
     assert(ri.end_line >= ri.start_line);
 
-    std.debug.print("ri: {any}\n", .{ri});
-
     var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, ri.end_line - ri.start_line + 1);
     defer replacements.deinit();
 

@@ -287,6 +287,9 @@ fn updateCapList(self: *@This(), ri: ReplaceInfo) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges()
 
+const EditLinenrMap = std.AutoArrayHashMap(u32, void);
+const ReplaceInfoList = std.ArrayList(ReplaceInfo);
+
 pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum { backspace, range }) !?[]const ReplaceInfo {
     const zone = ztracy.ZoneNC(@src(), "WindowSource.deleteRanges()", 0x00AAFF);
     defer zone.End();
@@ -318,10 +321,11 @@ pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum
 
     ///////////////////////////// Update CapList
 
-    var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
+    var linenr_map = EditLinenrMap.init(self.a);
+    try linenr_map.ensureTotalCapacity(512);
+    defer linenr_map.deinit();
 
-    _ = ts_ranges;
-    // TODO: incorporate ts_ranges properly
+    var replace_info_list = try ReplaceInfoList.initCapacity(a, inputs.len);
 
     for (0..inputs.len) |i| {
         assert(outputs[i].line >= inputs[i].start.line);
@@ -332,10 +336,41 @@ pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum
             .end_line = outputs[i].line,
         };
         if (self.buf.tstree != null) try self.updateCapList(info);
-        try list.append(a, info);
+        try replace_info_list.append(info);
+        try linenr_map.put(@intCast(outputs[i].line), {});
     }
 
-    return try list.toOwnedSlice(a);
+    try self.updateWithTreeSitterRanges(ts_ranges, &linenr_map, &replace_info_list);
+    return try replace_info_list.toOwnedSlice();
+}
+
+fn updateWithTreeSitterRanges(self: *@This(), ts_ranges: ?[]const LangSuite.ts.Range, map: *EditLinenrMap, replace_info_list: *ReplaceInfoList) !void {
+    const ranges = ts_ranges orelse return;
+    for (ranges) |r| {
+        var may_start: ?usize = null;
+        var may_end: ?usize = null;
+
+        for (@intCast(r.start_point.row)..@intCast(r.end_point.row + 1)) |linenr| {
+            if (map.contains(@intCast(linenr))) continue;
+            try map.put(@intCast(linenr), {});
+            may_end = linenr;
+            if (may_start == null) may_start = linenr;
+        }
+
+        if (may_start) |start| {
+            assert(may_end != null);
+            const end = may_end orelse return;
+            const info = ReplaceInfo{
+                .replace_start = start,
+                .replace_len = end - start + 1,
+                .start_line = start,
+                .end_line = end,
+            };
+            assert(self.buf.tstree != null);
+            try self.updateCapList(info);
+            try replace_info_list.append(info);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// StoredCapture
