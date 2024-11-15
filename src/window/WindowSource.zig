@@ -234,16 +234,11 @@ pub const ReplaceInfo = struct {
     start_line: usize,
     end_line: usize,
 };
-pub const EditResultNew = union(enum) {
-    none,
-    non_ts: []const ReplaceInfo,
-    ts: []const LangSuite.ts.Range,
-};
 
-pub fn insertCharsNew(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorManager) !EditResultNew {
+pub fn insertCharsNew(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorManager) !?[]const ReplaceInfo {
     assert(cm.cursors.values().len > 0);
     assert(cm.cursor_mode == .point);
-    if (cm.cursor_mode != .point) return EditResultNew.none;
+    if (cm.cursor_mode != .point) return null;
 
     const inputs = try cm.produceCursorPoints(self.a);
     defer self.a.free(inputs);
@@ -257,39 +252,48 @@ pub fn insertCharsNew(self: *@This(), a: Allocator, chars: []const u8, cm: *Curs
 
     ///////////////////////////// WIP
 
+    var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
+    const INSERT_REPLACE_RANGE = 1; // because this is insert, with .point cursor_mode
+
     if (ts_ranges) |ranges| {
-        for (ranges) |r| try self.updateCapList(@intCast(r.start_point.row), @intCast(r.end_point.row));
-        return EditResultNew{ .ts = ts_ranges.? };
+        for (ranges) |r| {
+            const info = ReplaceInfo{
+                .replace_start = @intCast(r.start_point.row),
+                .replace_len = INSERT_REPLACE_RANGE,
+                .start_line = @intCast(r.start_point.row),
+                .end_line = @intCast(r.end_point.row),
+            };
+            try self.updateCapListNew(info);
+            try list.append(a, info);
+        }
+        return try list.toOwnedSlice(a);
     }
 
-    var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
     for (0..inputs.len) |i| {
         assert(outputs[i].line >= inputs[i].line);
         const info = ReplaceInfo{
             .replace_start = inputs[i].line,
-            .replace_len = outputs[i].line - inputs[i].line + 1,
+            .replace_len = INSERT_REPLACE_RANGE,
             .start_line = inputs[i].line,
             .end_line = outputs[i].line,
         };
-        if (self.buf.tstree != null) {
-            try self.updateCapListNew(info.replace_start, info.replace_len, inputs[i].line, outputs[i].line);
-        }
+        if (self.buf.tstree != null) try self.updateCapListNew(info);
         try list.append(a, info);
     }
 
-    return EditResultNew{ .non_ts = try list.toOwnedSlice(a) };
+    return try list.toOwnedSlice(a);
 }
 
-fn updateCapListNew(self: *@This(), replace_start: usize, replace_len: usize, new_start: usize, new_end: usize) !void {
-    var new_captures = try self.getCaptures(new_start, new_end);
+fn updateCapListNew(self: *@This(), ri: ReplaceInfo) !void {
+    var new_captures = try self.getCaptures(ri.start_line, ri.end_line);
     defer new_captures.deinit();
 
-    const new_values = try self.a.alloc([]StoredCapture, new_end + 1 - new_start);
+    const new_values = try self.a.alloc([]StoredCapture, ri.end_line + 1 - ri.start_line);
     defer self.a.free(new_values);
     for (new_captures.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
 
-    for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
-    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+    for (ri.replace_start..ri.replace_start + ri.replace_len) |i| self.a.free(self.cap_list.items[i]);
+    try self.cap_list.replaceRange(ri.replace_start, ri.replace_len, new_values);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars() OLD

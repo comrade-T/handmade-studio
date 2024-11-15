@@ -189,38 +189,21 @@ pub fn insertCharsNew(self: *@This(), chars: []const u8, style_store: *const Sty
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
     defer zone.End();
 
-    const result = try self.ws.insertCharsNew(self.a, chars, self.cursor_manager);
+    const result = try self.ws.insertCharsNew(self.a, chars, self.cursor_manager) orelse return;
     try self.processEditResultNew(result, style_store);
 }
 
-fn processEditResultNew(self: *@This(), result: WindowSource.EditResultNew, style_store: *const StyleStore) !void {
+fn processEditResultNew(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const StyleStore) !void {
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
-    std.debug.print("result: {any}\n", .{result});
-
-    switch (result) {
-        .none => {},
-        .non_ts => |ranges| {
-            defer self.a.free(ranges);
-            for (ranges) |ri| try self.updateCacheLinesNew(ri, style_store, default_font, default_glyph);
-        },
-        .ts => |ranges| {
-            defer std.c.free(@as(*anyopaque, @ptrCast(@constCast(ranges.ptr))));
-            for (ranges) |r|
-                try self.updateCacheLines(
-                    @intCast(r.start_point.row),
-                    @intCast(r.end_point.row),
-                    style_store,
-                    default_font,
-                    default_glyph,
-                );
-        },
-    }
+    defer self.a.free(replace_infos);
+    for (replace_infos) |ri| try self.updateCacheLinesNew(ri, style_store, default_font, default_glyph);
 }
 
 fn updateCacheLinesNew(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
     assert(ri.end_line >= ri.start_line);
+
     var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, ri.end_line - ri.start_line + 1);
     defer replacements.deinit();
 
