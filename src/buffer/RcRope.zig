@@ -2301,7 +2301,7 @@ test "insert 'a' one after another to a string" {
 
     try eq(.{ false, e8 }, try balance(testing_allocator, e8));
 
-    ///////////////////////////// e9
+    ////////////////////////////////////////////////////////// e9
 
     const e9line, const e9col, const e9 = try insertChars(e8, testing_allocator, &content_arena, "9", .{ .line = e8line, .col = e8col });
     try list.append(e8);
@@ -2394,19 +2394,12 @@ test "insert 'a' one after another to a string" {
             \\        1 B| ``
         , try debugStr(idc_if_it_leaks, e9b));
 
-        { // corrupted
-            // var i: usize = list.items.len;
-            // while (i > 0) {
-            //     i -= 1;
+        { // used to cause memory corruption
+            // for (list.items, 0..) |node, i| {
             //     std.debug.print("========= i = {d} ================================\n", .{i});
-            //     std.debug.print("node:\n {s}\n", .{try debugStr(idc_if_it_leaks, list.items[i])});
-            //     freeRcNode(testing_allocator, list.items[i]);
+            //     std.debug.print("node:\n {s}\n", .{try debugStr(idc_if_it_leaks, node)});
+            //     freeRcNode(testing_allocator, node);
             // }
-            // // for (list.items, 0..) |node, i| {
-            // //     std.debug.print("========= i = {d} ================================\n", .{i});
-            // //     std.debug.print("node:\n {s}\n", .{try debugStr(idc_if_it_leaks, node)});
-            // //     freeRcNode(testing_allocator, node);
-            // // }
 
             freeRcNodes(testing_allocator, list.items);
             freeRcNode(testing_allocator, e9);
