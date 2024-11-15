@@ -185,6 +185,54 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
+pub fn insertCharsNew(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
+    defer zone.End();
+
+    const result = try self.ws.insertCharsNew(self.a, chars, self.cursor_manager);
+    try self.processEditResultNew(result, style_store);
+}
+
+fn processEditResultNew(self: *@This(), result: WindowSource.EditResultNew, style_store: *const StyleStore) !void {
+    const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
+    const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
+
+    std.debug.print("result: {any}\n", .{result});
+
+    switch (result) {
+        .none => {},
+        .non_ts => |ranges| {
+            defer self.a.free(ranges);
+            for (ranges) |ri| try self.updateCacheLinesNew(ri, style_store, default_font, default_glyph);
+        },
+        .ts => |ranges| {
+            defer std.c.free(@as(*anyopaque, @ptrCast(@constCast(ranges.ptr))));
+            for (ranges) |r|
+                try self.updateCacheLines(
+                    @intCast(r.start_point.row),
+                    @intCast(r.end_point.row),
+                    style_store,
+                    default_font,
+                    default_glyph,
+                );
+        },
+    }
+}
+
+fn updateCacheLinesNew(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
+    assert(ri.end_line >= ri.start_line);
+    var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, ri.end_line - ri.start_line + 1);
+    defer replacements.deinit();
+
+    for (ri.start_line..ri.end_line + 1) |linenr| {
+        const info = try calculateLineInfo(self, linenr, style_store, default_font, default_glyph);
+        try replacements.append(info);
+    }
+    try self.cached.line_info.replaceRange(self.a, ri.replace_start, ri.replace_len, replacements.items);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete OLD
+
 pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
     defer zone.End();

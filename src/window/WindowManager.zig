@@ -101,7 +101,7 @@ pub fn render(self: *@This(), view: Window.ScreenView) void {
 
 pub fn insertChars(self: *@This(), chars: []const u8) !void {
     const window = self.active_window orelse return;
-    try window.insertChars(chars, self.style_store);
+    try window.insertCharsNew(chars, self.style_store);
 }
 
 pub fn backspace(ctx: *anyopaque) !void {

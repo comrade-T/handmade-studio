@@ -215,8 +215,6 @@ test getCaptures {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// cap_list related
-
 fn populateCapListWithAllCaptures(self: *@This()) !void {
     assert(self.buf.tstree != null);
 
@@ -228,22 +226,73 @@ fn populateCapListWithAllCaptures(self: *@This()) !void {
     for (map.values()) |*list| try self.cap_list.append(try list.toOwnedSlice(self.a));
 }
 
-fn joinTSRanges(ranges: []const LangSuite.ts.Range) struct { usize, usize } {
-    var start_line: usize = 0;
-    var end_line: usize = 0;
-    for (ranges) |r| {
-        start_line = @min(start_line, r.start_point.row);
-        end_line = @max(end_line, r.end_point.row);
-    }
-    return .{ start_line, end_line };
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars()
 
-fn freeStoredCaptureSlice(ctx: *anyopaque, value: []StoredCapture) void {
-    const ws = @as(*WindowSource, @ptrCast(@alignCast(ctx)));
-    ws.a.free(value);
+pub const ReplaceInfo = struct {
+    replace_start: usize,
+    replace_len: usize,
+    start_line: usize,
+    end_line: usize,
+};
+pub const EditResultNew = union(enum) {
+    none,
+    non_ts: []const ReplaceInfo,
+    ts: []const LangSuite.ts.Range,
+};
+
+pub fn insertCharsNew(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorManager) !EditResultNew {
+    assert(cm.cursors.values().len > 0);
+    assert(cm.cursor_mode == .point);
+    if (cm.cursor_mode != .point) return EditResultNew.none;
+
+    const inputs = try cm.produceCursorPoints(self.a);
+    defer self.a.free(inputs);
+
+    const outputs, const ts_ranges = try self.buf.insertChars(self.a, chars, inputs);
+    defer self.a.free(outputs);
+
+    // update cursors
+    assert(inputs.len == outputs.len);
+    for (outputs, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
+
+    ///////////////////////////// WIP
+
+    if (ts_ranges) |ranges| {
+        for (ranges) |r| try self.updateCapList(@intCast(r.start_point.row), @intCast(r.end_point.row));
+        return EditResultNew{ .ts = ts_ranges.? };
+    }
+
+    var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
+    for (0..inputs.len) |i| {
+        assert(outputs[i].line >= inputs[i].line);
+        const info = ReplaceInfo{
+            .replace_start = inputs[i].line,
+            .replace_len = outputs[i].line - inputs[i].line + 1,
+            .start_line = inputs[i].line,
+            .end_line = outputs[i].line,
+        };
+        if (self.buf.tstree != null) {
+            try self.updateCapListNew(info.replace_start, info.replace_len, inputs[i].line, outputs[i].line);
+        }
+        try list.append(a, info);
+    }
+
+    return EditResultNew{ .non_ts = try list.toOwnedSlice(a) };
 }
+
+fn updateCapListNew(self: *@This(), replace_start: usize, replace_len: usize, new_start: usize, new_end: usize) !void {
+    var new_captures = try self.getCaptures(new_start, new_end);
+    defer new_captures.deinit();
+
+    const new_values = try self.a.alloc([]StoredCapture, new_end + 1 - new_start);
+    defer self.a.free(new_values);
+    for (new_captures.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
+
+    for (replace_start..replace_start + replace_len) |i| self.a.free(self.cap_list.items[i]);
+    try self.cap_list.replaceRange(replace_start, replace_len, new_values);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// insertChars() OLD
 
 pub const EditResult = union(enum) {
     none,
