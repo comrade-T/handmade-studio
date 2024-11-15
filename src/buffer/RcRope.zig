@@ -1299,9 +1299,19 @@ fn calculateBalanceFactor(left: *const Node, right: *const Node) i64 {
     return balance_factor;
 }
 
+var TARGETED_BALANCE_DEBUG_PRINT = false;
+
 pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
+    if (TARGETED_BALANCE_DEBUG_PRINT) {
+        std.debug.print("\n++++++++++++++++++++++++++++++\n\n", .{});
+    }
+
     switch (self.value.*) {
-        .leaf => return .{ false, self },
+        .leaf => {
+            if (TARGETED_BALANCE_DEBUG_PRINT) std.debug.print("leaf: '{s}'\n", .{self.value.leaf.buf});
+
+            return .{ false, self };
+        },
         .branch => |branch| {
             {
                 const initial_balance_factor = calculateBalanceFactor(branch.left.value, branch.right.value);
@@ -1322,6 +1332,12 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                         if (!left_changed) left.retain() else left,
                         if (!right_changed) right.retain() else right,
                     );
+
+                    if (TARGETED_BALANCE_DEBUG_PRINT) {
+                        std.debug.print("@abs(balance_factor) <= MAX_IMBALANCE\n", .{});
+                        std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                    }
+
                     break :find_result;
                 }
 
@@ -1337,10 +1353,22 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                             );
                             defer freeRcNode(a, temp);
                             result = try rotateLeft(a, temp);
+
+                            if (TARGETED_BALANCE_DEBUG_PRINT) {
+                                std.debug.print("balance_factor < 0 | right_balance_factor <= 0 | left_changed or right_changed\n", .{});
+                                std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                            }
+
                             break :find_result;
                         }
 
                         result = try rotateLeft(a, self);
+
+                        if (TARGETED_BALANCE_DEBUG_PRINT) {
+                            std.debug.print("balance_factor < 0 | right_balance_factor <= 0 | left & right unchanged\n", .{});
+                            std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                        }
+
                         break :find_result;
                     }
 
@@ -1349,6 +1377,12 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                     const temp = try Node.new(a, if (!left_changed) left.retain() else left, new_right);
                     defer freeRcNode(a, temp);
                     result = try rotateLeft(a, temp);
+
+                    if (TARGETED_BALANCE_DEBUG_PRINT) {
+                        std.debug.print("balance_factor < 0 | right_balance_factor > 0 \n", .{});
+                        std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                    }
+
                     break :find_result;
                 }
 
@@ -1363,10 +1397,22 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                         );
                         defer freeRcNode(a, temp);
                         result = try rotateRight(a, temp);
+
+                        if (TARGETED_BALANCE_DEBUG_PRINT) {
+                            std.debug.print("balance_factor > 0 | left_balance_factor >= 0 | left_changed or right_changed\n", .{});
+                            std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                        }
+
                         break :find_result;
                     }
 
                     result = try rotateRight(a, self);
+
+                    if (TARGETED_BALANCE_DEBUG_PRINT) {
+                        std.debug.print("balance_factor > 0 | left_balance_factor >= 0 | left & right unchanged\n", .{});
+                        std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                    }
+
                     break :find_result;
                 }
 
@@ -1375,6 +1421,12 @@ pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
                 const temp = try Node.new(a, new_left, if (!right_changed) right.retain() else right);
                 defer freeRcNode(a, temp);
                 result = try rotateRight(a, temp);
+
+                if (TARGETED_BALANCE_DEBUG_PRINT) {
+                    std.debug.print("balance_factor > 0 | left_balance_factor < 0\n", .{});
+                    std.debug.print("result:\n {s}\n", .{try debugStr(idc_if_it_leaks, result)});
+                }
+
                 break :find_result;
             }
 
@@ -2013,10 +2065,13 @@ test "insert 'a' one after another to a string" {
 
     const root = try Node.fromFile(testing_allocator, &content_arena, "src/window/fixtures/dummy_3_lines.zig");
 
+    var list = ArrayList(RcNode).init(testing_allocator);
+    defer list.deinit();
+
     ///////////////////////////// e1
 
     const e1line, const e1col, const e1 = try insertChars(root, testing_allocator, &content_arena, "1", .{ .line = 0, .col = 0 });
-    defer freeRcNode(testing_allocator, root);
+    try list.append(root);
     try eqStr(
         \\4 4/74
         \\  3 2/37
@@ -2034,7 +2089,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e2
 
     const e2line, const e2col, const e2 = try insertChars(e1, testing_allocator, &content_arena, "2", .{ .line = e1line, .col = e1col });
-    defer freeRcNode(testing_allocator, e1);
+    try list.append(e1);
     try eqStr(
         \\5 4/75
         \\  4 2/38
@@ -2071,7 +2126,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e3
 
     const e3line, const e3col, const e3 = try insertChars(e2b, testing_allocator, &content_arena, "3", .{ .line = e2line, .col = e2col });
-    defer freeRcNode(testing_allocator, e2b);
+    try list.append(e2b);
     try eqStr(
         \\5 4/76
         \\  4 2/39
@@ -2112,7 +2167,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e4
 
     const e4line, const e4col, const e4 = try insertChars(e3b, testing_allocator, &content_arena, "4", .{ .line = e3line, .col = e3col });
-    defer freeRcNode(testing_allocator, e3b);
+    try list.append(e3b);
     try eqStr(
         \\5 4/77
         \\  4 1/4
@@ -2136,7 +2191,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e5
 
     const e5line, const e5col, const e5 = try insertChars(e4, testing_allocator, &content_arena, "5", .{ .line = e4line, .col = e4col });
-    defer freeRcNode(testing_allocator, e4);
+    try list.append(e4);
     try eqStr(
         \\6 4/78
         \\  5 1/5
@@ -2185,7 +2240,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e6
 
     const e6line, const e6col, const e6 = try insertChars(e5b, testing_allocator, &content_arena, "6", .{ .line = e5line, .col = e5col });
-    defer freeRcNode(testing_allocator, e5b);
+    try list.append(e5b);
     try eqStr(
         \\5 4/79
         \\  4 1/6
@@ -2213,7 +2268,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e7
 
     const e7line, const e7col, const e7 = try insertChars(e6, testing_allocator, &content_arena, "7", .{ .line = e6line, .col = e6col });
-    defer freeRcNode(testing_allocator, e6);
+    try list.append(e6);
     try eqStr(
         \\6 4/80
         \\  5 1/7
@@ -2270,7 +2325,7 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e8
 
     const e8line, const e8col, const e8 = try insertChars(e7b, testing_allocator, &content_arena, "8", .{ .line = e7line, .col = e7col });
-    defer freeRcNode(testing_allocator, e7b);
+    try list.append(e7b);
     try eqStr(
         \\6 4/81
         \\  4 1/4 Rc:2
@@ -2302,7 +2357,8 @@ test "insert 'a' one after another to a string" {
     ///////////////////////////// e9
 
     const e9line, const e9col, const e9 = try insertChars(e8, testing_allocator, &content_arena, "9", .{ .line = e8line, .col = e8col });
-    defer freeRcNode(testing_allocator, e8);
+    try list.append(e8);
+
     try eqStr(
         \\7 4/82
         \\  4 1/4 Rc:3
@@ -2331,34 +2387,82 @@ test "insert 'a' one after another to a string" {
         \\        1 B| ``
     , try debugStr(idc_if_it_leaks, e9));
 
+    // { // pass
+    //     freeRcNodes(testing_allocator, list.items);
+    //
+    //     try eqStr(
+    //         \\7 4/82
+    //         \\  4 1/4
+    //         \\    3 1/3
+    //         \\      1 B| `1`
+    //         \\      2 0/2
+    //         \\        1 `2`
+    //         \\        1 `3`
+    //         \\    1 `4`
+    //         \\  6 3/78
+    //         \\    5 0/5
+    //         \\      1 `5`
+    //         \\      4 0/4
+    //         \\        1 `6`
+    //         \\        3 0/3
+    //         \\          1 `7`
+    //         \\          2 0/2
+    //         \\            1 `8`
+    //         \\            1 `9`
+    //         \\    3 3/73
+    //         \\      2 1/36
+    //         \\        1 `const a = 10;` |E
+    //         \\        1 B| `var not_false = true;` |E
+    //         \\      2 2/37
+    //         \\        1 B| `const Allocator = std.mem.Allocator;` |E
+    //         \\        1 B| ``
+    //     , try debugStr(idc_if_it_leaks, e9));
+    // }
+
+    std.debug.print("===================================================================\n", .{});
+    TARGETED_BALANCE_DEBUG_PRINT = true;
+
     const e9_has_changes, const e9b = try balance(testing_allocator, e9);
+
+    TARGETED_BALANCE_DEBUG_PRINT = false;
+    std.debug.print("===================================================================\n", .{});
+
     {
         try eq(true, e9_has_changes);
-        freeRcNode(testing_allocator, e9);
+
+        // { // pass
+        //     freeRcNode(testing_allocator, e9);
+        // }
+
+        { // corrupted
+            freeRcNodes(testing_allocator, list.items);
+            freeRcNode(testing_allocator, e9);
+        }
+
         try eqStr(
             \\5 4/82
             \\  4 1/7
             \\    3 1/4
             \\      2 1/2
-            \\        1 B| `1` Rc:4
-            \\        1 `2` Rc:3
+            \\        1 B| `1`
+            \\        1 `2`
             \\      2 0/2
-            \\        1 `3` Rc:2
-            \\        1 `4` Rc:4
+            \\        1 `3`
+            \\        1 `4`
             \\    3 0/3
-            \\      1 `5` Rc:4
+            \\      1 `5`
             \\      2 0/2
-            \\        1 `6` Rc:3
-            \\        1 `7` Rc:2
+            \\        1 `6`
+            \\        1 `7`
             \\  4 3/75
             \\    2 0/2
             \\      1 `8`
             \\      1 `9`
-            \\    3 3/73 Rc:7
-            \\      2 1/36 Rc:2
-            \\        1 `const a = 10;` |E Rc:2
-            \\        1 B| `var not_false = true;` |E Rc:3
-            \\      2 2/37 Rc:4
+            \\    3 3/73
+            \\      2 1/36
+            \\        1 `const a = 10;` |E
+            \\        1 B| `var not_false = true;` |E
+            \\      2 2/37
             \\        1 B| `const Allocator = std.mem.Allocator;` |E
             \\        1 B| ``
         , try debugStr(idc_if_it_leaks, e9b));

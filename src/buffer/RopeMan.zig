@@ -398,8 +398,8 @@ test "insertChars - single char at beginning of file multiple times" {
         const points = try ropeman.insertChars(testing_allocator, "a", &.{.{ .line = 0, .col = 0 }});
         defer testing_allocator.free(points);
         if (i % 20 == 0) try ropeman.registerLastPendingToHistory();
+        try ropeman.registerLastPendingToHistory();
     }
-    try ropeman.registerLastPendingToHistory();
 
     try eqStr(
         \\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaconst a = 10;
@@ -450,6 +450,7 @@ test "insertChars - 'integer cast truncated bits'" {
                 std.debug.print("\n------ YO I' FREEING THIS SHIT : pending_len: {d} ~~~~~~~~~~~~~~~~~~~~~`\n\n", .{ropeman.pending.items.len});
                 try ropeman.registerLastPendingToHistory();
                 std.debug.print("root after free:  \n", .{});
+                std.debug.print("yo: {s}\n", .{try ropeman.getLineAlloc(idc_if_it_leaks, 0, 1024)});
                 try ropeman.debugPrint();
             }
         }
