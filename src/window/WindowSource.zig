@@ -252,11 +252,12 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorM
 
     ///////////////////////////// Update CapList
 
-    var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
-    const INSERT_REPLACE_RANGE = 1; // because this is insert, with .point cursor_mode
+    var linenr_map = EditLinenrMap.init(self.a);
+    try linenr_map.ensureTotalCapacity(512);
+    defer linenr_map.deinit();
 
-    _ = ts_ranges;
-    // TODO: incorporate ts_ranges properly
+    var replace_info_list = try ReplaceInfoList.initCapacity(a, inputs.len);
+    const INSERT_REPLACE_RANGE = 1; // because this is insert, with .point cursor_mode
 
     for (0..inputs.len) |i| {
         assert(outputs[i].line >= inputs[i].line);
@@ -267,10 +268,12 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorM
             .end_line = outputs[i].line,
         };
         if (self.buf.tstree != null) try self.updateCapList(info);
-        try list.append(a, info);
+        try replace_info_list.append(info);
+        for (inputs[i].line..outputs[i].line + 1) |linenr| try linenr_map.put(@intCast(linenr), {});
     }
 
-    return try list.toOwnedSlice(a);
+    try self.updateWithTreeSitterRanges(ts_ranges, &linenr_map, &replace_info_list);
+    return try replace_info_list.toOwnedSlice();
 }
 
 fn updateCapList(self: *@This(), ri: ReplaceInfo) !void {
