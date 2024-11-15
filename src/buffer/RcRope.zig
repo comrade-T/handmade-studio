@@ -1299,10 +1299,6 @@ fn calculateBalanceFactor(left: *const Node, right: *const Node) i64 {
     return balance_factor;
 }
 
-fn isRebalanced(branch: Branch, left: RcNode, right: RcNode) bool {
-    return branch.left.value != left.value or branch.right.value != right.value;
-}
-
 pub fn balance(a: Allocator, self: RcNode) !struct { bool, RcNode } {
     switch (self.value.*) {
         .leaf => return .{ false, self },

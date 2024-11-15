@@ -115,7 +115,16 @@ pub fn enterInsertMode(ctx: *anyopaque) !void {
 }
 
 pub fn exitInsertMode(ctx: *anyopaque) !void {
-    _ = ctx;
+    // _ = ctx;
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.ws.buf.ropeman.registerLastPendingToHistory();
+}
+
+pub fn debugPrintActiveWindowRope(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.ws.buf.ropeman.debugPrint();
 }
 
 ///////////////////////////// Move hjkl

@@ -93,7 +93,7 @@ pub fn main() anyerror!void {
     });
     defer wm.deinit();
 
-    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines.zig", .{
+    try wm.spawnWindow(.file, "src/window/fixtures/dummy_2_lines.zig", .{
         .pos = .{ .x = 100, .y = 100 },
         .subscribed_style_sets = &.{0},
     }, true);
@@ -138,6 +138,8 @@ pub fn main() anyerror!void {
 
     try council.map("insert", &.{.escape}, .{ .f = WindowManager.exitInsertMode, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
     try council.map("insert", &.{.backspace}, .{ .f = WindowManager.backspace, .ctx = &wm });
+
+    try council.map("insert", &.{ .left_control, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
 
     const InsertCharsCb = struct {
         chars: []const u8,

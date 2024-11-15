@@ -99,6 +99,12 @@ pub fn getLineAlloc(self: *const @This(), a: Allocator, linenr: usize, capacity:
     return rcr.getLineAlloc(a, self.root, linenr, capacity);
 }
 
+pub fn debugPrint(self: *const @This()) !void {
+    const str = try rcr.debugStr(self.a, self.root);
+    defer self.a.free(str);
+    std.debug.print("debugStr: {s}\n", .{str});
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
 
 pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) ![]CursorPoint {
@@ -354,6 +360,36 @@ test "insertCharsMultiCursor - no new lines" {
     }
     try ropeman.registerLastPendingToHistory();
     try eq(.{ 0, 2 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+}
+
+/////////////////////////////
+
+test "insertChars - single char at beginning of file multiple times" {
+    var ropeman = try RopeMan.initFrom(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig");
+    defer ropeman.deinit();
+
+    try eqStr(
+        \\const a = 10;
+        \\var not_false = true;
+        \\const Allocator = std.mem.Allocator;
+        \\
+    , try ropeman.toString(idc_if_it_leaks, .lf));
+
+    for (0..69) |i| {
+        const points = try ropeman.insertChars(testing_allocator, "a", &.{.{ .line = 0, .col = 0 }});
+        defer testing_allocator.free(points);
+        if (i % 20 == 0) try ropeman.registerLastPendingToHistory();
+    }
+    try ropeman.registerLastPendingToHistory();
+
+    try eqStr(
+        \\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaconst a = 10;
+        \\var not_false = true;
+        \\const Allocator = std.mem.Allocator;
+        \\
+    , try ropeman.toString(idc_if_it_leaks, .lf));
+
+    try eqStr("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaconst a = 10;", try ropeman.getLineAlloc(idc_if_it_leaks, 0, 1024));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges
@@ -641,7 +677,6 @@ test "deleteRangesMultiCursor - multiple lines - no line shifts" {
 ////////////////////////////////////////////////////////////////////////////////////////////// registerLastPendingToHistory
 
 pub fn registerLastPendingToHistory(self: *@This()) !void {
-    assert(self.pending.items.len > 0);
     if (self.pending.items.len == 0) return;
 
     const last_pending = self.pending.pop();
