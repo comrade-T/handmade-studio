@@ -93,7 +93,7 @@ pub fn main() anyerror!void {
     });
     defer wm.deinit();
 
-    try wm.spawnWindow(.file, "src/window/fixtures/dummy_2_lines.zig", .{
+    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines.zig", .{
         .pos = .{ .x = 100, .y = 100 },
         .subscribed_style_sets = &.{0},
     }, true);

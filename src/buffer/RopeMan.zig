@@ -122,8 +122,25 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations
 
 fn insertAndBalance(self: *@This(), chars: []const u8, destination: CursorPoint) !struct { usize, usize, RcNode } {
     const line, const col, const new_root = try rcr.insertChars(self.root, self.a, &self.arena, chars, destination);
+
+    if (LADIDA == true) {
+        std.debug.print("new_root: \n", .{});
+        const str = try rcr.debugStr(self.a, new_root);
+        defer self.a.free(str);
+        std.debug.print("{s}\n", .{str});
+    }
+
     const is_rebalanced, const balanced_root = try rcr.balance(self.a, new_root);
     if (is_rebalanced) rcr.freeRcNode(self.a, new_root);
+
+    if (LADIDA == true and is_rebalanced) {
+        std.debug.print("----x-x-x-----xx-x-x-x---xx-x-----\n", .{});
+        std.debug.print("balanced_root: \n", .{});
+        const str = try rcr.debugStr(self.a, balanced_root);
+        defer self.a.free(str);
+        std.debug.print("{s}\n", .{str});
+    }
+
     return .{ line, col, balanced_root };
 }
 
@@ -364,6 +381,8 @@ test "insertCharsMultiCursor - no new lines" {
 
 /////////////////////////////
 
+var LADIDA = false;
+
 test "insertChars - single char at beginning of file multiple times" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig");
     defer ropeman.deinit();
@@ -390,6 +409,54 @@ test "insertChars - single char at beginning of file multiple times" {
     , try ropeman.toString(idc_if_it_leaks, .lf));
 
     try eqStr("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaconst a = 10;", try ropeman.getLineAlloc(idc_if_it_leaks, 0, 1024));
+}
+
+test "insertChars - 'integer cast truncated bits'" {
+    { // clean example, but why is it clean?
+        var ropeman = try RopeMan.initFrom(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig");
+        defer ropeman.deinit();
+
+        for (0..69) |i| {
+            const chars = try std.fmt.allocPrint(testing_allocator, "{c}", .{@as(u8, @intCast(i + 49))});
+            defer testing_allocator.free(chars);
+            const points = try ropeman.insertChars(testing_allocator, chars, &.{.{ .line = 0, .col = i }});
+            defer testing_allocator.free(points);
+            try ropeman.registerLastPendingToHistory();
+        }
+
+        try eqStr("123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuconst a = 10;", try ropeman.getLineAlloc(idc_if_it_leaks, 0, 1024));
+    }
+    { // guilty example
+
+        // if I don't call rcr.balance() in insertAndBalance(), and return only the result from insertChars(),
+        // this example won't panic.
+
+        // I tried to `self.pending.append(new_root)` if it's rebalanced, but the error still occurs.
+
+        var ropeman = try RopeMan.initFrom(testing_allocator, .file, "src/window/fixtures/dummy_3_lines.zig");
+        defer ropeman.deinit();
+
+        LADIDA = true;
+        defer LADIDA = false;
+
+        for (0..69) |i| {
+            std.debug.print("\ni = {d} ===================================================================\n\n", .{i});
+
+            const chars = try std.fmt.allocPrint(testing_allocator, "{c}", .{@as(u8, @intCast(i + 49))});
+            defer testing_allocator.free(chars);
+            const points = try ropeman.insertChars(testing_allocator, chars, &.{.{ .line = 0, .col = i }});
+            defer testing_allocator.free(points);
+            if (i % 4 == 0) {
+                std.debug.print("\n------ YO I' FREEING THIS SHIT : pending_len: {d} ~~~~~~~~~~~~~~~~~~~~~`\n\n", .{ropeman.pending.items.len});
+                try ropeman.registerLastPendingToHistory();
+                std.debug.print("root after free:  \n", .{});
+                try ropeman.debugPrint();
+            }
+        }
+        try ropeman.registerLastPendingToHistory();
+
+        try eqStr("123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuconst a = 10;", try ropeman.getLineAlloc(idc_if_it_leaks, 0, 1024));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges

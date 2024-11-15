@@ -2007,6 +2007,371 @@ test "insert at beginning then balance, one character at a time" {
     freeRcNode(testing_allocator, e14b);
 }
 
+test "insert 'a' one after another to a string" {
+    var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer content_arena.deinit();
+
+    const root = try Node.fromFile(testing_allocator, &content_arena, "src/window/fixtures/dummy_3_lines.zig");
+
+    ///////////////////////////// e1
+
+    const e1line, const e1col, const e1 = try insertChars(root, testing_allocator, &content_arena, "1", .{ .line = 0, .col = 0 });
+    defer freeRcNode(testing_allocator, root);
+    try eqStr(
+        \\4 4/74
+        \\  3 2/37
+        \\    2 1/15
+        \\      1 B| `1`
+        \\      1 `const a = 10;` |E
+        \\    1 B| `var not_false = true;` |E Rc:2
+        \\  2 2/37 Rc:2
+        \\    1 B| `const Allocator = std.mem.Allocator;` |E
+        \\    1 B| ``
+    , try debugStr(idc_if_it_leaks, e1));
+
+    try eq(.{ false, e1 }, try balance(testing_allocator, e1));
+
+    ///////////////////////////// e2
+
+    const e2line, const e2col, const e2 = try insertChars(e1, testing_allocator, &content_arena, "2", .{ .line = e1line, .col = e1col });
+    defer freeRcNode(testing_allocator, e1);
+    try eqStr(
+        \\5 4/75
+        \\  4 2/38
+        \\    3 1/16
+        \\      2 1/2
+        \\        1 B| `1`
+        \\        1 `2`
+        \\      1 `const a = 10;` |E Rc:2
+        \\    1 B| `var not_false = true;` |E Rc:3
+        \\  2 2/37 Rc:3
+        \\    1 B| `const Allocator = std.mem.Allocator;` |E
+        \\    1 B| ``
+    , try debugStr(idc_if_it_leaks, e2));
+
+    const e2_has_changes, const e2b = try balance(testing_allocator, e2);
+    {
+        try eq(true, e2_has_changes);
+        freeRcNode(testing_allocator, e2);
+        try eqStr(
+            \\4 4/75
+            \\  3 2/38
+            \\    2 1/2
+            \\      1 B| `1`
+            \\      1 `2`
+            \\    2 1/36
+            \\      1 `const a = 10;` |E Rc:2
+            \\      1 B| `var not_false = true;` |E Rc:3
+            \\  2 2/37 Rc:3
+            \\    1 B| `const Allocator = std.mem.Allocator;` |E
+            \\    1 B| ``
+        , try debugStr(idc_if_it_leaks, e2b));
+    }
+
+    ///////////////////////////// e3
+
+    const e3line, const e3col, const e3 = try insertChars(e2b, testing_allocator, &content_arena, "3", .{ .line = e2line, .col = e2col });
+    defer freeRcNode(testing_allocator, e2b);
+    try eqStr(
+        \\5 4/76
+        \\  4 2/39
+        \\    3 1/3
+        \\      1 B| `1` Rc:2
+        \\      2 0/2
+        \\        1 `2`
+        \\        1 `3`
+        \\    2 1/36 Rc:2
+        \\      1 `const a = 10;` |E Rc:2
+        \\      1 B| `var not_false = true;` |E Rc:3
+        \\  2 2/37 Rc:4
+        \\    1 B| `const Allocator = std.mem.Allocator;` |E
+        \\    1 B| ``
+    , try debugStr(idc_if_it_leaks, e3));
+
+    const e3_has_changes, const e3b = try balance(testing_allocator, e3);
+    {
+        try eq(true, e3_has_changes);
+        freeRcNode(testing_allocator, e3);
+        try eqStr(
+            \\4 4/76
+            \\  3 1/3
+            \\    1 B| `1` Rc:2
+            \\    2 0/2
+            \\      1 `2`
+            \\      1 `3`
+            \\  3 3/73
+            \\    2 1/36 Rc:2
+            \\      1 `const a = 10;` |E Rc:2
+            \\      1 B| `var not_false = true;` |E Rc:3
+            \\    2 2/37 Rc:4
+            \\      1 B| `const Allocator = std.mem.Allocator;` |E
+            \\      1 B| ``
+        , try debugStr(idc_if_it_leaks, e3b));
+    }
+
+    ///////////////////////////// e4
+
+    const e4line, const e4col, const e4 = try insertChars(e3b, testing_allocator, &content_arena, "4", .{ .line = e3line, .col = e3col });
+    defer freeRcNode(testing_allocator, e3b);
+    try eqStr(
+        \\5 4/77
+        \\  4 1/4
+        \\    1 B| `1` Rc:3
+        \\    3 0/3
+        \\      1 `2` Rc:2
+        \\      2 0/2
+        \\        1 `3`
+        \\        1 `4`
+        \\  3 3/73 Rc:2
+        \\    2 1/36 Rc:2
+        \\      1 `const a = 10;` |E Rc:2
+        \\      1 B| `var not_false = true;` |E Rc:3
+        \\    2 2/37 Rc:4
+        \\      1 B| `const Allocator = std.mem.Allocator;` |E
+        \\      1 B| ``
+    , try debugStr(idc_if_it_leaks, e4));
+
+    try eq(.{ false, e4 }, try balance(testing_allocator, e4));
+
+    ///////////////////////////// e5
+
+    const e5line, const e5col, const e5 = try insertChars(e4, testing_allocator, &content_arena, "5", .{ .line = e4line, .col = e4col });
+    defer freeRcNode(testing_allocator, e4);
+    try eqStr(
+        \\6 4/78
+        \\  5 1/5
+        \\    1 B| `1` Rc:4
+        \\    4 0/4
+        \\      1 `2` Rc:3
+        \\      3 0/3
+        \\        1 `3` Rc:2
+        \\        2 0/2
+        \\          1 `4`
+        \\          1 `5`
+        \\  3 3/73 Rc:3
+        \\    2 1/36 Rc:2
+        \\      1 `const a = 10;` |E Rc:2
+        \\      1 B| `var not_false = true;` |E Rc:3
+        \\    2 2/37 Rc:4
+        \\      1 B| `const Allocator = std.mem.Allocator;` |E
+        \\      1 B| ``
+    , try debugStr(idc_if_it_leaks, e5));
+
+    const e5_has_changes, const e5b = try balance(testing_allocator, e5);
+    {
+        try eq(true, e5_has_changes);
+        freeRcNode(testing_allocator, e5);
+        try eqStr(
+            \\5 4/78
+            \\  4 1/5
+            \\    3 1/3
+            \\      1 B| `1` Rc:4
+            \\      2 0/2
+            \\        1 `2` Rc:3
+            \\        1 `3` Rc:2
+            \\    2 0/2
+            \\      1 `4`
+            \\      1 `5`
+            \\  3 3/73 Rc:3
+            \\    2 1/36 Rc:2
+            \\      1 `const a = 10;` |E Rc:2
+            \\      1 B| `var not_false = true;` |E Rc:3
+            \\    2 2/37 Rc:4
+            \\      1 B| `const Allocator = std.mem.Allocator;` |E
+            \\      1 B| ``
+        , try debugStr(idc_if_it_leaks, e5b));
+    }
+
+    ///////////////////////////// e6
+
+    const e6line, const e6col, const e6 = try insertChars(e5b, testing_allocator, &content_arena, "6", .{ .line = e5line, .col = e5col });
+    defer freeRcNode(testing_allocator, e5b);
+    try eqStr(
+        \\5 4/79
+        \\  4 1/6
+        \\    3 1/3 Rc:2
+        \\      1 B| `1` Rc:4
+        \\      2 0/2
+        \\        1 `2` Rc:3
+        \\        1 `3` Rc:2
+        \\    3 0/3
+        \\      1 `4` Rc:2
+        \\      2 0/2
+        \\        1 `5`
+        \\        1 `6`
+        \\  3 3/73 Rc:4
+        \\    2 1/36 Rc:2
+        \\      1 `const a = 10;` |E Rc:2
+        \\      1 B| `var not_false = true;` |E Rc:3
+        \\    2 2/37 Rc:4
+        \\      1 B| `const Allocator = std.mem.Allocator;` |E
+        \\      1 B| ``
+    , try debugStr(idc_if_it_leaks, e6));
+
+    try eq(.{ false, e6 }, try balance(testing_allocator, e6));
+
+    ///////////////////////////// e7
+
+    const e7line, const e7col, const e7 = try insertChars(e6, testing_allocator, &content_arena, "7", .{ .line = e6line, .col = e6col });
+    defer freeRcNode(testing_allocator, e6);
+    try eqStr(
+        \\6 4/80
+        \\  5 1/7
+        \\    3 1/3 Rc:3
+        \\      1 B| `1` Rc:4
+        \\      2 0/2
+        \\        1 `2` Rc:3
+        \\        1 `3` Rc:2
+        \\    4 0/4
+        \\      1 `4` Rc:3
+        \\      3 0/3
+        \\        1 `5` Rc:2
+        \\        2 0/2
+        \\          1 `6`
+        \\          1 `7`
+        \\  3 3/73 Rc:5
+        \\    2 1/36 Rc:2
+        \\      1 `const a = 10;` |E Rc:2
+        \\      1 B| `var not_false = true;` |E Rc:3
+        \\    2 2/37 Rc:4
+        \\      1 B| `const Allocator = std.mem.Allocator;` |E
+        \\      1 B| ``
+    , try debugStr(idc_if_it_leaks, e7));
+
+    const e7_has_changes, const e7b = try balance(testing_allocator, e7);
+    {
+        try eq(true, e7_has_changes);
+        freeRcNode(testing_allocator, e7);
+        try eqStr(
+            \\5 4/80
+            \\  4 1/4
+            \\    3 1/3 Rc:3
+            \\      1 B| `1` Rc:4
+            \\      2 0/2
+            \\        1 `2` Rc:3
+            \\        1 `3` Rc:2
+            \\    1 `4` Rc:3
+            \\  4 3/76
+            \\    3 0/3
+            \\      1 `5` Rc:2
+            \\      2 0/2
+            \\        1 `6`
+            \\        1 `7`
+            \\    3 3/73 Rc:5
+            \\      2 1/36 Rc:2
+            \\        1 `const a = 10;` |E Rc:2
+            \\        1 B| `var not_false = true;` |E Rc:3
+            \\      2 2/37 Rc:4
+            \\        1 B| `const Allocator = std.mem.Allocator;` |E
+            \\        1 B| ``
+        , try debugStr(idc_if_it_leaks, e7b));
+    }
+
+    ///////////////////////////// e8
+
+    const e8line, const e8col, const e8 = try insertChars(e7b, testing_allocator, &content_arena, "8", .{ .line = e7line, .col = e7col });
+    defer freeRcNode(testing_allocator, e7b);
+    try eqStr(
+        \\6 4/81
+        \\  4 1/4 Rc:2
+        \\    3 1/3 Rc:3
+        \\      1 B| `1` Rc:4
+        \\      2 0/2
+        \\        1 `2` Rc:3
+        \\        1 `3` Rc:2
+        \\    1 `4` Rc:3
+        \\  5 3/77
+        \\    4 0/4
+        \\      1 `5` Rc:3
+        \\      3 0/3
+        \\        1 `6` Rc:2
+        \\        2 0/2
+        \\          1 `7`
+        \\          1 `8`
+        \\    3 3/73 Rc:6
+        \\      2 1/36 Rc:2
+        \\        1 `const a = 10;` |E Rc:2
+        \\        1 B| `var not_false = true;` |E Rc:3
+        \\      2 2/37 Rc:4
+        \\        1 B| `const Allocator = std.mem.Allocator;` |E
+        \\        1 B| ``
+    , try debugStr(idc_if_it_leaks, e8));
+
+    try eq(.{ false, e8 }, try balance(testing_allocator, e8));
+
+    ///////////////////////////// e9
+
+    const e9line, const e9col, const e9 = try insertChars(e8, testing_allocator, &content_arena, "9", .{ .line = e8line, .col = e8col });
+    defer freeRcNode(testing_allocator, e8);
+    try eqStr(
+        \\7 4/82
+        \\  4 1/4 Rc:3
+        \\    3 1/3 Rc:3
+        \\      1 B| `1` Rc:4
+        \\      2 0/2
+        \\        1 `2` Rc:3
+        \\        1 `3` Rc:2
+        \\    1 `4` Rc:3
+        \\  6 3/78
+        \\    5 0/5
+        \\      1 `5` Rc:4
+        \\      4 0/4
+        \\        1 `6` Rc:3
+        \\        3 0/3
+        \\          1 `7` Rc:2
+        \\          2 0/2
+        \\            1 `8`
+        \\            1 `9`
+        \\    3 3/73 Rc:7
+        \\      2 1/36 Rc:2
+        \\        1 `const a = 10;` |E Rc:2
+        \\        1 B| `var not_false = true;` |E Rc:3
+        \\      2 2/37 Rc:4
+        \\        1 B| `const Allocator = std.mem.Allocator;` |E
+        \\        1 B| ``
+    , try debugStr(idc_if_it_leaks, e9));
+
+    const e9_has_changes, const e9b = try balance(testing_allocator, e9);
+    {
+        try eq(true, e9_has_changes);
+        freeRcNode(testing_allocator, e9);
+        try eqStr(
+            \\5 4/82
+            \\  4 1/7
+            \\    3 1/4
+            \\      2 1/2
+            \\        1 B| `1` Rc:4
+            \\        1 `2` Rc:3
+            \\      2 0/2
+            \\        1 `3` Rc:2
+            \\        1 `4` Rc:4
+            \\    3 0/3
+            \\      1 `5` Rc:4
+            \\      2 0/2
+            \\        1 `6` Rc:3
+            \\        1 `7` Rc:2
+            \\  4 3/75
+            \\    2 0/2
+            \\      1 `8`
+            \\      1 `9`
+            \\    3 3/73 Rc:7
+            \\      2 1/36 Rc:2
+            \\        1 `const a = 10;` |E Rc:2
+            \\        1 B| `var not_false = true;` |E Rc:3
+            \\      2 2/37 Rc:4
+            \\        1 B| `const Allocator = std.mem.Allocator;` |E
+            \\        1 B| ``
+        , try debugStr(idc_if_it_leaks, e9b));
+    }
+
+    /////////////////////////////
+
+    _ = e9line;
+    _ = e9col;
+
+    freeRcNode(testing_allocator, e9b);
+}
+
 fn rotateLeft(allocator: Allocator, self: RcNode) !RcNode {
     assert(self.value.* == .branch);
 
@@ -2204,6 +2569,7 @@ fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent
     switch (node.value.*) {
         .branch => |branch| {
             const strong_count = if (node.strongCount() == 1) "" else try std.fmt.allocPrint(a, " Rc:{d}", .{node.strongCount()});
+            defer if (strong_count.len > 0) a.free(strong_count);
             const content = try std.fmt.allocPrint(a, "{d} {d}/{d}{s}", .{ branch.weights.depth, branch.weights.bols, branch.weights.len, strong_count });
             defer a.free(content);
             try result.appendSlice(content);
@@ -2214,6 +2580,7 @@ fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent
             const bol = if (leaf.bol) "B| " else "";
             const eol = if (leaf.eol) " |E" else "";
             const strong_count = if (node.strongCount() == 1) "" else try std.fmt.allocPrint(a, " Rc:{d}", .{node.strongCount()});
+            defer if (strong_count.len > 0) a.free(strong_count);
             const leaf_content = if (leaf.buf.len > 0) leaf.buf else "";
             const content = try std.fmt.allocPrint(a, "1 {s}`{s}`{s}{s}", .{ bol, leaf_content, eol, strong_count });
             defer a.free(content);
