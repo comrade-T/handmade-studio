@@ -235,7 +235,7 @@ pub const ReplaceInfo = struct {
     end_line: usize,
 };
 
-pub fn insertCharsNew(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorManager) !?[]const ReplaceInfo {
+pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorManager) !?[]const ReplaceInfo {
     assert(cm.cursors.values().len > 0);
     assert(cm.cursor_mode == .point);
     if (cm.cursor_mode != .point) return null;
@@ -296,190 +296,69 @@ fn updateCapListNew(self: *@This(), ri: ReplaceInfo) !void {
     try self.cap_list.replaceRange(ri.replace_start, ri.replace_len, new_values);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// insertChars() OLD
-
-pub const EditResult = union(enum) {
-    none,
-    range: struct { start: usize, end: usize },
-    ts: []const LangSuite.ts.Range,
-};
-
-pub fn insertChars(self: *@This(), chars: []const u8, cm: *CursorManager) !EditResult {
-    const zone = ztracy.ZoneNC(@src(), "WindowSource.insertChars()", 0x533300);
-    defer zone.End();
-
-    assert(cm.cursors.values().len > 0);
-    assert(cm.cursor_mode == .point);
-    if (cm.cursor_mode != .point) return EditResult.none;
-
-    const input_points = try cm.produceCursorPoints(self.a);
-    defer self.a.free(input_points);
-
-    const output_points, const ts_ranges = try self.buf.insertChars(self.a, chars, input_points);
-    defer self.a.free(output_points);
-
-    // update cursors
-    assert(input_points.len == output_points.len);
-    for (output_points, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
-
-    // updateCapList & return result
-    const start_line = input_points[0].line;
-    const end_line = input_points[input_points.len - 1].line;
-
-    return self.produceEditResult(start_line, end_line, ts_ranges);
-}
-
-fn produceEditResult(self: *@This(), start_line: usize, end_line: usize, ts_ranges: ?[]const LangSuite.ts.Range) !EditResult {
-    if (self.buf.tstree == null) return EditResult{ .range = .{ .start = start_line, .end = end_line } };
-    if (ts_ranges == null) {
-        try self.updateCapList(start_line, end_line);
-        return EditResult{ .range = .{ .start = start_line, .end = end_line } };
-    }
-
-    for (ts_ranges.?) |range| try self.updateCapList(@intCast(range.start_point.row), @intCast(range.end_point.row));
-    return EditResult{ .ts = ts_ranges.? };
-}
-
-fn updateCapList(self: *@This(), start_line: usize, end_line: usize) !void {
-    var map = try self.getCaptures(start_line, end_line);
-    defer map.deinit();
-
-    const new_values = try self.a.alloc([]StoredCapture, end_line + 1 - start_line);
-    defer self.a.free(new_values);
-    for (map.values(), 0..) |*list, i| new_values[i] = try list.toOwnedSlice(self.a);
-
-    assert(end_line >= start_line);
-    const replace_len = end_line - start_line + 1;
-
-    for (start_line..start_line + replace_len) |i| self.a.free(self.cap_list.items[i]);
-    try self.cap_list.replaceRange(start_line, replace_len, new_values);
-}
-
-test insertChars {
-    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
-    defer lang_hub.deinit();
-    { // replace 1 line
-        var cm = try CursorManager.create(testing_allocator);
-        defer cm.destroy();
-
-        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.destroy();
-        try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.items.len);
-
-        _ = try ws.insertChars("// ", cm);
-        try eqStr("// const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.items.len);
-
-        try eqStr("comment", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(0));
-        try eqStr("spell", ws.ls.?.queries.get(LangSuite.DEFAULT_QUERY_ID).?.query.getCaptureNameForId(1));
-
-        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.items[0]);
-        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.items[1]);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
-    }
-    { // replace 2 lines in single call
-        var cm = try CursorManager.create(testing_allocator);
-        defer cm.destroy();
-        try cm.addPointCursor(1, 0, true);
-
-        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines.zig", &lang_hub);
-        defer ws.destroy();
-        try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.items.len);
-
-        _ = try ws.insertChars("// ", cm);
-        try eqStr(
-            \\// const a = 10;
-            \\// var not_false = true;
-            \\
-        , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.items.len);
-
-        try eqSlice(StoredCapture, dummy_2_lines_commented_first_line_matches, ws.cap_list.items[0]);
-        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.items[1]);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// deleteRanges()
 
-pub fn deleteRanges(self: *@This(), cm: *CursorManager, kind: enum { backspace, range }) !EditResult {
+pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum { backspace, range }) !?[]const ReplaceInfo {
     const zone = ztracy.ZoneNC(@src(), "WindowSource.deleteRanges()", 0x00AAFF);
     defer zone.End();
 
     assert(cm.cursors.values().len > 0);
 
-    var input_ranges: []CursorRange = undefined;
+    var inputs: []CursorRange = undefined;
     switch (kind) {
         .backspace => {
-            input_ranges = try cm.produceBackspaceRanges(self.a, &self.buf.ropeman);
+            inputs = try cm.produceBackspaceRanges(self.a, &self.buf.ropeman);
             assert(cm.cursor_mode == .point);
-            if (cm.cursor_mode != .point) return EditResult.none;
+            if (cm.cursor_mode != .point) return null;
         },
         .range => {
-            input_ranges = try cm.produceCursorRanges(self.a);
+            inputs = try cm.produceCursorRanges(self.a);
             assert(cm.cursor_mode == .range);
-            if (cm.cursor_mode != .range) return EditResult.none;
+            if (cm.cursor_mode != .range) return null;
         },
     }
-    defer self.a.free(input_ranges);
+    defer self.a.free(inputs);
 
-    const output_points, const ts_ranges = try self.buf.deleteRanges(self.a, input_ranges);
-    defer self.a.free(output_points);
+    const outputs, const ts_ranges = try self.buf.deleteRanges(self.a, inputs);
+    defer self.a.free(outputs);
 
     // update cursors
-    assert(input_ranges.len == output_points.len);
-    for (output_points, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
+    assert(inputs.len == outputs.len);
+    for (outputs, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
     if (kind == .range) cm.activatePointMode();
 
-    // updateCapList & return result
-    const start_line = input_ranges[0].start.line;
-    const end_line = input_ranges[input_ranges.len - 1].start.line;
+    ///////////////////////////// WIP
 
-    return self.produceEditResult(start_line, end_line, ts_ranges);
-}
+    var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
 
-test deleteRanges {
-    var lang_hub = try LangSuite.LangHub.init(testing_allocator);
-    defer lang_hub.deinit();
-    {
-        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
-        defer ws.destroy();
-        try eqStr("// const a = 10;\n// var not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-
-        try ws.deleteRanges(&.{.{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 } }});
-        try eqStr(
-            \\const a = 10;
-            \\// var not_false = true;
-            \\
-        , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.items.len);
-
-        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.items[0]);
-        try eqSlice(StoredCapture, dummy_2_lines_commented_second_line_matches, ws.cap_list.items[1]);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
+    if (ts_ranges) |ranges| {
+        for (ranges) |r| {
+            assert(r.end_point.row >= r.start_point.row);
+            const info = ReplaceInfo{
+                .replace_start = @intCast(r.start_point.row),
+                .replace_len = @intCast(r.end_point.row - r.start_point.row + 1),
+                .start_line = @intCast(r.start_point.row),
+                .end_line = @intCast(r.end_point.row),
+            };
+            try self.updateCapListNew(info);
+            try list.append(a, info);
+        }
+        return try list.toOwnedSlice(a);
     }
-    {
-        var ws = try WindowSource.create(testing_allocator, .file, "src/window/fixtures/dummy_2_lines_commented.zig", &lang_hub);
-        defer ws.destroy();
-        try eqStr("// const a = 10;\n// var not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
-        try ws.deleteRanges(&.{
-            .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 3 } },
-            .{ .start = .{ .line = 1, .col = 0 }, .end = .{ .line = 1, .col = 3 } },
-        });
-        try eqStr(
-            \\const a = 10;
-            \\var not_false = true;
-            \\
-        , try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(3, ws.cap_list.items.len);
-
-        try eqSlice(StoredCapture, dummy_2_lines_first_line_matches, ws.cap_list.items[0]);
-        try eqSlice(StoredCapture, dummy_2_lines_second_line_matches, ws.cap_list.items[1]);
-        try eqSlice(StoredCapture, &.{}, ws.cap_list.items[2]);
+    for (0..inputs.len) |i| {
+        assert(outputs[i].line >= inputs[i].start.line);
+        const info = ReplaceInfo{
+            .replace_start = inputs[i].start.line,
+            .replace_len = outputs[i].line - inputs[i].start.line + 1,
+            .start_line = inputs[i].start.line,
+            .end_line = outputs[i].line,
+        };
+        if (self.buf.tstree != null) try self.updateCapListNew(info);
+        try list.append(a, info);
     }
+
+    return try list.toOwnedSlice(a);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// StoredCapture

@@ -185,24 +185,34 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
-pub fn insertCharsNew(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
+pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
     defer zone.End();
 
-    const result = try self.ws.insertCharsNew(self.a, chars, self.cursor_manager) orelse return;
-    try self.processEditResultNew(result, style_store);
+    const result = try self.ws.insertChars(self.a, chars, self.cursor_manager) orelse return;
+    try self.processEditResult(result, style_store);
 }
 
-fn processEditResultNew(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const StyleStore) !void {
+pub fn backspace(self: *@This(), style_store: *const StyleStore) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.backspace()", 0x00AAFF);
+    defer zone.End();
+
+    const result = try self.ws.deleteRanges(self.a, self.cursor_manager, .backspace) orelse return;
+    try self.processEditResult(result, style_store);
+}
+
+fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const StyleStore) !void {
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
     defer self.a.free(replace_infos);
-    for (replace_infos) |ri| try self.updateCacheLinesNew(ri, style_store, default_font, default_glyph);
+    for (replace_infos) |ri| try self.updateCacheLines(ri, style_store, default_font, default_glyph);
 }
 
-fn updateCacheLinesNew(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
+fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
     assert(ri.end_line >= ri.start_line);
+
+    std.debug.print("ri: {any}\n", .{ri});
 
     var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, ri.end_line - ri.start_line + 1);
     defer replacements.deinit();
@@ -212,60 +222,6 @@ fn updateCacheLinesNew(self: *@This(), ri: WindowSource.ReplaceInfo, style_store
         try replacements.append(info);
     }
     try self.cached.line_info.replaceRange(self.a, ri.replace_start, ri.replace_len, replacements.items);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete OLD
-
-pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
-    defer zone.End();
-
-    const result = try self.ws.insertChars(chars, self.cursor_manager);
-    try self.processEditResult(result, style_store);
-}
-
-pub fn backspace(self: *@This(), style_store: *const StyleStore) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.backspace()", 0x00AAFF);
-    defer zone.End();
-
-    const result = try self.ws.deleteRanges(self.cursor_manager, .backspace);
-    try self.processEditResult(result, style_store);
-}
-
-fn processEditResult(self: *@This(), result: WindowSource.EditResult, style_store: *const StyleStore) !void {
-    const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
-    const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
-
-    switch (result) {
-        .none => {},
-        .range => |r| {
-            try self.updateCacheLines(r.start, r.end, style_store, default_font, default_glyph);
-        },
-        .ts => |ranges| {
-            defer std.c.free(@as(*anyopaque, @ptrCast(@constCast(ranges.ptr))));
-            for (ranges) |r|
-                try self.updateCacheLines(
-                    @intCast(r.start_point.row),
-                    @intCast(r.end_point.row),
-                    style_store,
-                    default_font,
-                    default_glyph,
-                );
-        },
-    }
-}
-
-fn updateCacheLines(self: *@This(), start_line: usize, end_line: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
-    assert(end_line >= start_line);
-    const replace_len = end_line - start_line + 1;
-    var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, replace_len);
-    defer replacements.deinit();
-
-    for (start_line..start_line + replace_len) |linenr| {
-        const info = try calculateLineInfo(self, linenr, style_store, default_font, default_glyph);
-        try replacements.append(info);
-    }
-    try self.cached.line_info.replaceRange(self.a, start_line, replace_len, replacements.items);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache
