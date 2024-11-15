@@ -250,24 +250,13 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorM
     assert(inputs.len == outputs.len);
     for (outputs, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
 
-    ///////////////////////////// WIP
+    ///////////////////////////// Update CapList
 
     var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
     const INSERT_REPLACE_RANGE = 1; // because this is insert, with .point cursor_mode
 
-    if (ts_ranges) |ranges| {
-        for (ranges) |r| {
-            const info = ReplaceInfo{
-                .replace_start = @intCast(r.start_point.row),
-                .replace_len = INSERT_REPLACE_RANGE,
-                .start_line = @intCast(r.start_point.row),
-                .end_line = @intCast(r.end_point.row),
-            };
-            try self.updateCapListNew(info);
-            try list.append(a, info);
-        }
-        return try list.toOwnedSlice(a);
-    }
+    _ = ts_ranges;
+    // TODO: incorporate ts_ranges properly
 
     for (0..inputs.len) |i| {
         assert(outputs[i].line >= inputs[i].line);
@@ -277,14 +266,14 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorM
             .start_line = inputs[i].line,
             .end_line = outputs[i].line,
         };
-        if (self.buf.tstree != null) try self.updateCapListNew(info);
+        if (self.buf.tstree != null) try self.updateCapList(info);
         try list.append(a, info);
     }
 
     return try list.toOwnedSlice(a);
 }
 
-fn updateCapListNew(self: *@This(), ri: ReplaceInfo) !void {
+fn updateCapList(self: *@This(), ri: ReplaceInfo) !void {
     var new_captures = try self.getCaptures(ri.start_line, ri.end_line);
     defer new_captures.deinit();
 
@@ -327,34 +316,22 @@ pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum
     for (outputs, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
     if (kind == .range) cm.activatePointMode();
 
-    ///////////////////////////// WIP
+    ///////////////////////////// Update CapList
 
     var list = try std.ArrayListUnmanaged(ReplaceInfo).initCapacity(a, inputs.len);
 
-    if (ts_ranges) |ranges| {
-        for (ranges) |r| {
-            assert(r.end_point.row >= r.start_point.row);
-            const info = ReplaceInfo{
-                .replace_start = @intCast(r.start_point.row),
-                .replace_len = @intCast(r.end_point.row - r.start_point.row + 1),
-                .start_line = @intCast(r.start_point.row),
-                .end_line = @intCast(r.end_point.row),
-            };
-            try self.updateCapListNew(info);
-            try list.append(a, info);
-        }
-        return try list.toOwnedSlice(a);
-    }
+    _ = ts_ranges;
+    // TODO: incorporate ts_ranges properly
 
     for (0..inputs.len) |i| {
         assert(outputs[i].line >= inputs[i].start.line);
         const info = ReplaceInfo{
             .replace_start = inputs[i].start.line,
-            .replace_len = outputs[i].line - inputs[i].start.line + 1,
-            .start_line = inputs[i].start.line,
+            .replace_len = inputs[i].end.line - inputs[i].start.line + 1,
+            .start_line = outputs[i].line,
             .end_line = outputs[i].line,
         };
-        if (self.buf.tstree != null) try self.updateCapListNew(info);
+        if (self.buf.tstree != null) try self.updateCapList(info);
         try list.append(a, info);
     }
 

@@ -98,6 +98,11 @@ pub fn main() anyerror!void {
         .subscribed_style_sets = &.{0},
     }, true);
 
+    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    //     .pos = .{ .x = 100, .y = 100 },
+    //     .subscribed_style_sets = &.{0},
+    // }, true);
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
     ///////////////////////////// Setup
