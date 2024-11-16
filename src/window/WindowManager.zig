@@ -110,15 +110,23 @@ pub fn backspace(ctx: *anyopaque) !void {
     try window.backspace(self.style_store);
 }
 
-pub fn enterInsertMode(ctx: *anyopaque) !void {
+pub fn enterInsertMode_i(ctx: *anyopaque) !void {
     _ = ctx;
 }
 
+pub fn enterInsertMode_a(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.setInsertDestinationToAfterStart();
+}
+
 pub fn exitInsertMode(ctx: *anyopaque) !void {
-    // _ = ctx;
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;
     try window.ws.buf.ropeman.registerLastPendingToHistory();
+
+    window.cursor_manager.moveLeft(1, &window.ws.buf.ropeman);
+    window.cursor_manager.setInsertDestinationToCurrent();
 }
 
 pub fn debugPrintActiveWindowRope(ctx: *anyopaque) !void {

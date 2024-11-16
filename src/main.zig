@@ -132,7 +132,8 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
     try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });
 
-    try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode_i, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.a}, .{ .f = WindowManager.enterInsertMode_a, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
 
     ///////////////////////////// Insert Mode
 
@@ -147,6 +148,8 @@ pub fn main() anyerror!void {
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             try self.target.insertChars(self.chars);
+            const window = self.target.active_window orelse return;
+            window.cursor_manager.updatetInsertDestinationIfNeeded();
         }
         fn init(allocator: std.mem.Allocator, target: *WindowManager, chars: []const u8) !ip.Callback {
             const self = try allocator.create(@This());

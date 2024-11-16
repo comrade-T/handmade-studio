@@ -163,17 +163,18 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
             render_callbacks.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
             chars_rendered += 1;
 
-            { // cursor stuff
+            defer { // cursor stuffs: if line not empty
                 for (self.cursor_manager.cursors.values()) |*cursor| {
                     if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
 
                     const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-                    render_callbacks.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
+                    const cursor_x = if (self.cursor_manager.insert_destination == .after_start) char_x + char_width else char_x;
+                    render_callbacks.drawRectangle(cursor_x, char_y, char_width, font_size, self.defaults.color);
                 }
             }
         }
 
-        if (colnr == 0) {
+        if (colnr == 0) { // cursor stuffs: if line is empty
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 if (cursor.start.line != linenr) continue;
                 const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
