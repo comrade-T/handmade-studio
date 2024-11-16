@@ -117,16 +117,14 @@ pub fn enterInsertMode_i(ctx: *anyopaque) !void {
 pub fn enterInsertMode_a(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;
-    window.cursor_manager.setInsertDestinationToAfterStart();
+    window.cursor_manager.enterAFTERInsertMode(&window.ws.buf.ropeman);
 }
 
 pub fn exitInsertMode(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;
     try window.ws.buf.ropeman.registerLastPendingToHistory();
-
     window.cursor_manager.moveLeft(1, &window.ws.buf.ropeman);
-    window.cursor_manager.setInsertDestinationToCurrent();
 }
 
 pub fn debugPrintActiveWindowRope(ctx: *anyopaque) !void {

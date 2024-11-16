@@ -33,7 +33,6 @@ a: Allocator,
 
 cursor_mode: CursorMode = .point,
 uniform_mode: UniformMode = .uniformed,
-insert_destination: InsertDestination = .current,
 
 main_cursor_id: usize = 0,
 cursor_id_count: usize = 0,
@@ -59,18 +58,11 @@ pub fn destroy(self: *@This()) void {
 /// Allocate & set `RopeMan.CursorPoint` slice from cursors.
 /// Temporary solution to avoid circular references between `CursorManager` & `RopeMan` modules.
 /// Would love to have a solution where I don't have to allocate memory.
-pub fn produceCursorPoints(self: *@This(), a: Allocator, ropeman: *const RopeMan) ![]RopeMan.CursorPoint {
+pub fn produceCursorPoints(self: *@This(), a: Allocator) ![]RopeMan.CursorPoint {
     assert(self.cursor_mode == .point);
     var points = try a.alloc(RopeMan.CursorPoint, self.cursors.values().len);
     for (self.cursors.values(), 0..) |*cursor, i| {
-        const noc = ropeman.getNumOfCharsInLine(cursor.start.line);
-        switch (self.insert_destination) {
-            .current, .after_going => points[i] = .{ .line = cursor.start.line, .col = cursor.start.col },
-            .after_start => points[i] = .{
-                .line = cursor.start.line,
-                .col = if (noc == 0) 0 else cursor.start.col + 1,
-            },
-        }
+        points[i] = .{ .line = cursor.start.line, .col = cursor.start.col };
     }
     return points;
 }
@@ -121,28 +113,6 @@ pub fn produceBackspaceRanges(self: *@This(), a: Allocator, ropeman: *const Rope
 
 pub fn mainCursor(self: *@This()) *Cursor {
     return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
-}
-
-///////////////////////////// Insert Destination
-
-pub fn setInsertDestinationToCurrent(self: *@This()) void {
-    self.insert_destination = .current;
-}
-
-pub fn setInsertDestinationToAfterStart(self: *@This()) void {
-    assert(self.insert_destination == .current);
-    self.insert_destination = .after_start;
-}
-
-pub fn setInsertDestinationToAfterGoing(self: *@This()) void {
-    assert(self.insert_destination == .after_start);
-    self.insert_destination = .after_going;
-}
-
-pub fn updatetInsertDestinationIfNeeded(self: *@This()) void {
-    if (self.insert_destination == .after_start) {
-        self.insert_destination = .after_going;
-    }
 }
 
 ///////////////////////////// Mode Activations
@@ -324,6 +294,10 @@ pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
 
 pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveDown);
+}
+
+pub fn enterAFTERInsertMode(self: *@This(), ropeman: *const RopeMan) void {
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveRightForAFTERInsertMode);
 }
 
 pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
@@ -916,9 +890,19 @@ const Anchor = struct {
         self.restrictCol(ropeman);
     }
 
+    fn moveRightForAFTERInsertMode(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+        self.col += by;
+        self.restrictColNoc(ropeman);
+    }
+
     fn restrictCol(self: *@This(), ropeman: *const RopeMan) void {
         const noc = ropeman.getNumOfCharsInLine(self.line);
         if (self.col >= noc) self.col = noc -| 1;
+    }
+
+    fn restrictColNoc(self: *@This(), ropeman: *const RopeMan) void {
+        const noc = ropeman.getNumOfCharsInLine(self.line);
+        if (self.col >= noc) self.col = noc;
     }
 
     ///////////////////////////// b/B

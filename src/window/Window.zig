@@ -124,6 +124,8 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
         if (char_x + self.cached.line_info.items[linenr].width < view.start.x) continue;
         if (line_y + self.cached.line_info.items[linenr].height < view.start.y) continue;
 
+        var last_char_info: ?struct { x: f32, width: f32, font_size: f32 } = null;
+
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
         var colnr: usize = 0;
@@ -134,11 +136,11 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
             const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, StyleStore.getFont) orelse default_font;
             const font_size = getStyleFromStore(f32, self, r, style_store, StyleStore.getFontSize) orelse self.defaults.font_size;
 
-            const width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-            defer char_x += width;
+            const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
+            defer char_x += char_width;
 
             if (char_x > view.end.x) break;
-            if (char_x + width < view.start.x) continue;
+            if (char_x + char_width < view.start.x) continue;
 
             var color = self.defaults.color;
 
@@ -163,23 +165,31 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
             render_callbacks.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
             chars_rendered += 1;
 
-            defer { // cursor stuffs: if line not empty
+            defer { // cursors: if cursor with line
+                last_char_info = .{ .x = char_x, .width = char_width, .font_size = font_size };
+
                 for (self.cursor_manager.cursors.values()) |*cursor| {
                     if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
-
-                    const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-                    const cursor_x = if (self.cursor_manager.insert_destination == .after_start) char_x + char_width else char_x;
-                    render_callbacks.drawRectangle(cursor_x, char_y, char_width, font_size, self.defaults.color);
+                    render_callbacks.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
                 }
             }
         }
 
-        if (colnr == 0) { // cursor stuffs: if line is empty
+        if (last_char_info) |info| { // cursors: if cursor at line end
+            for (self.cursor_manager.cursors.values()) |*cursor| {
+                if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
+                render_callbacks.drawRectangle(info.x + info.width, line_y, info.width, info.font_size, self.defaults.color);
+            }
+            continue;
+        }
+
+        if (colnr == 0) { // cursors: if line is empty
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 if (cursor.start.line != linenr) continue;
                 const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
                 render_callbacks.drawRectangle(char_x, line_y, char_width, line_height, self.defaults.color);
             }
+            continue;
         }
     }
 }

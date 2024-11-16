@@ -240,7 +240,7 @@ pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, cm: *CursorM
     assert(cm.cursor_mode == .point);
     if (cm.cursor_mode != .point) return null;
 
-    const inputs = try cm.produceCursorPoints(self.a, &self.buf.ropeman);
+    const inputs = try cm.produceCursorPoints(self.a);
     defer self.a.free(inputs);
 
     const outputs, const ts_ranges = try self.buf.insertChars(self.a, chars, inputs);

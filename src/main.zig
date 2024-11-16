@@ -148,8 +148,6 @@ pub fn main() anyerror!void {
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             try self.target.insertChars(self.chars);
-            const window = self.target.active_window orelse return;
-            window.cursor_manager.updatetInsertDestinationIfNeeded();
         }
         fn init(allocator: std.mem.Allocator, target: *WindowManager, chars: []const u8) !ip.Callback {
             const self = try allocator.create(@This());
