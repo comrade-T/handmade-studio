@@ -110,14 +110,28 @@ pub fn backspace(ctx: *anyopaque) !void {
     try window.backspace(self.style_store);
 }
 
+///////////////////////////// i / I
+
 pub fn enterInsertMode_i(ctx: *anyopaque) !void {
     _ = ctx;
 }
+
+pub fn enterInsertMode_I(ctx: *anyopaque) !void {
+    try moveCursorToBeginningOfLine(ctx);
+    try enterInsertMode_i(ctx);
+}
+
+///////////////////////////// a / A
 
 pub fn enterInsertMode_a(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;
     window.cursor_manager.enterAFTERInsertMode(&window.ws.buf.ropeman);
+}
+
+pub fn enterInsertMode_A(ctx: *anyopaque) !void {
+    try moveCursorToEndOfLine(ctx);
+    try enterInsertMode_a(ctx);
 }
 
 pub fn exitInsertMode(ctx: *anyopaque) !void {
