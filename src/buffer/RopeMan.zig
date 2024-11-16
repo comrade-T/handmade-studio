@@ -95,6 +95,10 @@ pub fn getNumOfCharsInLine(self: *const @This(), line: usize) usize {
     return rcr.getNumOfCharsInLine(self.root, line);
 }
 
+pub fn getColnrOfFirstNonSpaceCharInLine(self: *const @This(), line: usize) usize {
+    return rcr.getColnrOfFirstNonSpaceCharInLine(self.a, self.root, line);
+}
+
 pub fn getLineAlloc(self: *const @This(), a: Allocator, linenr: usize, capacity: usize) ![]const u8 {
     return rcr.getLineAlloc(a, self.root, linenr, capacity);
 }

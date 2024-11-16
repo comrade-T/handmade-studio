@@ -288,16 +288,32 @@ fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: Cursor) !vo
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
+pub fn moveToBeginningOfLine(self: *@This(), ropeman: *const RopeMan) void {
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToBeginningOfLine);
+}
+
+pub fn moveToEndOfLine(self: *@This(), ropeman: *const RopeMan) void {
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToEndOfLine);
+}
+
+pub fn moveToFirstNonSpaceCharacterOfLine(self: *@This(), ropeman: *const RopeMan) void {
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToFirstNonSpaceCharacterOfLine);
+}
+
+/////////////////////////////
+
+pub fn enterAFTERInsertMode(self: *@This(), ropeman: *const RopeMan) void {
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveRightForAFTERInsertMode);
+}
+
+/////////////////////////////
+
 pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveUp);
 }
 
 pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
     self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveDown);
-}
-
-pub fn enterAFTERInsertMode(self: *@This(), ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveRightForAFTERInsertMode);
 }
 
 pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
@@ -890,10 +906,28 @@ const Anchor = struct {
         self.restrictCol(ropeman);
     }
 
+    ///////////////////////////// AFTER Insert Mode
+
     fn moveRightForAFTERInsertMode(self: *@This(), by: usize, ropeman: *const RopeMan) void {
         self.col += by;
         self.restrictColNoc(ropeman);
     }
+
+    ///////////////////////////// bol / eol
+
+    fn moveToBeginningOfLine(self: *@This(), _: usize, _: *const RopeMan) void {
+        self.col = 0;
+    }
+
+    fn moveToEndOfLine(self: *@This(), _: usize, ropeman: *const RopeMan) void {
+        self.col = ropeman.getNumOfCharsInLine(self.line) -| 1;
+    }
+
+    fn moveToFirstNonSpaceCharacterOfLine(self: *@This(), _: usize, ropeman: *const RopeMan) void {
+        self.col = ropeman.getColnrOfFirstNonSpaceCharInLine(self.line);
+    }
+
+    ///////////////////////////// restrictCol
 
     fn restrictCol(self: *@This(), ropeman: *const RopeMan) void {
         const noc = ropeman.getNumOfCharsInLine(self.line);

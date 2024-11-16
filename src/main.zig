@@ -132,6 +132,10 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
     try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });
 
+    try council.map("normal", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = &wm });
+    try council.map("normal", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = &wm });
+    try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
+
     try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode_i, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("normal", &.{.a}, .{ .f = WindowManager.enterInsertMode_a, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
 

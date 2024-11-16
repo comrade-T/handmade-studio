@@ -133,6 +133,26 @@ pub fn debugPrintActiveWindowRope(ctx: *anyopaque) !void {
     try window.ws.buf.ropeman.debugPrint();
 }
 
+///////////////////////////// Move 0 / )
+
+pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveToBeginningOfLine(&window.ws.buf.ropeman);
+}
+
+pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveToEndOfLine(&window.ws.buf.ropeman);
+}
+
+pub fn moveCursorToFirstNonSpaceCharacterOfLine(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.moveToFirstNonSpaceCharacterOfLine(&window.ws.buf.ropeman);
+}
+
 ///////////////////////////// Move hjkl
 
 pub fn moveCursorUp(ctx: *anyopaque) !void {

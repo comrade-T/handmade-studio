@@ -3131,7 +3131,7 @@ fn testGetRangeNoEnd(source: []const u8, expected_str: []const u8, start: Cursor
     try testGetRange(source, expected_str, start, null, buf_size);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Get Line u21 alloc
+////////////////////////////////////////////////////////////////////////////////////////////// getLineAlloc
 
 const GetLineAllocCtx = struct {
     list: ArrayList(u8),
@@ -3157,6 +3157,38 @@ test getLineAlloc {
     const root = try Node.fromString(idc_if_it_leaks, &content_arena, "hello\nworld");
     try eqStr("hello", try getLineAlloc(idc_if_it_leaks, root, 0, 1024));
     try eqStr("world", try getLineAlloc(idc_if_it_leaks, root, 1, 1024));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Get Colnr of first non space character in line
+
+const GetColnrOfFirstNonSpaceCharCtx = struct {
+    result: usize = 0,
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        var i: usize = 0;
+        defer ctx.result += i;
+
+        while (iter.next()) |cp| {
+            defer i += 1;
+            switch (cp.code) {
+                ' ', '\t' => continue,
+                else => return WalkResult.stop,
+            }
+        }
+
+        if (leaf.eol) return WalkResult.stop;
+        return WalkResult.keep_walking;
+    }
+};
+
+pub fn getColnrOfFirstNonSpaceCharInLine(a: Allocator, node: RcNode, line: usize) usize {
+    var ctx: GetColnrOfFirstNonSpaceCharCtx = .{};
+    errdefer ctx.list.deinit();
+    _ = walkFromLineBegin(a, node, line, GetColnrOfFirstNonSpaceCharCtx.walker, &ctx) catch unreachable;
+    return ctx.result -| 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Num of Chars in Line
