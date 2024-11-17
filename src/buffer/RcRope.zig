@@ -70,6 +70,9 @@ pub const EolMode = enum { lf, crlf };
 const WalkError = error{OutOfMemory};
 const WalkCallback = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkError!WalkResult;
 
+const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkError!WalkResult;
+const DC = *const fn (ctx: *anyopaque, decrement_col_by: usize) void;
+
 pub const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
@@ -136,26 +139,29 @@ pub const WalkResult = struct {
     }
 };
 
-fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
+// add walkLineColReverse()
+
+fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) WalkError!WalkResult {
     switch (node.value.*) {
         .branch => |*branch| {
             // found target line
             if (line == 0) {
                 const left_nocs = branch.left.value.weights().noc;
                 if (col >= left_nocs) {
-                    const right = try walkLineCol(a, branch.right, line, col - left_nocs, f, ctx);
+                    dc(ctx, left_nocs);
+                    const right = try walkLineCol(a, branch.right, line, col - left_nocs, f, dc, ctx);
                     return goRight(a, branch, right);
                 }
-                return goLeftRight(a, branch, line, col, f, ctx);
+                return goLeftRight(a, branch, line, col, f, dc, ctx);
             }
 
             // finding target line
             const left_bols = branch.left.value.weights().bols;
             if (line >= left_bols) {
-                const right = try walkLineCol(a, branch.right, line - left_bols, col, f, ctx);
+                const right = try walkLineCol(a, branch.right, line - left_bols, col, f, dc, ctx);
                 return goRight(a, branch, right);
             }
-            return goLeftRight(a, branch, line, col, f, ctx);
+            return goLeftRight(a, branch, line, col, f, dc, ctx);
         },
         .leaf => |*leaf| {
             if (line == 0) {
@@ -182,8 +188,8 @@ fn goRight(a: Allocator, branch: *Branch, right: WalkResult) !WalkResult {
     return right;
 }
 
-fn goLeftRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: WalkCallback, ctx: *anyopaque) !WalkResult {
-    const left = try walkLineCol(a, branch.left, line, col, f, ctx);
+fn goLeftRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) !WalkResult {
+    const left = try walkLineCol(a, branch.left, line, col, f, dc, ctx);
     const right = if (left.found and left.keep_walking) try walk(a, branch.right, f, ctx) else WalkResult{};
     return WalkResult.merge(branch, a, left, right);
 }
@@ -3273,6 +3279,7 @@ test getNumOfCharsInLine {
 ////////////////////////////////////////////////////////////////////////////////////////////// Brand new walker that takes noc into account
 
 const WalkLineColCtx = struct {
+    col: usize,
     list: *ArrayList(u8),
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
@@ -3281,12 +3288,40 @@ const WalkLineColCtx = struct {
         if (leaf.eol) return WalkResult.stop;
         return WalkResult.keep_walking;
     }
+
+    fn walkerCol(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        defer ctx.col -|= leaf.noc;
+
+        var offset: usize = 0;
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        while (iter.next()) |cp| {
+            if (iter.i - 1 < ctx.col) {
+                offset = cp.offset + cp.len;
+                continue;
+            }
+            break;
+        }
+        try ctx.list.appendSlice(leaf.buf[offset..]);
+
+        if (leaf.eol) return WalkResult.stop;
+        return WalkResult.keep_walking;
+    }
+
+    fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        assert(ctx.col >= decrement_col_by);
+        ctx.col -|= decrement_col_by;
+    }
 };
 
-pub fn tryOutWalkLineCol(a: Allocator, node: RcNode, line: usize, col: usize) []const u8 {
+pub fn tryOutWalkLineCol(a: Allocator, node: RcNode, use_col: bool, line: usize, col: usize) []const u8 {
     var list = ArrayList(u8).initCapacity(a, 1024) catch unreachable;
-    var ctx: WalkLineColCtx = .{ .list = &list };
-    _ = walkLineCol(a, node, line, col, WalkLineColCtx.walker, &ctx) catch unreachable;
+    var ctx: WalkLineColCtx = .{ .list = &list, .col = col };
+    if (!use_col)
+        _ = walkLineCol(a, node, line, col, WalkLineColCtx.walker, WalkLineColCtx.decrementCol, &ctx) catch unreachable
+    else
+        _ = walkLineCol(a, node, line, col, WalkLineColCtx.walkerCol, WalkLineColCtx.decrementCol, &ctx) catch unreachable;
     return list.toOwnedSlice() catch unreachable;
 }
 
@@ -3328,22 +3363,22 @@ test tryOutWalkLineCol {
             \\      1 B| `side`
         , try debugStr(a, e6));
 
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 0));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 1));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 2));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 3));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 4));
-        try eqStr("_venus", tryOutWalkLineCol(a, e6, 0, 5));
-        try eqStr("venus", tryOutWalkLineCol(a, e6, 0, 6));
-        try eqStr("enus", tryOutWalkLineCol(a, e6, 0, 7));
-        try eqStr("nus", tryOutWalkLineCol(a, e6, 0, 8));
-        try eqStr("us", tryOutWalkLineCol(a, e6, 0, 9));
-        try eqStr("s", tryOutWalkLineCol(a, e6, 0, 10));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 0, 0));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 0, 1));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 0, 2));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 0, 3));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 0, 4));
+        try eqStr("_venus", tryOutWalkLineCol(a, e6, false, 0, 5));
+        try eqStr("venus", tryOutWalkLineCol(a, e6, false, 0, 6));
+        try eqStr("enus", tryOutWalkLineCol(a, e6, false, 0, 7));
+        try eqStr("nus", tryOutWalkLineCol(a, e6, false, 0, 8));
+        try eqStr("us", tryOutWalkLineCol(a, e6, false, 0, 9));
+        try eqStr("s", tryOutWalkLineCol(a, e6, false, 0, 10));
 
-        try eqStr("from", tryOutWalkLineCol(a, e6, 1, 0));
-        try eqStr("the", tryOutWalkLineCol(a, e6, 2, 0));
-        try eqStr("other", tryOutWalkLineCol(a, e6, 3, 0));
-        try eqStr("side", tryOutWalkLineCol(a, e6, 4, 0));
+        try eqStr("from", tryOutWalkLineCol(a, e6, false, 1, 0));
+        try eqStr("the", tryOutWalkLineCol(a, e6, false, 2, 0));
+        try eqStr("other", tryOutWalkLineCol(a, e6, false, 3, 0));
+        try eqStr("side", tryOutWalkLineCol(a, e6, false, 4, 0));
     }
 
     {
@@ -3379,23 +3414,51 @@ test tryOutWalkLineCol {
             \\      1 B| `side`
         , try debugStr(a, e6));
 
-        try eqStr("from", tryOutWalkLineCol(a, e6, 0, 0));
+        ///////////////////////////// use_col == false
 
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 1, 0));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 1, 1));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 1, 2));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 1, 3));
-        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 1, 4));
-        try eqStr("_venus", tryOutWalkLineCol(a, e6, 1, 5));
-        try eqStr("venus", tryOutWalkLineCol(a, e6, 1, 6));
-        try eqStr("enus", tryOutWalkLineCol(a, e6, 1, 7));
-        try eqStr("nus", tryOutWalkLineCol(a, e6, 1, 8));
-        try eqStr("us", tryOutWalkLineCol(a, e6, 1, 9));
-        try eqStr("s", tryOutWalkLineCol(a, e6, 1, 10));
+        try eqStr("from", tryOutWalkLineCol(a, e6, false, 0, 0));
 
-        try eqStr("the", tryOutWalkLineCol(a, e6, 2, 0));
-        try eqStr("other", tryOutWalkLineCol(a, e6, 3, 0));
-        try eqStr("side", tryOutWalkLineCol(a, e6, 4, 0));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 1, 0));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 1, 1));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 1, 2));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 1, 3));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, false, 1, 4));
+        try eqStr("_venus", tryOutWalkLineCol(a, e6, false, 1, 5));
+        try eqStr("venus", tryOutWalkLineCol(a, e6, false, 1, 6));
+        try eqStr("enus", tryOutWalkLineCol(a, e6, false, 1, 7));
+        try eqStr("nus", tryOutWalkLineCol(a, e6, false, 1, 8));
+        try eqStr("us", tryOutWalkLineCol(a, e6, false, 1, 9));
+        try eqStr("s", tryOutWalkLineCol(a, e6, false, 1, 10));
+
+        try eqStr("the", tryOutWalkLineCol(a, e6, false, 2, 0));
+        try eqStr("other", tryOutWalkLineCol(a, e6, false, 3, 0));
+        try eqStr("side", tryOutWalkLineCol(a, e6, false, 4, 0));
+
+        ///////////////////////////// use_col == true
+
+        try eqStr("from", tryOutWalkLineCol(a, e6, true, 0, 0));
+        try eqStr("rom", tryOutWalkLineCol(a, e6, true, 0, 1));
+        try eqStr("m", tryOutWalkLineCol(a, e6, true, 0, 3));
+
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, true, 1, 0));
+        try eqStr("ello_venus", tryOutWalkLineCol(a, e6, true, 1, 1));
+        try eqStr("llo_venus", tryOutWalkLineCol(a, e6, true, 1, 2));
+        try eqStr("lo_venus", tryOutWalkLineCol(a, e6, true, 1, 3));
+        try eqStr("o_venus", tryOutWalkLineCol(a, e6, true, 1, 4));
+        try eqStr("_venus", tryOutWalkLineCol(a, e6, true, 1, 5));
+        try eqStr("venus", tryOutWalkLineCol(a, e6, true, 1, 6));
+        try eqStr("enus", tryOutWalkLineCol(a, e6, true, 1, 7));
+        try eqStr("nus", tryOutWalkLineCol(a, e6, true, 1, 8));
+        try eqStr("us", tryOutWalkLineCol(a, e6, true, 1, 9));
+        try eqStr("s", tryOutWalkLineCol(a, e6, true, 1, 10));
+
+        try eqStr("the", tryOutWalkLineCol(a, e6, true, 2, 0));
+        try eqStr("he", tryOutWalkLineCol(a, e6, true, 2, 1));
+
+        try eqStr("side", tryOutWalkLineCol(a, e6, true, 4, 0));
+        try eqStr("ide", tryOutWalkLineCol(a, e6, true, 4, 1));
+        try eqStr("de", tryOutWalkLineCol(a, e6, true, 4, 2));
+        try eqStr("e", tryOutWalkLineCol(a, e6, true, 4, 3));
     }
 }
 
