@@ -136,6 +136,58 @@ pub const WalkResult = struct {
     }
 };
 
+fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
+    switch (node.value.*) {
+        .branch => |*branch| {
+            // found target line
+            if (line == 0) {
+                const left_nocs = branch.left.value.weights().noc;
+                if (col >= left_nocs) {
+                    const right = try walkLineCol(a, branch.right, line, col - left_nocs, f, ctx);
+                    return goRight(a, branch, right);
+                }
+                return goLeftRight(a, branch, line, col, f, ctx);
+            }
+
+            // finding target line
+            const left_bols = branch.left.value.weights().bols;
+            if (line >= left_bols) {
+                const right = try walkLineCol(a, branch.right, line - left_bols, col, f, ctx);
+                return goRight(a, branch, right);
+            }
+            return goLeftRight(a, branch, line, col, f, ctx);
+        },
+        .leaf => |*leaf| {
+            if (line == 0) {
+                var result = try f(ctx, leaf);
+                result.found = true;
+                return result;
+            }
+            return WalkResult.keep_walking;
+        },
+    }
+}
+
+fn goRight(a: Allocator, branch: *Branch, right: WalkResult) !WalkResult {
+    if (right.replace) |replacement| {
+        var result = WalkResult{};
+        result.found = right.found;
+        result.keep_walking = right.keep_walking;
+        result.replace = if (replacement.value.isEmpty())
+            branch.left.retain()
+        else
+            try Node.new(a, branch.left.retain(), right.replace.?);
+        return result;
+    }
+    return right;
+}
+
+fn goLeftRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: WalkCallback, ctx: *anyopaque) !WalkResult {
+    const left = try walkLineCol(a, branch.left, line, col, f, ctx);
+    const right = if (left.found and left.keep_walking) try walk(a, branch.right, f, ctx) else WalkResult{};
+    return WalkResult.merge(branch, a, left, right);
+}
+
 fn walkFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
     switch (node.value.*) {
         .branch => |*branch| {
@@ -154,6 +206,7 @@ fn walkFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkCallback, c
                 }
                 return right;
             }
+
             const left = try walkFromLineBegin(a, branch.left, line, f, ctx);
             const right = if (left.found and left.keep_walking) try walk(a, branch.right, f, ctx) else WalkResult{};
 
@@ -3217,6 +3270,80 @@ test getNumOfCharsInLine {
     try eq(10, getNumOfCharsInLine(root, 1));
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Brand new walker that takes noc into account
+
+const WalkLineColCtx = struct {
+    list: *ArrayList(u8),
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        try ctx.list.appendSlice(leaf.buf);
+        if (leaf.eol) return WalkResult.stop;
+        return WalkResult.keep_walking;
+    }
+};
+
+pub fn tryOutWalkLineCol(a: Allocator, node: RcNode, line: usize, col: usize) []const u8 {
+    var list = ArrayList(u8).initCapacity(a, 1024) catch unreachable;
+    var ctx: WalkLineColCtx = .{ .list = &list };
+    _ = walkLineCol(a, node, line, col, WalkLineColCtx.walker, &ctx) catch unreachable;
+    return list.toOwnedSlice() catch unreachable;
+}
+
+test tryOutWalkLineCol {
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const root = try Node.fromString(a, &arena, "hello\nfrom\nthe\nother\nside");
+        _, _, const e1 = try insertChars(root, a, &arena, "_", .{ .line = 0, .col = 5 });
+        _, _, const e2 = try insertChars(e1, a, &arena, "v", .{ .line = 0, .col = 6 });
+        _, _, const e3 = try insertChars(e2, a, &arena, "e", .{ .line = 0, .col = 7 });
+        _, _, const e4 = try insertChars(e3, a, &arena, "n", .{ .line = 0, .col = 8 });
+        _, _, const e5 = try insertChars(e4, a, &arena, "u", .{ .line = 0, .col = 9 });
+        _, _, const e6 = try insertChars(e5, a, &arena, "s", .{ .line = 0, .col = 10 });
+
+        try eqStr(
+            \\9 5/31
+            \\  8 2/17
+            \\    7 1/12
+            \\      1 B| `hello` Rc:6
+            \\      6 0/7
+            \\        1 `_` Rc:5
+            \\        5 0/6
+            \\          1 `v` Rc:4
+            \\          4 0/5
+            \\            1 `e` Rc:3
+            \\            3 0/4
+            \\              1 `n` Rc:2
+            \\              2 0/3
+            \\                1 `u`
+            \\                1 `s` |E
+            \\    1 B| `from` |E Rc:7
+            \\  3 3/14 Rc:7
+            \\    1 B| `the` |E
+            \\    2 2/10
+            \\      1 B| `other` |E
+            \\      1 B| `side`
+        , try debugStr(a, e6));
+
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 0));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 1));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 2));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 3));
+        try eqStr("hello_venus", tryOutWalkLineCol(a, e6, 0, 4));
+        try eqStr("_venus", tryOutWalkLineCol(a, e6, 0, 5));
+        try eqStr("venus", tryOutWalkLineCol(a, e6, 0, 6));
+        try eqStr("enus", tryOutWalkLineCol(a, e6, 0, 7));
+        try eqStr("nus", tryOutWalkLineCol(a, e6, 0, 8));
+        try eqStr("us", tryOutWalkLineCol(a, e6, 0, 9));
+        try eqStr("s", tryOutWalkLineCol(a, e6, 0, 10));
+        try eqStr("from", tryOutWalkLineCol(a, root, 1, 0));
+        try eqStr("side", tryOutWalkLineCol(a, root, 4, 0));
+    }
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const Branch = struct {
@@ -3251,7 +3378,9 @@ const Leaf = struct {
         var len = self.buf.len;
         if (self.eol) len += 1;
         return Weights{
+            .depth = 1,
             .bols = if (self.bol) 1 else 0,
+            .noc = self.noc,
             .len = @intCast(len),
         };
     }
