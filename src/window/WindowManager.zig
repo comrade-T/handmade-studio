@@ -97,7 +97,21 @@ pub fn render(self: *@This(), view: Window.ScreenView) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
-///////////////////////////// Insert
+///////////////////////////// Visual Mode
+
+pub fn enterVisualMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.activateRangeMode();
+}
+
+pub fn exitVisualMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    window.cursor_manager.activatePointMode();
+}
+
+///////////////////////////// Insert Mode
 
 pub fn insertChars(self: *@This(), chars: []const u8) !void {
     const window = self.active_window orelse return;

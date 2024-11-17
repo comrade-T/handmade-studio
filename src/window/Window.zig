@@ -125,6 +125,7 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
         if (line_y + self.cached.line_info.items[linenr].height < view.start.y) continue;
 
         var last_char_info: ?struct { x: f32, width: f32, font_size: f32 } = null;
+        var selection_start_x: ?f32 = null;
 
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
@@ -168,9 +169,45 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
             defer { // cursors: if cursor with line
                 last_char_info = .{ .x = char_x, .width = char_width, .font_size = font_size };
 
-                for (self.cursor_manager.cursors.values()) |*cursor| {
+                for (self.cursor_manager.cursors.values()) |*cursor| { // .point
                     if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
                     render_callbacks.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
+                }
+
+                if (self.cursor_manager.cursor_mode == .range) { // .range
+                    const line_width = self.cached.line_info.items[linenr].width;
+
+                    for (self.cursor_manager.cursors.values()) |*cursor| {
+                        if (cursor.start.line == linenr and cursor.start.col == colnr) {
+                            if (selection_start_x == null) selection_start_x = char_x;
+
+                            if (cursor.end.line == linenr) continue;
+
+                            // selection starts on this line but ends elsewhere
+                            const width = line_width - (char_x - self.attr.pos.x);
+                            render_callbacks.drawRectangle(char_x, line_y, width, line_height, self.defaults.selection_color);
+                            continue;
+                        }
+
+                        if (cursor.end.line == linenr and cursor.end.col == colnr) {
+
+                            // selection starts and ends on this line
+                            if (selection_start_x) |start_x| {
+                                const width = char_x + char_width - start_x;
+                                render_callbacks.drawRectangle(start_x, line_y, width, line_height, self.defaults.selection_color);
+                                continue;
+                            }
+
+                            // selection started elsewhere and ends here
+                            const width = char_x + char_width - self.attr.pos.x;
+                            render_callbacks.drawRectangle(self.attr.pos.x, line_y, width, line_height, self.defaults.selection_color);
+                            continue;
+                        }
+
+                        if (cursor.start.line > linenr and cursor.end.line < linenr) {
+                            render_callbacks.drawRectangle(self.attr.pos.x, line_y, line_width, line_height, self.defaults.selection_color);
+                        }
+                    }
                 }
             }
         }
@@ -376,6 +413,7 @@ fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, defau
 const Defaults = struct {
     font_size: f32 = 40,
     color: u32 = 0xF5F5F5F5,
+    selection_color: u32 = 0xF5F5F533,
 };
 
 pub const SpawnOptions = struct {
