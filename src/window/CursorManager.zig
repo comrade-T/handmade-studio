@@ -76,7 +76,7 @@ pub fn produceCursorRanges(self: *@This(), a: Allocator) ![]RopeMan.CursorRange 
     for (self.cursors.values(), 0..) |*cursor, i| {
         ranges[i] = .{
             .start = .{ .line = cursor.start.line, .col = cursor.start.col },
-            .end = .{ .line = cursor.end.line, .col = cursor.end.col },
+            .end = .{ .line = cursor.end.line, .col = cursor.end.col + 1 },
         };
     }
     return ranges;
@@ -139,7 +139,7 @@ pub fn activateRangeMode(self: *@This()) void {
     for (self.cursors.values()) |*cursor| {
         cursor.current_anchor = .end;
         cursor.end.line = cursor.start.line;
-        cursor.end.col = cursor.start.col + 1;
+        cursor.end.col = cursor.start.col;
     }
 }
 
@@ -830,7 +830,7 @@ const Cursor = struct {
         self.end.line, self.end.col = end;
     }
 
-    fn activeAnchor(self: *@This(), cm: *const CursorManager) *Anchor {
+    pub fn activeAnchor(self: *@This(), cm: *const CursorManager) *Anchor {
         return switch (cm.cursor_mode) {
             .point => &self.start,
             .range => if (self.current_anchor == .start) &self.start else &self.end,

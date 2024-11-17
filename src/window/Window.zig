@@ -170,7 +170,8 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
                 last_char_info = .{ .x = char_x, .width = char_width, .font_size = font_size };
 
                 for (self.cursor_manager.cursors.values()) |*cursor| { // .point
-                    if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
+                    const anchor = cursor.activeAnchor(self.cursor_manager);
+                    if (anchor.line != linenr or anchor.col != colnr) continue;
                     render_callbacks.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
                 }
 
@@ -203,18 +204,24 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
                             render_callbacks.drawRectangle(self.attr.pos.x, line_y, width, line_height, self.defaults.selection_color);
                             continue;
                         }
-
-                        if (cursor.start.line > linenr and cursor.end.line < linenr) {
-                            render_callbacks.drawRectangle(self.attr.pos.x, line_y, line_width, line_height, self.defaults.selection_color);
-                        }
                     }
+                }
+            }
+        }
+
+        if (self.cursor_manager.cursor_mode == .range) { // .range
+            const line_width = self.cached.line_info.items[linenr].width;
+            for (self.cursor_manager.cursors.values()) |*cursor| {
+                if (cursor.start.line < linenr and cursor.end.line > linenr) {
+                    render_callbacks.drawRectangle(self.attr.pos.x, line_y, line_width, line_height, self.defaults.selection_color);
                 }
             }
         }
 
         if (last_char_info) |info| { // cursors: if cursor at line end
             for (self.cursor_manager.cursors.values()) |*cursor| {
-                if (cursor.start.line != linenr or cursor.start.col != colnr) continue;
+                const anchor = cursor.activeAnchor(self.cursor_manager);
+                if (anchor.line != linenr or anchor.col != colnr) continue;
                 render_callbacks.drawRectangle(info.x + info.width, line_y, info.width, info.font_size, self.defaults.color);
             }
             continue;
@@ -222,7 +229,8 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
 
         if (colnr == 0) { // cursors: if line is empty
             for (self.cursor_manager.cursors.values()) |*cursor| {
-                if (cursor.start.line != linenr) continue;
+                const anchor = cursor.activeAnchor(self.cursor_manager);
+                if (anchor.line != linenr) continue;
                 const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
                 render_callbacks.drawRectangle(char_x, line_y, char_width, line_height, self.defaults.color);
             }
