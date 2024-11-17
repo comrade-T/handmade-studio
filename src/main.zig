@@ -151,6 +151,9 @@ pub fn main() anyerror!void {
     try council.map("visual", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = &wm });
     try council.map("visual", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = &wm });
 
+    try council.map("visual", &.{.d}, .{ .f = WindowManager.delete, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
+    try council.map("visual", &.{.c}, .{ .f = WindowManager.delete, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
+
     try council.map("visual", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = &wm });
     try council.map("visual", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
     try council.map("visual", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });

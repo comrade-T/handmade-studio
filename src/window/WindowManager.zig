@@ -111,6 +111,13 @@ pub fn exitVisualMode(ctx: *anyopaque) !void {
     window.cursor_manager.activatePointMode();
 }
 
+pub fn delete(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.deleteRanges(self.style_store);
+    try exitVisualMode(ctx);
+}
+
 ///////////////////////////// Insert Mode
 
 pub fn insertChars(self: *@This(), chars: []const u8) !void {
@@ -124,8 +131,6 @@ pub fn backspace(ctx: *anyopaque) !void {
     try window.backspace(self.style_store);
 }
 
-///////////////////////////// i / I
-
 pub fn enterInsertMode_i(ctx: *anyopaque) !void {
     _ = ctx;
 }
@@ -134,8 +139,6 @@ pub fn enterInsertMode_I(ctx: *anyopaque) !void {
     try moveCursorToBeginningOfLine(ctx);
     try enterInsertMode_i(ctx);
 }
-
-///////////////////////////// a / A
 
 pub fn enterInsertMode_a(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -161,7 +164,9 @@ pub fn debugPrintActiveWindowRope(ctx: *anyopaque) !void {
     try window.ws.buf.ropeman.debugPrint();
 }
 
-///////////////////////////// Move 0 / )
+///////////////////////////// Movement
+
+// $ 0 ^
 
 pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -181,7 +186,7 @@ pub fn moveCursorToFirstNonSpaceCharacterOfLine(ctx: *anyopaque) !void {
     window.cursor_manager.moveToFirstNonSpaceCharacterOfLine(&window.ws.buf.ropeman);
 }
 
-///////////////////////////// Move hjkl
+// hjkl
 
 pub fn moveCursorUp(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -207,7 +212,7 @@ pub fn moveCursorRight(ctx: *anyopaque) !void {
     window.cursor_manager.moveRight(1, &window.ws.buf.ropeman);
 }
 
-///////////////////////////// Move Word
+// Vim Word
 
 pub fn moveCursorForwardWordStart(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));

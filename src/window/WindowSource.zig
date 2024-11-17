@@ -320,7 +320,6 @@ pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum
     // update cursors
     assert(inputs.len == outputs.len);
     for (outputs, 0..) |p, i| cm.cursors.values()[i].setActiveAnchor(cm, p.line, p.col);
-    if (kind == .range) cm.activatePointMode();
 
     ///////////////////////////// Update CapList
 

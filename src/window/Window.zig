@@ -257,6 +257,14 @@ pub fn backspace(self: *@This(), style_store: *const StyleStore) !void {
     try self.processEditResult(result, style_store);
 }
 
+pub fn deleteRanges(self: *@This(), style_store: *const StyleStore) !void {
+    const zone = ztracy.ZoneNC(@src(), "Window.deleteRanges()", 0x00AAFF);
+    defer zone.End();
+
+    const result = try self.ws.deleteRanges(self.a, self.cursor_manager, .range) orelse return;
+    try self.processEditResult(result, style_store);
+}
+
 fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const StyleStore) !void {
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
