@@ -839,14 +839,15 @@ const Cursor = struct {
 
     fn ensureAnchorOrder(self: *@This(), cm: *const CursorManager) void {
         if (cm.cursor_mode == .point) return;
-        if (self.start.isEqual(self.end)) {
-            self.end.col += 1;
-            return;
-        }
         if (self.end.isBefore(self.start)) {
             const start_cpy = self.start;
             self.start = self.end;
             self.end = start_cpy;
+
+            self.current_anchor = switch (self.current_anchor) {
+                .start => .end,
+                .end => .start,
+            };
         }
     }
 
