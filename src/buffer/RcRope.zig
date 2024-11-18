@@ -338,7 +338,7 @@ pub const Node = union(enum) {
             const root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
             defer freeRcNode(testing_allocator, root);
             try eqStr(
-                \\2 2/11
+                \\2 2/11/10
                 \\  1 B| `hello` |E
                 \\  1 B| `world`
             , try debugStr(idc_if_it_leaks, root));
@@ -533,7 +533,7 @@ test "insertChars - single insertion at beginning" {
         const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
         defer freeRcNode(testing_allocator, old_root);
         try eqStr(
-            \\2 2/11
+            \\2 2/11/10
             \\  1 B| `hello` |E
             \\  1 B| `world`
         , try debugStr(idc_if_it_leaks, old_root));
@@ -543,15 +543,15 @@ test "insertChars - single insertion at beginning" {
             defer freeRcNode(testing_allocator, new_root);
 
             try eqStr(
-                \\2 2/11
+                \\2 2/11/10
                 \\  1 B| `hello` |E
                 \\  1 B| `world` Rc:2
             , try debugStr(idc_if_it_leaks, old_root));
 
             try eq(.{ 0, 3 }, .{ line, col });
             try eqStr(
-                \\3 2/14
-                \\  2 1/9
+                \\3 2/14/13
+                \\  2 1/9/8
                 \\    1 B| `ok `
                 \\    1 `hello` |E
                 \\  1 B| `world` Rc:2
@@ -567,7 +567,7 @@ test "insertChars - single insertion at beginning" {
         // before
         const old_root = try Node.fromString(testing_allocator, &content_arena, "hello\nworld");
         try eqStr(
-            \\2 2/11
+            \\2 2/11/10
             \\  1 B| `hello` |E
             \\  1 B| `world`
         , try debugStr(idc_if_it_leaks, old_root));
@@ -576,15 +576,15 @@ test "insertChars - single insertion at beginning" {
         const line, const col, const new_root = try insertChars(old_root, testing_allocator, &content_arena, "ok ", .{ .line = 0, .col = 0 });
         {
             try eqStr(
-                \\2 2/11
+                \\2 2/11/10
                 \\  1 B| `hello` |E
                 \\  1 B| `world` Rc:2
             , try debugStr(idc_if_it_leaks, old_root));
 
             try eq(.{ 0, 3 }, .{ line, col });
             try eqStr(
-                \\3 2/14
-                \\  2 1/9
+                \\3 2/14/13
+                \\  2 1/9/8
                 \\    1 B| `ok `
                 \\    1 `hello` |E
                 \\  1 B| `world` Rc:2
@@ -595,8 +595,8 @@ test "insertChars - single insertion at beginning" {
         {
             freeRcNode(testing_allocator, old_root);
             try eqStr(
-                \\3 2/14
-                \\  2 1/9
+                \\3 2/14/13
+                \\  2 1/9/8
                 \\    1 B| `ok `
                 \\    1 `hello` |E
                 \\  1 B| `world`
@@ -618,9 +618,9 @@ test "insertChars - insert in middle of leaf" {
     const l1, const c1, const e1 = try insertChars(original, testing_allocator, &content_arena, "3", .{ .line = 0, .col = 2 });
     try eq(.{ 0, 3 }, .{ l1, c1 });
     try eqStr(
-        \\3 1/6
+        \\3 1/6/6
         \\  1 B| `he`
-        \\  2 0/4
+        \\  2 0/4/4
         \\    1 `3`
         \\    1 `llo`
     , try debugStr(idc_if_it_leaks, e1));
@@ -629,13 +629,13 @@ test "insertChars - insert in middle of leaf" {
     const l2, const c2, const e2 = try insertChars(e1, testing_allocator, &content_arena, "0", .{ .line = 0, .col = 5 });
     try eq(.{ 0, 6 }, .{ l2, c2 });
     try eqStr(
-        \\5 1/7
+        \\5 1/7/7
         \\  1 B| `he` Rc:2
-        \\  4 0/5
+        \\  4 0/5/5
         \\    1 `3` Rc:2
-        \\    3 0/4
+        \\    3 0/4/4
         \\      1 `ll`
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `0`
         \\        1 `o`
     , try debugStr(idc_if_it_leaks, e2));
@@ -644,17 +644,17 @@ test "insertChars - insert in middle of leaf" {
     const l3, const c3, const e3 = try insertChars(e2, testing_allocator, &content_arena, "\n", .{ .line = 0, .col = 5 });
     try eq(.{ 1, 0 }, .{ l3, c3 });
     try eqStr(
-        \\6 2/8
+        \\6 2/8/7
         \\  1 B| `he` Rc:3
-        \\  5 1/6
+        \\  5 1/6/5
         \\    1 `3` Rc:3
-        \\    4 1/5
-        \\      3 1/3
+        \\    4 1/5/4
+        \\      3 1/3/2
         \\        1 `ll`
-        \\        2 1/1
+        \\        2 1/1/0
         \\          1 `` |E
         \\          1 B| ``
-        \\      2 0/2 Rc:2
+        \\      2 0/2/2 Rc:2
         \\        1 `0`
         \\        1 `o`
     , try debugStr(idc_if_it_leaks, e3));
@@ -682,7 +682,7 @@ test "insertChars - multiple insertions from empty string" {
 
         try eq(.{ 0, 1 }, .{ l1, c1 });
         try eqStr(
-            \\2 1/1
+            \\2 1/1/1
             \\  1 B| `h`
             \\  1 ``
         , try debugStr(idc_if_it_leaks, r1));
@@ -696,14 +696,14 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, r0));
 
         try eqStr(
-            \\2 1/1
+            \\2 1/1/1
             \\  1 B| `h`
             \\  1 ``
         , try debugStr(idc_if_it_leaks, r1));
 
         try eq(.{ 0, 2 }, .{ l2, c2 });
         try eqStr(
-            \\2 1/2
+            \\2 1/2/2
             \\  1 B| `h`
             \\  1 `e`
         , try debugStr(idc_if_it_leaks, r2));
@@ -717,22 +717,22 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, r0));
 
         try eqStr(
-            \\2 1/1
+            \\2 1/1/1
             \\  1 B| `h`
             \\  1 ``
         , try debugStr(idc_if_it_leaks, r1));
 
         try eqStr(
-            \\2 1/2
+            \\2 1/2/2
             \\  1 B| `h` Rc:2
             \\  1 `e`
         , try debugStr(idc_if_it_leaks, r2));
 
         try eq(.{ 0, 3 }, .{ l3, c3 });
         try eqStr(
-            \\3 1/3
+            \\3 1/3/3
             \\  1 B| `h` Rc:2
-            \\  2 0/2
+            \\  2 0/2/2
             \\    1 `e`
             \\    1 `l`
         , try debugStr(idc_if_it_leaks, r3));
@@ -746,32 +746,32 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, r0));
 
         try eqStr(
-            \\2 1/1
+            \\2 1/1/1
             \\  1 B| `h`
             \\  1 ``
         , try debugStr(idc_if_it_leaks, r1));
 
         try eqStr(
-            \\2 1/2
+            \\2 1/2/2
             \\  1 B| `h` Rc:2
             \\  1 `e`
         , try debugStr(idc_if_it_leaks, r2));
 
         try eqStr(
-            \\3 1/3
+            \\3 1/3/3
             \\  1 B| `h` Rc:2
-            \\  2 0/2 Rc:2
+            \\  2 0/2/2 Rc:2
             \\    1 `e`
             \\    1 `l`
         , try debugStr(idc_if_it_leaks, r3));
 
         try eq(.{ 0, 2 }, .{ l4, c4 });
         try eqStr(
-            \\3 1/4
-            \\  2 1/2
+            \\3 1/4/4
+            \\  2 1/2/2
             \\    1 B| `h`
             \\    1 `3`
-            \\  2 0/2 Rc:2
+            \\  2 0/2/2 Rc:2
             \\    1 `e`
             \\    1 `l`
         , try debugStr(idc_if_it_leaks, r4));
@@ -781,13 +781,13 @@ test "insertChars - multiple insertions from empty string" {
     {
         try eq(.{ 0, 3 }, .{ l5, c5 });
         try eqStr(
-            \\4 1/7
-            \\  3 1/5
-            \\    2 1/4
+            \\4 1/7/7
+            \\  3 1/5/5
+            \\    2 1/4/4
             \\      1 B| `// `
             \\      1 `h`
             \\    1 `3` Rc:2
-            \\  2 0/2 Rc:3
+            \\  2 0/2/2 Rc:3
             \\    1 `e`
             \\    1 `l`
         , try debugStr(idc_if_it_leaks, r5));
@@ -797,15 +797,15 @@ test "insertChars - multiple insertions from empty string" {
     {
         try eq(.{ 0, 8 }, .{ l6a, c6a });
         try eqStr( // h3elo
-            \\4 1/8
-            \\  3 1/5 Rc:2
-            \\    2 1/4
+            \\4 1/8/8
+            \\  3 1/5/5 Rc:2
+            \\    2 1/4/4
             \\      1 B| `// `
             \\      1 `h`
             \\    1 `3` Rc:2
-            \\  3 0/3
+            \\  3 0/3/3
             \\    1 `e` Rc:2
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `l`
             \\      1 `o`
         , try debugStr(idc_if_it_leaks, r6a));
@@ -815,14 +815,14 @@ test "insertChars - multiple insertions from empty string" {
     {
         try eq(.{ 0, 7 }, .{ l6b, c6b });
         try eqStr( // h3exl
-            \\4 1/8
-            \\  3 1/5 Rc:3
-            \\    2 1/4
+            \\4 1/8/8
+            \\  3 1/5/5 Rc:3
+            \\    2 1/4/4
             \\      1 B| `// `
             \\      1 `h`
             \\    1 `3` Rc:2
-            \\  3 0/3
-            \\    2 0/2
+            \\  3 0/3/3
+            \\    2 0/2/2
             \\      1 `e`
             \\      1 `x`
             \\    1 `l` Rc:2
@@ -833,15 +833,15 @@ test "insertChars - multiple insertions from empty string" {
     {
         try eq(.{ 0, 6 }, .{ l6c, c6c });
         try eqStr( // h3xel
-            \\4 1/8
-            \\  3 1/6
-            \\    2 1/4 Rc:2
+            \\4 1/8/8
+            \\  3 1/6/6
+            \\    2 1/4/4 Rc:2
             \\      1 B| `// `
             \\      1 `h`
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `3`
             \\      1 `x`
-            \\  2 0/2 Rc:4
+            \\  2 0/2/2 Rc:4
             \\    1 `e` Rc:2
             \\    1 `l` Rc:2
         , try debugStr(idc_if_it_leaks, r6c));
@@ -850,15 +850,15 @@ test "insertChars - multiple insertions from empty string" {
     freeRcNodes(testing_allocator, &.{ r0, r1, r2, r3, r4, r5, r6a, r6b });
 
     try eqStr( // h3xel
-        \\4 1/8
-        \\  3 1/6
-        \\    2 1/4
+        \\4 1/8/8
+        \\  3 1/6/6
+        \\    2 1/4/4
         \\      1 B| `// `
         \\      1 `h`
-        \\    2 0/2
+        \\    2 0/2/2
         \\      1 `3`
         \\      1 `x`
-        \\  2 0/2
+        \\  2 0/2/2
         \\    1 `e`
         \\    1 `l`
     , try debugStr(idc_if_it_leaks, r6c));
@@ -876,9 +876,9 @@ test "insertChars - abcd" {
     _, _, const abcd = try insertChars(acd, testing_allocator, &content_arena, "B", .{ .line = 0, .col = 1 });
     defer freeRcNode(testing_allocator, abcd);
     const abcd_dbg =
-        \\3 1/4
+        \\3 1/4/4
         \\  1 B| `A`
-        \\  2 0/3
+        \\  2 0/3/3
         \\    1 `B`
         \\    1 `CD`
     ;
@@ -888,11 +888,11 @@ test "insertChars - abcd" {
         _, _, const eabcd = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 0 });
         defer freeRcNode(testing_allocator, eabcd);
         const eabcd_dbg =
-            \\3 1/5
-            \\  2 1/2
+            \\3 1/5/5
+            \\  2 1/2/2
             \\    1 B| `E`
             \\    1 `A`
-            \\  2 0/3 Rc:2
+            \\  2 0/3/3 Rc:2
             \\    1 `B`
             \\    1 `CD`
         ;
@@ -903,11 +903,11 @@ test "insertChars - abcd" {
         _, _, const abcde = try insertChars(abcd, testing_allocator, &content_arena, "E", .{ .line = 0, .col = 4 });
         defer freeRcNode(testing_allocator, abcde);
         const abcde_dbg =
-            \\4 1/5
+            \\4 1/5/5
             \\  1 B| `A` Rc:2
-            \\  3 0/4
+            \\  3 0/4/4
             \\    1 `B` Rc:2
-            \\    2 0/3
+            \\    2 0/3/3
             \\      1 `CD`
             \\      1 `E`
         ;
@@ -935,9 +935,9 @@ test "insertChars - with newline \n" {
 
         try eq(.{ 1, 0 }, .{ l1, c1 });
         try eqStr(
-            \\3 2/12
+            \\3 2/12/11
             \\  1 B| `hello venus`
-            \\  2 1/1
+            \\  2 1/1/0
             \\    1 `` |E
             \\    1 B| ``
         , try debugStr(idc_if_it_leaks, r1));
@@ -947,20 +947,20 @@ test "insertChars - with newline \n" {
     const l2, const c2, const r2 = try insertChars(r1, a, &content_arena, "ok", .{ .line = 1, .col = 0 });
     {
         try eqStr(
-            \\3 2/12
+            \\3 2/12/11
             \\  1 B| `hello venus` Rc:2
-            \\  2 1/1
+            \\  2 1/1/0
             \\    1 `` |E Rc:2
             \\    1 B| ``
         , try debugStr(idc_if_it_leaks, r1));
 
         try eq(.{ 1, 2 }, .{ l2, c2 });
         try eqStr(
-            \\4 2/14
+            \\4 2/14/13
             \\  1 B| `hello venus` Rc:2
-            \\  3 1/3
+            \\  3 1/3/2
             \\    1 `` |E Rc:2
-            \\    2 1/2
+            \\    2 1/2/2
             \\      1 B| `ok`
             \\      1 ``
         , try debugStr(idc_if_it_leaks, r2));
@@ -970,34 +970,34 @@ test "insertChars - with newline \n" {
     const l3, const c3, const r3 = try insertChars(r2, a, &content_arena, "\nfine", .{ .line = l2, .col = c2 });
     {
         try eqStr(
-            \\3 2/12
+            \\3 2/12/11
             \\  1 B| `hello venus` Rc:3
-            \\  2 1/1
+            \\  2 1/1/0
             \\    1 `` |E Rc:3
             \\    1 B| ``
         , try debugStr(idc_if_it_leaks, r1));
 
         try eqStr(
-            \\4 2/14
+            \\4 2/14/13
             \\  1 B| `hello venus` Rc:3
-            \\  3 1/3
+            \\  3 1/3/2
             \\    1 `` |E Rc:3
-            \\    2 1/2
+            \\    2 1/2/2
             \\      1 B| `ok`
             \\      1 ``
         , try debugStr(idc_if_it_leaks, r2));
 
         try eq(.{ 2, 4 }, .{ l3, c3 });
         try eqStr(
-            \\6 3/19
+            \\6 3/19/17
             \\  1 B| `hello venus` Rc:3
-            \\  5 2/8
+            \\  5 2/8/6
             \\    1 `` |E Rc:3
-            \\    4 2/7
+            \\    4 2/7/6
             \\      1 B| `ok`
-            \\      3 1/5
+            \\      3 1/5/4
             \\        1 `` |E
-            \\        2 1/4
+            \\        2 1/4/4
             \\          1 B| `fine`
             \\          1 ``
         , try debugStr(idc_if_it_leaks, r3));
@@ -1170,7 +1170,7 @@ test "deleteChars - basics" {
         const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 3 }, 1);
         defer freeRcNode(testing_allocator, edit);
         try eqStr(
-            \\2 1/6
+            \\2 1/6/6
             \\  1 B| `123`
             \\  1 `567`
         , try debugStr(idc_if_it_leaks, edit));
@@ -1180,7 +1180,7 @@ test "deleteChars - basics" {
         const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
         defer freeRcNode(testing_allocator, edit);
         try eqStr(
-            \\2 1/6
+            \\2 1/6/6
             \\  1 B| `12345`
             \\  1 `7`
         , try debugStr(idc_if_it_leaks, edit));
@@ -1201,27 +1201,27 @@ test "deleteChars - multiple lines" {
 
     const original = try Node.fromString(testing_allocator, &content_arena, "hello venus\nhello world\nhello kitty");
     try eqStr(
-        \\3 3/35
+        \\3 3/35/33
         \\  1 B| `hello venus` |E
-        \\  2 2/23
+        \\  2 2/23/22
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, original));
 
     const e1 = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 0 }, 6);
     try eqStr(
-        \\3 3/29
+        \\3 3/29/27
         \\  1 B| `venus` |E
-        \\  2 2/23 Rc:2
+        \\  2 2/23/22 Rc:2
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, e1));
 
     const e2 = try deleteChars(e1, testing_allocator, .{ .line = 0, .col = 0 }, 12);
     try eqStr(
-        \\3 2/17
+        \\3 2/17/16
         \\  1 B| ``
-        \\  2 1/17
+        \\  2 1/17/16
         \\    1 `world` |E
         \\    1 B| `hello kitty` Rc:2
     , try debugStr(idc_if_it_leaks, e2));
@@ -1235,47 +1235,47 @@ test "deleteChars - it leaked somehow" {
 
     const original = try Node.fromString(testing_allocator, &content_arena, "hello venus\nhello world\nhello kitty");
     try eqStr(
-        \\3 3/35
+        \\3 3/35/33
         \\  1 B| `hello venus` |E
-        \\  2 2/23
+        \\  2 2/23/22
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, original));
 
     const e1 = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
     try eqStr(
-        \\3 3/34
-        \\  2 1/11
+        \\3 3/34/32
+        \\  2 1/11/10
         \\    1 B| `hello`
         \\    1 `venus` |E
-        \\  2 2/23 Rc:2
+        \\  2 2/23/22 Rc:2
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, e1));
 
     try eqStr(
-        \\3 3/35
+        \\3 3/35/33
         \\  1 B| `hello venus` |E
-        \\  2 2/23 Rc:2
+        \\  2 2/23/22 Rc:2
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, original));
 
     try eqStr(
-        \\3 3/34
-        \\  2 1/11
+        \\3 3/34/32
+        \\  2 1/11/10
         \\    1 B| `hello`
         \\    1 `venus` |E
-        \\  2 2/23 Rc:2
+        \\  2 2/23/22 Rc:2
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, e1));
 
     const e2 = try deleteChars(e1, testing_allocator, .{ .line = 0, .col = 0 }, 17);
     try eqStr(
-        \\3 2/17
+        \\3 2/17/16
         \\  1 B| ``
-        \\  2 1/17
+        \\  2 1/17/16
         \\    1 `world` |E
         \\    1 B| `hello kitty` Rc:2
     , try debugStr(idc_if_it_leaks, e2));
@@ -1328,11 +1328,11 @@ test getNocOfRange {
     const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
     defer freeRcNode(testing_allocator, edit);
     try eqStr(
-        \\3 3/34
-        \\  2 1/11
+        \\3 3/34/32
+        \\  2 1/11/10
         \\    1 B| `hello`
         \\    1 `venus` |E
-        \\  2 2/23 Rc:2
+        \\  2 2/23/22 Rc:2
         \\    1 B| `hello world` |E
         \\    1 B| `hello kitty`
     , try debugStr(idc_if_it_leaks, edit));
@@ -1460,11 +1460,11 @@ test balance {
 
     _, _, const e4 = try insertChars(e3, testing_allocator, &content_arena, "4", .{ .line = 0, .col = 3 });
     try eqStr( // unbalanced
-        \\4 1/4
+        \\4 1/4/4
         \\  1 B| `1` Rc:3
-        \\  3 0/3
+        \\  3 0/3/3
         \\    1 `2` Rc:2
-        \\    2 0/2
+        \\    2 0/2/2
         \\      1 `3`
         \\      1 `4`
     , try debugStr(idc_if_it_leaks, e4));
@@ -1473,11 +1473,11 @@ test balance {
     {
         try eq(true, e4_has_changes);
         try eqStr(
-            \\3 1/4
-            \\  2 1/2
+            \\3 1/4/4
+            \\  2 1/2/2
             \\    1 B| `1` Rc:4
             \\    1 `2` Rc:3
-            \\  2 0/2 Rc:2
+            \\  2 0/2/2 Rc:2
             \\    1 `3`
             \\    1 `4`
         , try debugStr(idc_if_it_leaks, e4_balanced));
@@ -1487,13 +1487,13 @@ test balance {
 
     _, _, const e5 = try insertChars(e4, testing_allocator, &content_arena, "5", .{ .line = 0, .col = 4 });
     try eqStr( // unbalanced
-        \\5 1/5
+        \\5 1/5/5
         \\  1 B| `1` Rc:5
-        \\  4 0/4
+        \\  4 0/4/4
         \\    1 `2` Rc:4
-        \\    3 0/3
+        \\    3 0/3/3
         \\      1 `3` Rc:2
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `4`
         \\        1 `5`
     , try debugStr(idc_if_it_leaks, e5));
@@ -1502,13 +1502,13 @@ test balance {
     {
         try eq(true, e5_has_changes);
         try eqStr(
-            \\4 1/5
-            \\  3 1/3
+            \\4 1/5/5
+            \\  3 1/3/3
             \\    1 B| `1` Rc:6
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `2` Rc:5
             \\      1 `3` Rc:3
-            \\  2 0/2 Rc:2
+            \\  2 0/2/2 Rc:2
             \\    1 `4`
             \\    1 `5`
         , try debugStr(idc_if_it_leaks, e5_balanced));
@@ -1518,15 +1518,15 @@ test balance {
 
     _, _, const e6 = try insertChars(e5, testing_allocator, &content_arena, "6", .{ .line = 0, .col = 5 });
     try eqStr( // unbalanced
-        \\6 1/6
+        \\6 1/6/6
         \\  1 B| `1` Rc:7
-        \\  5 0/5
+        \\  5 0/5/5
         \\    1 `2` Rc:6
-        \\    4 0/4
+        \\    4 0/4/4
         \\      1 `3` Rc:4
-        \\      3 0/3
+        \\      3 0/3/3
         \\        1 `4` Rc:2
-        \\        2 0/2
+        \\        2 0/2/2
         \\          1 `5`
         \\          1 `6`
     , try debugStr(idc_if_it_leaks, e6));
@@ -1535,15 +1535,15 @@ test balance {
     {
         try eq(true, e6_has_changes);
         try eqStr(
-            \\4 1/6
-            \\  2 1/2
+            \\4 1/6/6
+            \\  2 1/2/2
             \\    1 B| `1` Rc:8
             \\    1 `2` Rc:7
-            \\  3 0/4
-            \\    2 0/2
+            \\  3 0/4/4
+            \\    2 0/2/2
             \\      1 `3` Rc:5
             \\      1 `4` Rc:3
-            \\    2 0/2 Rc:2
+            \\    2 0/2/2 Rc:2
             \\      1 `5`
             \\      1 `6`
         , try debugStr(idc_if_it_leaks, e6_balanced));
@@ -1569,9 +1569,9 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e3 = try insertChars(e2, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNodes(testing_allocator, &.{ root, e1, e2 });
     try eqStr(
-        \\4 1/14
-        \\  3 1/3
-        \\    2 1/2
+        \\4 1/14/14
+        \\  3 1/3/3
+        \\    2 1/2/2
         \\      1 B| `/`
         \\      1 `/`
         \\    1 `/`
@@ -1583,11 +1583,11 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e3_rebalanced);
         freeRcNode(testing_allocator, e3);
         try eqStr(
-            \\3 1/14
-            \\  2 1/2
+            \\3 1/14/14
+            \\  2 1/2/2
             \\    1 B| `/`
             \\    1 `/`
-            \\  2 0/12
+            \\  2 0/12/12
             \\    1 `/`
             \\    1 `hello world`
         , try debugStr(idc_if_it_leaks, e3b));
@@ -1598,13 +1598,13 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e4 = try insertChars(e3b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e3b);
     try eqStr(
-        \\4 1/15
-        \\  3 1/3
-        \\    2 1/2
+        \\4 1/15/15
+        \\  3 1/3/3
+        \\    2 1/2/2
         \\      1 B| `/`
         \\      1 `/`
         \\    1 `/`
-        \\  2 0/12
+        \\  2 0/12/12
         \\    1 `/`
         \\    1 `hello world`
     , try debugStr(idc_if_it_leaks, e4));
@@ -1617,15 +1617,15 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e5 = try insertChars(e4, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e4);
     try eqStr(
-        \\5 1/16
-        \\  4 1/4
-        \\    3 1/3
-        \\      2 1/2
+        \\5 1/16/16
+        \\  4 1/4/4
+        \\    3 1/3/3
+        \\      2 1/2/2
         \\        1 B| `/`
         \\        1 `/`
         \\      1 `/`
         \\    1 `/`
-        \\  2 0/12
+        \\  2 0/12/12
         \\    1 `/`
         \\    1 `hello world`
     , try debugStr(idc_if_it_leaks, e5));
@@ -1635,15 +1635,15 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e5_rebalanced);
         freeRcNode(testing_allocator, e5);
         try eqStr(
-            \\4 1/16
-            \\  3 1/4
-            \\    2 1/2
+            \\4 1/16/16
+            \\  3 1/4/4
+            \\    2 1/2/2
             \\      1 B| `/`
             \\      1 `/`
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `/`
             \\      1 `/`
-            \\  2 0/12
+            \\  2 0/12/12
             \\    1 `/`
             \\    1 `hello world`
         , try debugStr(idc_if_it_leaks, e5b));
@@ -1654,17 +1654,17 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e6 = try insertChars(e5b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e5b);
     try eqStr(
-        \\5 1/17
-        \\  4 1/5
-        \\    3 1/3
-        \\      2 1/2
+        \\5 1/17/17
+        \\  4 1/5/5
+        \\    3 1/3/3
+        \\      2 1/2/2
         \\        1 B| `/`
         \\        1 `/`
         \\      1 `/`
-        \\    2 0/2
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\  2 0/12
+        \\  2 0/12/12
         \\    1 `/`
         \\    1 `hello world`
     , try debugStr(idc_if_it_leaks, e6));
@@ -1674,17 +1674,17 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e6_rebalanced);
         freeRcNode(testing_allocator, e6);
         try eqStr(
-            \\4 1/17
-            \\  3 1/3
-            \\    2 1/2
+            \\4 1/17/17
+            \\  3 1/3/3
+            \\    2 1/2/2
             \\      1 B| `/`
             \\      1 `/`
             \\    1 `/`
-            \\  3 0/14
-            \\    2 0/2
+            \\  3 0/14/14
+            \\    2 0/2/2
             \\      1 `/`
             \\      1 `/`
-            \\    2 0/12
+            \\    2 0/12/12
             \\      1 `/`
             \\      1 `hello world`
         , try debugStr(idc_if_it_leaks, e6b));
@@ -1697,19 +1697,19 @@ test "insert at beginning then balance, one character at a time" {
     // We can clearly see the imbalance `3 vs 1`.
     // I'll leave it there for now, see if it resolves itself after a few more balances.
     try eqStr(
-        \\5 1/18
-        \\  4 1/4
-        \\    3 1/3
-        \\      2 1/2
+        \\5 1/18/18
+        \\  4 1/4/4
+        \\    3 1/3/3
+        \\      2 1/2/2
         \\        1 B| `/`
         \\        1 `/`
         \\      1 `/`
         \\    1 `/`
-        \\  3 0/14
-        \\    2 0/2
+        \\  3 0/14/14
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\    2 0/12
+        \\    2 0/12/12
         \\      1 `/`
         \\      1 `hello world`
     , try debugStr(idc_if_it_leaks, e7));
@@ -1722,21 +1722,21 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e8 = try insertChars(e7, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e7);
     try eqStr(
-        \\6 1/19
-        \\  5 1/5
-        \\    4 1/4
-        \\      3 1/3
-        \\        2 1/2
+        \\6 1/19/19
+        \\  5 1/5/5
+        \\    4 1/4/4
+        \\      3 1/3/3
+        \\        2 1/2/2
         \\          1 B| `/`
         \\          1 `/`
         \\        1 `/`
         \\      1 `/`
         \\    1 `/`
-        \\  3 0/14
-        \\    2 0/2
+        \\  3 0/14/14
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\    2 0/12
+        \\    2 0/12/12
         \\      1 `/`
         \\      1 `hello world`
     , try debugStr(idc_if_it_leaks, e8));
@@ -1746,21 +1746,21 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e8_rebalanced);
         freeRcNode(testing_allocator, e8);
         try eqStr(
-            \\5 1/19
-            \\  4 1/5
-            \\    2 1/2
+            \\5 1/19/19
+            \\  4 1/5/5
+            \\    2 1/2/2
             \\      1 B| `/`
             \\      1 `/`
-            \\    3 0/3
-            \\      2 0/2
+            \\    3 0/3/3
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
             \\      1 `/`
-            \\  3 0/14
-            \\    2 0/2
+            \\  3 0/14/14
+            \\    2 0/2/2
             \\      1 `/`
             \\      1 `/`
-            \\    2 0/12
+            \\    2 0/12/12
             \\      1 `/`
             \\      1 `hello world`
         , try debugStr(idc_if_it_leaks, e8b));
@@ -1771,23 +1771,23 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e9 = try insertChars(e8b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e8b);
     try eqStr(
-        \\5 1/20
-        \\  4 1/6
-        \\    3 1/3
-        \\      2 1/2
+        \\5 1/20/20
+        \\  4 1/6/6
+        \\    3 1/3/3
+        \\      2 1/2/2
         \\        1 B| `/`
         \\        1 `/`
         \\      1 `/`
-        \\    3 0/3
-        \\      2 0/2
+        \\    3 0/3/3
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\  3 0/14
-        \\    2 0/2
+        \\  3 0/14/14
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\    2 0/12
+        \\    2 0/12/12
         \\      1 `/`
         \\      1 `hello world`
     , try debugStr(idc_if_it_leaks, e9));
@@ -1800,25 +1800,25 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e10 = try insertChars(e9, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e9);
     try eqStr(
-        \\6 1/21
-        \\  5 1/7
-        \\    4 1/4
-        \\      3 1/3
-        \\        2 1/2
+        \\6 1/21/21
+        \\  5 1/7/7
+        \\    4 1/4/4
+        \\      3 1/3/3
+        \\        2 1/2/2
         \\          1 B| `/`
         \\          1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\    3 0/3
-        \\      2 0/2
+        \\    3 0/3/3
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\  3 0/14
-        \\    2 0/2
+        \\  3 0/14/14
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\    2 0/12
+        \\    2 0/12/12
         \\      1 `/`
         \\      1 `hello world`
     , try debugStr(idc_if_it_leaks, e10));
@@ -1828,25 +1828,25 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e10_rebalanced);
         freeRcNode(testing_allocator, e10);
         try eqStr(
-            \\5 1/21
-            \\  4 1/4
-            \\    3 1/3
-            \\      2 1/2
+            \\5 1/21/21
+            \\  4 1/4/4
+            \\    3 1/3/3
+            \\      2 1/2/2
             \\        1 B| `/`
             \\        1 `/`
             \\      1 `/`
             \\    1 `/`
-            \\  4 0/17
-            \\    3 0/3
-            \\      2 0/2
+            \\  4 0/17/17
+            \\    3 0/3/3
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
             \\      1 `/`
-            \\    3 0/14
-            \\      2 0/2
+            \\    3 0/14/14
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\      2 0/12
+            \\      2 0/12/12
             \\        1 `/`
             \\        1 `hello world`
         , try debugStr(idc_if_it_leaks, e10b));
@@ -1857,27 +1857,27 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e11 = try insertChars(e10b, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e10b);
     try eqStr(
-        \\6 1/22
-        \\  5 1/5
-        \\    4 1/4
-        \\      3 1/3
-        \\        2 1/2
+        \\6 1/22/22
+        \\  5 1/5/5
+        \\    4 1/4/4
+        \\      3 1/3/3
+        \\        2 1/2/2
         \\          1 B| `/`
         \\          1 `/`
         \\        1 `/`
         \\      1 `/`
         \\    1 `/`
-        \\  4 0/17
-        \\    3 0/3
-        \\      2 0/2
+        \\  4 0/17/17
+        \\    3 0/3/3
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\    3 0/14
-        \\      2 0/2
+        \\    3 0/14/14
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
-        \\      2 0/12
+        \\      2 0/12/12
         \\        1 `/`
         \\        1 `hello world`
     , try debugStr(idc_if_it_leaks, e11));
@@ -1890,29 +1890,29 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e12 = try insertChars(e11, testing_allocator, &content_arena, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e11);
     try eqStr(
-        \\7 1/23
-        \\  6 1/6
-        \\    5 1/5
-        \\      4 1/4
-        \\        3 1/3
-        \\          2 1/2
+        \\7 1/23/23
+        \\  6 1/6/6
+        \\    5 1/5/5
+        \\      4 1/4/4
+        \\        3 1/3/3
+        \\          2 1/2/2
         \\            1 B| `/`
         \\            1 `/`
         \\          1 `/`
         \\        1 `/`
         \\      1 `/`
         \\    1 `/`
-        \\  4 0/17
-        \\    3 0/3
-        \\      2 0/2
+        \\  4 0/17/17
+        \\    3 0/3/3
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\    3 0/14
-        \\      2 0/2
+        \\    3 0/14/14
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
-        \\      2 0/12
+        \\      2 0/12/12
         \\        1 `/`
         \\        1 `hello world`
     , try debugStr(idc_if_it_leaks, e12));
@@ -1922,29 +1922,29 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e12_rebalanced);
         freeRcNode(testing_allocator, e12);
         try eqStr(
-            \\5 1/23
-            \\  4 1/6
-            \\    3 1/4
-            \\      2 1/2
+            \\5 1/23/23
+            \\  4 1/6/6
+            \\    3 1/4/4
+            \\      2 1/2/2
             \\        1 B| `/`
             \\        1 `/`
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `/`
             \\      1 `/`
-            \\  4 0/17
-            \\    3 0/3
-            \\      2 0/2
+            \\  4 0/17/17
+            \\    3 0/3/3
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
             \\      1 `/`
-            \\    3 0/14
-            \\      2 0/2
+            \\    3 0/14/14
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\      2 0/12
+            \\      2 0/12/12
             \\        1 `/`
             \\        1 `hello world`
         , try debugStr(idc_if_it_leaks, e12b));
@@ -1955,31 +1955,31 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e13 = try insertChars(e12b, testing_allocator, &content_arena, "a", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e12b);
     try eqStr(
-        \\6 1/24
-        \\  5 1/7
-        \\    4 1/5
-        \\      3 1/3
-        \\        2 1/2
+        \\6 1/24/24
+        \\  5 1/7/7
+        \\    4 1/5/5
+        \\      3 1/3/3
+        \\        2 1/2/2
         \\          1 B| `a`
         \\          1 `/`
         \\        1 `/`
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
-        \\    2 0/2
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\  4 0/17
-        \\    3 0/3
-        \\      2 0/2
+        \\  4 0/17/17
+        \\    3 0/3/3
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\    3 0/14
-        \\      2 0/2
+        \\    3 0/14/14
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
-        \\      2 0/12
+        \\      2 0/12/12
         \\        1 `/`
         \\        1 `hello world`
     , try debugStr(idc_if_it_leaks, e13));
@@ -1992,33 +1992,33 @@ test "insert at beginning then balance, one character at a time" {
     _, _, const e14 = try insertChars(e13, testing_allocator, &content_arena, "a", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e13);
     try eqStr(
-        \\7 1/25
-        \\  6 1/8
-        \\    5 1/6
-        \\      4 1/4
-        \\        3 1/3
-        \\          2 1/2
+        \\7 1/25/25
+        \\  6 1/8/8
+        \\    5 1/6/6
+        \\      4 1/4/4
+        \\        3 1/3/3
+        \\          2 1/2/2
         \\            1 B| `a`
         \\            1 `a`
         \\          1 `/`
         \\        1 `/`
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
-        \\    2 0/2
+        \\    2 0/2/2
         \\      1 `/`
         \\      1 `/`
-        \\  4 0/17
-        \\    3 0/3
-        \\      2 0/2
+        \\  4 0/17/17
+        \\    3 0/3/3
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
         \\      1 `/`
-        \\    3 0/14
-        \\      2 0/2
+        \\    3 0/14/14
+        \\      2 0/2/2
         \\        1 `/`
         \\        1 `/`
-        \\      2 0/12
+        \\      2 0/12/12
         \\        1 `/`
         \\        1 `hello world`
     , try debugStr(idc_if_it_leaks, e14));
@@ -2028,33 +2028,33 @@ test "insert at beginning then balance, one character at a time" {
         try eq(true, e14_rebalanced);
         freeRcNode(testing_allocator, e14);
         try eqStr(
-            \\5 1/25
-            \\  4 1/8
-            \\    3 1/4
-            \\      2 1/2
+            \\5 1/25/25
+            \\  4 1/8/8
+            \\    3 1/4/4
+            \\      2 1/2/2
             \\        1 B| `a`
             \\        1 `a`
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\    3 0/4
-            \\      2 0/2
+            \\    3 0/4/4
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\  4 0/17
-            \\    3 0/3
-            \\      2 0/2
+            \\  4 0/17/17
+            \\    3 0/3/3
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
             \\      1 `/`
-            \\    3 0/14
-            \\      2 0/2
+            \\    3 0/14/14
+            \\      2 0/2/2
             \\        1 `/`
             \\        1 `/`
-            \\      2 0/12
+            \\      2 0/12/12
             \\        1 `/`
             \\        1 `hello world`
         , try debugStr(idc_if_it_leaks, e14b));
@@ -2079,13 +2079,13 @@ test "insert 'a' one after another to a string" {
     const e1line, const e1col, const e1 = try insertChars(root, testing_allocator, &content_arena, "1", .{ .line = 0, .col = 0 });
     try list.append(root);
     try eqStr(
-        \\4 4/74
-        \\  3 2/37
-        \\    2 1/15
+        \\4 4/74/71
+        \\  3 2/37/35
+        \\    2 1/15/14
         \\      1 B| `1`
         \\      1 `const a = 10;` |E
         \\    1 B| `var not_false = true;` |E Rc:2
-        \\  2 2/37 Rc:2
+        \\  2 2/37/36 Rc:2
         \\    1 B| `const Allocator = std.mem.Allocator;` |E
         \\    1 B| ``
     , try debugStr(idc_if_it_leaks, e1));
@@ -2097,15 +2097,15 @@ test "insert 'a' one after another to a string" {
     const e2line, const e2col, const e2 = try insertChars(e1, testing_allocator, &content_arena, "2", .{ .line = e1line, .col = e1col });
     try list.append(e1);
     try eqStr(
-        \\5 4/75
-        \\  4 2/38
-        \\    3 1/16
-        \\      2 1/2
+        \\5 4/75/72
+        \\  4 2/38/36
+        \\    3 1/16/15
+        \\      2 1/2/2
         \\        1 B| `1`
         \\        1 `2`
         \\      1 `const a = 10;` |E Rc:2
         \\    1 B| `var not_false = true;` |E Rc:3
-        \\  2 2/37 Rc:3
+        \\  2 2/37/36 Rc:3
         \\    1 B| `const Allocator = std.mem.Allocator;` |E
         \\    1 B| ``
     , try debugStr(idc_if_it_leaks, e2));
@@ -2115,15 +2115,15 @@ test "insert 'a' one after another to a string" {
         try eq(true, e2_has_changes);
         freeRcNode(testing_allocator, e2);
         try eqStr(
-            \\4 4/75
-            \\  3 2/38
-            \\    2 1/2
+            \\4 4/75/72
+            \\  3 2/38/36
+            \\    2 1/2/2
             \\      1 B| `1`
             \\      1 `2`
-            \\    2 1/36
+            \\    2 1/36/34
             \\      1 `const a = 10;` |E Rc:2
             \\      1 B| `var not_false = true;` |E Rc:3
-            \\  2 2/37 Rc:3
+            \\  2 2/37/36 Rc:3
             \\    1 B| `const Allocator = std.mem.Allocator;` |E
             \\    1 B| ``
         , try debugStr(idc_if_it_leaks, e2b));
@@ -2134,17 +2134,17 @@ test "insert 'a' one after another to a string" {
     const e3line, const e3col, const e3 = try insertChars(e2b, testing_allocator, &content_arena, "3", .{ .line = e2line, .col = e2col });
     try list.append(e2b);
     try eqStr(
-        \\5 4/76
-        \\  4 2/39
-        \\    3 1/3
+        \\5 4/76/73
+        \\  4 2/39/37
+        \\    3 1/3/3
         \\      1 B| `1` Rc:2
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `2`
         \\        1 `3`
-        \\    2 1/36 Rc:2
+        \\    2 1/36/34 Rc:2
         \\      1 `const a = 10;` |E Rc:2
         \\      1 B| `var not_false = true;` |E Rc:3
-        \\  2 2/37 Rc:4
+        \\  2 2/37/36 Rc:4
         \\    1 B| `const Allocator = std.mem.Allocator;` |E
         \\    1 B| ``
     , try debugStr(idc_if_it_leaks, e3));
@@ -2154,17 +2154,17 @@ test "insert 'a' one after another to a string" {
         try eq(true, e3_has_changes);
         freeRcNode(testing_allocator, e3);
         try eqStr(
-            \\4 4/76
-            \\  3 1/3
+            \\4 4/76/73
+            \\  3 1/3/3
             \\    1 B| `1` Rc:2
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `2`
             \\      1 `3`
-            \\  3 3/73
-            \\    2 1/36 Rc:2
+            \\  3 3/73/70
+            \\    2 1/36/34 Rc:2
             \\      1 `const a = 10;` |E Rc:2
             \\      1 B| `var not_false = true;` |E Rc:3
-            \\    2 2/37 Rc:4
+            \\    2 2/37/36 Rc:4
             \\      1 B| `const Allocator = std.mem.Allocator;` |E
             \\      1 B| ``
         , try debugStr(idc_if_it_leaks, e3b));
@@ -2175,19 +2175,19 @@ test "insert 'a' one after another to a string" {
     const e4line, const e4col, const e4 = try insertChars(e3b, testing_allocator, &content_arena, "4", .{ .line = e3line, .col = e3col });
     try list.append(e3b);
     try eqStr(
-        \\5 4/77
-        \\  4 1/4
+        \\5 4/77/74
+        \\  4 1/4/4
         \\    1 B| `1` Rc:3
-        \\    3 0/3
+        \\    3 0/3/3
         \\      1 `2` Rc:2
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `3`
         \\        1 `4`
-        \\  3 3/73 Rc:2
-        \\    2 1/36 Rc:2
+        \\  3 3/73/70 Rc:2
+        \\    2 1/36/34 Rc:2
         \\      1 `const a = 10;` |E Rc:2
         \\      1 B| `var not_false = true;` |E Rc:3
-        \\    2 2/37 Rc:4
+        \\    2 2/37/36 Rc:4
         \\      1 B| `const Allocator = std.mem.Allocator;` |E
         \\      1 B| ``
     , try debugStr(idc_if_it_leaks, e4));
@@ -2199,21 +2199,21 @@ test "insert 'a' one after another to a string" {
     const e5line, const e5col, const e5 = try insertChars(e4, testing_allocator, &content_arena, "5", .{ .line = e4line, .col = e4col });
     try list.append(e4);
     try eqStr(
-        \\6 4/78
-        \\  5 1/5
+        \\6 4/78/75
+        \\  5 1/5/5
         \\    1 B| `1` Rc:4
-        \\    4 0/4
+        \\    4 0/4/4
         \\      1 `2` Rc:3
-        \\      3 0/3
+        \\      3 0/3/3
         \\        1 `3` Rc:2
-        \\        2 0/2
+        \\        2 0/2/2
         \\          1 `4`
         \\          1 `5`
-        \\  3 3/73 Rc:3
-        \\    2 1/36 Rc:2
+        \\  3 3/73/70 Rc:3
+        \\    2 1/36/34 Rc:2
         \\      1 `const a = 10;` |E Rc:2
         \\      1 B| `var not_false = true;` |E Rc:3
-        \\    2 2/37 Rc:4
+        \\    2 2/37/36 Rc:4
         \\      1 B| `const Allocator = std.mem.Allocator;` |E
         \\      1 B| ``
     , try debugStr(idc_if_it_leaks, e5));
@@ -2223,21 +2223,21 @@ test "insert 'a' one after another to a string" {
         try eq(true, e5_has_changes);
         freeRcNode(testing_allocator, e5);
         try eqStr(
-            \\5 4/78
-            \\  4 1/5
-            \\    3 1/3
+            \\5 4/78/75
+            \\  4 1/5/5
+            \\    3 1/3/3
             \\      1 B| `1` Rc:4
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `2` Rc:3
             \\        1 `3` Rc:2
-            \\    2 0/2
+            \\    2 0/2/2
             \\      1 `4`
             \\      1 `5`
-            \\  3 3/73 Rc:3
-            \\    2 1/36 Rc:2
+            \\  3 3/73/70 Rc:3
+            \\    2 1/36/34 Rc:2
             \\      1 `const a = 10;` |E Rc:2
             \\      1 B| `var not_false = true;` |E Rc:3
-            \\    2 2/37 Rc:4
+            \\    2 2/37/36 Rc:4
             \\      1 B| `const Allocator = std.mem.Allocator;` |E
             \\      1 B| ``
         , try debugStr(idc_if_it_leaks, e5b));
@@ -2248,23 +2248,23 @@ test "insert 'a' one after another to a string" {
     const e6line, const e6col, const e6 = try insertChars(e5b, testing_allocator, &content_arena, "6", .{ .line = e5line, .col = e5col });
     try list.append(e5b);
     try eqStr(
-        \\5 4/79
-        \\  4 1/6
-        \\    3 1/3 Rc:2
+        \\5 4/79/76
+        \\  4 1/6/6
+        \\    3 1/3/3 Rc:2
         \\      1 B| `1` Rc:4
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `2` Rc:3
         \\        1 `3` Rc:2
-        \\    3 0/3
+        \\    3 0/3/3
         \\      1 `4` Rc:2
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `5`
         \\        1 `6`
-        \\  3 3/73 Rc:4
-        \\    2 1/36 Rc:2
+        \\  3 3/73/70 Rc:4
+        \\    2 1/36/34 Rc:2
         \\      1 `const a = 10;` |E Rc:2
         \\      1 B| `var not_false = true;` |E Rc:3
-        \\    2 2/37 Rc:4
+        \\    2 2/37/36 Rc:4
         \\      1 B| `const Allocator = std.mem.Allocator;` |E
         \\      1 B| ``
     , try debugStr(idc_if_it_leaks, e6));
@@ -2276,25 +2276,25 @@ test "insert 'a' one after another to a string" {
     const e7line, const e7col, const e7 = try insertChars(e6, testing_allocator, &content_arena, "7", .{ .line = e6line, .col = e6col });
     try list.append(e6);
     try eqStr(
-        \\6 4/80
-        \\  5 1/7
-        \\    3 1/3 Rc:3
+        \\6 4/80/77
+        \\  5 1/7/7
+        \\    3 1/3/3 Rc:3
         \\      1 B| `1` Rc:4
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `2` Rc:3
         \\        1 `3` Rc:2
-        \\    4 0/4
+        \\    4 0/4/4
         \\      1 `4` Rc:3
-        \\      3 0/3
+        \\      3 0/3/3
         \\        1 `5` Rc:2
-        \\        2 0/2
+        \\        2 0/2/2
         \\          1 `6`
         \\          1 `7`
-        \\  3 3/73 Rc:5
-        \\    2 1/36 Rc:2
+        \\  3 3/73/70 Rc:5
+        \\    2 1/36/34 Rc:2
         \\      1 `const a = 10;` |E Rc:2
         \\      1 B| `var not_false = true;` |E Rc:3
-        \\    2 2/37 Rc:4
+        \\    2 2/37/36 Rc:4
         \\      1 B| `const Allocator = std.mem.Allocator;` |E
         \\      1 B| ``
     , try debugStr(idc_if_it_leaks, e7));
@@ -2304,25 +2304,25 @@ test "insert 'a' one after another to a string" {
         try eq(true, e7_has_changes);
         freeRcNode(testing_allocator, e7);
         try eqStr(
-            \\5 4/80
-            \\  4 1/4
-            \\    3 1/3 Rc:3
+            \\5 4/80/77
+            \\  4 1/4/4
+            \\    3 1/3/3 Rc:3
             \\      1 B| `1` Rc:4
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `2` Rc:3
             \\        1 `3` Rc:2
             \\    1 `4` Rc:3
-            \\  4 3/76
-            \\    3 0/3
+            \\  4 3/76/73
+            \\    3 0/3/3
             \\      1 `5` Rc:2
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `6`
             \\        1 `7`
-            \\    3 3/73 Rc:5
-            \\      2 1/36 Rc:2
+            \\    3 3/73/70 Rc:5
+            \\      2 1/36/34 Rc:2
             \\        1 `const a = 10;` |E Rc:2
             \\        1 B| `var not_false = true;` |E Rc:3
-            \\      2 2/37 Rc:4
+            \\      2 2/37/36 Rc:4
             \\        1 B| `const Allocator = std.mem.Allocator;` |E
             \\        1 B| ``
         , try debugStr(idc_if_it_leaks, e7b));
@@ -2333,27 +2333,27 @@ test "insert 'a' one after another to a string" {
     const e8line, const e8col, const e8 = try insertChars(e7b, testing_allocator, &content_arena, "8", .{ .line = e7line, .col = e7col });
     try list.append(e7b);
     try eqStr(
-        \\6 4/81
-        \\  4 1/4 Rc:2
-        \\    3 1/3 Rc:3
+        \\6 4/81/78
+        \\  4 1/4/4 Rc:2
+        \\    3 1/3/3 Rc:3
         \\      1 B| `1` Rc:4
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `2` Rc:3
         \\        1 `3` Rc:2
         \\    1 `4` Rc:3
-        \\  5 3/77
-        \\    4 0/4
+        \\  5 3/77/74
+        \\    4 0/4/4
         \\      1 `5` Rc:3
-        \\      3 0/3
+        \\      3 0/3/3
         \\        1 `6` Rc:2
-        \\        2 0/2
+        \\        2 0/2/2
         \\          1 `7`
         \\          1 `8`
-        \\    3 3/73 Rc:6
-        \\      2 1/36 Rc:2
+        \\    3 3/73/70 Rc:6
+        \\      2 1/36/34 Rc:2
         \\        1 `const a = 10;` |E Rc:2
         \\        1 B| `var not_false = true;` |E Rc:3
-        \\      2 2/37 Rc:4
+        \\      2 2/37/36 Rc:4
         \\        1 B| `const Allocator = std.mem.Allocator;` |E
         \\        1 B| ``
     , try debugStr(idc_if_it_leaks, e8));
@@ -2366,29 +2366,29 @@ test "insert 'a' one after another to a string" {
     try list.append(e8);
 
     try eqStr(
-        \\7 4/82
-        \\  4 1/4 Rc:3
-        \\    3 1/3 Rc:3
+        \\7 4/82/79
+        \\  4 1/4/4 Rc:3
+        \\    3 1/3/3 Rc:3
         \\      1 B| `1` Rc:4
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `2` Rc:3
         \\        1 `3` Rc:2
         \\    1 `4` Rc:3
-        \\  6 3/78
-        \\    5 0/5
+        \\  6 3/78/75
+        \\    5 0/5/5
         \\      1 `5` Rc:4
-        \\      4 0/4
+        \\      4 0/4/4
         \\        1 `6` Rc:3
-        \\        3 0/3
+        \\        3 0/3/3
         \\          1 `7` Rc:2
-        \\          2 0/2
+        \\          2 0/2/2
         \\            1 `8`
         \\            1 `9`
-        \\    3 3/73 Rc:7
-        \\      2 1/36 Rc:2
+        \\    3 3/73/70 Rc:7
+        \\      2 1/36/34 Rc:2
         \\        1 `const a = 10;` |E Rc:2
         \\        1 B| `var not_false = true;` |E Rc:3
-        \\      2 2/37 Rc:4
+        \\      2 2/37/36 Rc:4
         \\        1 B| `const Allocator = std.mem.Allocator;` |E
         \\        1 B| ``
     , try debugStr(idc_if_it_leaks, e9));
@@ -2396,29 +2396,29 @@ test "insert 'a' one after another to a string" {
     const e9_has_changes, const e9b = try balance(testing_allocator, e9);
     // after balance() before freeing list.items
     try eqStr(
-        \\7 4/82
-        \\  4 1/4 Rc:3
-        \\    3 1/3 Rc:3
+        \\7 4/82/79
+        \\  4 1/4/4 Rc:3
+        \\    3 1/3/3 Rc:3
         \\      1 B| `1` Rc:5
-        \\      2 0/2
+        \\      2 0/2/2
         \\        1 `2` Rc:4
         \\        1 `3` Rc:3
         \\    1 `4` Rc:4
-        \\  6 3/78
-        \\    5 0/5
+        \\  6 3/78/75
+        \\    5 0/5/5
         \\      1 `5` Rc:5
-        \\      4 0/4
+        \\      4 0/4/4
         \\        1 `6` Rc:4
-        \\        3 0/3
+        \\        3 0/3/3
         \\          1 `7` Rc:3
-        \\          2 0/2 Rc:2
+        \\          2 0/2/2 Rc:2
         \\            1 `8`
         \\            1 `9`
-        \\    3 3/73 Rc:8
-        \\      2 1/36 Rc:2
+        \\    3 3/73/70 Rc:8
+        \\      2 1/36/34 Rc:2
         \\        1 `const a = 10;` |E Rc:2
         \\        1 B| `var not_false = true;` |E Rc:3
-        \\      2 2/37 Rc:4
+        \\      2 2/37/36 Rc:4
         \\        1 B| `const Allocator = std.mem.Allocator;` |E
         \\        1 B| ``
     , try debugStr(idc_if_it_leaks, e9));
@@ -2426,29 +2426,29 @@ test "insert 'a' one after another to a string" {
     {
         try eq(true, e9_has_changes);
         try eqStr(
-            \\5 4/82
-            \\  4 1/7
-            \\    3 1/4
-            \\      2 1/2
+            \\5 4/82/79
+            \\  4 1/7/7
+            \\    3 1/4/4
+            \\      2 1/2/2
             \\        1 B| `1` Rc:5
             \\        1 `2` Rc:4
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `3` Rc:3
             \\        1 `4` Rc:4
-            \\    3 0/3
+            \\    3 0/3/3
             \\      1 `5` Rc:5
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `6` Rc:4
             \\        1 `7` Rc:3
-            \\  4 3/75
-            \\    2 0/2 Rc:2
+            \\  4 3/75/72
+            \\    2 0/2/2 Rc:2
             \\      1 `8`
             \\      1 `9`
-            \\    3 3/73 Rc:8
-            \\      2 1/36 Rc:2
+            \\    3 3/73/70 Rc:8
+            \\      2 1/36/34 Rc:2
             \\        1 `const a = 10;` |E Rc:2
             \\        1 B| `var not_false = true;` |E Rc:3
-            \\      2 2/37 Rc:4
+            \\      2 2/37/36 Rc:4
             \\        1 B| `const Allocator = std.mem.Allocator;` |E
             \\        1 B| ``
         , try debugStr(idc_if_it_leaks, e9b));
@@ -2465,29 +2465,29 @@ test "insert 'a' one after another to a string" {
         }
 
         try eqStr(
-            \\5 4/82
-            \\  4 1/7
-            \\    3 1/4
-            \\      2 1/2
+            \\5 4/82/79
+            \\  4 1/7/7
+            \\    3 1/4/4
+            \\      2 1/2/2
             \\        1 B| `1`
             \\        1 `2`
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `3`
             \\        1 `4`
-            \\    3 0/3
+            \\    3 0/3/3
             \\      1 `5`
-            \\      2 0/2
+            \\      2 0/2/2
             \\        1 `6`
             \\        1 `7`
-            \\  4 3/75
-            \\    2 0/2
+            \\  4 3/75/72
+            \\    2 0/2/2
             \\      1 `8`
             \\      1 `9`
-            \\    3 3/73
-            \\      2 1/36
+            \\    3 3/73/70
+            \\      2 1/36/34
             \\        1 `const a = 10;` |E
             \\        1 B| `var not_false = true;` |E
-            \\      2 2/37
+            \\      2 2/37/36
             \\        1 B| `const Allocator = std.mem.Allocator;` |E
             \\        1 B| ``
         , try debugStr(idc_if_it_leaks, e9b));
@@ -2527,19 +2527,19 @@ test rotateLeft {
         , try debugStr(idc_if_it_leaks, acd));
 
         try eqStr(
-            \\3 1/4
+            \\3 1/4/4
             \\  1 B| `A` Rc:2
-            \\  2 0/3
+            \\  2 0/3/3
             \\    1 `B` Rc:2
             \\    1 `CD`
         , try debugStr(idc_if_it_leaks, abcd));
 
         try eqStr(
-            \\4 1/5
+            \\4 1/5/5
             \\  1 B| `A` Rc:2
-            \\  3 0/4
+            \\  3 0/4/4
             \\    1 `B` Rc:2
-            \\    2 0/3
+            \\    2 0/3/3
             \\      1 `CD`
             \\      1 `E`
         , try debugStr(idc_if_it_leaks, abcde));
@@ -2549,11 +2549,11 @@ test rotateLeft {
 
     const abcde_rotated = try rotateLeft(testing_allocator, abcde);
     try eqStr(
-        \\3 1/5
-        \\  2 1/2
+        \\3 1/5/5
+        \\  2 1/2/2
         \\    1 B| `A` Rc:3
         \\    1 `B` Rc:3
-        \\  2 0/3 Rc:2
+        \\  2 0/3/3 Rc:2
         \\    1 `CD`
         \\    1 `E`
     , try debugStr(idc_if_it_leaks, abcde_rotated));
@@ -2565,19 +2565,19 @@ test rotateLeft {
         , try debugStr(idc_if_it_leaks, acd));
 
         try eqStr(
-            \\3 1/4
+            \\3 1/4/4
             \\  1 B| `A` Rc:3
-            \\  2 0/3
+            \\  2 0/3/3
             \\    1 `B` Rc:3
             \\    1 `CD`
         , try debugStr(idc_if_it_leaks, abcd));
 
         try eqStr(
-            \\4 1/5
+            \\4 1/5/5
             \\  1 B| `A` Rc:3
-            \\  3 0/4
+            \\  3 0/4/4
             \\    1 `B` Rc:3
-            \\    2 0/3 Rc:2
+            \\    2 0/3/3 Rc:2
             \\      1 `CD`
             \\      1 `E`
         , try debugStr(idc_if_it_leaks, abcde));
@@ -2613,23 +2613,23 @@ test rotateRight {
         , try debugStr(idc_if_it_leaks, def));
 
         try eqStr(
-            \\2 1/4
+            \\2 1/4/4
             \\  1 B| `C`
             \\  1 `DEF` Rc:3
         , try debugStr(idc_if_it_leaks, cdef));
 
         try eqStr(
-            \\3 1/5
-            \\  2 1/2
+            \\3 1/5/5
+            \\  2 1/2/2
             \\    1 B| `B`
             \\    1 `C` Rc:2
             \\  1 `DEF` Rc:3
         , try debugStr(idc_if_it_leaks, bcdef));
 
         try eqStr(
-            \\4 1/6
-            \\  3 1/3
-            \\    2 1/2
+            \\4 1/6/6
+            \\  3 1/3/3
+            \\    2 1/2/2
             \\      1 B| `A`
             \\      1 `B`
             \\    1 `C` Rc:2
@@ -2641,11 +2641,11 @@ test rotateRight {
 
     const abcdef_rotated = try rotateRight(testing_allocator, abcdef);
     try eqStr(
-        \\3 1/6
-        \\  2 1/2 Rc:2
+        \\3 1/6/6
+        \\  2 1/2/2 Rc:2
         \\    1 B| `A`
         \\    1 `B`
-        \\  2 0/4
+        \\  2 0/4/4
         \\    1 `C` Rc:3
         \\    1 `DEF` Rc:4
     , try debugStr(idc_if_it_leaks, abcdef_rotated));
@@ -2657,23 +2657,23 @@ test rotateRight {
         , try debugStr(idc_if_it_leaks, def));
 
         try eqStr(
-            \\2 1/4
+            \\2 1/4/4
             \\  1 B| `C`
             \\  1 `DEF` Rc:4
         , try debugStr(idc_if_it_leaks, cdef));
 
         try eqStr(
-            \\3 1/5
-            \\  2 1/2
+            \\3 1/5/5
+            \\  2 1/2/2
             \\    1 B| `B`
             \\    1 `C` Rc:3
             \\  1 `DEF` Rc:4
         , try debugStr(idc_if_it_leaks, bcdef));
 
         try eqStr(
-            \\4 1/6
-            \\  3 1/3
-            \\    2 1/2 Rc:2
+            \\4 1/6/6
+            \\  3 1/3/3
+            \\    2 1/2/2 Rc:2
             \\      1 B| `A`
             \\      1 `B`
             \\    1 `C` Rc:3
@@ -2700,7 +2700,13 @@ fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent
         .branch => |branch| {
             const strong_count = if (node.strongCount() == 1) "" else try std.fmt.allocPrint(a, " Rc:{d}", .{node.strongCount()});
             defer if (strong_count.len > 0) a.free(strong_count);
-            const content = try std.fmt.allocPrint(a, "{d} {d}/{d}{s}", .{ branch.weights.depth, branch.weights.bols, branch.weights.len, strong_count });
+            const content = try std.fmt.allocPrint(a, "{d} {d}/{d}/{d}{s}", .{
+                branch.weights.depth,
+                branch.weights.bols,
+                branch.weights.len,
+                branch.weights.noc,
+                strong_count,
+            });
             defer a.free(content);
             try result.appendSlice(content);
             try _buildDebugStr(a, branch.left, result, indent_level + 2);
@@ -2888,15 +2894,15 @@ test getByteOffsetOfPosition {
         const world_semicolon = try Node.new(a, try Leaf.new(a, "    \\\\world", true, true), semicolon);
         const root = try Node.new(a, const_hello, world_semicolon);
         const root_debug_str =
-            \\4 4/37
-            \\  3 2/24
+            \\4 4/37/34
+            \\  3 2/24/22
             \\    1 B| `const str =`
-            \\    2 1/13
+            \\    2 1/13/11
             \\      1 `` |E
             \\      1 B| `    \\hello` |E
-            \\  3 2/13
+            \\  3 2/13/12
             \\    1 B| `    \\world` |E
-            \\    2 1/1
+            \\    2 1/1/1
             \\      1 B| ``
             \\      1 `;`
         ;
@@ -2917,29 +2923,29 @@ test getByteOffsetOfPosition {
         const nodes = try insertCharOneAfterAnother(idc_if_it_leaks, &arena, source);
         const root = nodes.items[nodes.items.len - 1];
         const root_debug_str =
-            \\13 4/13
+            \\13 4/13/10
             \\  1 B| `1` Rc:12
-            \\  12 3/12
+            \\  12 3/12/9
             \\    1 `` |E Rc:12
-            \\    11 3/11
+            \\    11 3/11/9
             \\      1 B| `2` Rc:10
-            \\      10 2/10
+            \\      10 2/10/8
             \\        1 `2` Rc:9
-            \\        9 2/9
+            \\        9 2/9/7
             \\          1 `` |E Rc:9
-            \\          8 2/8
+            \\          8 2/8/7
             \\            1 B| `3` Rc:7
-            \\            7 1/7
+            \\            7 1/7/6
             \\              1 `3` Rc:6
-            \\              6 1/6
+            \\              6 1/6/5
             \\                1 `3` Rc:5
-            \\                5 1/5
+            \\                5 1/5/4
             \\                  1 `` |E Rc:5
-            \\                  4 1/4
+            \\                  4 1/4/4
             \\                    1 B| `4` Rc:3
-            \\                    3 0/3
+            \\                    3 0/3/3
             \\                      1 `4` Rc:2
-            \\                      2 0/2
+            \\                      2 0/2/2
             \\                        1 `4`
             \\                        1 `4`
         ;
@@ -2961,18 +2967,18 @@ test getByteOffsetOfPosition {
         const reverse_input_sequence = "4444\n333\n22\n1";
         const root = try __inputCharsOneAfterAnotherAt0Position(a, &arena, reverse_input_sequence);
         const root_debug_str =
-            \\13 4/13
-            \\  12 4/12
-            \\    11 4/11
-            \\      10 4/10
-            \\        9 3/9
-            \\          8 3/8
-            \\            7 3/7
-            \\              6 3/6
-            \\                5 2/5
-            \\                  4 2/4
-            \\                    3 2/3
-            \\                      2 1/2
+            \\13 4/13/10
+            \\  12 4/12/9
+            \\    11 4/11/8
+            \\      10 4/10/7
+            \\        9 3/9/6
+            \\          8 3/8/6
+            \\            7 3/7/5
+            \\              6 3/6/4
+            \\                5 2/5/3
+            \\                  4 2/4/3
+            \\                    3 2/3/2
+            \\                      2 1/2/1
             \\                        1 B| `1`
             \\                        1 `` |E
             \\                      1 B| `2` Rc:2
@@ -3340,25 +3346,25 @@ test tryOutWalkLineCol {
         _, _, const e6 = try insertChars(e5, a, &arena, "s", .{ .line = 0, .col = 10 });
 
         try eqStr(
-            \\9 5/31
-            \\  8 2/17
-            \\    7 1/12
+            \\9 5/31/27
+            \\  8 2/17/15
+            \\    7 1/12/11
             \\      1 B| `hello` Rc:6
-            \\      6 0/7
+            \\      6 0/7/6
             \\        1 `_` Rc:5
-            \\        5 0/6
+            \\        5 0/6/5
             \\          1 `v` Rc:4
-            \\          4 0/5
+            \\          4 0/5/4
             \\            1 `e` Rc:3
-            \\            3 0/4
+            \\            3 0/4/3
             \\              1 `n` Rc:2
-            \\              2 0/3
+            \\              2 0/3/2
             \\                1 `u`
             \\                1 `s` |E
             \\    1 B| `from` |E Rc:7
-            \\  3 3/14 Rc:7
+            \\  3 3/14/12 Rc:7
             \\    1 B| `the` |E
-            \\    2 2/10
+            \\    2 2/10/9
             \\      1 B| `other` |E
             \\      1 B| `side`
         , try debugStr(a, e6));
@@ -3391,25 +3397,25 @@ test tryOutWalkLineCol {
         _, _, const e6 = try insertChars(e5, a, &arena, "s", .{ .line = 1, .col = 10 });
 
         try eqStr(
-            \\9 5/31
-            \\  8 2/17
+            \\9 5/31/27
+            \\  8 2/17/15
             \\    1 B| `from` |E Rc:7
-            \\    7 1/12
+            \\    7 1/12/11
             \\      1 B| `hello` Rc:6
-            \\      6 0/7
+            \\      6 0/7/6
             \\        1 `_` Rc:5
-            \\        5 0/6
+            \\        5 0/6/5
             \\          1 `v` Rc:4
-            \\          4 0/5
+            \\          4 0/5/4
             \\            1 `e` Rc:3
-            \\            3 0/4
+            \\            3 0/4/3
             \\              1 `n` Rc:2
-            \\              2 0/3
+            \\              2 0/3/2
             \\                1 `u`
             \\                1 `s` |E
-            \\  3 3/14 Rc:7
+            \\  3 3/14/12 Rc:7
             \\    1 B| `the` |E
-            \\    2 2/10
+            \\    2 2/10/9
             \\      1 B| `other` |E
             \\      1 B| `side`
         , try debugStr(a, e6));
