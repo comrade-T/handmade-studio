@@ -139,7 +139,13 @@ pub const WalkResult = struct {
     }
 };
 
-// add walkLineColReverse()
+///////////////////////////// TODO:
+
+// TODO: add walkLineColReverse()
+// TODO: add eqRange() and use it in QueryFilter instead of getRange()
+// TODO: add seekTo() and seekPrevTo() for Vim cursor movements & text objects
+
+/////////////////////////////
 
 fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) WalkError!WalkResult {
     switch (node.value.*) {
@@ -3465,6 +3471,116 @@ test tryOutWalkLineCol {
         try eqStr("ide", tryOutWalkLineCol(a, e6, true, 4, 1));
         try eqStr("de", tryOutWalkLineCol(a, e6, true, 4, 2));
         try eqStr("e", tryOutWalkLineCol(a, e6, true, 4, 3));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// eqRange
+
+const EqRangeCtx = struct {
+    str: []const u8,
+    offset: usize = 0,
+    matched_offset: usize = 0,
+    totally_match: bool = false,
+
+    start_line: usize,
+    start_col: usize,
+    end_line: usize,
+    end_col: usize,
+
+    current_line: usize,
+    col: usize,
+
+    fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        assert(ctx.col >= decrement_col_by);
+        ctx.col -|= decrement_col_by;
+    }
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        defer ctx.col = 0;
+        assert(ctx.col <= leaf.noc);
+
+        if (ctx.current_line == ctx.start_line) {
+            if (ctx.start_line == ctx.end_line) {
+                const end_col = ctx.end_col;
+                var leaf_start: ?usize = null;
+                var leaf_end: ?usize = null;
+
+                var i: usize = 0;
+                var iter = code_point.Iterator{ .bytes = leaf.buf };
+                while (iter.next()) |cp| {
+                    defer i += 1;
+                    if (i >= end_col) break;
+                    if (i < ctx.col) continue;
+                    if (leaf_start == null) leaf_start = cp.offset;
+                    leaf_end = cp.offset + cp.len;
+                }
+
+                if (leaf_start == null or leaf_end == null) return WalkResult.stop;
+                const leaf_str = leaf.buf[leaf_start.?..leaf_end.?];
+                // std.debug.print("leaf_str: '{s}'\n", .{leaf_str});
+
+                if (ctx.offset + leaf_str.len > ctx.str.len) return WalkResult.stop;
+                if (eql(u8, ctx.str[ctx.offset .. ctx.offset + leaf_str.len], leaf_str)) {
+                    ctx.matched_offset = ctx.offset + leaf_str.len;
+                    // std.debug.print("ctx.matched_offset: {d} | ctx.str.len: {d}\n", .{ ctx.matched_offset, ctx.str.len });
+                    if (ctx.matched_offset == ctx.str.len) ctx.totally_match = true;
+                    return WalkResult.stop;
+                }
+            }
+        }
+
+        if (ctx.current_line == ctx.end_line) {
+            // TODO:
+        }
+
+        if (leaf.eol) {
+            ctx.current_line += 1;
+        }
+
+        return WalkResult.keep_walking;
+    }
+};
+
+pub fn eqRange(node: RcNode, start_line: usize, start_col: usize, end_line: usize, end_col: usize, str: []const u8) bool {
+    assert(end_line >= start_line);
+    assert(if (start_line == end_line) end_col > start_col else true);
+    if (end_line < start_line or (start_line == end_line and end_col <= start_col)) return false;
+
+    var ctx: EqRangeCtx = .{
+        .str = str,
+        .start_line = start_line,
+        .start_col = start_col,
+        .end_line = end_line,
+        .end_col = end_col,
+        .current_line = start_line,
+        .col = start_col,
+    };
+    _ = walkLineCol(std.heap.page_allocator, node, start_line, start_col, EqRangeCtx.walker, EqRangeCtx.decrementCol, &ctx) catch unreachable;
+    return ctx.totally_match;
+}
+
+test eqRange {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const root = try Node.fromString(a, &arena,
+            \\const Allocator = std.mem.Allocator;
+            \\var x = 10;
+            \\var y = 20;
+        );
+
+        try eq(true, eqRange(root, 0, 0, 0, 1, "c"));
+        try eq(true, eqRange(root, 0, 0, 0, 5, "const"));
+        try eq(true, eqRange(root, 0, 6, 0, 15, "Allocator"));
+        try eq(true, eqRange(root, 0, 18, 0, 36, "std.mem.Allocator;"));
+
+        try eq(false, eqRange(root, 0, 0, 0, 1, "z"));
+        try eq(false, eqRange(root, 0, 0, 0, 5, "onst"));
+        try eq(false, eqRange(root, 0, 18, 0, 36, "std.mem.Allocator;x"));
     }
 }
 
