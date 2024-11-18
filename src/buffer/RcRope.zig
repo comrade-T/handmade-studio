@@ -3468,6 +3468,301 @@ test tryOutWalkLineCol {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// walkLineColBackwards
+
+fn walkBackwards(a: Allocator, node: RcNode, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
+    switch (node.value.*) {
+        .branch => |*branch| {
+            const right = try walkBackwards(a, branch.right, f, ctx);
+            if (!right.keep_walking) {
+                var result = WalkResult{};
+                result.found = right.found;
+                if (right.replace) |r| result.replace = try Node.new(a, branch.left.retain(), r);
+                return result;
+            }
+            const left_result = try walkBackwards(a, branch.left, f, ctx);
+            return WalkResult.merge(branch, a, left_result, right);
+        },
+        .leaf => |*leaf| return f(ctx, leaf),
+    }
+}
+
+fn walkLineColBackwards(a: Allocator, node: RcNode, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) WalkError!WalkResult {
+    switch (node.value.*) {
+        .branch => |*branch| {
+            // found target line
+            if (line == 0) {
+                const left_nocs = branch.left.value.weights().noc;
+                if (col >= left_nocs) {
+                    dc(ctx, left_nocs);
+                    const right = try walkLineColBackwards(a, branch.right, line, col - left_nocs, f, dc, ctx);
+                    if (right.found) {
+                        _ = try walkBackwards(a, branch.left, f, ctx);
+                        return WalkResult.found;
+                    }
+                    return WalkResult.keep_walking;
+                }
+                return findLeftFindRight(a, branch, line, col, f, dc, ctx);
+            }
+
+            // finding target line
+            const left_bols = branch.left.value.weights().bols;
+            if (line >= left_bols) {
+                const right = try walkLineColBackwards(a, branch.right, line - left_bols, col, f, dc, ctx);
+                if (right.found) {
+                    _ = try walkBackwards(a, branch.left, f, ctx);
+                    return WalkResult.found;
+                }
+                return WalkResult.keep_walking;
+            }
+            return findLeftFindRight(a, branch, line, col, f, dc, ctx);
+        },
+        .leaf => |*leaf| {
+            if (line == 0) {
+                var result = try f(ctx, leaf);
+                result.found = true;
+                return result;
+            }
+            return WalkResult.keep_walking;
+        },
+    }
+}
+
+fn findLeftFindRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) !WalkResult {
+    const left = try walkLineColBackwards(a, branch.left, line, col, f, dc, ctx);
+    if (left.found) return WalkResult.found;
+    const right = try walkLineColBackwards(a, branch.right, line, col, f, dc, ctx);
+    if (right.found) return WalkResult.found;
+    return WalkResult{};
+}
+
+const TryOutWalkLineColBackwardsCtx = struct {
+    col: usize,
+    list: *ArrayList(u8),
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        try ctx.list.appendSlice(leaf.buf);
+        return WalkResult.keep_walking;
+    }
+
+    fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        assert(ctx.col >= decrement_col_by);
+        ctx.col -|= decrement_col_by;
+    }
+};
+
+fn tryOutWalkLineColBackwards(a: Allocator, node: RcNode, line: usize, col: usize) []const u8 {
+    var list = ArrayList(u8).initCapacity(a, 1024) catch unreachable;
+    var ctx: TryOutWalkLineColBackwardsCtx = .{ .list = &list, .col = col };
+    _ = walkLineColBackwards(a, node, line, col, TryOutWalkLineColBackwardsCtx.walker, TryOutWalkLineColBackwardsCtx.decrementCol, &ctx) catch unreachable;
+    return list.toOwnedSlice() catch unreachable;
+}
+
+test tryOutWalkLineColBackwards {
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    { // unbalanced
+        const root = try Node.fromString(a, &arena, "hello\nfrom\nthe\nother\nside");
+        _, _, const e1 = try insertChars(root, a, &arena, "_", .{ .line = 0, .col = 5 });
+        _, _, const e2 = try insertChars(e1, a, &arena, "v", .{ .line = 0, .col = 6 });
+        _, _, const e3 = try insertChars(e2, a, &arena, "e", .{ .line = 0, .col = 7 });
+        _, _, const e4 = try insertChars(e3, a, &arena, "n", .{ .line = 0, .col = 8 });
+        _, _, const e5 = try insertChars(e4, a, &arena, "u", .{ .line = 0, .col = 9 });
+        _, _, const e6 = try insertChars(e5, a, &arena, "s", .{ .line = 0, .col = 10 });
+
+        try eqStr(
+            \\9 5/31/27
+            \\  8 2/17/15
+            \\    7 1/12/11
+            \\      1 B| `hello` Rc:6
+            \\      6 0/7/6
+            \\        1 `_` Rc:5
+            \\        5 0/6/5
+            \\          1 `v` Rc:4
+            \\          4 0/5/4
+            \\            1 `e` Rc:3
+            \\            3 0/4/3
+            \\              1 `n` Rc:2
+            \\              2 0/3/2
+            \\                1 `u`
+            \\                1 `s` |E
+            \\    1 B| `from` |E Rc:7
+            \\  3 3/14/12 Rc:7
+            \\    1 B| `the` |E
+            \\    2 2/10/9
+            \\      1 B| `other` |E
+            \\      1 B| `side`
+        , try debugStr(a, e6));
+
+        try eqStr("hello", tryOutWalkLineColBackwards(a, e6, 0, 0));
+        try eqStr("hello", tryOutWalkLineColBackwards(a, e6, 0, 4));
+        try eqStr("_hello", tryOutWalkLineColBackwards(a, e6, 0, 5));
+        try eqStr("v_hello", tryOutWalkLineColBackwards(a, e6, 0, 6));
+        try eqStr("ev_hello", tryOutWalkLineColBackwards(a, e6, 0, 7));
+        try eqStr("nev_hello", tryOutWalkLineColBackwards(a, e6, 0, 8));
+        try eqStr("unev_hello", tryOutWalkLineColBackwards(a, e6, 0, 9));
+        try eqStr("sunev_hello", tryOutWalkLineColBackwards(a, e6, 0, 10));
+
+        try eqStr("fromsunev_hello", tryOutWalkLineColBackwards(a, e6, 1, 0));
+        try eqStr("thefromsunev_hello", tryOutWalkLineColBackwards(a, e6, 2, 0));
+        try eqStr("otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e6, 3, 0));
+        try eqStr("sideotherthefromsunev_hello", tryOutWalkLineColBackwards(a, e6, 4, 0));
+
+        ///////////////////////////// part 2
+
+        _, _, const e7 = try insertChars(e6, a, &arena, " ", .{ .line = 3, .col = 5 });
+        _, _, const e8 = try insertChars(e7, a, &arena, "s", .{ .line = 3, .col = 6 });
+        _, _, const e9 = try insertChars(e8, a, &arena, "o", .{ .line = 3, .col = 7 });
+        _, _, const e10 = try insertChars(e9, a, &arena, "m", .{ .line = 3, .col = 8 });
+        _, _, const e11 = try insertChars(e10, a, &arena, "e", .{ .line = 3, .col = 9 });
+        _, _, const e12 = try insertChars(e11, a, &arena, "thing", .{ .line = 3, .col = 10 });
+
+        try eqStr(
+            \\10 5/41/37
+            \\  8 2/17/15 Rc:7
+            \\    7 1/12/11
+            \\      1 B| `hello` Rc:6
+            \\      6 0/7/6
+            \\        1 `_` Rc:5
+            \\        5 0/6/5
+            \\          1 `v` Rc:4
+            \\          4 0/5/4
+            \\            1 `e` Rc:3
+            \\            3 0/4/3
+            \\              1 `n` Rc:2
+            \\              2 0/3/2
+            \\                1 `u`
+            \\                1 `s` |E
+            \\    1 B| `from` |E Rc:7
+            \\  9 3/24/22
+            \\    1 B| `the` |E Rc:7
+            \\    8 2/20/19
+            \\      7 1/16/15
+            \\        1 B| `other` Rc:6
+            \\        6 0/11/10
+            \\          1 ` ` Rc:5
+            \\          5 0/10/9
+            \\            1 `s` Rc:4
+            \\            4 0/9/8
+            \\              1 `o` Rc:3
+            \\              3 0/8/7
+            \\                1 `m` Rc:2
+            \\                2 0/7/6
+            \\                  1 `e`
+            \\                  1 `thing` |E
+            \\      1 B| `side` Rc:7
+        , try debugStr(a, e12));
+
+        try eqStr("hello", tryOutWalkLineColBackwards(a, e12, 0, 0));
+        try eqStr("hello", tryOutWalkLineColBackwards(a, e12, 0, 4));
+        try eqStr("_hello", tryOutWalkLineColBackwards(a, e12, 0, 5));
+        try eqStr("v_hello", tryOutWalkLineColBackwards(a, e12, 0, 6));
+        try eqStr("ev_hello", tryOutWalkLineColBackwards(a, e12, 0, 7));
+        try eqStr("nev_hello", tryOutWalkLineColBackwards(a, e12, 0, 8));
+        try eqStr("unev_hello", tryOutWalkLineColBackwards(a, e12, 0, 9));
+        try eqStr("sunev_hello", tryOutWalkLineColBackwards(a, e12, 0, 10));
+
+        try eqStr("fromsunev_hello", tryOutWalkLineColBackwards(a, e12, 1, 0));
+        try eqStr("thefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 2, 0));
+
+        try eqStr("otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 0));
+        try eqStr("otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 4));
+        try eqStr(" otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 5));
+        try eqStr("s otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 6));
+        try eqStr("os otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 7));
+        try eqStr("mos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 8));
+        try eqStr("emos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 9));
+        try eqStr("thingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 10));
+        try eqStr("thingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 14));
+
+        try eqStr("sidethingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 4, 0));
+        try eqStr("sidethingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 4, 3));
+    }
+
+    { // balanced
+        const root = try Node.fromString(a, &arena, "hello\nfrom\nthe\nother\nside");
+        _, _, const e1 = try insertChars(root, a, &arena, "_", .{ .line = 0, .col = 5 });
+        _, _, const e2 = try insertChars(e1, a, &arena, "v", .{ .line = 0, .col = 6 });
+        _, _, const e3 = try insertChars(e2, a, &arena, "e", .{ .line = 0, .col = 7 });
+        _, _, const e4 = try insertChars(e3, a, &arena, "n", .{ .line = 0, .col = 8 });
+        _, _, const e5 = try insertChars(e4, a, &arena, "u", .{ .line = 0, .col = 9 });
+        _, _, const e6 = try insertChars(e5, a, &arena, "s", .{ .line = 0, .col = 10 });
+        _, const e6b = try balance(a, e6);
+        _, _, const e7 = try insertChars(e6b, a, &arena, " ", .{ .line = 3, .col = 5 });
+        _, _, const e8 = try insertChars(e7, a, &arena, "s", .{ .line = 3, .col = 6 });
+        _, _, const e9 = try insertChars(e8, a, &arena, "o", .{ .line = 3, .col = 7 });
+        _, _, const e10 = try insertChars(e9, a, &arena, "m", .{ .line = 3, .col = 8 });
+        _, _, const e11 = try insertChars(e10, a, &arena, "e", .{ .line = 3, .col = 9 });
+        _, _, const e12 = try insertChars(e11, a, &arena, "thing", .{ .line = 3, .col = 10 });
+        _, const e12b = try balance(a, e12);
+
+        try eqStr(
+            \\6 5/41/37
+            \\  5 2/17/15
+            \\    4 1/12/11 Rc:8
+            \\      3 1/7/7
+            \\        1 B| `hello` Rc:7
+            \\        2 0/2/2
+            \\          1 `_` Rc:6
+            \\          1 `v` Rc:5
+            \\      3 0/5/4
+            \\        2 0/2/2
+            \\          1 `e` Rc:4
+            \\          1 `n` Rc:3
+            \\        2 0/3/2 Rc:2
+            \\          1 `u`
+            \\          1 `s` |E
+            \\    1 B| `from` |E Rc:15
+            \\  5 3/24/22
+            \\    4 2/11/10
+            \\      1 B| `the` |E Rc:8
+            \\      3 1/7/7
+            \\        1 B| `other` Rc:7
+            \\        2 0/2/2
+            \\          1 ` ` Rc:6
+            \\          1 `s` Rc:5
+            \\    4 1/13/12
+            \\      3 0/9/8
+            \\        2 0/2/2
+            \\          1 `o` Rc:4
+            \\          1 `m` Rc:3
+            \\        2 0/7/6 Rc:2
+            \\          1 `e`
+            \\          1 `thing` |E
+            \\      1 B| `side` Rc:8
+        , try debugStr(a, e12b));
+
+        try eqStr("hello", tryOutWalkLineColBackwards(a, e12, 0, 0));
+        try eqStr("hello", tryOutWalkLineColBackwards(a, e12, 0, 4));
+        try eqStr("_hello", tryOutWalkLineColBackwards(a, e12, 0, 5));
+        try eqStr("v_hello", tryOutWalkLineColBackwards(a, e12, 0, 6));
+        try eqStr("ev_hello", tryOutWalkLineColBackwards(a, e12, 0, 7));
+        try eqStr("nev_hello", tryOutWalkLineColBackwards(a, e12, 0, 8));
+        try eqStr("unev_hello", tryOutWalkLineColBackwards(a, e12, 0, 9));
+        try eqStr("sunev_hello", tryOutWalkLineColBackwards(a, e12, 0, 10));
+
+        try eqStr("fromsunev_hello", tryOutWalkLineColBackwards(a, e12, 1, 0));
+        try eqStr("thefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 2, 0));
+
+        try eqStr("otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 0));
+        try eqStr("otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 4));
+        try eqStr(" otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 5));
+        try eqStr("s otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 6));
+        try eqStr("os otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 7));
+        try eqStr("mos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 8));
+        try eqStr("emos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 9));
+        try eqStr("thingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 10));
+        try eqStr("thingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 3, 14));
+
+        try eqStr("sidethingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 4, 0));
+        try eqStr("sidethingemos otherthefromsunev_hello", tryOutWalkLineColBackwards(a, e12, 4, 3));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// eqRange
 
 const EqRangeCtx = struct {
