@@ -3479,7 +3479,6 @@ test tryOutWalkLineCol {
 const EqRangeCtx = struct {
     str: []const u8,
     offset: usize = 0,
-    matched_offset: usize = 0,
     totally_match: bool = false,
 
     start_line: usize,
@@ -3501,44 +3500,44 @@ const EqRangeCtx = struct {
         defer ctx.col = 0;
         assert(ctx.col <= leaf.noc);
 
-        if (ctx.current_line == ctx.start_line) {
-            if (ctx.start_line == ctx.end_line) {
-                const end_col = ctx.end_col;
-                var leaf_start: ?usize = null;
-                var leaf_end: ?usize = null;
+        /////////////////////////////
 
-                var i: usize = 0;
-                var iter = code_point.Iterator{ .bytes = leaf.buf };
-                while (iter.next()) |cp| {
-                    defer i += 1;
-                    if (i >= end_col) break;
-                    if (i < ctx.col) continue;
-                    if (leaf_start == null) leaf_start = cp.offset;
-                    leaf_end = cp.offset + cp.len;
-                }
+        var leaf_start: ?usize = null;
+        var leaf_end: ?usize = null;
 
-                if (leaf_start == null or leaf_end == null) return WalkResult.stop;
-                const leaf_str = leaf.buf[leaf_start.?..leaf_end.?];
-                // std.debug.print("leaf_str: '{s}'\n", .{leaf_str});
-
-                if (ctx.offset + leaf_str.len > ctx.str.len) return WalkResult.stop;
-                if (eql(u8, ctx.str[ctx.offset .. ctx.offset + leaf_str.len], leaf_str)) {
-                    ctx.matched_offset = ctx.offset + leaf_str.len;
-                    // std.debug.print("ctx.matched_offset: {d} | ctx.str.len: {d}\n", .{ ctx.matched_offset, ctx.str.len });
-                    if (ctx.matched_offset == ctx.str.len) ctx.totally_match = true;
-                    return WalkResult.stop;
-                }
-            }
+        var i: usize = 0;
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        while (iter.next()) |cp| {
+            defer i += 1;
+            if (ctx.current_line == ctx.end_line and i >= ctx.end_col) break;
+            if (ctx.current_line == ctx.start_line and i < ctx.col) continue;
+            if (leaf_start == null) leaf_start = cp.offset;
+            leaf_end = cp.offset + cp.len;
         }
 
-        if (ctx.current_line == ctx.end_line) {
-            // TODO:
-        }
+        if (leaf_start == null or leaf_end == null) return WalkResult.stop;
+        const leaf_str = leaf.buf[leaf_start.?..leaf_end.?];
+
+        if (ctx.offset + leaf_str.len > ctx.str.len) return WalkResult.stop;
+        const substr_matches = eql(u8, ctx.str[ctx.offset .. ctx.offset + leaf_str.len], leaf_str);
+        if (substr_matches) ctx.offset += leaf_str.len else return WalkResult.stop;
+
+        /////////////////////////////
+
+        const current_line_is_end_line = ctx.current_line == ctx.end_line;
 
         if (leaf.eol) {
+            if (ctx.end_line > ctx.start_line and ctx.current_line != ctx.end_line) {
+                if (ctx.str[ctx.offset] != '\n') return WalkResult.stop;
+                ctx.offset += 1;
+            }
             ctx.current_line += 1;
         }
 
+        if (current_line_is_end_line) {
+            if (ctx.offset == ctx.str.len) ctx.totally_match = true;
+            return WalkResult.stop;
+        }
         return WalkResult.keep_walking;
     }
 };
@@ -3573,6 +3572,7 @@ test eqRange {
             \\var y = 20;
         );
 
+        // single line
         try eq(true, eqRange(root, 0, 0, 0, 1, "c"));
         try eq(true, eqRange(root, 0, 0, 0, 5, "const"));
         try eq(true, eqRange(root, 0, 6, 0, 15, "Allocator"));
@@ -3581,6 +3581,17 @@ test eqRange {
         try eq(false, eqRange(root, 0, 0, 0, 1, "z"));
         try eq(false, eqRange(root, 0, 0, 0, 5, "onst"));
         try eq(false, eqRange(root, 0, 18, 0, 36, "std.mem.Allocator;x"));
+
+        // 2 lines
+        try eq(true, eqRange(root, 0, 18, 1, 1, "std.mem.Allocator;\nv"));
+        try eq(false, eqRange(root, 0, 18, 1, 1, "std.mem.Allocator;\n"));
+        try eq(false, eqRange(root, 0, 18, 1, 1, "std.mem.Allocator;\nx"));
+
+        // 3 lines
+        try eq(true, eqRange(root, 0, 18, 2, 1, "std.mem.Allocator;\nvar x = 10;\nv"));
+        try eq(false, eqRange(root, 0, 18, 2, 1, "std.mem.Allocator;\nvar x = 10;\n"));
+        try eq(false, eqRange(root, 0, 18, 2, 1, "std.mem.Allocator;\nvar x = 10;\nvo"));
+        try eq(false, eqRange(root, 0, 18, 2, 1, "std.mem.Allocator;\nvar x = 10;\nva"));
     }
 }
 
