@@ -139,67 +139,6 @@ pub const WalkResult = struct {
     }
 };
 
-///////////////////////////// TODO:
-
-// TODO: add walkLineColReverse()
-// TODO: add eqRange() and use it in QueryFilter instead of getRange()
-// TODO: add seekTo() and seekPrevTo() for Vim cursor movements & text objects
-
-/////////////////////////////
-
-fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) WalkError!WalkResult {
-    switch (node.value.*) {
-        .branch => |*branch| {
-            // found target line
-            if (line == 0) {
-                const left_nocs = branch.left.value.weights().noc;
-                if (col >= left_nocs) {
-                    dc(ctx, left_nocs);
-                    const right = try walkLineCol(a, branch.right, line, col - left_nocs, f, dc, ctx);
-                    return goRight(a, branch, right);
-                }
-                return goLeftRight(a, branch, line, col, f, dc, ctx);
-            }
-
-            // finding target line
-            const left_bols = branch.left.value.weights().bols;
-            if (line >= left_bols) {
-                const right = try walkLineCol(a, branch.right, line - left_bols, col, f, dc, ctx);
-                return goRight(a, branch, right);
-            }
-            return goLeftRight(a, branch, line, col, f, dc, ctx);
-        },
-        .leaf => |*leaf| {
-            if (line == 0) {
-                var result = try f(ctx, leaf);
-                result.found = true;
-                return result;
-            }
-            return WalkResult.keep_walking;
-        },
-    }
-}
-
-fn goRight(a: Allocator, branch: *Branch, right: WalkResult) !WalkResult {
-    if (right.replace) |replacement| {
-        var result = WalkResult{};
-        result.found = right.found;
-        result.keep_walking = right.keep_walking;
-        result.replace = if (replacement.value.isEmpty())
-            branch.left.retain()
-        else
-            try Node.new(a, branch.left.retain(), right.replace.?);
-        return result;
-    }
-    return right;
-}
-
-fn goLeftRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) !WalkResult {
-    const left = try walkLineCol(a, branch.left, line, col, f, dc, ctx);
-    const right = if (left.found and left.keep_walking) try walk(a, branch.right, f, ctx) else WalkResult{};
-    return WalkResult.merge(branch, a, left, right);
-}
-
 fn walkFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkCallback, ctx: *anyopaque) WalkError!WalkResult {
     switch (node.value.*) {
         .branch => |*branch| {
@@ -3288,9 +3227,64 @@ test getNumOfCharsInLine {
     try eq(10, getNumOfCharsInLine(root, 1));
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Brand new walker that takes noc into account
+////////////////////////////////////////////////////////////////////////////////////////////// walkLineCol
 
-const WalkLineColCtx = struct {
+fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) WalkError!WalkResult {
+    switch (node.value.*) {
+        .branch => |*branch| {
+            // found target line
+            if (line == 0) {
+                const left_nocs = branch.left.value.weights().noc;
+                if (col >= left_nocs) {
+                    dc(ctx, left_nocs);
+                    const right = try walkLineCol(a, branch.right, line, col - left_nocs, f, dc, ctx);
+                    return goRight(a, branch, right);
+                }
+                return goLeftRight(a, branch, line, col, f, dc, ctx);
+            }
+
+            // finding target line
+            const left_bols = branch.left.value.weights().bols;
+            if (line >= left_bols) {
+                const right = try walkLineCol(a, branch.right, line - left_bols, col, f, dc, ctx);
+                return goRight(a, branch, right);
+            }
+            return goLeftRight(a, branch, line, col, f, dc, ctx);
+        },
+        .leaf => |*leaf| {
+            if (line == 0) {
+                var result = try f(ctx, leaf);
+                result.found = true;
+                return result;
+            }
+            return WalkResult.keep_walking;
+        },
+    }
+}
+
+fn goRight(a: Allocator, branch: *Branch, right: WalkResult) !WalkResult {
+    if (right.replace) |replacement| {
+        var result = WalkResult{};
+        result.found = right.found;
+        result.keep_walking = right.keep_walking;
+        result.replace = if (replacement.value.isEmpty())
+            branch.left.retain()
+        else
+            try Node.new(a, branch.left.retain(), right.replace.?);
+        return result;
+    }
+    return right;
+}
+
+fn goLeftRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) !WalkResult {
+    const left = try walkLineCol(a, branch.left, line, col, f, dc, ctx);
+    const right = if (left.found and left.keep_walking) try walk(a, branch.right, f, ctx) else WalkResult{};
+    return WalkResult.merge(branch, a, left, right);
+}
+
+/////////////////////////////
+
+const TryOutWalkLineColCtx = struct {
     col: usize,
     list: *ArrayList(u8),
 
@@ -3329,11 +3323,11 @@ const WalkLineColCtx = struct {
 
 pub fn tryOutWalkLineCol(a: Allocator, node: RcNode, use_col: bool, line: usize, col: usize) []const u8 {
     var list = ArrayList(u8).initCapacity(a, 1024) catch unreachable;
-    var ctx: WalkLineColCtx = .{ .list = &list, .col = col };
+    var ctx: TryOutWalkLineColCtx = .{ .list = &list, .col = col };
     if (!use_col)
-        _ = walkLineCol(a, node, line, col, WalkLineColCtx.walker, WalkLineColCtx.decrementCol, &ctx) catch unreachable
+        _ = walkLineCol(a, node, line, col, TryOutWalkLineColCtx.walker, TryOutWalkLineColCtx.decrementCol, &ctx) catch unreachable
     else
-        _ = walkLineCol(a, node, line, col, WalkLineColCtx.walkerCol, WalkLineColCtx.decrementCol, &ctx) catch unreachable;
+        _ = walkLineCol(a, node, line, col, TryOutWalkLineColCtx.walkerCol, TryOutWalkLineColCtx.decrementCol, &ctx) catch unreachable;
     return list.toOwnedSlice() catch unreachable;
 }
 
