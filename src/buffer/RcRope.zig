@@ -3496,11 +3496,11 @@ fn walkLineColBackwards(a: Allocator, node: RcNode, line: usize, col: usize, f: 
                 if (col >= left_nocs) {
                     dc(ctx, left_nocs);
                     const right = try walkLineColBackwards(a, branch.right, line, col - left_nocs, f, dc, ctx);
-                    if (right.found) {
-                        _ = try walkBackwards(a, branch.left, f, ctx);
-                        return WalkResult.found;
+                    if (right.found and right.keep_walking) {
+                        const result = try walkBackwards(a, branch.left, f, ctx);
+                        return WalkResult{ .found = true, .keep_walking = result.keep_walking };
                     }
-                    return WalkResult.keep_walking;
+                    return right;
                 }
                 return findLeftFindRight(a, branch, line, col, f, dc, ctx);
             }
@@ -3509,11 +3509,11 @@ fn walkLineColBackwards(a: Allocator, node: RcNode, line: usize, col: usize, f: 
             const left_bols = branch.left.value.weights().bols;
             if (line >= left_bols) {
                 const right = try walkLineColBackwards(a, branch.right, line - left_bols, col, f, dc, ctx);
-                if (right.found) {
-                    _ = try walkBackwards(a, branch.left, f, ctx);
-                    return WalkResult.found;
+                if (right.found and right.keep_walking) {
+                    const result = try walkBackwards(a, branch.left, f, ctx);
+                    return WalkResult{ .found = true, .keep_walking = result.keep_walking };
                 }
-                return WalkResult.keep_walking;
+                return right;
             }
             return findLeftFindRight(a, branch, line, col, f, dc, ctx);
         },
@@ -3530,9 +3530,9 @@ fn walkLineColBackwards(a: Allocator, node: RcNode, line: usize, col: usize, f: 
 
 fn findLeftFindRight(a: Allocator, branch: *Branch, line: usize, col: usize, f: F, dc: DC, ctx: *anyopaque) !WalkResult {
     const left = try walkLineColBackwards(a, branch.left, line, col, f, dc, ctx);
-    if (left.found) return WalkResult.found;
+    if (left.found) return WalkResult{ .found = true, .keep_walking = left.keep_walking };
     const right = try walkLineColBackwards(a, branch.right, line, col, f, dc, ctx);
-    if (right.found) return WalkResult.found;
+    if (right.found) return WalkResult{ .found = true, .keep_walking = right.keep_walking };
     return WalkResult{};
 }
 
@@ -3830,6 +3830,7 @@ test seekForward {
         const root = try Node.fromString(a, &arena,
             \\what's the thing?
             \\the name is 'John', that's the name.
+            \\'shoot
         );
 
         try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 0, eqSingleQuote));
@@ -3847,8 +3848,102 @@ test seekForward {
         try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 17, eqSingleQuote));
         try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 23, eqSingleQuote));
 
-        try eq(null, seekForward(root, 1, 24, eqSingleQuote));
-        try eq(null, seekForward(root, 1, 25, eqSingleQuote));
+        try eq(CursorPoint{ .line = 2, .col = 0 }, seekForward(root, 1, 24, eqSingleQuote));
+        try eq(CursorPoint{ .line = 2, .col = 0 }, seekForward(root, 1, 32, eqSingleQuote));
+        try eq(null, seekForward(root, 2, 0, eqSingleQuote));
+        try eq(null, seekForward(root, 2, 4, eqSingleQuote));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// seekBackwards
+
+const SeekBackwardsCtx = struct {
+    cb: SeekCallback,
+    line: usize,
+    col: usize,
+    touched_input_col: bool = false,
+    found: bool = false,
+    result: CursorPoint,
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        defer ctx.col = 0;
+
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        var i: usize = 0;
+        var candidate_colnr: ?usize = null;
+        while (iter.next()) |cp| {
+            defer i += 1;
+            if (ctx.result.line == ctx.line) {
+                if (i >= ctx.col) {
+                    ctx.touched_input_col = true;
+                    break;
+                }
+            }
+            if (ctx.cb(cp.code)) candidate_colnr = i;
+        }
+
+        if (ctx.touched_input_col) {
+            if (candidate_colnr) |colnr| {
+                ctx.found = true;
+                ctx.result.col = colnr;
+                return WalkResult.stop;
+            }
+        }
+
+        if (leaf.bol) ctx.result.line -|= 1;
+        return WalkResult.keep_walking;
+    }
+
+    fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        assert(ctx.col >= decrement_col_by);
+        ctx.col -|= decrement_col_by;
+    }
+};
+
+pub fn seekBackwards(node: RcNode, line: usize, col: usize, cb: SeekCallback) ?CursorPoint {
+    var ctx: SeekForwardCtx = .{
+        .cb = cb,
+        .line = line,
+        .col = col,
+        .result = .{ .line = line, .col = col },
+    };
+    _ = walkLineColBackwards(std.heap.page_allocator, node, line, col, SeekBackwardsCtx.walker, SeekBackwardsCtx.decrementCol, &ctx) catch unreachable;
+    return if (ctx.found) ctx.result else null;
+}
+
+test seekBackwards {
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const root = try Node.fromString(a, &arena,
+            \\what's the thing?
+            \\the name is 'John', that's the name.
+            \\'shoot
+        );
+
+        try eq(null, seekBackwards(root, 0, 4, eqSingleQuote));
+        try eq(null, seekBackwards(root, 0, 0, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 0, 10, eqSingleQuote));
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 0, 5, eqSingleQuote));
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 1, 0, eqSingleQuote));
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 1, 12, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 1, .col = 12 }, seekBackwards(root, 1, 13, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 12 }, seekBackwards(root, 1, 17, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 1, .col = 17 }, seekBackwards(root, 1, 18, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 17 }, seekBackwards(root, 1, 24, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 1, .col = 24 }, seekBackwards(root, 1, 25, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 24 }, seekBackwards(root, 2, 0, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 2, .col = 0 }, seekBackwards(root, 2, 1, eqSingleQuote));
+        try eq(CursorPoint{ .line = 2, .col = 0 }, seekBackwards(root, 2, 4, eqSingleQuote));
     }
 }
 
