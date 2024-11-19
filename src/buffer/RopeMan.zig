@@ -32,6 +32,7 @@ const rcr = @import("RcRope.zig");
 pub const RcNode = rcr.RcNode;
 pub const CursorRange = rcr.CursorRange;
 pub const CursorPoint = rcr.CursorPoint;
+pub const SeekCallback = rcr.SeekCallback;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -26,6 +26,7 @@ const assert = std.debug.assert;
 
 const code_point = @import("code_point");
 const RopeMan = @import("RopeMan");
+const SeekCallback = RopeMan.SeekCallback;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// CursorManager
 
@@ -285,6 +286,10 @@ fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: Cursor) !vo
     try eq(.{ expected[0], expected[1] }, .{ cursor.start.line, cursor.start.col });
     try eq(.{ expected[2], expected[3] }, .{ cursor.end.line, cursor.end.col });
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
+
+// TODO:
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
@@ -884,7 +889,15 @@ const Anchor = struct {
         return self.line < other.line;
     }
 
-    ///////////////////////////// hjkl
+    ////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
+
+    fn doSomething(self: *@This(), ropeman: *const RopeMan, cb: SeekCallback) ?usize {
+        // TODO:
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Movement
+
+    // hjkl
 
     fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
         self.line -|= by;
@@ -907,14 +920,14 @@ const Anchor = struct {
         self.restrictCol(ropeman);
     }
 
-    ///////////////////////////// AFTER Insert Mode
+    // AFTER Insert Mode
 
     fn moveRightForAFTERInsertMode(self: *@This(), by: usize, ropeman: *const RopeMan) void {
         self.col += by;
         self.restrictColNoc(ropeman);
     }
 
-    ///////////////////////////// bol / eol
+    // bol / eol
 
     fn moveToBeginningOfLine(self: *@This(), _: usize, _: *const RopeMan) void {
         self.col = 0;
@@ -928,7 +941,7 @@ const Anchor = struct {
         self.col = ropeman.getColnrOfFirstNonSpaceCharInLine(self.line);
     }
 
-    ///////////////////////////// restrictCol
+    // restrictCol
 
     fn restrictCol(self: *@This(), ropeman: *const RopeMan) void {
         const noc = ropeman.getNumOfCharsInLine(self.line);
