@@ -3763,6 +3763,95 @@ test tryOutWalkLineColBackwards {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// seekForward
+
+pub const SeekCallback = *const fn (cp: u21) bool;
+
+const SeekForwardCtx = struct {
+    cb: SeekCallback,
+    line: usize,
+    col: usize,
+    passed_input_col: bool = false,
+    found: bool = false,
+    result: CursorPoint,
+
+    fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        defer ctx.col = 0;
+
+        var iter = code_point.Iterator{ .bytes = leaf.buf };
+        var i: usize = 0;
+        while (iter.next()) |cp| {
+            defer i += 1;
+            if (i < ctx.col) continue;
+            if (!ctx.passed_input_col) {
+                ctx.passed_input_col = true;
+                continue;
+            }
+            if (ctx.cb(cp.code)) {
+                ctx.result.col = i;
+                ctx.found = true;
+                return WalkResult.stop;
+            }
+        }
+
+        if (leaf.eol) ctx.result.line += 1;
+        return WalkResult.keep_walking;
+    }
+
+    fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
+        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
+        assert(ctx.col >= decrement_col_by);
+        ctx.col -|= decrement_col_by;
+    }
+};
+
+pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback) ?CursorPoint {
+    var ctx: SeekForwardCtx = .{
+        .cb = cb,
+        .line = line,
+        .col = col,
+        .result = .{ .line = line, .col = col },
+    };
+    _ = walkLineCol(std.heap.page_allocator, node, line, col, SeekForwardCtx.walker, SeekForwardCtx.decrementCol, &ctx) catch unreachable;
+    return if (ctx.found) ctx.result else null;
+}
+
+fn eqSingleQuote(cp: u21) bool {
+    return cp == '\'';
+}
+
+test seekForward {
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        const root = try Node.fromString(a, &arena,
+            \\what's the thing?
+            \\the name is 'John', that's the name.
+        );
+
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 0, eqSingleQuote));
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 1, eqSingleQuote));
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 2, eqSingleQuote));
+        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 3, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 0, 4, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 1, 0, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 1, 11, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 1, .col = 17 }, seekForward(root, 1, 12, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 17 }, seekForward(root, 1, 16, eqSingleQuote));
+
+        try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 17, eqSingleQuote));
+        try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 23, eqSingleQuote));
+
+        try eq(null, seekForward(root, 1, 24, eqSingleQuote));
+        try eq(null, seekForward(root, 1, 25, eqSingleQuote));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// eqRange
 
 const EqRangeCtx = struct {
