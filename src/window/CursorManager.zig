@@ -891,7 +891,7 @@ const Anchor = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
 
-    fn doSomething(self: *@This(), ropeman: *const RopeMan, cb: SeekCallback) ?usize {
+    fn getSingleQuoteTextObject(self: *@This(), ropeman: *const RopeMan, cb: SeekCallback) ?RopeMan.CursorRange {
         // TODO:
     }
 

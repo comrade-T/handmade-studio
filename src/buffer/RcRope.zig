@@ -3773,6 +3773,7 @@ const SeekForwardCtx = struct {
     col: usize,
     stop_at_eol: bool,
     passed_input_col: bool = false,
+    init_matches: bool = false,
     found: bool = false,
     result: CursorPoint,
 
@@ -3786,6 +3787,7 @@ const SeekForwardCtx = struct {
             defer i += 1;
             if (i < ctx.col) continue;
             if (!ctx.passed_input_col) {
+                if (ctx.cb(cp.code)) ctx.init_matches = true;
                 ctx.passed_input_col = true;
                 continue;
             }
@@ -3810,7 +3812,12 @@ const SeekForwardCtx = struct {
     }
 };
 
-pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop_at_eol: bool) ?CursorPoint {
+const SeekForwardResult = struct {
+    point: ?CursorPoint,
+    init_matches: bool = false,
+};
+
+pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop_at_eol: bool) SeekForwardResult {
     var ctx: SeekForwardCtx = .{
         .cb = cb,
         .line = line,
@@ -3819,7 +3826,9 @@ pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop
         .result = .{ .line = line, .col = col },
     };
     _ = walkLineCol(std.heap.page_allocator, node, line, col, SeekForwardCtx.walker, SeekForwardCtx.decrementCol, &ctx) catch unreachable;
-    return if (ctx.found) ctx.result else null;
+    var result = SeekForwardResult{ .point = null, .init_matches = ctx.init_matches };
+    if (ctx.found) result.point = ctx.result;
+    return result;
 }
 
 fn eqSingleQuote(cp: u21) bool {
@@ -3840,47 +3849,49 @@ test seekForward {
 
         ///////////////////////////// stop_at_eol == false
 
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 0, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 1, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 2, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 3, eqSingleQuote, false));
+        const R = SeekForwardResult;
 
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 0, 4, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 1, 0, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 1, 11, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 0, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 1, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 2, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 3, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekForward(root, 1, 12, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekForward(root, 1, 16, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 12 }, .init_matches = true }, seekForward(root, 0, 4, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 12 } }, seekForward(root, 1, 0, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 12 } }, seekForward(root, 1, 11, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 17, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 23, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 17 }, .init_matches = true }, seekForward(root, 1, 12, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 17 } }, seekForward(root, 1, 16, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 2, .col = 0 }, seekForward(root, 1, 24, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 2, .col = 0 }, seekForward(root, 1, 32, eqSingleQuote, false));
-        try eq(null, seekForward(root, 2, 0, eqSingleQuote, false));
-        try eq(null, seekForward(root, 2, 4, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 24 }, .init_matches = true }, seekForward(root, 1, 17, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 24 } }, seekForward(root, 1, 23, eqSingleQuote, false));
+
+        try eq(R{ .point = .{ .line = 2, .col = 0 }, .init_matches = true }, seekForward(root, 1, 24, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 2, .col = 0 } }, seekForward(root, 1, 32, eqSingleQuote, false));
+        try eq(R{ .point = null, .init_matches = true }, seekForward(root, 2, 0, eqSingleQuote, false));
+        try eq(R{ .point = null }, seekForward(root, 2, 4, eqSingleQuote, false));
 
         ///////////////////////////// stop_at_eol == true
 
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 0, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 1, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 2, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekForward(root, 0, 3, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 0, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 1, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 2, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 3, eqSingleQuote, true));
 
-        try eq(null, seekForward(root, 0, 4, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 1, 0, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekForward(root, 1, 11, eqSingleQuote, true));
+        try eq(R{ .point = null, .init_matches = true }, seekForward(root, 0, 4, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 12 } }, seekForward(root, 1, 0, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 12 } }, seekForward(root, 1, 11, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekForward(root, 1, 12, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekForward(root, 1, 16, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 17 }, .init_matches = true }, seekForward(root, 1, 12, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 17 } }, seekForward(root, 1, 16, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 17, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekForward(root, 1, 23, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 24 }, .init_matches = true }, seekForward(root, 1, 17, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 24 } }, seekForward(root, 1, 23, eqSingleQuote, true));
 
-        try eq(null, seekForward(root, 1, 24, eqSingleQuote, true));
-        try eq(null, seekForward(root, 1, 32, eqSingleQuote, true));
-        try eq(null, seekForward(root, 2, 0, eqSingleQuote, true));
-        try eq(null, seekForward(root, 2, 4, eqSingleQuote, true));
+        try eq(R{ .point = null, .init_matches = true }, seekForward(root, 1, 24, eqSingleQuote, true));
+        try eq(R{ .point = null }, seekForward(root, 1, 32, eqSingleQuote, true));
+        try eq(R{ .point = null, .init_matches = true }, seekForward(root, 2, 0, eqSingleQuote, true));
+        try eq(R{ .point = null }, seekForward(root, 2, 4, eqSingleQuote, true));
     }
 }
 
