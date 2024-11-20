@@ -152,13 +152,13 @@ test activateRangeMode {
     defer cm.destroy();
 
     cm.activateRangeMode();
-    try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor().*);
+    try eqCursor(.{ 0, 0, 0, 0 }, cm.mainCursor().*);
 
     cm.moveRight(1, &ropeman);
-    try eqCursor(.{ 0, 0, 0, 2 }, cm.mainCursor().*);
+    try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor().*);
 
     cm.moveDown(1, &ropeman);
-    try eqCursor(.{ 0, 0, 1, 2 }, cm.mainCursor().*);
+    try eqCursor(.{ 0, 0, 1, 1 }, cm.mainCursor().*);
 }
 
 ///////////////////////////// Setting / Adding Cursors
@@ -262,23 +262,23 @@ test addRangeCursor {
         defer cm.destroy();
 
         cm.activateRangeMode();
-        try eqCursor(.{ 0, 0, 0, 1 }, cm.mainCursor().*);
+        try eqCursor(.{ 0, 0, 0, 0 }, cm.mainCursor().*);
 
         // addRange
-        try cm.addRangeCursor(.{ 1, 0 }, .{ 1, 1 }, true);
+        try cm.addRangeCursor(.{ 1, 0 }, .{ 1, 0 }, true);
         try eqSlice(usize, &.{ 0, 1 }, cm.cursors.keys());
-        try eqCursor(.{ 0, 0, 0, 1 }, cm.cursors.values()[0]);
-        try eqCursor(.{ 1, 0, 1, 1 }, cm.cursors.values()[1]);
+        try eqCursor(.{ 0, 0, 0, 0 }, cm.cursors.values()[0]);
+        try eqCursor(.{ 1, 0, 1, 0 }, cm.cursors.values()[1]);
 
         // moveRight
         cm.moveRight(1, &ropeman);
-        try eqCursor(.{ 0, 0, 0, 2 }, cm.cursors.values()[0]);
-        try eqCursor(.{ 1, 0, 1, 2 }, cm.cursors.values()[1]);
+        try eqCursor(.{ 0, 0, 0, 1 }, cm.cursors.values()[0]);
+        try eqCursor(.{ 1, 0, 1, 1 }, cm.cursors.values()[1]);
 
         // moveDown, id=0 overlaps with id=1 -> gets merged together
         cm.moveDown(1, &ropeman);
         try eqSlice(usize, &.{0}, cm.cursors.keys());
-        try eqCursor(.{ 0, 0, 2, 2 }, cm.cursors.values()[0]);
+        try eqCursor(.{ 0, 0, 2, 1 }, cm.cursors.values()[0]);
     }
 }
 
@@ -779,8 +779,8 @@ fn _mergeTwoCursorsIfOverlaps(self: *@This(), i: usize) void {
     switch (self.cursor_mode) {
         .point => if (curr.start.isEqual(next.start)) self.cursors.orderedRemoveAt(i + 1),
         .range => {
-            assert(curr.start.isBefore(curr.end));
-            assert(next.start.isBefore(next.end));
+            assert(curr.start.isBeforeOrEqual(curr.end));
+            assert(next.start.isBeforeOrEqual(next.end));
 
             if (curr.rangeOverlapsWith(next)) {
                 const start = if (next.start.isBefore(curr.start)) next.start else curr.start;
@@ -891,8 +891,103 @@ const Anchor = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
 
-    fn getSingleQuoteTextObject(self: *@This(), ropeman: *const RopeMan, cb: SeekCallback) ?RopeMan.CursorRange {
-        // TODO:
+    fn isSingleQuote(cp: u21) bool {
+        return cp == '\'';
+    }
+
+    fn getSingleQuoteTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
+        const cb = isSingleQuote;
+        var start: ?RopeMan.CursorPoint = null;
+
+        const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, true);
+        if (backwards_result.point) |back_point| {
+            if (backwards_result.init_matches) {
+                return RopeMan.CursorRange{
+                    .start = back_point,
+                    .end = .{ .line = self.line, .col = self.col },
+                };
+            }
+            start = back_point;
+        }
+
+        const first_forward_result = ropeman.seekForward(self.line, self.col, cb, true);
+        if (first_forward_result.point) |first_fwd_point| {
+            if (start != null) {
+                return RopeMan.CursorRange{
+                    .start = start.?,
+                    .end = first_fwd_point,
+                };
+            }
+            if (first_forward_result.init_matches) {
+                return RopeMan.CursorRange{
+                    .start = .{ .line = self.line, .col = self.col },
+                    .end = first_fwd_point,
+                };
+            }
+            start = first_fwd_point;
+        }
+
+        assert(start != null);
+        const first_point = first_forward_result.point orelse return null;
+        const second_forward_result = ropeman.seekForward(first_point.line, first_point.col, cb, true);
+        if (second_forward_result.point) |second_fwd_point| {
+            return RopeMan.CursorRange{
+                .start = start.?,
+                .end = second_fwd_point,
+            };
+        }
+        return null;
+    }
+
+    test getSingleQuoteTextObject {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string,
+            \\I am 'John' goin' I live in 'New York'.
+            \\You are 'Jane' and you live in 'Canada'.
+        );
+        defer ropeman.deinit();
+
+        // line 0
+        try testGetSingleQuote(.{ 0, 5, 0, 10 }, .{ 0, 0 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 5, 0, 10 }, .{ 0, 4 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 5, 0, 10 }, .{ 0, 5 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 5, 0, 10 }, .{ 0, 9 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 5, 0, 10 }, .{ 0, 10 }, &ropeman);
+
+        try testGetSingleQuote(.{ 0, 10, 0, 16 }, .{ 0, 11 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 10, 0, 16 }, .{ 0, 15 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 10, 0, 16 }, .{ 0, 16 }, &ropeman);
+
+        try testGetSingleQuote(.{ 0, 16, 0, 28 }, .{ 0, 17 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 16, 0, 28 }, .{ 0, 27 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 16, 0, 28 }, .{ 0, 28 }, &ropeman);
+
+        try testGetSingleQuote(.{ 0, 28, 0, 37 }, .{ 0, 29 }, &ropeman);
+        try testGetSingleQuote(.{ 0, 28, 0, 37 }, .{ 0, 37 }, &ropeman);
+        try testGetSingleQuote(null, .{ 0, 38 }, &ropeman);
+
+        // line 1
+        try testGetSingleQuote(.{ 1, 8, 1, 13 }, .{ 1, 0 }, &ropeman);
+        try testGetSingleQuote(.{ 1, 8, 1, 13 }, .{ 1, 13 }, &ropeman);
+
+        try testGetSingleQuote(.{ 1, 13, 1, 31 }, .{ 1, 14 }, &ropeman);
+        try testGetSingleQuote(.{ 1, 13, 1, 31 }, .{ 1, 31 }, &ropeman);
+
+        try testGetSingleQuote(.{ 1, 31, 1, 38 }, .{ 1, 32 }, &ropeman);
+        try testGetSingleQuote(.{ 1, 31, 1, 38 }, .{ 1, 38 }, &ropeman);
+        try testGetSingleQuote(null, .{ 1, 39 }, &ropeman);
+    }
+
+    fn testGetSingleQuote(expected: ?struct { usize, usize, usize, usize }, a: struct { usize, usize }, ropeman: *const RopeMan) !void {
+        const anchor = Anchor{ .line = a[0], .col = a[1] };
+        if (expected) |e| {
+            const range = RopeMan.CursorRange{
+                .start = .{ .line = e[0], .col = e[1] },
+                .end = .{ .line = e[2], .col = e[3] },
+            };
+            try eq(range, anchor.getSingleQuoteTextObject(ropeman));
+            return;
+        }
+        try eq(null, anchor.getSingleQuoteTextObject(ropeman));
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Movement
@@ -1142,6 +1237,8 @@ const Anchor = struct {
         return .not_found;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// hjkl
 
 test "Anchor - basic hjkl movements" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hi\nworld\nhello\nx");
@@ -1509,4 +1606,8 @@ fn getCharKind(T: type, b: T) CharKind {
 
         else => .char,
     };
+}
+
+test {
+    std.testing.refAllDeclsRecursive(Anchor);
 }

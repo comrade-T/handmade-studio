@@ -100,6 +100,14 @@ pub fn getColnrOfFirstNonSpaceCharInLine(self: *const @This(), line: usize) usiz
     return rcr.getColnrOfFirstNonSpaceCharInLine(self.a, self.root, line);
 }
 
+pub fn seekBackwards(self: *const @This(), line: usize, col: usize, cb: SeekCallback, stop_at_bol: bool) rcr.SeekResult {
+    return rcr.seekBackwards(self.root, line, col, cb, stop_at_bol);
+}
+
+pub fn seekForward(self: *const @This(), line: usize, col: usize, cb: SeekCallback, stop_at_eol: bool) rcr.SeekResult {
+    return rcr.seekForward(self.root, line, col, cb, stop_at_eol);
+}
+
 pub fn getLineAlloc(self: *const @This(), a: Allocator, linenr: usize, capacity: usize) ![]const u8 {
     return rcr.getLineAlloc(a, self.root, linenr, capacity);
 }

@@ -3812,7 +3812,7 @@ const SeekForwardCtx = struct {
     }
 };
 
-const SeekResult = struct {
+pub const SeekResult = struct {
     point: ?CursorPoint,
     init_matches: bool = false,
 };
