@@ -29,10 +29,10 @@ const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const rcr = @import("RcRope.zig");
+const code_point = rcr.code_point;
 pub const RcNode = rcr.RcNode;
 pub const CursorRange = rcr.CursorRange;
 pub const CursorPoint = rcr.CursorPoint;
-pub const SeekCallback = rcr.SeekCallback;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -100,14 +100,6 @@ pub fn getColnrOfFirstNonSpaceCharInLine(self: *const @This(), line: usize) usiz
     return rcr.getColnrOfFirstNonSpaceCharInLine(self.a, self.root, line);
 }
 
-pub fn seekBackwards(self: *const @This(), line: usize, col: usize, cb: SeekCallback, stop_at_bol: bool) rcr.SeekResult {
-    return rcr.seekBackwards(self.root, line, col, cb, stop_at_bol);
-}
-
-pub fn seekForward(self: *const @This(), line: usize, col: usize, cb: SeekCallback, stop_at_eol: bool) rcr.SeekResult {
-    return rcr.seekForward(self.root, line, col, cb, stop_at_eol);
-}
-
 pub fn getLineAlloc(self: *const @This(), a: Allocator, linenr: usize, capacity: usize) ![]const u8 {
     return rcr.getLineAlloc(a, self.root, linenr, capacity);
 }
@@ -116,6 +108,81 @@ pub fn debugPrint(self: *const @This()) !void {
     const str = try rcr.debugStr(self.a, self.root);
     defer self.a.free(str);
     std.debug.print("debugStr: {s}\n", .{str});
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Seek
+
+const SeekResult = struct {
+    point: ?CursorPoint,
+    init_matches: bool = false,
+};
+
+pub const SeekCallback = *const fn (cp: u21) bool;
+
+pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, stop_at_bol: bool) !SeekResult {
+    var result = SeekResult{ .point = null, .init_matches = false };
+    var encountered_input_position: bool = false;
+    var candidate: ?CursorPoint = null;
+
+    var should_keep_looping = true;
+    var linenr: usize = input_linenr;
+    while (should_keep_looping) line_blk: {
+        defer linenr -|= 1;
+        defer {
+            if (encountered_input_position) result.point = candidate;
+            if (linenr == 0 or stop_at_bol) should_keep_looping = false;
+        }
+
+        const line = try self.getLineAlloc(self.a, linenr, 1024);
+        defer self.a.free(line);
+
+        var colnr: usize = 0;
+        var iter = code_point.Iterator{ .bytes = line };
+        while (iter.next()) |cp| {
+            defer colnr += 1;
+            if (linenr == input_linenr and colnr == input_colnr) {
+                if (cb(cp.code)) result.init_matches = true;
+                encountered_input_position = true;
+                should_keep_looping = false;
+                break :line_blk;
+            }
+            if (cb(cp.code)) candidate = CursorPoint{ .line = linenr, .col = colnr };
+        }
+    }
+
+    return result;
+}
+
+pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, stop_at_eol: bool) !SeekResult {
+    var result = SeekResult{ .point = null, .init_matches = false };
+    var encountered_input_position: bool = false;
+
+    var linenr: usize = input_linenr;
+    while (linenr < self.getNumOfLines()) line_blk: {
+        defer linenr += 1;
+        const line = try self.getLineAlloc(self.a, linenr, 1024);
+        defer self.a.free(line);
+
+        var colnr: usize = 0;
+        var iter = code_point.Iterator{ .bytes = line };
+        while (iter.next()) |cp| {
+            defer colnr += 1;
+            if (linenr == input_linenr and colnr == input_colnr) {
+                if (cb(cp.code)) result.init_matches = true;
+                encountered_input_position = true;
+                continue;
+            }
+            if (!encountered_input_position) continue;
+            if (cb(cp.code)) {
+                result.point = CursorPoint{ .line = linenr, .col = colnr };
+                break :line_blk;
+            }
+        }
+
+        if (stop_at_eol) break;
+    }
+
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// insertChars
@@ -457,7 +524,10 @@ pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const CursorRange) !
 }
 
 fn deleteAndBalance(self: *@This(), r: CursorRange) !RcNode {
-    if (r.isEmpty()) return self.root.retain();
+    if (r.isEmpty()) {
+        std.debug.print("yo it's empty man\n", .{});
+        return self.root.retain();
+    }
     const noc = rcr.getNocOfRange(self.root, r.start, r.end);
     const new_root = try rcr.deleteChars(self.root, self.a, r.start, noc);
     const is_rebalanced, const balanced_root = try rcr.balance(self.a, new_root);

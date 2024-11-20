@@ -118,6 +118,7 @@ pub fn produceInSingleQuoteRanges(self: *@This(), a: Allocator, ropeman: *const 
     for (self.cursors.values(), 0..) |*cursor, i| {
         if (cursor.start.getSingleQuoteTextObject(ropeman)) |range| {
             ranges[i] = range;
+            ranges[i].start.col += 1;
             continue;
         }
         ranges[i] = .{
@@ -912,7 +913,7 @@ const Anchor = struct {
     fn getTextObjectOnCurrentLine(self: *const @This(), ropeman: *const RopeMan, cb: SeekCallback) ?RopeMan.CursorRange {
         var start: ?RopeMan.CursorPoint = null;
 
-        const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, true);
+        const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, true) catch return null;
         if (backwards_result.point) |back_point| {
             if (backwards_result.init_matches) {
                 return RopeMan.CursorRange{
@@ -923,7 +924,7 @@ const Anchor = struct {
             start = back_point;
         }
 
-        const first_forward_result = ropeman.seekForward(self.line, self.col, cb, true);
+        const first_forward_result = ropeman.seekForward(self.line, self.col, cb, true) catch return null;
         if (first_forward_result.point) |first_fwd_point| {
             if (start != null) {
                 return RopeMan.CursorRange{
@@ -940,9 +941,9 @@ const Anchor = struct {
             start = first_fwd_point;
         }
 
-        assert(start != null);
         const first_point = first_forward_result.point orelse return null;
-        const second_forward_result = ropeman.seekForward(first_point.line, first_point.col, cb, true);
+        assert(start != null);
+        const second_forward_result = ropeman.seekForward(first_point.line, first_point.col, cb, true) catch return null;
         if (second_forward_result.point) |second_fwd_point| {
             return RopeMan.CursorRange{
                 .start = start.?,

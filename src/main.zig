@@ -93,7 +93,7 @@ pub fn main() anyerror!void {
     });
     defer wm.deinit();
 
-    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines.zig", .{
+    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines_with_quotes.zig", .{
         .pos = .{ .x = 100, .y = 100 },
         .subscribed_style_sets = &.{0},
     }, true);
@@ -137,7 +137,8 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
 
     // experimental
-    try council.map("normal", &.{.apostrophe}, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
+    try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
+    try council.map("normal", &.{ .c, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
 
     ///////////////////////////// Visual Mode
 
