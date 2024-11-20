@@ -24,6 +24,7 @@ pub const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
     quick: bool = false,
+    require_clarity_afterwards: bool = false,
     contexts: struct {
         add: []const []const u8 = &.{},
         remove: []const []const u8 = &.{},
@@ -41,6 +42,7 @@ pub const MappingCouncil = struct {
     pending_ups_n_downs: *ArrayList(UpNDownCallback),
 
     active_contexts: *ActiveContexts,
+    require_clarity_afterwards: bool = false,
 
     const ActiveContexts = std.StringArrayHashMap(bool);
 
@@ -159,6 +161,11 @@ pub const MappingCouncil = struct {
         const report = frame.produceCandidateReport();
         const may_trigger = self.produceFinalTrigger(frame);
 
+        const require_clarity_afterwards_cpy = self.require_clarity_afterwards;
+        defer {
+            if (require_clarity_afterwards_cpy == self.require_clarity_afterwards) self.require_clarity_afterwards = false;
+        }
+
         const keys = self.active_contexts.keys();
         var i: usize = keys.len;
         while (true) {
@@ -178,8 +185,10 @@ pub const MappingCouncil = struct {
                 if (self.downs.get(context_id)) |trigger_map| {
                     if (may_trigger) |trigger| {
                         if (trigger_map.get(trigger)) |cb| {
+                            if (report.quick == trigger and frame.downs.items.len > 1 and self.require_clarity_afterwards) return;
                             try cb.f(cb.ctx);
                             try self.resolveContextsAfterCallback(cb);
+                            if (cb.require_clarity_afterwards) self.require_clarity_afterwards = true;
                             return;
                         }
                     }

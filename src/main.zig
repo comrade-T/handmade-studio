@@ -136,9 +136,16 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = &wm });
     try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
 
+    try council.map("normal", &.{ .d, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
+
     // experimental
     try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
-    try council.map("normal", &.{ .c, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
+    try council.map("normal", &.{ .c, .apostrophe }, .{
+        .f = WindowManager.deleteInSingleQuote,
+        .ctx = &wm,
+        .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
+        .require_clarity_afterwards = true,
+    });
 
     // TODO: change in word
     // TODO: change in WORD
