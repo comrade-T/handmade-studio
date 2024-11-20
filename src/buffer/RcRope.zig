@@ -3812,12 +3812,12 @@ const SeekForwardCtx = struct {
     }
 };
 
-const SeekForwardResult = struct {
+const SeekResult = struct {
     point: ?CursorPoint,
     init_matches: bool = false,
 };
 
-pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop_at_eol: bool) SeekForwardResult {
+pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop_at_eol: bool) SeekResult {
     var ctx: SeekForwardCtx = .{
         .cb = cb,
         .line = line,
@@ -3826,7 +3826,7 @@ pub fn seekForward(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop
         .result = .{ .line = line, .col = col },
     };
     _ = walkLineCol(std.heap.page_allocator, node, line, col, SeekForwardCtx.walker, SeekForwardCtx.decrementCol, &ctx) catch unreachable;
-    var result = SeekForwardResult{ .point = null, .init_matches = ctx.init_matches };
+    var result = SeekResult{ .point = null, .init_matches = ctx.init_matches };
     if (ctx.found) result.point = ctx.result;
     return result;
 }
@@ -3849,7 +3849,7 @@ test seekForward {
 
         ///////////////////////////// stop_at_eol == false
 
-        const R = SeekForwardResult;
+        const R = SeekResult;
 
         try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 0, eqSingleQuote, false));
         try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekForward(root, 0, 1, eqSingleQuote, false));
@@ -3903,6 +3903,7 @@ const SeekBackwardsCtx = struct {
     col: usize,
     stop_at_bol: bool,
     touched_input_col: bool = false,
+    init_matches: bool = false,
     found: bool = false,
     result: CursorPoint,
 
@@ -3916,7 +3917,8 @@ const SeekBackwardsCtx = struct {
         while (iter.next()) |cp| {
             defer i += 1;
             if (ctx.result.line == ctx.line) {
-                if (i >= ctx.col) {
+                if (i == ctx.col) {
+                    if (ctx.cb(cp.code)) ctx.init_matches = true;
                     ctx.touched_input_col = true;
                     break;
                 }
@@ -3946,7 +3948,7 @@ const SeekBackwardsCtx = struct {
     }
 };
 
-pub fn seekBackwards(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop_at_bol: bool) ?CursorPoint {
+pub fn seekBackwards(node: RcNode, line: usize, col: usize, cb: SeekCallback, stop_at_bol: bool) SeekResult {
     var ctx: SeekBackwardsCtx = .{
         .cb = cb,
         .line = line,
@@ -3955,7 +3957,9 @@ pub fn seekBackwards(node: RcNode, line: usize, col: usize, cb: SeekCallback, st
         .result = .{ .line = line, .col = col },
     };
     _ = walkLineColBackwards(std.heap.page_allocator, node, line, col, SeekBackwardsCtx.walker, SeekBackwardsCtx.decrementCol, &ctx) catch unreachable;
-    return if (ctx.found) ctx.result else null;
+    var result = SeekResult{ .point = null, .init_matches = ctx.init_matches };
+    if (ctx.found) result.point = ctx.result;
+    return result;
 }
 
 test seekBackwards {
@@ -3972,47 +3976,49 @@ test seekBackwards {
 
         ///////////////////////////// stop_at_bol == false
 
-        try eq(null, seekBackwards(root, 0, 4, eqSingleQuote, false));
-        try eq(null, seekBackwards(root, 0, 0, eqSingleQuote, false));
+        const R = SeekResult;
 
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 0, 10, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 0, 5, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 1, 0, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 1, 12, eqSingleQuote, false));
+        try eq(R{ .point = null, .init_matches = true }, seekBackwards(root, 0, 4, eqSingleQuote, false));
+        try eq(R{ .point = null }, seekBackwards(root, 0, 0, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekBackwards(root, 1, 13, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekBackwards(root, 1, 17, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekBackwards(root, 0, 10, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekBackwards(root, 0, 5, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekBackwards(root, 1, 0, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 0, .col = 4 }, .init_matches = true }, seekBackwards(root, 1, 12, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekBackwards(root, 1, 18, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekBackwards(root, 1, 24, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 12 } }, seekBackwards(root, 1, 13, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 12 }, .init_matches = true }, seekBackwards(root, 1, 17, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekBackwards(root, 1, 25, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekBackwards(root, 2, 0, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 17 } }, seekBackwards(root, 1, 18, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 17 }, .init_matches = true }, seekBackwards(root, 1, 24, eqSingleQuote, false));
 
-        try eq(CursorPoint{ .line = 2, .col = 0 }, seekBackwards(root, 2, 1, eqSingleQuote, false));
-        try eq(CursorPoint{ .line = 2, .col = 0 }, seekBackwards(root, 2, 4, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 24 } }, seekBackwards(root, 1, 25, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 1, .col = 24 }, .init_matches = true }, seekBackwards(root, 2, 0, eqSingleQuote, false));
+
+        try eq(R{ .point = .{ .line = 2, .col = 0 } }, seekBackwards(root, 2, 1, eqSingleQuote, false));
+        try eq(R{ .point = .{ .line = 2, .col = 0 } }, seekBackwards(root, 2, 4, eqSingleQuote, false));
 
         ///////////////////////////// stop_at_bol == true
 
-        try eq(null, seekBackwards(root, 0, 4, eqSingleQuote, true));
-        try eq(null, seekBackwards(root, 0, 0, eqSingleQuote, true));
+        try eq(R{ .point = null, .init_matches = true }, seekBackwards(root, 0, 4, eqSingleQuote, true));
+        try eq(R{ .point = null }, seekBackwards(root, 0, 0, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 0, 10, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 0, .col = 4 }, seekBackwards(root, 0, 5, eqSingleQuote, true));
-        try eq(null, seekBackwards(root, 1, 0, eqSingleQuote, true));
-        try eq(null, seekBackwards(root, 1, 12, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekBackwards(root, 0, 10, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 0, .col = 4 } }, seekBackwards(root, 0, 5, eqSingleQuote, true));
+        try eq(R{ .point = null }, seekBackwards(root, 1, 0, eqSingleQuote, true));
+        try eq(R{ .point = null, .init_matches = true }, seekBackwards(root, 1, 12, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekBackwards(root, 1, 13, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 1, .col = 12 }, seekBackwards(root, 1, 17, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 12 } }, seekBackwards(root, 1, 13, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 12 }, .init_matches = true }, seekBackwards(root, 1, 17, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekBackwards(root, 1, 18, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 1, .col = 17 }, seekBackwards(root, 1, 24, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 17 } }, seekBackwards(root, 1, 18, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 17 }, .init_matches = true }, seekBackwards(root, 1, 24, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 1, .col = 24 }, seekBackwards(root, 1, 25, eqSingleQuote, true));
-        try eq(null, seekBackwards(root, 2, 0, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 1, .col = 24 } }, seekBackwards(root, 1, 25, eqSingleQuote, true));
+        try eq(R{ .point = null, .init_matches = true }, seekBackwards(root, 2, 0, eqSingleQuote, true));
 
-        try eq(CursorPoint{ .line = 2, .col = 0 }, seekBackwards(root, 2, 1, eqSingleQuote, true));
-        try eq(CursorPoint{ .line = 2, .col = 0 }, seekBackwards(root, 2, 4, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 2, .col = 0 } }, seekBackwards(root, 2, 1, eqSingleQuote, true));
+        try eq(R{ .point = .{ .line = 2, .col = 0 } }, seekBackwards(root, 2, 4, eqSingleQuote, true));
     }
 }
 
