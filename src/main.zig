@@ -140,6 +140,9 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
     try council.map("normal", &.{ .c, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
 
+    // TODO: change in word
+    // TODO: change in WORD
+
     ///////////////////////////// Visual Mode
 
     try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });

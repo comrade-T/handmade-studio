@@ -517,17 +517,16 @@ pub fn deleteRanges(self: *@This(), a: Allocator, ranges: []const CursorRange) !
     var i = ranges.len;
     while (i > 0) {
         i -= 1;
-        self.root = try self.deleteAndBalance(ranges[i]);
-        try self.pending.append(self.root);
+        if (try self.deleteAndBalance(ranges[i])) |new_root| {
+            self.root = new_root;
+            try self.pending.append(self.root);
+        }
     }
     return try adjustPointsAfterMultiCursorDelete(a, ranges);
 }
 
-fn deleteAndBalance(self: *@This(), r: CursorRange) !RcNode {
-    if (r.isEmpty()) {
-        std.debug.print("yo it's empty man\n", .{});
-        return self.root.retain();
-    }
+fn deleteAndBalance(self: *@This(), r: CursorRange) !?RcNode {
+    if (r.isEmpty()) return null;
     const noc = rcr.getNocOfRange(self.root, r.start, r.end);
     const new_root = try rcr.deleteChars(self.root, self.a, r.start, noc);
     const is_rebalanced, const balanced_root = try rcr.balance(self.a, new_root);
