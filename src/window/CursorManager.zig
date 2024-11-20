@@ -110,6 +110,24 @@ pub fn produceBackspaceRanges(self: *@This(), a: Allocator, ropeman: *const Rope
     return ranges;
 }
 
+///////////////////////////// Text Objects
+
+pub fn produceInSingleQuoteRanges(self: *@This(), a: Allocator, ropeman: *const RopeMan) ![]RopeMan.CursorRange {
+    assert(self.cursor_mode == .point);
+    var ranges = try a.alloc(RopeMan.CursorRange, self.cursors.values().len);
+    for (self.cursors.values(), 0..) |*cursor, i| {
+        if (cursor.start.getSingleQuoteTextObject(ropeman)) |range| {
+            ranges[i] = range;
+            continue;
+        }
+        ranges[i] = .{
+            .start = .{ .line = cursor.start.line, .col = cursor.start.col },
+            .end = .{ .line = cursor.start.line, .col = cursor.start.col },
+        };
+    }
+    return ranges;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn mainCursor(self: *@This()) *Cursor {
@@ -286,10 +304,6 @@ fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: Cursor) !vo
     try eq(.{ expected[0], expected[1] }, .{ cursor.start.line, cursor.start.col });
     try eq(.{ expected[2], expected[3] }, .{ cursor.end.line, cursor.end.col });
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
-
-// TODO:
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
@@ -895,8 +909,7 @@ const Anchor = struct {
         return cp == '\'';
     }
 
-    fn getSingleQuoteTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
-        const cb = isSingleQuote;
+    fn getTextObjectOnCurrentLine(self: *const @This(), ropeman: *const RopeMan, cb: SeekCallback) ?RopeMan.CursorRange {
         var start: ?RopeMan.CursorPoint = null;
 
         const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, true);
@@ -937,6 +950,10 @@ const Anchor = struct {
             };
         }
         return null;
+    }
+
+    fn getSingleQuoteTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
+        return self.getTextObjectOnCurrentLine(ropeman, isSingleQuote);
     }
 
     test getSingleQuoteTextObject {
