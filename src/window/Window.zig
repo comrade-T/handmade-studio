@@ -249,19 +249,11 @@ pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleS
     try self.processEditResult(result, style_store);
 }
 
-pub fn backspace(self: *@This(), style_store: *const StyleStore) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.backspace()", 0x00AAFF);
-    defer zone.End();
-
-    const result = try self.ws.deleteRanges(self.a, self.cursor_manager, .backspace) orelse return;
-    try self.processEditResult(result, style_store);
-}
-
-pub fn deleteRanges(self: *@This(), style_store: *const StyleStore) !void {
+pub fn deleteRanges(self: *@This(), style_store: *const StyleStore, kind: WindowSource.DeleteRangesKind) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.deleteRanges()", 0x00AAFF);
     defer zone.End();
 
-    const result = try self.ws.deleteRanges(self.a, self.cursor_manager, .range) orelse return;
+    const result = try self.ws.deleteRanges(self.a, self.cursor_manager, kind) orelse return;
     try self.processEditResult(result, style_store);
 }
 

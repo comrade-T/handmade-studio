@@ -97,6 +97,14 @@ pub fn render(self: *@This(), view: Window.ScreenView) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
+///////////////////////////// Normal Mode
+
+pub fn deleteInSingleQuote(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.deleteRanges(self.style_store, .in_single_quote);
+}
+
 ///////////////////////////// Visual Mode
 
 pub fn enterVisualMode(ctx: *anyopaque) !void {
@@ -114,7 +122,7 @@ pub fn exitVisualMode(ctx: *anyopaque) !void {
 pub fn delete(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;
-    try window.deleteRanges(self.style_store);
+    try window.deleteRanges(self.style_store, .range);
     try exitVisualMode(ctx);
 }
 
@@ -128,7 +136,7 @@ pub fn insertChars(self: *@This(), chars: []const u8) !void {
 pub fn backspace(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;
-    try window.backspace(self.style_store);
+    try window.deleteRanges(self.style_store, .backspace);
 }
 
 pub fn enterInsertMode_i(ctx: *anyopaque) !void {

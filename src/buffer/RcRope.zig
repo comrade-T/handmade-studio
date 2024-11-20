@@ -3906,6 +3906,7 @@ const SeekBackwardsCtx = struct {
     init_matches: bool = false,
     found: bool = false,
     result: CursorPoint,
+    candidate: ?CursorPoint = null,
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
@@ -3913,23 +3914,20 @@ const SeekBackwardsCtx = struct {
 
         var iter = code_point.Iterator{ .bytes = leaf.buf };
         var i: usize = 0;
-        var candidate_colnr: ?usize = null;
         while (iter.next()) |cp| {
             defer i += 1;
-            if (ctx.result.line == ctx.line) {
-                if (i == ctx.col) {
-                    if (ctx.cb(cp.code)) ctx.init_matches = true;
-                    ctx.touched_input_col = true;
-                    break;
-                }
+            if (ctx.result.line == ctx.line and i == ctx.col) {
+                if (ctx.cb(cp.code)) ctx.init_matches = true;
+                ctx.touched_input_col = true;
+                break;
             }
-            if (ctx.cb(cp.code)) candidate_colnr = i;
+            if (ctx.cb(cp.code)) ctx.candidate = CursorPoint{ .line = ctx.result.line, .col = i };
         }
 
         if (ctx.touched_input_col) {
-            if (candidate_colnr) |colnr| {
+            if (ctx.candidate) |candidate| {
                 ctx.found = true;
-                ctx.result.col = colnr;
+                ctx.result = candidate;
                 return WalkResult.stop;
             }
         }

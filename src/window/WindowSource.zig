@@ -293,7 +293,14 @@ fn updateCapList(self: *@This(), ri: ReplaceInfo) !void {
 const EditLinenrMap = std.AutoArrayHashMap(u32, void);
 const ReplaceInfoList = std.ArrayList(ReplaceInfo);
 
-pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum { backspace, range }) !?[]const ReplaceInfo {
+pub const DeleteRangesKind = enum {
+    backspace,
+    range,
+
+    in_single_quote,
+};
+
+pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: DeleteRangesKind) !?[]const ReplaceInfo {
     const zone = ztracy.ZoneNC(@src(), "WindowSource.deleteRanges()", 0x00AAFF);
     defer zone.End();
 
@@ -310,6 +317,12 @@ pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: enum
             inputs = try cm.produceCursorRanges(self.a);
             assert(cm.cursor_mode == .range);
             if (cm.cursor_mode != .range) return null;
+        },
+
+        .in_single_quote => {
+            inputs = try cm.produceInSingleQuoteRanges(self.a, &self.buf.ropeman);
+            assert(cm.cursor_mode == .point);
+            if (cm.cursor_mode != .point) return null;
         },
     }
     defer self.a.free(inputs);

@@ -136,6 +136,9 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = &wm });
     try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
 
+    // experimental
+    try council.map("normal", &.{.apostrophe}, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
+
     ///////////////////////////// Visual Mode
 
     try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
