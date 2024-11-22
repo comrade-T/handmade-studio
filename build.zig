@@ -44,6 +44,8 @@ pub fn build(b: *std.Build) void {
         .enable_fibers = true,
     });
 
+    const fuzzig = b.dependency("fuzzig", .{}).module("fuzzig");
+
     ////////////////////////////////////////////////////////////////////////////// Tree Sitter
 
     const tree_sitter = b.addStaticLibrary(.{
@@ -143,7 +145,9 @@ pub fn build(b: *std.Build) void {
 
     ///////////////////////////// Fuzzy Finder
 
-    _ = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{}, zig_build_test_step);
+    _ = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{
+        .{ .name = "fuzzig", .module = fuzzig },
+    }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables
 

@@ -15,6 +15,10 @@
         .ztracy = .{
             .path = "copied-libs/ztracy",
         },
+        .fuzzig = .{
+            .url = "https://github.com/fjebaker/fuzzig/archive/main.tar.gz",
+            .hash = "1220ec64a1512e2050157a6450fba790df2312b3d23f64402195df01b0d850ff26c3",
+        },
     },
 
     .paths = .{

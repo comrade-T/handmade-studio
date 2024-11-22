@@ -1,5 +1,6 @@
 const FuzzyFinder = @This();
 const std = @import("std");
+const fuzzig = @import("fuzzig");
 
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -63,18 +64,18 @@ pub fn appendFileNamesRelativeToCwd(arena: *ArenaAllocator, sub_path: []const u8
     }
 }
 
-test appendFileNamesRelativeToCwd {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var list = ArrayList([]const u8).init(arena.allocator());
-    defer list.deinit();
-    {
-        try appendFileNamesRelativeToCwd(&arena, ".", &list, true);
-        for (list.items) |file_name| {
-            std.debug.print("{s}\n", .{file_name});
-        }
-    }
-}
+// test appendFileNamesRelativeToCwd {
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     defer arena.deinit();
+//     var list = ArrayList([]const u8).init(arena.allocator());
+//     defer list.deinit();
+//     {
+//         try appendFileNamesRelativeToCwd(&arena, ".", &list, true);
+//         for (list.items) |file_name| {
+//             std.debug.print("{s}\n", .{file_name});
+//         }
+//     }
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// matchGlob
 
@@ -142,4 +143,20 @@ test "match" {
 
     try eq(true, matchGlob(".zig-cache/", ".zig-cache/"));
     try eq(true, matchGlob(".zig-cache/", ".zig-cache/dummy.txt"));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Trying out fuzzig
+
+test fuzzig {
+    var searcher = try fuzzig.Ascii.init(
+        testing_allocator,
+        128, // haystack max size
+        32, // needle max size
+        .{ .case_sensitive = false },
+    );
+    defer searcher.deinit();
+
+    const match = searcher.scoreMatches("Hello World", "world");
+    try eq(104, match.score.?);
+    try std.testing.expectEqualSlices(usize, &.{ 6, 7, 8, 9, 10 }, match.matches);
 }
