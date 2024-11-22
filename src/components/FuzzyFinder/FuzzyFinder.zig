@@ -5,15 +5,17 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
-const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
-const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn getGitIgnorePatterns(a: Allocator, dir: std.fs.Dir) !ArrayList([]const u8) {
-    const file = try dir.openFile(".gitignore", .{ .mode = .read_only });
+fn getGitIgnorePatternsOfCWD(a: Allocator) !ArrayList([]const u8) {
+    var cwd_dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
+    defer cwd_dir.close();
+    errdefer cwd_dir.close();
+
+    const file = try cwd_dir.openFile(".gitignore", .{ .mode = .read_only });
     errdefer file.close();
     defer file.close();
 
@@ -34,15 +36,8 @@ fn getGitIgnorePatterns(a: Allocator, dir: std.fs.Dir) !ArrayList([]const u8) {
     return patterns_list;
 }
 
-pub fn getFileNamesRelativeToCwd(arena: *ArenaAllocator, sub_path: []const u8) !ArrayList([]const u8) {
-    var cwd_dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
-    defer cwd_dir.close();
-    errdefer cwd_dir.close();
-
-    const patterns = try getGitIgnorePatterns(arena.allocator(), cwd_dir);
-
-    var paths = std.ArrayList([]const u8).init(arena.allocator());
-    errdefer paths.deinit();
+pub fn appendFileNamesRelativeToCwd(arena: *ArenaAllocator, sub_path: []const u8, list: *ArrayList([]const u8), recursive: bool) !void {
+    const patterns = try getGitIgnorePatternsOfCWD(arena.allocator());
 
     var dir = try std.fs.cwd().openDir(sub_path, .{ .iterate = true });
     defer dir.close();
@@ -55,25 +50,27 @@ pub fn getFileNamesRelativeToCwd(arena: *ArenaAllocator, sub_path: []const u8) !
         else
             try std.fmt.allocPrint(arena.allocator(), "{s}", .{entry.name});
 
-        const relative_path = if (eql(u8, sub_path, "."))
+        const relative_path = if (std.mem.eql(u8, sub_path, "."))
             short_path
         else
             try std.fmt.allocPrint(arena.allocator(), "{s}{s}", .{ sub_path, short_path });
 
         for (patterns.items) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
         if (relative_path.len == 0) continue;
-        try paths.append(short_path);
-    }
 
-    return paths;
+        try list.append(relative_path);
+        if (recursive and entry.kind == .directory) try appendFileNamesRelativeToCwd(arena, relative_path, list, true);
+    }
 }
 
-test getFileNamesRelativeToCwd {
+test appendFileNamesRelativeToCwd {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
+    var list = ArrayList([]const u8).init(arena.allocator());
+    defer list.deinit();
     {
-        const results = try getFileNamesRelativeToCwd(&arena, ".");
-        for (results.items) |file_name| {
+        try appendFileNamesRelativeToCwd(&arena, ".", &list, true);
+        for (list.items) |file_name| {
             std.debug.print("{s}\n", .{file_name});
         }
     }
@@ -83,6 +80,9 @@ test getFileNamesRelativeToCwd {
 
 // https://ziggit.dev/t/how-do-i-match-glob-patterns-in-zig/4769
 fn matchGlob(pattern: []const u8, source: []const u8) bool {
+    if (std.mem.eql(u8, pattern, source)) return true;
+    if (pattern.len > 0 and std.mem.startsWith(u8, source, pattern)) return true;
+
     var pattern_i: usize = 0;
     var source_i: usize = 0;
     var next_pattern_i: usize = 0;
@@ -134,4 +134,12 @@ test "match" {
 
     try eq(true, matchGlob("dummy*.txt", "dummy-A.txt"));
     try eq(false, matchGlob("dummy*.txt", "dummy-A.png"));
+
+    try eq(true, matchGlob("copied-libs/", "copied-libs/"));
+    try eq(true, matchGlob("copied-libs/", "copied-libs/dummy.txt"));
+
+    try eq(true, matchGlob("copied-libs/ztracy", "copied-libs/ztracy"));
+
+    try eq(true, matchGlob(".zig-cache/", ".zig-cache/"));
+    try eq(true, matchGlob(".zig-cache/", ".zig-cache/dummy.txt"));
 }
