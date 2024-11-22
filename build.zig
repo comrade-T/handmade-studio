@@ -141,6 +141,10 @@ pub fn build(b: *std.Build) void {
         .{ .name = "Window", .module = window.module },
     }, zig_build_test_step);
 
+    ///////////////////////////// Fuzzy Finder
+
+    _ = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{}, zig_build_test_step);
+
     ////////////////////////////////////////////////////////////////////////////// Executables
 
     ///////////////////////////// Main
