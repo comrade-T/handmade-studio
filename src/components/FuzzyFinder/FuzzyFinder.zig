@@ -145,6 +145,50 @@ test "match" {
     try eq(true, matchGlob(".zig-cache/", ".zig-cache/dummy.txt"));
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// get file names and fuzzy find over them
+
+const SortScoresCtx = struct {
+    scores: []i32,
+
+    pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+        return ctx.scores[a_index] < ctx.scores[b_index];
+    }
+};
+
+test "get file names and fuzzy find over them" {
+    var searcher = try fuzzig.Ascii.init(testing_allocator, 1024 * 4, 1024, .{ .case_sensitive = false });
+    defer searcher.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    {
+        var paths = ArrayList([]const u8).init(arena.allocator());
+        defer paths.deinit();
+        try appendFileNamesRelativeToCwd(&arena, ".", &paths, true);
+
+        var match_score_list = std.AutoArrayHashMap(i32, []const u8).init(testing_allocator);
+        defer match_score_list.deinit();
+
+        const needle = "rope";
+        for (paths.items) |path| {
+            const match = searcher.scoreMatches(path, needle);
+            if (match.score) |score| try match_score_list.put(score, path);
+        }
+
+        match_score_list.sort(SortScoresCtx{ .scores = match_score_list.keys() });
+
+        var i: usize = match_score_list.values().len;
+        while (i > 0) {
+            i -= 1;
+            std.debug.print("path: '{s}' -> score: {d}\n", .{
+                match_score_list.values()[i],
+                match_score_list.keys()[i],
+            });
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Trying out fuzzig
 
 test fuzzig {
