@@ -145,6 +145,11 @@ pub fn build(b: *std.Build) void {
 
     ///////////////////////////// Fuzzy Finder
 
+    const text_box = addTestableModule(&bops, "src/components/TextBox.zig", &.{
+        .{ .name = "input_processor", .module = input_processor.module },
+    }, zig_build_test_step);
+    _ = text_box;
+
     _ = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
     }, zig_build_test_step);
