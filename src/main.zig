@@ -179,6 +179,11 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .i }, .{ .f = WindowManager.enterInsertMode_I, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("normal", &.{ .left_shift, .a }, .{ .f = WindowManager.enterInsertMode_A, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
 
+    try council.map("insert", &.{ .escape, .h }, .{ .f = WindowManager.moveCursorLeft, .ctx = &wm });
+    try council.map("insert", &.{ .escape, .j }, .{ .f = WindowManager.moveCursorDown, .ctx = &wm });
+    try council.map("insert", &.{ .escape, .k }, .{ .f = WindowManager.moveCursorUp, .ctx = &wm });
+    try council.map("insert", &.{ .escape, .l }, .{ .f = WindowManager.moveCursorRight, .ctx = &wm });
+
     try council.map("insert", &.{.escape}, .{ .f = WindowManager.exitInsertMode, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
     try council.map("insert", &.{.backspace}, .{ .f = WindowManager.backspace, .ctx = &wm });
 

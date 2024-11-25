@@ -171,12 +171,15 @@ pub const MappingCouncil = struct {
         const require_clarity_afterwards_cpy = self.require_clarity_afterwards;
         defer {
             if (require_clarity_afterwards_cpy == self.require_clarity_afterwards) self.require_clarity_afterwards = false;
+
+            frame.cleanUpAfterExecution();
         }
 
         const keys = self.active_contexts.keys();
         var i: usize = keys.len;
-        while (true) {
-            i -|= 1; // prioritize latest context_id
+
+        while (i > 0) {
+            i -= 1; // prioritize latest context_id
 
             const context_id = keys[i];
             if (frame.latest_event_type == .down) {
@@ -217,8 +220,6 @@ pub const MappingCouncil = struct {
                     }
                 }
             }
-
-            if (i == 0) break;
         }
     }
 
@@ -892,6 +893,11 @@ pub const InputFrame = struct {
         self.ups.deinit();
     }
 
+    pub fn cleanUpAfterExecution(self: *@This()) void {
+        self.clearKeyUps();
+        self.previous_down_candidate = null;
+    }
+
     const TimeStampOpttion = union(enum) { now, testing: i64 };
     pub fn keyDown(self: *@This(), key: Key, timestamp_opt: TimeStampOpttion) !void {
         for (self.downs.items) |e| if (e.key == key) return;
@@ -923,9 +929,8 @@ pub const InputFrame = struct {
         if (self.downs.items.len == 0) self.emitted = false;
     }
 
-    pub fn clearKeyUps(self: *@This()) !void {
-        self.ups.deinit();
-        self.ups = try ArrayList(KeyDownEvent).initCapacity(self.a, trigger_capacity);
+    pub fn clearKeyUps(self: *@This()) void {
+        self.ups.clearRetainingCapacity();
     }
 
     test "keyDown, keyUp, clearKeyUps" {
@@ -943,7 +948,7 @@ pub const InputFrame = struct {
         try eq(0, frame.downs.items.len);
         try eq(1, frame.ups.items.len);
 
-        try frame.clearKeyUps();
+        frame.clearKeyUps();
         try eq(0, frame.ups.items.len);
     }
 

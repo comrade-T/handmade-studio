@@ -27,7 +27,11 @@ pub fn updateInputState(self: *@This()) !void {
 }
 
 fn executeTriggerIfExists(self: *@This()) !void {
+    const previous_frame = self.frame.*;
+
     if (self.council.produceFinalTrigger(self.frame)) |trigger| {
+        self.frame.* = previous_frame;
+
         const current_time = std.time.milliTimestamp();
         defer self.last_trigger = trigger;
 
@@ -57,6 +61,7 @@ fn executeTriggerIfExists(self: *@This()) !void {
         }
 
         try self.council.execute(self.frame);
+        return;
     }
 }
 
