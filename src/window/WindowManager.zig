@@ -24,7 +24,7 @@ const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
 const LangHub = @import("LangSuite").LangHub;
-const StyleStore = @import("StyleStore");
+const RenderMall = @import("RenderMall");
 const WindowSource = @import("WindowSource");
 const Window = @import("Window");
 
@@ -33,16 +33,16 @@ const Window = @import("Window");
 a: Allocator,
 
 lang_hub: *LangHub,
-style_store: *const StyleStore,
+style_store: *const RenderMall,
 
 active_window: ?*Window = null,
-render_callbacks: Window.RenderCallbacks,
+render_callbacks: RenderMall.RenderCallbacks,
 
 handlers: WindowSourceHandlerList,
 fmap: FilePathToHandlerMap,
 wmap: WindowToHandlerMap,
 
-pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const StyleStore, render_callbacks: Window.RenderCallbacks) !WindowManager {
+pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const RenderMall, render_callbacks: RenderMall.RenderCallbacks) !WindowManager {
     return WindowManager{
         .a = a,
         .lang_hub = lang_hub,
@@ -74,8 +74,8 @@ test spawnWindow {
     var lang_hub = try LangHub.init(testing_allocator);
     defer lang_hub.deinit();
 
-    const style_store = try StyleStore.createStyleStoreForTesting(testing_allocator);
-    defer StyleStore.freeTestStyleStore(testing_allocator, style_store);
+    const style_store = try RenderMall.createStyleStoreForTesting(testing_allocator);
+    defer RenderMall.freeTestStyleStore(testing_allocator, style_store);
 
     {
         var wm = try WindowManager.init(testing_allocator, &lang_hub, style_store);
@@ -91,7 +91,7 @@ test spawnWindow {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), view: Window.ScreenView) void {
+pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
     for (self.wmap.keys()) |window| window.render(self.style_store, view, self.render_callbacks);
 }
 
@@ -283,7 +283,7 @@ const WindowSourceHandler = struct {
         self.source.destroy();
     }
 
-    fn spawnWindow(self: *@This(), a: Allocator, opts: Window.SpawnOptions, style_store: *const StyleStore) !*Window {
+    fn spawnWindow(self: *@This(), a: Allocator, opts: Window.SpawnOptions, style_store: *const RenderMall) !*Window {
         try self.windows.append(a, try Window.create(a, self.source, opts, style_store));
         return self.windows.getLast();
     }

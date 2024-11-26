@@ -11,7 +11,7 @@ const InputRepeatManager = @import("raylib-related/InputRepeatManager.zig");
 
 const FontStore = @import("FontStore");
 const ColorschemeStore = @import("ColorschemeStore");
-const StyleStore = @import("StyleStore");
+const RenderMall = @import("RenderMall");
 
 const LangSuite = @import("LangSuite");
 const WindowManager = @import("WindowManager");
@@ -57,7 +57,7 @@ pub fn main() anyerror!void {
     defer colorscheme_store.deinit();
     try colorscheme_store.initializeNightflyColorscheme();
 
-    var style_store = StyleStore.init(gpa, &font_store, &colorscheme_store);
+    var style_store = RenderMall.init(gpa, &font_store, &colorscheme_store);
     defer style_store.deinit();
 
     // adding custom rules

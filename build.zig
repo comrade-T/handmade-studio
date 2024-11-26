@@ -119,7 +119,7 @@ pub fn build(b: *std.Build) void {
 
     const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
     const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, zig_build_test_step);
-    const style_store = addTestableModule(&bops, "src/window/StyleStore.zig", &.{
+    const render_mall = addTestableModule(&bops, "src/window/RenderMall.zig", &.{
         .{ .name = "FontStore", .module = font_store.module },
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
     }, zig_build_test_step);
@@ -128,9 +128,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
-        .{ .name = "FontStore", .module = font_store.module },
-        .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
-        .{ .name = "StyleStore", .module = style_store.module },
+        .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "CursorManager", .module = cursor_manager.module },
         .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
@@ -139,7 +137,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "WindowSource", .module = window_source.module },
-        .{ .name = "StyleStore", .module = style_store.module },
+        .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "Window", .module = window.module },
     }, zig_build_test_step);
 
@@ -173,7 +171,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("Window", window.module);
         exe.root_module.addImport("FontStore", font_store.module);
         exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
-        exe.root_module.addImport("StyleStore", style_store.module);
+        exe.root_module.addImport("RenderMall", render_mall.module);
         exe.root_module.addImport("WindowManager", window_manager.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));

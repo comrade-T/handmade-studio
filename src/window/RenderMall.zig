@@ -22,8 +22,8 @@ const assert = std.debug.assert;
 const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 
-const FontStore = @import("FontStore");
-const ColorschemeStore = @import("ColorschemeStore");
+pub const FontStore = @import("FontStore");
+pub const ColorschemeStore = @import("ColorschemeStore");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -167,3 +167,15 @@ test StyleStore {
         try eq(null, not_exist);
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const RenderCallbacks = struct {
+    drawCodePoint: *const fn (font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void,
+    drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
+};
+
+pub const ScreenView = struct {
+    start: struct { x: f32 = 0, y: f32 = 0 },
+    end: struct { x: f32 = 0, y: f32 = 0 },
+};

@@ -30,9 +30,9 @@ const assert = std.debug.assert;
 
 pub const LangSuite = @import("LangSuite");
 pub const WindowSource = @import("WindowSource");
-pub const FontStore = @import("FontStore");
-pub const ColorschemeStore = @import("ColorschemeStore");
-pub const StyleStore = @import("StyleStore");
+pub const RenderMall = @import("RenderMall");
+pub const FontStore = RenderMall.FontStore;
+pub const ColorschemeStore = RenderMall.ColorschemeStore;
 
 const CursorManager = @import("CursorManager");
 
@@ -48,7 +48,7 @@ cursor_manager: *CursorManager,
 
 const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
 
-pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: *const StyleStore) !*Window {
+pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: *const RenderMall) !*Window {
     var self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -85,7 +85,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, render_callbacks: RenderCallbacks) void {
+pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
 
     ///////////////////////////// Profiling
 
@@ -134,8 +134,8 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
         while (iter.next(captures)) |r| {
             defer colnr += 1;
 
-            const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, StyleStore.getFont) orelse default_font;
-            const font_size = getStyleFromStore(f32, self, r, style_store, StyleStore.getFontSize) orelse self.defaults.font_size;
+            const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, RenderMall.getFont) orelse default_font;
+            const font_size = getStyleFromStore(f32, self, r, style_store, RenderMall.getFontSize) orelse self.defaults.font_size;
 
             const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
             defer char_x += char_width;
@@ -241,7 +241,7 @@ pub fn render(self: *@This(), style_store: *const StyleStore, view: ScreenView, 
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
-pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleStore) !void {
+pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const RenderMall) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
     defer zone.End();
 
@@ -249,7 +249,7 @@ pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const StyleS
     try self.processEditResult(result, style_store);
 }
 
-pub fn deleteRanges(self: *@This(), style_store: *const StyleStore, kind: WindowSource.DeleteRangesKind) !void {
+pub fn deleteRanges(self: *@This(), style_store: *const RenderMall, kind: WindowSource.DeleteRangesKind) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.deleteRanges()", 0x00AAFF);
     defer zone.End();
 
@@ -257,7 +257,7 @@ pub fn deleteRanges(self: *@This(), style_store: *const StyleStore, kind: Window
     try self.processEditResult(result, style_store);
 }
 
-fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const StyleStore) !void {
+fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const RenderMall) !void {
     const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
@@ -265,7 +265,7 @@ fn processEditResult(self: *@This(), replace_infos: []const WindowSource.Replace
     for (replace_infos) |ri| try self.updateCacheLines(ri, style_store, default_font, default_glyph);
 }
 
-fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !void {
+fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const RenderMall, default_font: *const Font, default_glyph: GlyphData) !void {
     assert(ri.end_line >= ri.start_line);
 
     var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, ri.end_line - ri.start_line + 1);
@@ -292,7 +292,7 @@ const WindowCache = struct {
         base_line: f32,
     };
 
-    fn init(a: Allocator, win: *const Window, style_store: *const StyleStore) !WindowCache {
+    fn init(a: Allocator, win: *const Window, style_store: *const RenderMall) !WindowCache {
         const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
         const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
@@ -314,8 +314,8 @@ const WindowCache = struct {
     }
 
     test WindowCache {
-        const style_store = try StyleStore.createStyleStoreForTesting(testing_allocator);
-        defer StyleStore.freeTestStyleStore(testing_allocator, style_store);
+        const style_store = try RenderMall.createStyleStoreForTesting(testing_allocator);
+        defer RenderMall.freeTestStyleStore(testing_allocator, style_store);
 
         var lang_hub = try Window.LangSuite.LangHub.init(testing_allocator);
         defer lang_hub.deinit();
@@ -343,7 +343,7 @@ const WindowCache = struct {
 const Font = FontStore.Font;
 const GlyphData = Font.GlyphData;
 
-fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const StyleStore, default_font: *const Font, default_glyph: GlyphData) !WindowCache.LineInfo {
+fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const RenderMall, default_font: *const Font, default_glyph: GlyphData) !WindowCache.LineInfo {
     var line_width: f32, var line_height: f32 = .{ 0, win.defaults.font_size };
     var min_base_line: f32, var max_base_line: f32, var max_font_size: f32 = .{ 0, 0, 0 };
 
@@ -353,8 +353,8 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Styl
     while (iter.next(captures)) |r| {
 
         // get font & font_size
-        const font = getStyleFromStore(*const Font, win, r, style_store, StyleStore.getFont) orelse default_font;
-        const font_size = getStyleFromStore(f32, win, r, style_store, StyleStore.getFontSize) orelse win.defaults.font_size;
+        const font = getStyleFromStore(*const Font, win, r, style_store, RenderMall.getFont) orelse default_font;
+        const font_size = getStyleFromStore(f32, win, r, style_store, RenderMall.getFontSize) orelse win.defaults.font_size;
         assert(font_size > 0);
 
         // base_line management
@@ -392,13 +392,13 @@ fn manageBaseLineInformation(font: *const Font, font_size: f32, max_font_size: *
     max_base_line.* = @max(max_base_line.*, adapted_base_line);
 }
 
-fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, style_store: *const StyleStore, cb: anytype) ?T {
+fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, style_store: *const RenderMall, cb: anytype) ?T {
     var i: usize = r.ids.len;
     while (i > 0) {
         i -= 1;
         const ids = r.ids[i];
         for (win.subscribed_style_sets.items) |styleset_id| {
-            const key = StyleStore.StyleKey{
+            const key = RenderMall.StyleKey{
                 .query_id = ids.query_id,
                 .capture_id = ids.capture_id,
                 .styleset_id = styleset_id,
@@ -461,18 +461,6 @@ const Attributes = struct {
         bottom: f32 = 0,
         left: f32 = 0,
     };
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
-
-pub const RenderCallbacks = struct {
-    drawCodePoint: *const fn (font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void,
-    drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
-};
-
-pub const ScreenView = struct {
-    start: struct { x: f32 = 0, y: f32 = 0 },
-    end: struct { x: f32 = 0, y: f32 = 0 },
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Reference for Testing
