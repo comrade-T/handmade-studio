@@ -159,6 +159,21 @@ pub fn enterInsertMode_A(ctx: *anyopaque) !void {
     try enterInsertMode_a(ctx);
 }
 
+pub fn enterInsertMode_o(ctx: *anyopaque) !void {
+    try moveCursorToEndOfLine(ctx);
+    try enterInsertMode_a(ctx);
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.insertChars("\n");
+}
+
+pub fn enterInsertMode_O(ctx: *anyopaque) !void {
+    try moveCursorToBeginningOfLine(ctx);
+    try enterInsertMode_i(ctx);
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.insertChars("\n");
+    try moveCursorUp(ctx);
+}
+
 pub fn exitInsertMode(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const window = self.active_window orelse return;

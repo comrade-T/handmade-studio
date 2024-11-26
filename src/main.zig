@@ -179,6 +179,12 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_shift, .i }, .{ .f = WindowManager.enterInsertMode_I, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("normal", &.{ .left_shift, .a }, .{ .f = WindowManager.enterInsertMode_A, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
 
+    try council.map("normal", &.{.o}, .{ .f = WindowManager.enterInsertMode_o, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+
+    try council.map("insert", &.{ .left_alt, .o }, .{ .f = WindowManager.enterInsertMode_o, .ctx = &wm });
+    try council.map("insert", &.{ .left_alt, .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = &wm });
+
     try council.map("insert", &.{ .escape, .h }, .{ .f = WindowManager.moveCursorLeft, .ctx = &wm });
     try council.map("insert", &.{ .escape, .j }, .{ .f = WindowManager.moveCursorDown, .ctx = &wm });
     try council.map("insert", &.{ .escape, .k }, .{ .f = WindowManager.moveCursorUp, .ctx = &wm });
