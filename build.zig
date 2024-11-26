@@ -147,6 +147,7 @@ pub fn build(b: *std.Build) void {
 
     const text_box = addTestableModule(&bops, "src/components/TextBox.zig", &.{
         .{ .name = "input_processor", .module = input_processor.module },
+        .{ .name = "RopeMan", .module = ropeman.module },
     }, zig_build_test_step);
     _ = text_box;
 
