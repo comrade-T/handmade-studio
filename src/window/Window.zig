@@ -33,6 +33,7 @@ pub const WindowSource = @import("WindowSource");
 pub const RenderMall = @import("RenderMall");
 pub const FontStore = RenderMall.FontStore;
 pub const ColorschemeStore = RenderMall.ColorschemeStore;
+const ScreenView = RenderMall.ScreenView;
 
 const CursorManager = @import("CursorManager");
 
@@ -85,7 +86,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
+pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
 
     ///////////////////////////// Profiling
 
@@ -108,6 +109,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
 
     var renderer = Renderer{
         .win = self,
+        .view = view,
         .render_callbacks = render_callbacks,
         .char_x = self.attr.pos.x,
         .line_y = self.attr.pos.y,
@@ -117,18 +119,15 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
         renderer.updateLinenr(linenr);
         defer renderer.nextLine();
 
-        if (renderer.line_y > view.end.y) return;
-        if (renderer.char_x + self.cached.line_info.items[linenr].width < view.start.x) continue;
-        if (renderer.line_y + self.cached.line_info.items[linenr].height < view.start.y) continue;
-
-        var last_char_info: LastestRenderedCharInfo = null;
-        var selection_start_x: ?f32 = null;
+        if (renderer.lineYBelowView()) return;
+        if (renderer.lineYAboveView() or renderer.lineStartPointOutOfView()) continue;
 
         var content_buf: [1024]u8 = undefined;
         var iter = WindowSource.LineIterator.init(self.ws, linenr, &content_buf) catch continue;
         var colnr: usize = 0;
         const captures: []WindowSource.StoredCapture = if (self.ws.ls != null) self.ws.cap_list.items[linenr] else &.{};
         while (iter.next(captures)) |r| {
+            renderer.updateColnr(colnr);
             defer colnr += 1;
 
             const font = getStyleFromStore(*const FontStore.Font, self, r, mall, RenderMall.getFont) orelse default_font;
@@ -140,19 +139,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
             if (renderer.char_x > view.end.x) break;
             if (renderer.char_x + char_width < view.start.x) continue;
 
-            var color = self.defaults.color;
-
-            var i: usize = r.ids.len;
-            while (i > 0) {
-                i -= 1;
-                const ids = r.ids[i];
-                const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
-                if (colorscheme.get(group_name)) |c| {
-                    color = c;
-                    break;
-                }
-            }
-
+            const color = self.getCharColor(r, colorscheme);
             assert(renderer.lineHeight() >= font_size);
 
             const height_deficit = renderer.lineHeight() - font_size;
@@ -164,7 +151,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
             chars_rendered += 1;
 
             defer { // cursors: if cursor with line
-                last_char_info = .{ .x = renderer.char_x, .width = char_width, .font_size = font_size };
+                renderer.last_char_info = .{ .x = renderer.char_x, .width = char_width, .font_size = font_size };
 
                 for (self.cursor_manager.cursors.values()) |*cursor| { // .point
                     const anchor = cursor.activeAnchor(self.cursor_manager);
@@ -177,7 +164,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
 
                     for (self.cursor_manager.cursors.values()) |*cursor| {
                         if (cursor.start.line == linenr and cursor.start.col == colnr) {
-                            if (selection_start_x == null) selection_start_x = renderer.char_x;
+                            if (renderer.selection_start_x == null) renderer.selection_start_x = renderer.char_x;
 
                             if (cursor.end.line == linenr) continue;
 
@@ -190,7 +177,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
                         if (cursor.end.line == linenr and cursor.end.col == colnr) {
 
                             // selection starts and ends on this line
-                            if (selection_start_x) |start_x| {
+                            if (renderer.selection_start_x) |start_x| {
                                 const width = renderer.char_x + char_width - start_x;
                                 render_callbacks.drawRectangle(start_x, renderer.line_y, width, renderer.lineHeight(), self.defaults.selection_color);
                                 continue;
@@ -215,7 +202,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
             }
         }
 
-        if (last_char_info) |info| { // cursors: if cursor at line end
+        if (renderer.last_char_info) |info| { // cursors: if cursor at line end
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 const anchor = cursor.activeAnchor(self.cursor_manager);
                 if (anchor.line != linenr or anchor.col != colnr) continue;
@@ -236,7 +223,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenVi
     }
 }
 
-fn isOutOfView(self: *@This(), view: RenderMall.ScreenView) bool {
+fn isOutOfView(self: *@This(), view: ScreenView) bool {
     if (self.attr.pos.x > view.end.x) return true;
     if (self.attr.pos.y > view.end.y) return true;
 
@@ -246,12 +233,28 @@ fn isOutOfView(self: *@This(), view: RenderMall.ScreenView) bool {
     return false;
 }
 
+fn getCharColor(self: *@This(), r: WindowSource.LineIterator.Result, colorscheme: *const ColorschemeStore.Colorscheme) u32 {
+    var color = self.defaults.color;
+    var i: usize = r.ids.len;
+    while (i > 0) {
+        i -= 1;
+        const ids = r.ids[i];
+        const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
+        if (colorscheme.get(group_name)) |c| {
+            color = c;
+            break;
+        }
+    }
+    return color;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Renderer
 
 const LastestRenderedCharInfo = ?struct { x: f32, width: f32, font_size: f32 };
 
 const Renderer = struct {
     win: *Window,
+    view: ScreenView,
     render_callbacks: RenderMall.RenderCallbacks,
 
     linenr: usize = 0,
@@ -271,6 +274,10 @@ const Renderer = struct {
         self.linenr = linenr;
     }
 
+    fn updateColnr(self: *@This(), colnr: usize) void {
+        self.colnr = colnr;
+    }
+
     fn nextLine(self: *@This()) void {
         self.char_x = self.win.attr.pos.x;
         self.line_y += self.lineHeight();
@@ -284,6 +291,22 @@ const Renderer = struct {
 
     fn baseLine(self: *@This()) f32 {
         return self.win.cached.line_info.items[self.linenr].base_line;
+    }
+
+    ///////////////////////////// checkers
+
+    fn lineYAboveView(self: *@This()) bool {
+        return self.line_y + self.lineHeight() < self.view.start.y;
+    }
+
+    fn lineYBelowView(self: *@This()) bool {
+        return self.line_y > self.view.end.y;
+    }
+
+    fn lineStartPointOutOfView(self: *@This()) bool {
+        const x = self.char_x + self.win.cached.line_info.items[self.linenr].width < self.view.start.x;
+        const y = self.line_y + self.win.cached.line_info.items[self.linenr].height < self.view.start.y;
+        return x or y;
     }
 };
 
