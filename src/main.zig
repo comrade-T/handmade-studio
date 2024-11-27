@@ -240,6 +240,11 @@ pub fn main() anyerror!void {
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });
+
+                rl.drawCircleV(.{
+                    .x = wm.active_window.?.attr.pos.x,
+                    .y = wm.active_window.?.attr.pos.y,
+                }, 10, rl.Color.sky_blue);
             }
         }
     }

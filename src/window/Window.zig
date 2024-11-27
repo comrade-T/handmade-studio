@@ -111,10 +111,8 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
         .default_glyph = default_glyph,
         .render_callbacks = render_callbacks,
         .mall = mall,
-        .char_x = self.attr.pos.x,
-        .line_y = self.attr.pos.y,
     };
-
+    renderer.initialize();
     renderer.render(colorscheme);
 }
 
@@ -160,24 +158,33 @@ const Renderer = struct {
     linenr: usize = 0,
     colnr: usize = 0,
 
-    char_x: f32,
     char_y: f32 = 0,
-    line_y: f32,
+    char_x: f32 = undefined,
+    line_y: f32 = undefined,
 
     // selection related
 
     last_char_info: LastestRenderedCharInfo = null,
     selection_start_x: ?f32 = null,
 
+    ///////////////////////////// initial values
+
+    fn initialize(self: *@This()) void {
+        self.char_x = self.calculateInitialCharX();
+        self.line_y = self.calculateInitialLineY();
+    }
+
+    fn calculateInitialCharX(self: *@This()) f32 {
+        if (self.win.attr.bounded) return self.win.attr.pos.x - self.win.attr.bounds.offset.x;
+        return self.win.attr.pos.x;
+    }
+
+    fn calculateInitialLineY(self: *@This()) f32 {
+        if (self.win.attr.bounded) return self.win.attr.pos.y - self.win.attr.bounds.offset.y;
+        return self.win.attr.pos.y;
+    }
+
     ///////////////////////////// updates
-
-    fn updateLinenr(self: *@This(), linenr: usize) void {
-        self.linenr = linenr;
-    }
-
-    fn updateColnr(self: *@This(), colnr: usize) void {
-        self.colnr = colnr;
-    }
 
     fn nextLine(self: *@This()) void {
         self.char_x = self.win.attr.pos.x;
@@ -227,14 +234,14 @@ const Renderer = struct {
         return self.char_x + char_width < self.view.start.x;
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// render
+    ////////////////////////////////////////////////////////////////////////////////////////////// iterate through all the lines
 
     fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) void {
         var chars_rendered: i64 = 0;
         defer ztracy.PlotI("chars_rendered", chars_rendered);
 
         for (0..self.win.ws.buf.ropeman.getNumOfLines()) |linenr| {
-            self.updateLinenr(linenr);
+            self.linenr = linenr;
             defer self.nextLine();
 
             if (self.lineYBelowView()) return;
@@ -248,11 +255,10 @@ const Renderer = struct {
         }
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// render characters
+    ////////////////////////////////////////////////////////////////////////////////////////////// iterate through characters in line
 
     fn iterateThroughCharsInLine(self: *@This(), chars_rendered: *i64, colorscheme: *const ColorschemeStore.Colorscheme) bool {
-        var colnr: usize = 0;
-        self.updateColnr(colnr);
+        self.colnr = 0;
 
         var content_buf: [1024]u8 = undefined;
         const stored_captures: []WindowSource.StoredCapture = if (self.win.ws.ls != null)
@@ -263,14 +269,15 @@ const Renderer = struct {
         var iter = WindowSource.LineIterator.init(self.win.ws, self.linenr, &content_buf) catch return false;
         while (iter.next(stored_captures)) |r| {
             defer {
-                colnr += 1;
-                self.updateColnr(colnr);
+                self.colnr += 1;
             }
+
             switch (self.renderCharacter(r, colorscheme, chars_rendered)) {
                 .should_break => break,
                 .should_continue => continue,
                 .keep_going => {},
             }
+
             self.renderInLineCursor();
             self.renderVisualRangeStartAndEnd();
         }
