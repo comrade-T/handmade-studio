@@ -110,6 +110,8 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
     var renderer = Renderer{
         .win = self,
         .view = view,
+        .default_font = default_font,
+        .default_glyph = default_glyph,
         .render_callbacks = render_callbacks,
         .char_x = self.attr.pos.x,
         .line_y = self.attr.pos.y,
@@ -150,37 +152,12 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
             render_callbacks.drawCodePoint(font, r.code_point, renderer.char_x, renderer.char_y, font_size, color);
             chars_rendered += 1;
 
-            defer renderer.renderCursorAndSelectionPartOne(font_size, char_width);
+            renderer.renderCursorDotAndSelectionPartOne(font_size, char_width);
         }
 
-        if (self.cursor_manager.cursor_mode == .range) { // .range
-            const line_width = self.cached.line_info.items[linenr].width;
-            for (self.cursor_manager.cursors.values()) |*cursor| {
-                if (cursor.start.line < linenr and cursor.end.line > linenr) {
-                    render_callbacks.drawRectangle(self.attr.pos.x, renderer.line_y, line_width, renderer.lineHeight(), self.defaults.selection_color);
-                }
-            }
-        }
-
-        if (renderer.last_char_info) |info| { // cursors: if cursor at line end
-            defer renderer.last_char_info = null;
-            for (self.cursor_manager.cursors.values()) |*cursor| {
-                const anchor = cursor.activeAnchor(self.cursor_manager);
-                if (anchor.line != linenr or anchor.col != colnr) continue;
-                render_callbacks.drawRectangle(info.x + info.width, renderer.line_y, info.width, info.font_size, self.defaults.color);
-            }
-            continue;
-        }
-
-        if (colnr == 0) { // cursors: if line is empty
-            for (self.cursor_manager.cursors.values()) |*cursor| {
-                const anchor = cursor.activeAnchor(self.cursor_manager);
-                if (anchor.line != linenr) continue;
-                const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
-                render_callbacks.drawRectangle(renderer.char_x, renderer.line_y, char_width, renderer.lineHeight(), self.defaults.color);
-            }
-            continue;
-        }
+        renderer.renderSelectionLinesBetweenStartAndEnd();
+        if (renderer.renderCursorDotAtLineEnd()) continue;
+        if (renderer.renderCursorOnEmptyLine()) continue;
     }
 }
 
@@ -216,6 +193,10 @@ const LastestRenderedCharInfo = ?struct { x: f32, width: f32, font_size: f32 };
 const Renderer = struct {
     win: *Window,
     view: ScreenView,
+
+    default_font: *const FontStore.Font,
+    default_glyph: FontStore.Font.GlyphData,
+
     render_callbacks: RenderMall.RenderCallbacks,
 
     linenr: usize = 0,
@@ -244,6 +225,8 @@ const Renderer = struct {
     fn nextLine(self: *@This()) void {
         self.char_x = self.win.attr.pos.x;
         self.line_y += self.lineHeight();
+        self.last_char_info = null;
+        self.selection_start_x = null;
     }
 
     fn updateCharY(self: *@This(), font: *const FontStore.Font, font_size: f32) void {
@@ -290,46 +273,97 @@ const Renderer = struct {
     ////////////////////////////////////////////////////////////////////////////////////////////// drawing
 
     /// This gets called right after rendering a character
-    fn renderCursorAndSelectionPartOne(self: *@This(), font_size: f32, char_width: f32) void {
+    fn renderCursorDotAndSelectionPartOne(self: *@This(), font_size: f32, char_width: f32) void {
         self.last_char_info = .{ .x = self.char_x, .width = char_width, .font_size = font_size };
 
-        for (self.win.cursor_manager.cursors.values()) |*cursor| { // .point
+        // render cursor dot
+        for (self.win.cursor_manager.cursors.values()) |*cursor| {
             const anchor = cursor.activeAnchor(self.win.cursor_manager);
             if (anchor.line != self.linenr or anchor.col != self.colnr) continue;
             self.render_callbacks.drawRectangle(self.char_x, self.char_y, char_width, font_size, self.win.defaults.color);
         }
 
-        if (self.win.cursor_manager.cursor_mode == .range) { // .range
-            const line_width = self.win.cached.line_info.items[self.linenr].width;
+        // render visual range
 
-            for (self.win.cursor_manager.cursors.values()) |*cursor| {
-                if (cursor.start.line == self.linenr and cursor.start.col == self.colnr) {
-                    if (self.selection_start_x == null) self.selection_start_x = self.char_x;
+        if (self.win.cursor_manager.cursor_mode != .range) return;
 
-                    if (cursor.end.line == self.linenr) continue;
+        const line_width = self.win.cached.line_info.items[self.linenr].width;
+        for (self.win.cursor_manager.cursors.values()) |*cursor| {
+            if (cursor.start.line == self.linenr and cursor.start.col == self.colnr) {
+                if (self.selection_start_x == null) self.selection_start_x = self.char_x;
 
-                    // selection starts on this line but ends elsewhere
-                    const width = line_width - (self.char_x - self.win.attr.pos.x);
-                    self.render_callbacks.drawRectangle(self.char_x, self.line_y, width, self.lineHeight(), self.win.defaults.selection_color);
+                if (cursor.end.line == self.linenr) continue;
+
+                // selection starts on this line but ends elsewhere
+                const width = line_width - (self.char_x - self.win.attr.pos.x);
+                self.render_callbacks.drawRectangle(self.char_x, self.line_y, width, self.lineHeight(), self.win.defaults.selection_color);
+                continue;
+            }
+
+            if (cursor.end.line == self.linenr and cursor.end.col == self.colnr) {
+
+                // selection starts and ends on this line
+                if (self.selection_start_x) |start_x| {
+                    const width = self.char_x + char_width - start_x;
+                    self.render_callbacks.drawRectangle(start_x, self.line_y, width, self.lineHeight(), self.win.defaults.selection_color);
                     continue;
                 }
 
-                if (cursor.end.line == self.linenr and cursor.end.col == self.colnr) {
-
-                    // selection starts and ends on this line
-                    if (self.selection_start_x) |start_x| {
-                        const width = self.char_x + char_width - start_x;
-                        self.render_callbacks.drawRectangle(start_x, self.line_y, width, self.lineHeight(), self.win.defaults.selection_color);
-                        continue;
-                    }
-
-                    // selection started elsewhere and ends here
-                    const width = self.char_x + char_width - self.win.attr.pos.x;
-                    self.render_callbacks.drawRectangle(self.win.attr.pos.x, self.line_y, width, self.lineHeight(), self.win.defaults.selection_color);
-                    continue;
-                }
+                // selection started elsewhere and ends here
+                const width = self.char_x + char_width - self.win.attr.pos.x;
+                self.render_callbacks.drawRectangle(self.win.attr.pos.x, self.line_y, width, self.lineHeight(), self.win.defaults.selection_color);
+                continue;
             }
         }
+    }
+
+    fn renderSelectionLinesBetweenStartAndEnd(self: *@This()) void {
+        if (self.win.cursor_manager.cursor_mode != .range) return;
+        const line_width = self.win.cached.line_info.items[self.linenr].width;
+
+        for (self.win.cursor_manager.cursors.values()) |*cursor| {
+            if (cursor.start.line < self.linenr and cursor.end.line > self.linenr) {
+                self.render_callbacks.drawRectangle(
+                    self.win.attr.pos.x,
+                    self.line_y,
+                    line_width,
+                    self.lineHeight(),
+                    self.win.defaults.selection_color,
+                );
+            }
+        }
+    }
+
+    fn renderCursorDotAtLineEnd(self: *@This()) bool {
+        if (self.last_char_info) |info| {
+            for (self.win.cursor_manager.cursors.values()) |*cursor| {
+                const anchor = cursor.activeAnchor(self.win.cursor_manager);
+                if (anchor.line != self.linenr or anchor.col != self.colnr) continue;
+
+                self.render_callbacks.drawRectangle(
+                    info.x + info.width,
+                    self.line_y,
+                    info.width,
+                    info.font_size,
+                    self.win.defaults.color,
+                );
+            }
+            return true;
+        }
+        return false;
+    }
+
+    fn renderCursorOnEmptyLine(self: *@This()) bool {
+        if (self.colnr > 0) return false;
+
+        for (self.win.cursor_manager.cursors.values()) |*cursor| {
+            const anchor = cursor.activeAnchor(self.win.cursor_manager);
+            if (anchor.line != self.linenr) continue;
+            const char_width = calculateGlyphWidth(self.default_font, self.win.defaults.font_size, ' ', self.default_glyph);
+            self.render_callbacks.drawRectangle(self.char_x, self.line_y, char_width, self.lineHeight(), self.win.defaults.color);
+        }
+
+        return true;
     }
 };
 
