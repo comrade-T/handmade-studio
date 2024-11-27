@@ -93,9 +93,6 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
     const render_zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
     defer render_zone.End();
 
-    var chars_rendered: i64 = 0;
-    defer ztracy.PlotI("chars_rendered", chars_rendered);
-
     ///////////////////////////// Temporary Setup
 
     const default_font = mall.font_store.getDefaultFont() orelse unreachable;
@@ -118,19 +115,7 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
         .line_y = self.attr.pos.y,
     };
 
-    for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        renderer.updateLinenr(linenr);
-        defer renderer.nextLine();
-
-        if (renderer.lineYBelowView()) return;
-        if (renderer.lineYAboveView() or renderer.lineStartPointOutOfView()) continue;
-
-        if (!renderer.iterateThroughCharsInLine(&chars_rendered, colorscheme)) continue;
-
-        renderer.renderSelectionLinesBetweenStartAndEnd();
-        if (renderer.renderCursorDotAtLineEnd()) continue;
-        if (renderer.renderCursorOnEmptyLine()) continue;
-    }
+    renderer.render(colorscheme);
 }
 
 fn isOutOfView(self: *@This(), view: ScreenView) bool {
@@ -240,6 +225,27 @@ const Renderer = struct {
 
     fn charEndsBeforeViewStart(self: *@This(), char_width: f32) bool {
         return self.char_x + char_width < self.view.start.x;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// render
+
+    fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) void {
+        var chars_rendered: i64 = 0;
+        defer ztracy.PlotI("chars_rendered", chars_rendered);
+
+        for (0..self.win.ws.buf.ropeman.getNumOfLines()) |linenr| {
+            self.updateLinenr(linenr);
+            defer self.nextLine();
+
+            if (self.lineYBelowView()) return;
+            if (self.lineYAboveView() or self.lineStartPointOutOfView()) continue;
+
+            if (!self.iterateThroughCharsInLine(&chars_rendered, colorscheme)) continue;
+
+            self.renderSelectionLinesBetweenStartAndEnd();
+            if (self.renderCursorDotAtLineEnd()) continue;
+            if (self.renderCursorOnEmptyLine()) continue;
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// render characters
