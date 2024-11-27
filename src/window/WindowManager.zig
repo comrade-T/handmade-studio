@@ -55,18 +55,33 @@ pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const RenderMall, re
 }
 
 pub fn deinit(self: *@This()) void {
-    for (self.handlers.items) |*handler| handler.deinit(self.a);
+    for (self.handlers.items) |handler| handler.destroy(self.a);
     self.handlers.deinit(self.a);
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
 }
 
 pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions, make_active: bool) !void {
-    try self.handlers.append(self.a, try WindowSourceHandler.init(self, from, source, self.lang_hub));
-    var handler = &self.handlers.items[self.handlers.items.len - 1];
+
+    // if file path exists in fmap
+    if (from == .file) {
+        if (self.fmap.get(source)) |handler| {
+            const window = try handler.spawnWindow(self.a, opts, self.style_store);
+            try self.wmap.put(self.a, window, handler);
+            if (make_active or self.active_window == null) self.active_window = window;
+            return;
+        }
+    }
+
+    // spawn from scratch
+    try self.handlers.append(self.a, try WindowSourceHandler.create(self, from, source, self.lang_hub));
+    var handler = self.handlers.getLast();
+
     const window = try handler.spawnWindow(self.a, opts, self.style_store);
     try self.wmap.put(self.a, window, handler);
+
     if (from == .file) try self.fmap.put(self.a, source, handler);
+
     if (make_active or self.active_window == null) self.active_window = window;
 }
 
@@ -278,28 +293,32 @@ pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
 const WindowToHandlerMap = std.AutoArrayHashMapUnmanaged(*Window, *WindowSourceHandler);
 const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandler);
 
-const WindowSourceHandlerList = std.ArrayListUnmanaged(WindowSourceHandler);
+const WindowSourceHandlerList = std.ArrayListUnmanaged(*WindowSourceHandler);
 const WindowSourceHandler = struct {
     source: *WindowSource,
     windows: WindowList,
 
     const WindowList = std.ArrayListUnmanaged(*Window);
 
-    fn init(wm: *WindowManager, from: WindowSource.InitFrom, source: []const u8, lang_hub: *LangHub) !WindowSourceHandler {
-        return WindowSourceHandler{
+    fn create(wm: *WindowManager, from: WindowSource.InitFrom, source: []const u8, lang_hub: *LangHub) !*WindowSourceHandler {
+        const self = try wm.a.create(@This());
+        self.* = WindowSourceHandler{
             .source = try WindowSource.create(wm.a, from, source, lang_hub),
             .windows = WindowList{},
         };
+        return self;
     }
 
-    fn deinit(self: *@This(), a: Allocator) void {
+    fn destroy(self: *@This(), a: Allocator) void {
         for (self.windows.items) |window| window.destroy();
         self.windows.deinit(a);
         self.source.destroy();
+        a.destroy(self);
     }
 
     fn spawnWindow(self: *@This(), a: Allocator, opts: Window.SpawnOptions, style_store: *const RenderMall) !*Window {
-        try self.windows.append(a, try Window.create(a, self.source, opts, style_store));
-        return self.windows.getLast();
+        const window = try Window.create(a, self.source, opts, style_store);
+        try self.windows.append(a, window);
+        return window;
     }
 };
