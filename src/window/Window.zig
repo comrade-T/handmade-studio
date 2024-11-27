@@ -210,24 +210,62 @@ const Renderer = struct {
         return self.win.cached.line_info.items[self.linenr].base_line;
     }
 
+    fn boundStartX(self: *@This()) f32 {
+        assert(self.win.attr.bounded);
+        return self.win.attr.pos.x;
+    }
+
+    fn boundStartY(self: *@This()) f32 {
+        assert(self.win.attr.bounded);
+        return self.win.attr.pos.y;
+    }
+
+    fn boundEndX(self: *@This()) f32 {
+        assert(self.win.attr.bounded);
+        return self.win.attr.pos.x + self.win.attr.bounds.width;
+    }
+
     ///////////////////////////// checkers
 
     fn lineYAboveView(self: *@This()) bool {
-        return self.line_y + self.lineHeight() < self.view.start.y;
+        const above_screen_view = self.line_y + self.lineHeight() < self.view.start.y;
+        if (self.win.attr.bounded) {
+            const above_bounds = self.line_y + self.lineHeight() < self.boundStartY();
+            return above_bounds or above_screen_view;
+        }
+        return above_screen_view;
     }
 
     fn lineYBelowView(self: *@This()) bool {
-        return self.line_y > self.view.end.y;
+        const below_screen_view = self.line_y > self.view.end.y;
+        if (self.win.attr.bounded) {
+            const below_bounds = self.line_y > (self.win.attr.pos.y + self.win.attr.bounds.height);
+            return below_bounds or below_screen_view;
+        }
+        return below_screen_view;
     }
 
     fn lineStartPointOutOfView(self: *@This()) bool {
-        const x = self.char_x + self.win.cached.line_info.items[self.linenr].width < self.view.start.x;
-        const y = self.line_y + self.win.cached.line_info.items[self.linenr].height < self.view.start.y;
-        return x or y;
+        const line_info = self.win.cached.line_info.items[self.linenr];
+
+        const x_starts_out_of_view = self.char_x + line_info.width < self.view.start.x;
+        const y_starts_out_of_view = self.line_y + line_info.height < self.view.start.y;
+        const starts_out_of_view = x_starts_out_of_view or y_starts_out_of_view;
+
+        if (!self.win.attr.bounded) return starts_out_of_view;
+
+        const x_starts_out_of_bounds = self.char_x + line_info.width < self.boundStartX();
+        const y_starts_out_of_bounds = self.line_y + line_info.height < self.boundStartY();
+        const starts_out_of_bounds = x_starts_out_of_bounds or y_starts_out_of_bounds;
+        return starts_out_of_bounds or starts_out_of_view;
     }
 
     fn charStartsAfterViewEnds(self: *@This()) bool {
-        return self.char_x > self.view.end.x;
+        const char_start_after_view = self.char_x > self.view.end.x;
+        if (!self.win.attr.bounded) return char_start_after_view;
+
+        const char_start_after_bounds = self.char_x > self.boundEndX();
+        return char_start_after_view or char_start_after_bounds;
     }
 
     fn charEndsBeforeViewStart(self: *@This(), char_width: f32) bool {
@@ -268,9 +306,7 @@ const Renderer = struct {
 
         var iter = WindowSource.LineIterator.init(self.win.ws, self.linenr, &content_buf) catch return false;
         while (iter.next(stored_captures)) |r| {
-            defer {
-                self.colnr += 1;
-            }
+            defer self.colnr += 1;
 
             switch (self.renderCharacter(r, colorscheme, chars_rendered)) {
                 .should_break => break,

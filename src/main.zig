@@ -93,15 +93,35 @@ pub fn main() anyerror!void {
     });
     defer wm.deinit();
 
-    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines_with_quotes.zig", .{
+    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
         .pos = .{ .x = 100, .y = 100 },
         .subscribed_style_sets = &.{0},
+        .bounds = .{
+            .width = 400,
+            .height = 300,
+            .offset = .{ .x = 0, .y = 0 },
+        },
     }, true);
 
-    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-    //     .pos = .{ .x = 100, .y = 100 },
-    //     .subscribed_style_sets = &.{0},
-    // }, true);
+    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+        .pos = .{ .x = 600, .y = 100 },
+        .subscribed_style_sets = &.{0},
+        .bounds = .{
+            .width = 400,
+            .height = 300,
+            .offset = .{ .x = 0, .y = 100 },
+        },
+    }, false);
+
+    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+        .pos = .{ .x = 1100, .y = 100 },
+        .subscribed_style_sets = &.{0},
+        .bounds = .{
+            .width = 400,
+            .height = 300,
+            .offset = .{ .x = 0, .y = 200 },
+        },
+    }, false);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
@@ -236,15 +256,22 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
+                for (wm.wmap.keys()) |window| {
+                    if (window.attr.bounded) {
+                        rl.drawRectangleV(.{
+                            .x = window.attr.pos.x,
+                            .y = window.attr.pos.y,
+                        }, .{
+                            .x = window.attr.bounds.width,
+                            .y = window.attr.bounds.height,
+                        }, rl.Color.init(255, 255, 255, 30));
+                    }
+                }
+
                 wm.render(.{
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
                 });
-
-                rl.drawCircleV(.{
-                    .x = wm.active_window.?.attr.pos.x,
-                    .y = wm.active_window.?.attr.pos.y,
-                }, 10, rl.Color.sky_blue);
             }
         }
     }
