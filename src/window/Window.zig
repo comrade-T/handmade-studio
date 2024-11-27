@@ -48,7 +48,7 @@ cursor_manager: *CursorManager,
 
 const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
 
-pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: *const RenderMall) !*Window {
+pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const RenderMall) !*Window {
     var self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -67,7 +67,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, style_store: 
     if (opts.subscribed_style_sets) |slice| try self.subscribed_style_sets.appendSlice(self.a, slice);
 
     // this must be called last
-    self.cached = try WindowCache.init(self.a, self, style_store);
+    self.cached = try WindowCache.init(self.a, self, mall);
 
     return self;
 }
@@ -85,7 +85,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
+pub fn render(self: *@This(), mall: *const RenderMall, view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
 
     ///////////////////////////// Profiling
 
@@ -97,34 +97,31 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
 
     ///////////////////////////// Temporary Setup
 
-    const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
+    const default_font = mall.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
-    const colorscheme = style_store.colorscheme_store.getDefaultColorscheme() orelse unreachable;
+    const colorscheme = mall.colorscheme_store.getDefaultColorscheme() orelse unreachable;
 
     ///////////////////////////// Culling & Render
 
-    if (self.attr.pos.x > view.end.x) return;
-    if (self.attr.pos.y > view.end.y) return;
+    if (self.isOutOfView(view)) return;
 
-    if (self.attr.pos.x + self.cached.width < view.start.x) return;
-    if (self.attr.pos.y + self.cached.height < view.start.y) return;
-
-    var char_x: f32 = self.attr.pos.x;
-    var line_y: f32 = self.attr.pos.y;
+    var renderer = Renderer{
+        .win = self,
+        .render_callbacks = render_callbacks,
+        .char_x = self.attr.pos.x,
+        .line_y = self.attr.pos.y,
+    };
 
     for (0..self.ws.buf.ropeman.getNumOfLines()) |linenr| {
-        const line_height = self.cached.line_info.items[linenr].height;
-        const line_base = self.cached.line_info.items[linenr].base_line;
+        renderer.updateLinenr(linenr);
+        defer renderer.nextLine();
 
-        defer char_x = self.attr.pos.x;
-        defer line_y += line_height;
+        if (renderer.line_y > view.end.y) return;
+        if (renderer.char_x + self.cached.line_info.items[linenr].width < view.start.x) continue;
+        if (renderer.line_y + self.cached.line_info.items[linenr].height < view.start.y) continue;
 
-        if (line_y > view.end.y) return;
-        if (char_x + self.cached.line_info.items[linenr].width < view.start.x) continue;
-        if (line_y + self.cached.line_info.items[linenr].height < view.start.y) continue;
-
-        var last_char_info: ?struct { x: f32, width: f32, font_size: f32 } = null;
+        var last_char_info: LastestRenderedCharInfo = null;
         var selection_start_x: ?f32 = null;
 
         var content_buf: [1024]u8 = undefined;
@@ -134,14 +131,14 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
         while (iter.next(captures)) |r| {
             defer colnr += 1;
 
-            const font = getStyleFromStore(*const FontStore.Font, self, r, style_store, RenderMall.getFont) orelse default_font;
-            const font_size = getStyleFromStore(f32, self, r, style_store, RenderMall.getFontSize) orelse self.defaults.font_size;
+            const font = getStyleFromStore(*const FontStore.Font, self, r, mall, RenderMall.getFont) orelse default_font;
+            const font_size = getStyleFromStore(f32, self, r, mall, RenderMall.getFontSize) orelse self.defaults.font_size;
 
             const char_width = calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
-            defer char_x += char_width;
+            defer renderer.char_x += char_width;
 
-            if (char_x > view.end.x) break;
-            if (char_x + char_width < view.start.x) continue;
+            if (renderer.char_x > view.end.x) break;
+            if (renderer.char_x + char_width < view.start.x) continue;
 
             var color = self.defaults.color;
 
@@ -156,23 +153,23 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
                 }
             }
 
-            assert(line_height >= font_size);
+            assert(renderer.lineHeight() >= font_size);
 
-            const height_deficit = line_height - font_size;
+            const height_deficit = renderer.lineHeight() - font_size;
             const char_base = font.getAdaptedBaseLine(font_size);
-            const char_shift = line_base - (height_deficit + char_base);
-            const char_y = line_y + height_deficit + char_shift;
+            const char_shift = renderer.baseLine() - (height_deficit + char_base);
+            const char_y = renderer.line_y + height_deficit + char_shift;
 
-            render_callbacks.drawCodePoint(font, r.code_point, char_x, char_y, font_size, color);
+            render_callbacks.drawCodePoint(font, r.code_point, renderer.char_x, char_y, font_size, color);
             chars_rendered += 1;
 
             defer { // cursors: if cursor with line
-                last_char_info = .{ .x = char_x, .width = char_width, .font_size = font_size };
+                last_char_info = .{ .x = renderer.char_x, .width = char_width, .font_size = font_size };
 
                 for (self.cursor_manager.cursors.values()) |*cursor| { // .point
                     const anchor = cursor.activeAnchor(self.cursor_manager);
                     if (anchor.line != linenr or anchor.col != colnr) continue;
-                    render_callbacks.drawRectangle(char_x, char_y, char_width, font_size, self.defaults.color);
+                    render_callbacks.drawRectangle(renderer.char_x, char_y, char_width, font_size, self.defaults.color);
                 }
 
                 if (self.cursor_manager.cursor_mode == .range) { // .range
@@ -180,13 +177,13 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
 
                     for (self.cursor_manager.cursors.values()) |*cursor| {
                         if (cursor.start.line == linenr and cursor.start.col == colnr) {
-                            if (selection_start_x == null) selection_start_x = char_x;
+                            if (selection_start_x == null) selection_start_x = renderer.char_x;
 
                             if (cursor.end.line == linenr) continue;
 
                             // selection starts on this line but ends elsewhere
-                            const width = line_width - (char_x - self.attr.pos.x);
-                            render_callbacks.drawRectangle(char_x, line_y, width, line_height, self.defaults.selection_color);
+                            const width = line_width - (renderer.char_x - self.attr.pos.x);
+                            render_callbacks.drawRectangle(renderer.char_x, renderer.line_y, width, renderer.lineHeight(), self.defaults.selection_color);
                             continue;
                         }
 
@@ -194,14 +191,14 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
 
                             // selection starts and ends on this line
                             if (selection_start_x) |start_x| {
-                                const width = char_x + char_width - start_x;
-                                render_callbacks.drawRectangle(start_x, line_y, width, line_height, self.defaults.selection_color);
+                                const width = renderer.char_x + char_width - start_x;
+                                render_callbacks.drawRectangle(start_x, renderer.line_y, width, renderer.lineHeight(), self.defaults.selection_color);
                                 continue;
                             }
 
                             // selection started elsewhere and ends here
-                            const width = char_x + char_width - self.attr.pos.x;
-                            render_callbacks.drawRectangle(self.attr.pos.x, line_y, width, line_height, self.defaults.selection_color);
+                            const width = renderer.char_x + char_width - self.attr.pos.x;
+                            render_callbacks.drawRectangle(self.attr.pos.x, renderer.line_y, width, renderer.lineHeight(), self.defaults.selection_color);
                             continue;
                         }
                     }
@@ -213,7 +210,7 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
             const line_width = self.cached.line_info.items[linenr].width;
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 if (cursor.start.line < linenr and cursor.end.line > linenr) {
-                    render_callbacks.drawRectangle(self.attr.pos.x, line_y, line_width, line_height, self.defaults.selection_color);
+                    render_callbacks.drawRectangle(self.attr.pos.x, renderer.line_y, line_width, renderer.lineHeight(), self.defaults.selection_color);
                 }
             }
         }
@@ -222,7 +219,7 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
             for (self.cursor_manager.cursors.values()) |*cursor| {
                 const anchor = cursor.activeAnchor(self.cursor_manager);
                 if (anchor.line != linenr or anchor.col != colnr) continue;
-                render_callbacks.drawRectangle(info.x + info.width, line_y, info.width, info.font_size, self.defaults.color);
+                render_callbacks.drawRectangle(info.x + info.width, renderer.line_y, info.width, info.font_size, self.defaults.color);
             }
             continue;
         }
@@ -232,47 +229,98 @@ pub fn render(self: *@This(), style_store: *const RenderMall, view: RenderMall.S
                 const anchor = cursor.activeAnchor(self.cursor_manager);
                 if (anchor.line != linenr) continue;
                 const char_width = calculateGlyphWidth(default_font, self.defaults.font_size, ' ', default_glyph);
-                render_callbacks.drawRectangle(char_x, line_y, char_width, line_height, self.defaults.color);
+                render_callbacks.drawRectangle(renderer.char_x, renderer.line_y, char_width, renderer.lineHeight(), self.defaults.color);
             }
             continue;
         }
     }
 }
 
+fn isOutOfView(self: *@This(), view: RenderMall.ScreenView) bool {
+    if (self.attr.pos.x > view.end.x) return true;
+    if (self.attr.pos.y > view.end.y) return true;
+
+    if (self.attr.pos.x + self.cached.width < view.start.x) return true;
+    if (self.attr.pos.y + self.cached.height < view.start.y) return true;
+
+    return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Renderer
+
+const LastestRenderedCharInfo = ?struct { x: f32, width: f32, font_size: f32 };
+
+const Renderer = struct {
+    win: *Window,
+    render_callbacks: RenderMall.RenderCallbacks,
+
+    linenr: usize = 0,
+    colnr: usize = 0,
+
+    char_x: f32,
+    line_y: f32,
+
+    // selection related
+
+    last_char_info: LastestRenderedCharInfo = null,
+    selection_start_x: ?f32 = null,
+
+    ///////////////////////////// setters
+
+    fn updateLinenr(self: *@This(), linenr: usize) void {
+        self.linenr = linenr;
+    }
+
+    fn nextLine(self: *@This()) void {
+        self.char_x = self.win.attr.pos.x;
+        self.line_y += self.lineHeight();
+    }
+
+    ///////////////////////////// getters
+
+    fn lineHeight(self: *@This()) f32 {
+        return self.win.cached.line_info.items[self.linenr].height;
+    }
+
+    fn baseLine(self: *@This()) f32 {
+        return self.win.cached.line_info.items[self.linenr].base_line;
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
-pub fn insertChars(self: *@This(), chars: []const u8, style_store: *const RenderMall) !void {
+pub fn insertChars(self: *@This(), chars: []const u8, mall: *const RenderMall) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
     defer zone.End();
 
     const result = try self.ws.insertChars(self.a, chars, self.cursor_manager) orelse return;
-    try self.processEditResult(result, style_store);
+    try self.processEditResult(result, mall);
 }
 
-pub fn deleteRanges(self: *@This(), style_store: *const RenderMall, kind: WindowSource.DeleteRangesKind) !void {
+pub fn deleteRanges(self: *@This(), mall: *const RenderMall, kind: WindowSource.DeleteRangesKind) !void {
     const zone = ztracy.ZoneNC(@src(), "Window.deleteRanges()", 0x00AAFF);
     defer zone.End();
 
     const result = try self.ws.deleteRanges(self.a, self.cursor_manager, kind) orelse return;
-    try self.processEditResult(result, style_store);
+    try self.processEditResult(result, mall);
 }
 
-fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, style_store: *const RenderMall) !void {
-    const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
+fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, mall: *const RenderMall) !void {
+    const default_font = mall.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
     defer self.a.free(replace_infos);
-    for (replace_infos) |ri| try self.updateCacheLines(ri, style_store, default_font, default_glyph);
+    for (replace_infos) |ri| try self.updateCacheLines(ri, mall, default_font, default_glyph);
 }
 
-fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, style_store: *const RenderMall, default_font: *const Font, default_glyph: GlyphData) !void {
+fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, mall: *const RenderMall, default_font: *const Font, default_glyph: GlyphData) !void {
     assert(ri.end_line >= ri.start_line);
 
     var replacements = try std.ArrayList(WindowCache.LineInfo).initCapacity(self.a, ri.end_line - ri.start_line + 1);
     defer replacements.deinit();
 
     for (ri.start_line..ri.end_line + 1) |linenr| {
-        const info = try calculateLineInfo(self, linenr, style_store, default_font, default_glyph);
+        const info = try calculateLineInfo(self, linenr, mall, default_font, default_glyph);
         try replacements.append(info);
     }
     try self.cached.line_info.replaceRange(self.a, ri.replace_start, ri.replace_len, replacements.items);
@@ -292,15 +340,15 @@ const WindowCache = struct {
         base_line: f32,
     };
 
-    fn init(a: Allocator, win: *const Window, style_store: *const RenderMall) !WindowCache {
-        const default_font = style_store.font_store.getDefaultFont() orelse unreachable;
+    fn init(a: Allocator, win: *const Window, mall: *const RenderMall) !WindowCache {
+        const default_font = mall.font_store.getDefaultFont() orelse unreachable;
         const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
         const num_of_lines = win.ws.buf.ropeman.getNumOfLines();
         var self = WindowCache{ .line_info = try LineInfoList.initCapacity(a, num_of_lines) };
 
         for (0..num_of_lines) |linenr| {
-            const info = try calculateLineInfo(win, linenr, style_store, default_font, default_glyph);
+            const info = try calculateLineInfo(win, linenr, mall, default_font, default_glyph);
             try self.line_info.append(a, info);
             self.width = @max(self.width, info.width);
             self.height += info.height;
@@ -314,8 +362,8 @@ const WindowCache = struct {
     }
 
     test WindowCache {
-        const style_store = try RenderMall.createStyleStoreForTesting(testing_allocator);
-        defer RenderMall.freeTestStyleStore(testing_allocator, style_store);
+        const mall = try RenderMall.createStyleStoreForTesting(testing_allocator);
+        defer RenderMall.freeTestStyleStore(testing_allocator, mall);
 
         var lang_hub = try Window.LangSuite.LangHub.init(testing_allocator);
         defer lang_hub.deinit();
@@ -325,7 +373,7 @@ const WindowCache = struct {
         try eqStr("const a = 10;\nvar not_false = true;\n", try ws.buf.ropeman.toString(idc_if_it_leaks, .lf));
 
         {
-            var win = try Window.create(testing_allocator, ws, .{}, style_store);
+            var win = try Window.create(testing_allocator, ws, .{}, mall);
             defer win.destroy();
 
             try eq(3, win.cached.line_info.items.len);
@@ -343,7 +391,7 @@ const WindowCache = struct {
 const Font = FontStore.Font;
 const GlyphData = Font.GlyphData;
 
-fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const RenderMall, default_font: *const Font, default_glyph: GlyphData) !WindowCache.LineInfo {
+fn calculateLineInfo(win: *const Window, linenr: usize, mall: *const RenderMall, default_font: *const Font, default_glyph: GlyphData) !WindowCache.LineInfo {
     var line_width: f32, var line_height: f32 = .{ 0, win.defaults.font_size };
     var min_base_line: f32, var max_base_line: f32, var max_font_size: f32 = .{ 0, 0, 0 };
 
@@ -353,8 +401,8 @@ fn calculateLineInfo(win: *const Window, linenr: usize, style_store: *const Rend
     while (iter.next(captures)) |r| {
 
         // get font & font_size
-        const font = getStyleFromStore(*const Font, win, r, style_store, RenderMall.getFont) orelse default_font;
-        const font_size = getStyleFromStore(f32, win, r, style_store, RenderMall.getFontSize) orelse win.defaults.font_size;
+        const font = getStyleFromStore(*const Font, win, r, mall, RenderMall.getFont) orelse default_font;
+        const font_size = getStyleFromStore(f32, win, r, mall, RenderMall.getFontSize) orelse win.defaults.font_size;
         assert(font_size > 0);
 
         // base_line management
@@ -392,7 +440,7 @@ fn manageBaseLineInformation(font: *const Font, font_size: f32, max_font_size: *
     max_base_line.* = @max(max_base_line.*, adapted_base_line);
 }
 
-fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, style_store: *const RenderMall, cb: anytype) ?T {
+fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.Result, mall: *const RenderMall, cb: anytype) ?T {
     var i: usize = r.ids.len;
     while (i > 0) {
         i -= 1;
@@ -403,7 +451,7 @@ fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.R
                 .capture_id = ids.capture_id,
                 .styleset_id = styleset_id,
             };
-            if (cb(style_store, key)) |value| return value;
+            if (cb(mall, key)) |value| return value;
         }
     }
     return null;

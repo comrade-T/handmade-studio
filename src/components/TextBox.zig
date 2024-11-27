@@ -11,6 +11,7 @@ const ip = @import("input_processor");
 const MappingCouncil = ip.MappingCouncil;
 const RopeMan = @import("RopeMan");
 const CursorManager = @import("CursorManager");
+const RenderMall = @import("RenderMall");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +32,12 @@ pub fn init(a: Allocator, council: *MappingCouncil, initial_needle: []const u8) 
 pub fn deinit(self: *@This()) void {
     self.ropeman.deinit();
     self.curman.destroy();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Render
+
+pub fn render(self: *@This(), mall: *const RenderMall, cbs: RenderMall.RenderCallbacks) !void {
+    // TODO: the more I think about this, the more it looks like a Window...
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert Chars

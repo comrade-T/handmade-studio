@@ -147,6 +147,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "RopeMan", .module = ropeman.module },
         .{ .name = "CursorManager", .module = cursor_manager.module },
+        .{ .name = "RenderMall", .module = render_mall.module },
     }, zig_build_test_step);
     _ = text_box;
 
