@@ -170,11 +170,11 @@ const Renderer = struct {
     ///////////////////////////// initial values
 
     fn initialize(self: *@This()) void {
-        self.char_x = self.calculateInitialCharX();
+        self.char_x = self.calculateInitialLineX();
         self.line_y = self.calculateInitialLineY();
     }
 
-    fn calculateInitialCharX(self: *@This()) f32 {
+    fn calculateInitialLineX(self: *@This()) f32 {
         if (self.win.attr.bounded) return self.win.attr.pos.x - self.win.attr.bounds.offset.x;
         return self.win.attr.pos.x;
     }
@@ -187,7 +187,7 @@ const Renderer = struct {
     ///////////////////////////// updates
 
     fn nextLine(self: *@This()) void {
-        self.char_x = self.win.attr.pos.x;
+        self.char_x = self.calculateInitialLineX();
         self.line_y += self.lineHeight();
         self.last_char_info = null;
         self.selection_start_x = null;
@@ -268,6 +268,11 @@ const Renderer = struct {
         return char_start_after_view or char_start_after_bounds;
     }
 
+    fn charStartsBeforeBounds(self: *@This(), char_width: f32) bool {
+        if (!self.win.attr.bounded) return false;
+        return self.char_x + char_width < self.boundStartX();
+    }
+
     fn charEndsBeforeViewStart(self: *@This(), char_width: f32) bool {
         return self.char_x + char_width < self.view.start.x;
     }
@@ -331,6 +336,7 @@ const Renderer = struct {
         defer self.char_x += char_width;
 
         if (self.charStartsAfterViewEnds()) return .should_break;
+        if (self.charStartsBeforeBounds(char_width)) return .should_continue;
         if (self.charEndsBeforeViewStart(char_width)) return .should_continue;
 
         assert(self.lineHeight() >= font_size);

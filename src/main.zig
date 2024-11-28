@@ -93,6 +93,10 @@ pub fn main() anyerror!void {
     });
     defer wm.deinit();
 
+    ///////////////////////////// Testing
+
+    // y offset
+
     try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
         .pos = .{ .x = 100, .y = 100 },
         .subscribed_style_sets = &.{0},
@@ -120,6 +124,28 @@ pub fn main() anyerror!void {
             .width = 400,
             .height = 300,
             .offset = .{ .x = 0, .y = 200 },
+        },
+    }, false);
+
+    // x offset
+
+    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+        .pos = .{ .x = 100, .y = 600 },
+        .subscribed_style_sets = &.{0},
+        .bounds = .{
+            .width = 400,
+            .height = 300,
+            .offset = .{ .x = 100, .y = 0 },
+        },
+    }, false);
+
+    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+        .pos = .{ .x = 600, .y = 600 },
+        .subscribed_style_sets = &.{0},
+        .bounds = .{
+            .width = 400,
+            .height = 300,
+            .offset = .{ .x = 200, .y = 0 },
         },
     }, false);
 
