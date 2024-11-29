@@ -39,6 +39,8 @@ main_cursor_id: usize = 0,
 cursor_id_count: usize = 0,
 cursors: CursorMap,
 
+just_moved: bool = false,
+
 pub fn create(a: Allocator) !*CursorManager {
     var self = try a.create(@This());
     self.* = .{
@@ -136,6 +138,11 @@ pub fn mainCursor(self: *@This()) *Cursor {
 }
 
 ///////////////////////////// Mode Activations
+
+pub fn setJustMovedToFalse(self: *@This()) void {
+    assert(self.just_moved == true);
+    self.just_moved = false;
+}
 
 pub fn activateSingleMode(self: *@This()) void {
     assert(self.uniform_mode == .uniformed);
@@ -734,6 +741,8 @@ fn moveCursorWithVimCallback(
     ropeman: *const RopeMan,
     cb: VimCallback,
 ) void {
+    defer self.just_moved = true;
+
     // move all cursors
     switch (self.uniform_mode) {
         .uniformed => {
@@ -755,6 +764,8 @@ fn moveCursorWithVimCallback(
 const HJKLCallback = *const fn (anchor: *Anchor, count: usize, ropeman: *const RopeMan) void;
 
 fn moveCursorWithHJKLCallback(self: *@This(), count: usize, ropeman: *const RopeMan, cb: HJKLCallback) void {
+    defer self.just_moved = true;
+
     // move all cursors
     switch (self.uniform_mode) {
         .uniformed => {

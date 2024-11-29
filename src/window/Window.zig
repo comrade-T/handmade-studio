@@ -112,6 +112,11 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
         .render_callbacks = render_callbacks,
         .mall = mall,
     };
+    if (renderer.shiftBoundedOffsetBy()) |change_by| {
+        self.attr.bounds.offset.x += change_by[0];
+        self.attr.bounds.offset.y += change_by[1];
+        self.cursor_manager.setJustMovedToFalse();
+    }
     renderer.initialize();
     renderer.render(colorscheme);
 }
@@ -225,6 +230,11 @@ const Renderer = struct {
         return self.win.attr.pos.x + self.win.attr.bounds.width;
     }
 
+    fn boundEndY(self: *@This()) f32 {
+        assert(self.win.attr.bounded);
+        return self.win.attr.pos.y + self.win.attr.bounds.height;
+    }
+
     ///////////////////////////// checkers
 
     fn lineYAboveView(self: *@This()) bool {
@@ -275,6 +285,79 @@ const Renderer = struct {
 
     fn charEndsBeforeViewStart(self: *@This(), char_width: f32) bool {
         return self.char_x + char_width < self.view.start.x;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// check if need to change bounded offset to main cursor anchor
+
+    fn shiftBoundedOffsetBy(self: *@This()) ?struct { f32, f32 } {
+        if (!self.win.attr.bounded or !self.win.cursor_manager.just_moved) return null;
+
+        var change_offset_x_by: f32 = 0;
+        var change_offset_y_by: f32 = 0;
+
+        const start_y, const end_y, const start_x, const end_x = self.getActiveAnchorCoordinates() catch return null;
+
+        y_blk: {
+            if (start_y < self.boundStartY()) {
+                change_offset_y_by = start_y - self.boundStartY();
+                break :y_blk;
+            }
+            if (end_y > self.boundEndY()) {
+                change_offset_y_by = end_y - self.boundEndY();
+            }
+        }
+
+        x_blk: {
+            if (start_x < self.boundStartX()) {
+                change_offset_x_by = start_x - self.boundStartX();
+                break :x_blk;
+            }
+            if (end_x > self.boundEndX()) {
+                change_offset_x_by = end_x - self.boundEndX();
+            }
+        }
+
+        return .{ change_offset_x_by, change_offset_y_by };
+    }
+
+    fn getActiveAnchorCoordinates(self: *@This()) !struct { f32, f32, f32, f32 } {
+        const anchor = self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager);
+
+        var start_y: f32 = self.calculateInitialLineY();
+        var start_x: f32 = self.calculateInitialLineX();
+        var end_x: f32 = start_x;
+
+        for (0..self.win.ws.buf.ropeman.getNumOfLines()) |linenr| {
+            if (anchor.line == linenr) {
+                var content_buf: [1024]u8 = undefined;
+                const stored_captures: []WindowSource.StoredCapture = if (self.win.ws.ls != null)
+                    self.win.ws.cap_list.items[anchor.line]
+                else
+                    &.{};
+
+                var colnr: usize = 0;
+                var iter = try WindowSource.LineIterator.init(self.win.ws, anchor.line, &content_buf);
+                while (iter.next(stored_captures)) |r| {
+                    defer colnr += 1;
+                    start_x = end_x;
+
+                    const font = getStyleFromStore(*const FontStore.Font, self.win, r, self.mall, RenderMall.getFont) orelse self.default_font;
+                    const font_size = getStyleFromStore(f32, self.win, r, self.mall, RenderMall.getFontSize) orelse self.win.defaults.font_size;
+
+                    const char_width = calculateGlyphWidth(font, font_size, r.code_point, self.default_glyph);
+                    end_x += char_width;
+
+                    if (anchor.col == colnr) break;
+                }
+
+                break;
+            }
+
+            start_y += self.win.cached.line_info.items[linenr].height;
+        }
+        const end_y = start_y + self.win.cached.line_info.items[anchor.line].height;
+
+        return .{ start_y, end_y, start_x, end_x };
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// iterate through all the lines
