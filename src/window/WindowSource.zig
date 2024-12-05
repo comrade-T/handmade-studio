@@ -299,6 +299,7 @@ pub const DeleteRangesKind = enum {
 
     in_single_quote,
     in_word,
+    in_WORD,
 };
 
 pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: DeleteRangesKind) !?[]const ReplaceInfo {
@@ -320,13 +321,21 @@ pub fn deleteRanges(self: *@This(), a: Allocator, cm: *CursorManager, kind: Dele
             if (cm.cursor_mode != .range) return null;
         },
 
+        /////////////////////////////
+
         .in_single_quote => {
             inputs = try cm.produceInSingleQuoteRanges(self.a, &self.buf.ropeman);
             assert(cm.cursor_mode == .point);
             if (cm.cursor_mode != .point) return null;
         },
+
         .in_word => {
-            inputs = try cm.produceInWordRanges(self.a, &self.buf.ropeman);
+            inputs = try cm.produceInWordRanges(self.a, &self.buf.ropeman, .word);
+            assert(cm.cursor_mode == .point);
+            if (cm.cursor_mode != .point) return null;
+        },
+        .in_WORD => {
+            inputs = try cm.produceInWordRanges(self.a, &self.buf.ropeman, .WORD);
             assert(cm.cursor_mode == .point);
             if (cm.cursor_mode != .point) return null;
         },

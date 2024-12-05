@@ -114,11 +114,11 @@ pub fn produceBackspaceRanges(self: *@This(), a: Allocator, ropeman: *const Rope
 
 ///////////////////////////// Text Objects
 
-pub fn produceInWordRanges(self: *@This(), a: Allocator, ropeman: *const RopeMan) ![]RopeMan.CursorRange {
+pub fn produceInWordRanges(self: *@This(), a: Allocator, ropeman: *const RopeMan, boundary_kind: Anchor.WordTextObjectCtx.WordBoundaryKind) ![]RopeMan.CursorRange {
     assert(self.cursor_mode == .point);
     var ranges = try a.alloc(RopeMan.CursorRange, self.cursors.values().len);
     for (self.cursors.values(), 0..) |*cursor, i| {
-        if (cursor.start.getWordTextObject(ropeman)) |range| {
+        if (cursor.start.getInWordTextObject(ropeman, boundary_kind)) |range| {
             ranges[i] = range;
             continue;
         }
@@ -936,16 +936,25 @@ const Anchor = struct {
     ///////////////////////////// word
 
     const WordTextObjectCtx = struct {
+        boundary_kind: WordBoundaryKind,
         ropeman: *const RopeMan,
         anchor: Anchor,
         target: TargetCharKind = undefined,
         buf: [3]u8 = undefined,
+
+        const WordBoundaryKind = enum { word, WORD };
 
         const TargetCharKind = enum {
             symbol_or_char,
             spacing_or_symbol,
             spacing_or_char,
         };
+
+        fn init(ropeman: *const RopeMan, anchor: Anchor, boundary_kind: WordBoundaryKind) WordTextObjectCtx {
+            var self = WordTextObjectCtx{ .ropeman = ropeman, .anchor = anchor, .boundary_kind = boundary_kind };
+            self.target = self.getTargetCharKind();
+            return self;
+        }
 
         fn produceRange(self: *@This()) ?RopeMan.CursorRange {
             var start = RopeMan.CursorPoint{ .line = self.anchor.line, .col = self.anchor.col };
@@ -971,12 +980,6 @@ const Anchor = struct {
             };
         }
 
-        fn init(ropeman: *const RopeMan, anchor: Anchor) WordTextObjectCtx {
-            var self = WordTextObjectCtx{ .ropeman = ropeman, .anchor = anchor };
-            self.target = self.getTargetCharKind();
-            return self;
-        }
-
         fn touchedWordBoundary(ctx: ?*anyopaque, cp: u21) bool {
             assert(ctx != null);
             if (ctx == null) return false;
@@ -984,40 +987,45 @@ const Anchor = struct {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const kind = getCharKind(u21, cp);
 
-            return switch (self.target) {
-                .symbol_or_char => kind != .spacing,
-                .spacing_or_symbol => kind == .spacing or kind == .symbol,
-                .spacing_or_char => kind == .spacing or kind == .char,
-            };
+            switch (self.boundary_kind) {
+                .word => {
+                    return switch (self.target) {
+                        .symbol_or_char => kind != .spacing,
+                        .spacing_or_symbol => kind == .spacing or kind == .symbol,
+                        .spacing_or_char => kind == .spacing or kind == .char,
+                    };
+                },
+                .WORD => return kind == .spacing,
+            }
         }
     };
 
-    fn getWordTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
-        var ctx = WordTextObjectCtx.init(ropeman, self.*);
+    fn getInWordTextObject(self: *const @This(), ropeman: *const RopeMan, boundary_kind: WordTextObjectCtx.WordBoundaryKind) ?RopeMan.CursorRange {
+        var ctx = WordTextObjectCtx.init(ropeman, self.*, boundary_kind);
         return ctx.produceRange();
     }
 
-    test getWordTextObject {
+    test getInWordTextObject {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string,
             \\const str = "something-small;not_sure";
         );
         defer ropeman.deinit();
 
-        try testGetWordTextObject(.{ 0, 0, 0, 5 }, .{ 0, 0 }, &ropeman);
+        try testGetWordTextObject(.{ 0, 0, 0, 5 }, .{ 0, 0 }, &ropeman, .word);
     }
 
-    fn testGetWordTextObject(expected: ?struct { usize, usize, usize, usize }, a: struct { usize, usize }, ropeman: *const RopeMan) !void {
+    fn testGetWordTextObject(expected: ?struct { usize, usize, usize, usize }, a: struct { usize, usize }, ropeman: *const RopeMan, boundary_kind: WordTextObjectCtx.WordBoundaryKind) !void {
         const anchor = Anchor{ .line = a[0], .col = a[1] };
         if (expected) |e| {
             const range = RopeMan.CursorRange{
                 .start = .{ .line = e[0], .col = e[1] },
                 .end = .{ .line = e[2], .col = e[3] },
             };
-            const result = anchor.getWordTextObject(ropeman);
+            const result = anchor.getInWordTextObject(ropeman, boundary_kind);
             try eq(range, result);
             return;
         }
-        try eq(null, anchor.getSingleQuoteTextObject(ropeman));
+        try eq(null, anchor.getInWordTextObject(ropeman, boundary_kind));
     }
 
     ///////////////////////////// '

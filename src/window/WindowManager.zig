@@ -126,6 +126,12 @@ pub fn deleteInWord(ctx: *anyopaque) !void {
     try window.deleteRanges(self.style_store, .in_word);
 }
 
+pub fn deleteInWORD(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.deleteRanges(self.style_store, .in_WORD);
+}
+
 ///////////////////////////// Visual Mode
 
 pub fn enterVisualMode(ctx: *anyopaque) !void {

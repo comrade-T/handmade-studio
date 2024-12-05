@@ -206,7 +206,13 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    // TODO: change in WORD
+    try council.map("normal", &.{ .d, .x, .semicolon }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
+    try council.map("normal", &.{ .c, .x, .semicolon }, .{
+        .f = WindowManager.deleteInWORD,
+        .ctx = &wm,
+        .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
+        .require_clarity_afterwards = true,
+    });
 
     ///////////////////////////// Visual Mode
 
