@@ -117,9 +117,9 @@ const SeekResult = struct {
     init_matches: bool = false,
 };
 
-pub const SeekCallback = *const fn (cp: u21) bool;
+pub const SeekCallback = *const fn (T: type, ctx: ?*anyopaque, cp: u21) bool;
 
-pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, stop_at_bol: bool) !SeekResult {
+pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, T: type, ctx: ?*anyopaque, stop_at_bol: bool) !SeekResult {
     var result = SeekResult{ .point = null, .init_matches = false };
     var encountered_input_position: bool = false;
     var candidate: ?CursorPoint = null;
@@ -141,24 +141,25 @@ pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usi
         while (iter.next()) |cp| {
             defer colnr += 1;
             if (linenr == input_linenr and colnr == input_colnr) {
-                if (cb(cp.code)) result.init_matches = true;
+                if (cb(T, ctx, cp.code)) result.init_matches = true;
                 encountered_input_position = true;
                 should_keep_looping = false;
                 break :line_blk;
             }
-            if (cb(cp.code)) candidate = CursorPoint{ .line = linenr, .col = colnr };
+            if (cb(T, ctx, cp.code)) candidate = CursorPoint{ .line = linenr, .col = colnr };
         }
     }
 
     return result;
 }
 
-pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, stop_at_eol: bool) !SeekResult {
+pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, T: type, ctx: ?*anyopaque, stop_at_eol: bool) !SeekResult {
     var result = SeekResult{ .point = null, .init_matches = false };
     var encountered_input_position: bool = false;
+    var found = false;
 
     var linenr: usize = input_linenr;
-    while (linenr < self.getNumOfLines()) line_blk: {
+    while (!found and linenr < self.getNumOfLines()) {
         defer linenr += 1;
         const line = try self.getLineAlloc(self.a, linenr, 1024);
         defer self.a.free(line);
@@ -168,14 +169,15 @@ pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize
         while (iter.next()) |cp| {
             defer colnr += 1;
             if (linenr == input_linenr and colnr == input_colnr) {
-                if (cb(cp.code)) result.init_matches = true;
+                if (cb(T, ctx, cp.code)) result.init_matches = true;
                 encountered_input_position = true;
                 continue;
             }
             if (!encountered_input_position) continue;
-            if (cb(cp.code)) {
+            if (cb(T, ctx, cp.code)) {
                 result.point = CursorPoint{ .line = linenr, .col = colnr };
-                break :line_blk;
+                found = true;
+                break;
             }
         }
 

@@ -917,14 +917,10 @@ const Anchor = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
 
-    fn isSingleQuote(cp: u21) bool {
-        return cp == '\'';
-    }
-
-    fn getTextObjectOnCurrentLine(self: *const @This(), ropeman: *const RopeMan, cb: SeekCallback) ?RopeMan.CursorRange {
+    fn getTextObjectOnCurrentLine(self: *const @This(), ropeman: *const RopeMan, cb: SeekCallback, T: type, ctx: ?*anyopaque) ?RopeMan.CursorRange {
         var start: ?RopeMan.CursorPoint = null;
 
-        const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, true) catch return null;
+        const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, T, ctx, true) catch return null;
         if (backwards_result.point) |back_point| {
             if (backwards_result.init_matches) {
                 return RopeMan.CursorRange{
@@ -935,7 +931,7 @@ const Anchor = struct {
             start = back_point;
         }
 
-        const first_forward_result = ropeman.seekForward(self.line, self.col, cb, true) catch return null;
+        const first_forward_result = ropeman.seekForward(self.line, self.col, cb, T, ctx, true) catch return null;
         if (first_forward_result.point) |first_fwd_point| {
             if (start != null) {
                 return RopeMan.CursorRange{
@@ -954,7 +950,7 @@ const Anchor = struct {
 
         const first_point = first_forward_result.point orelse return null;
         assert(start != null);
-        const second_forward_result = ropeman.seekForward(first_point.line, first_point.col, cb, true) catch return null;
+        const second_forward_result = ropeman.seekForward(first_point.line, first_point.col, cb, T, ctx, true) catch return null;
         if (second_forward_result.point) |second_fwd_point| {
             return RopeMan.CursorRange{
                 .start = start.?,
@@ -964,8 +960,12 @@ const Anchor = struct {
         return null;
     }
 
+    fn isSingleQuote(_: type, _: ?*anyopaque, cp: u21) bool {
+        return cp == '\'';
+    }
+
     fn getSingleQuoteTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
-        return self.getTextObjectOnCurrentLine(ropeman, isSingleQuote);
+        return self.getTextObjectOnCurrentLine(ropeman, isSingleQuote, void, null);
     }
 
     test getSingleQuoteTextObject {
@@ -1013,7 +1013,8 @@ const Anchor = struct {
                 .start = .{ .line = e[0], .col = e[1] },
                 .end = .{ .line = e[2], .col = e[3] },
             };
-            try eq(range, anchor.getSingleQuoteTextObject(ropeman));
+            const result = anchor.getSingleQuoteTextObject(ropeman);
+            try eq(range, result);
             return;
         }
         try eq(null, anchor.getSingleQuoteTextObject(ropeman));
