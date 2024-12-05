@@ -126,6 +126,10 @@ pub const MappingCouncil = struct {
         }
     }
 
+    pub fn mapMany(self: *@This(), context_id: []const u8, mappings: []const []const Key, callback: Callback) !void {
+        for (mappings) |keys| try self.map(context_id, keys, callback);
+    }
+
     pub fn map(self: *@This(), context_id: []const u8, keys: []const Key, callback: Callback) !void {
         if (self.downs.get(context_id) == null) {
             const cb_map = try self.a.create(CallbackMap);

@@ -206,8 +206,8 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    try council.map("normal", &.{ .d, .x, .semicolon }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
-    try council.map("normal", &.{ .c, .x, .semicolon }, .{
+    try council.mapMany("normal", &.{ &.{ .d, .x, .semicolon }, &.{ .x, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
+    try council.mapMany("normal", &.{ &.{ .c, .x, .semicolon }, &.{ .x, .c, .semicolon } }, .{
         .f = WindowManager.deleteInWORD,
         .ctx = &wm,
         .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
