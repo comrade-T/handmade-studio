@@ -957,11 +957,11 @@ const Anchor = struct {
         }
 
         fn produceRange(self: *@This()) ?RopeMan.CursorRange {
-            var start = RopeMan.CursorPoint{ .line = self.anchor.line, .col = self.anchor.col };
+            var start = RopeMan.CursorPoint{ .line = self.anchor.line, .col = 0 };
             var end = RopeMan.CursorPoint{ .line = self.anchor.line, .col = self.anchor.col + 1 };
 
             const backwards_result = self.ropeman.seekBackwards(self.anchor.line, self.anchor.col, touchedWordBoundary, self, true) catch return null;
-            if (backwards_result.point) |back_point| start = back_point;
+            if (backwards_result.point) |back_point| start = .{ .line = back_point.line, .col = back_point.col + 1 };
 
             const forward_result = self.ropeman.seekForward(self.anchor.line, self.anchor.col, touchedWordBoundary, self, true) catch return null;
             if (forward_result.point) |forward_point| end = forward_point;
@@ -1008,20 +1008,21 @@ const Anchor = struct {
     test getInWordTextObject {
         var ropeman = try RopeMan.initFrom(testing_allocator, .string,
             \\const str = "something-small;not_sure";
+            \\const b = 10;
         );
         defer ropeman.deinit();
 
         try testGetWordTextObject(.{ 0, 0, 0, 5 }, .{ 0, 0 }, &ropeman, .word);
+        try testGetWordTextObject(.{ 0, 0, 0, 5 }, .{ 0, 1 }, &ropeman, .word);
+        try testGetWordTextObject(.{ 1, 6, 1, 7 }, .{ 1, 6 }, &ropeman, .word);
     }
 
     fn testGetWordTextObject(expected: ?struct { usize, usize, usize, usize }, a: struct { usize, usize }, ropeman: *const RopeMan, boundary_kind: WordTextObjectCtx.WordBoundaryKind) !void {
         const anchor = Anchor{ .line = a[0], .col = a[1] };
         if (expected) |e| {
-            const range = RopeMan.CursorRange{
-                .start = .{ .line = e[0], .col = e[1] },
-                .end = .{ .line = e[2], .col = e[3] },
-            };
+            const range = RopeMan.CursorRange{ .start = .{ .line = e[0], .col = e[1] }, .end = .{ .line = e[2], .col = e[3] } };
             const result = anchor.getInWordTextObject(ropeman, boundary_kind);
+            // std.debug.print("result: {any}\n", .{result});
             try eq(range, result);
             return;
         }
