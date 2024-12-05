@@ -80,6 +80,16 @@ pub fn getRange(self: *const @This(), start: CursorPoint, end: ?CursorPoint, buf
     return rcr.getRange(self.root, start, end, buf);
 }
 
+pub fn getCharacterAt(self: *const @This(), point: CursorPoint, buf: []u8) u21 {
+    const slice = rcr.getRange(self.root, point, .{ .line = point.line, .col = point.col + 1 }, buf);
+    var iter = code_point.Iterator{ .bytes = slice };
+    while (iter.next()) |cp| {
+        return cp.code;
+    }
+    assert(false);
+    return ' ';
+}
+
 pub fn getByteOffsetOfRoot(self: *const @This(), line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(self.root, line, col);
 }
@@ -117,16 +127,16 @@ const SeekResult = struct {
     init_matches: bool = false,
 };
 
-pub const SeekCallback = *const fn (T: type, ctx: ?*anyopaque, cp: u21) bool;
+pub const SeekCallback = *const fn (ctx: ?*anyopaque, cp: u21) bool;
 
-pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, T: type, ctx: ?*anyopaque, stop_at_bol: bool) !SeekResult {
+pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, ctx: ?*anyopaque, stop_at_bol: bool) !SeekResult {
     var result = SeekResult{ .point = null, .init_matches = false };
     var encountered_input_position: bool = false;
     var candidate: ?CursorPoint = null;
 
     var should_keep_looping = true;
     var linenr: usize = input_linenr;
-    while (should_keep_looping) line_blk: {
+    while (should_keep_looping) {
         defer linenr -|= 1;
         defer {
             if (encountered_input_position) result.point = candidate;
@@ -141,19 +151,19 @@ pub fn seekBackwards(self: *const @This(), input_linenr: usize, input_colnr: usi
         while (iter.next()) |cp| {
             defer colnr += 1;
             if (linenr == input_linenr and colnr == input_colnr) {
-                if (cb(T, ctx, cp.code)) result.init_matches = true;
+                if (cb(ctx, cp.code)) result.init_matches = true;
                 encountered_input_position = true;
                 should_keep_looping = false;
-                break :line_blk;
+                break;
             }
-            if (cb(T, ctx, cp.code)) candidate = CursorPoint{ .line = linenr, .col = colnr };
+            if (cb(ctx, cp.code)) candidate = CursorPoint{ .line = linenr, .col = colnr };
         }
     }
 
     return result;
 }
 
-pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, T: type, ctx: ?*anyopaque, stop_at_eol: bool) !SeekResult {
+pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize, cb: SeekCallback, ctx: ?*anyopaque, stop_at_eol: bool) !SeekResult {
     var result = SeekResult{ .point = null, .init_matches = false };
     var encountered_input_position: bool = false;
     var found = false;
@@ -169,12 +179,12 @@ pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize
         while (iter.next()) |cp| {
             defer colnr += 1;
             if (linenr == input_linenr and colnr == input_colnr) {
-                if (cb(T, ctx, cp.code)) result.init_matches = true;
+                if (cb(ctx, cp.code)) result.init_matches = true;
                 encountered_input_position = true;
                 continue;
             }
             if (!encountered_input_position) continue;
-            if (cb(T, ctx, cp.code)) {
+            if (cb(ctx, cp.code)) {
                 result.point = CursorPoint{ .line = linenr, .col = colnr };
                 found = true;
                 break;
