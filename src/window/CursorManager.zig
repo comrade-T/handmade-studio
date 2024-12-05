@@ -114,6 +114,22 @@ pub fn produceBackspaceRanges(self: *@This(), a: Allocator, ropeman: *const Rope
 
 ///////////////////////////// Text Objects
 
+pub fn produceInWordRanges(self: *@This(), a: Allocator, ropeman: *const RopeMan) ![]RopeMan.CursorRange {
+    assert(self.cursor_mode == .point);
+    var ranges = try a.alloc(RopeMan.CursorRange, self.cursors.values().len);
+    for (self.cursors.values(), 0..) |*cursor, i| {
+        if (cursor.start.getWordTextObject(ropeman)) |range| {
+            ranges[i] = range;
+            continue;
+        }
+        ranges[i] = .{
+            .start = .{ .line = cursor.start.line, .col = cursor.start.col },
+            .end = .{ .line = cursor.start.line, .col = cursor.start.col },
+        };
+    }
+    return ranges;
+}
+
 pub fn produceInSingleQuoteRanges(self: *@This(), a: Allocator, ropeman: *const RopeMan) ![]RopeMan.CursorRange {
     assert(self.cursor_mode == .point);
     var ranges = try a.alloc(RopeMan.CursorRange, self.cursors.values().len);
@@ -917,7 +933,96 @@ const Anchor = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Text Objects
 
-    fn getTextObjectOnCurrentLine(self: *const @This(), ropeman: *const RopeMan, cb: SeekCallback, ctx: ?*anyopaque) ?RopeMan.CursorRange {
+    ///////////////////////////// word
+
+    const WordTextObjectCtx = struct {
+        ropeman: *const RopeMan,
+        anchor: Anchor,
+        target: TargetCharKind = undefined,
+        buf: [3]u8 = undefined,
+
+        const TargetCharKind = enum {
+            symbol_or_char,
+            spacing_or_symbol,
+            spacing_or_char,
+        };
+
+        fn produceRange(self: *@This()) ?RopeMan.CursorRange {
+            var start = RopeMan.CursorPoint{ .line = self.anchor.line, .col = self.anchor.col };
+            var end = RopeMan.CursorPoint{ .line = self.anchor.line, .col = self.anchor.col + 1 };
+
+            const backwards_result = self.ropeman.seekBackwards(self.anchor.line, self.anchor.col, touchedWordBoundary, self, true) catch return null;
+            if (backwards_result.point) |back_point| start = back_point;
+
+            const forward_result = self.ropeman.seekForward(self.anchor.line, self.anchor.col, touchedWordBoundary, self, true) catch return null;
+            if (forward_result.point) |forward_point| end = forward_point;
+
+            return RopeMan.CursorRange{ .start = start, .end = end };
+        }
+
+        fn getTargetCharKind(self: *@This()) TargetCharKind {
+            const cp = self.ropeman.getCharacterAt(.{ .line = self.anchor.line, .col = self.anchor.col }, &self.buf);
+            const from = getCharKind(u21, cp);
+            return switch (from) {
+                .not_found => unreachable,
+                .spacing => TargetCharKind.symbol_or_char,
+                .char => TargetCharKind.spacing_or_symbol,
+                .symbol => TargetCharKind.spacing_or_char,
+            };
+        }
+
+        fn init(ropeman: *const RopeMan, anchor: Anchor) WordTextObjectCtx {
+            var self = WordTextObjectCtx{ .ropeman = ropeman, .anchor = anchor };
+            self.target = self.getTargetCharKind();
+            return self;
+        }
+
+        fn touchedWordBoundary(ctx: ?*anyopaque, cp: u21) bool {
+            assert(ctx != null);
+            if (ctx == null) return false;
+
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const kind = getCharKind(u21, cp);
+
+            return switch (self.target) {
+                .symbol_or_char => kind != .spacing,
+                .spacing_or_symbol => kind == .spacing or kind == .symbol,
+                .spacing_or_char => kind == .spacing or kind == .char,
+            };
+        }
+    };
+
+    fn getWordTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
+        var ctx = WordTextObjectCtx.init(ropeman, self.*);
+        return ctx.produceRange();
+    }
+
+    test getWordTextObject {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string,
+            \\const str = "something-small;not_sure";
+        );
+        defer ropeman.deinit();
+
+        try testGetWordTextObject(.{ 0, 0, 0, 5 }, .{ 0, 0 }, &ropeman);
+    }
+
+    fn testGetWordTextObject(expected: ?struct { usize, usize, usize, usize }, a: struct { usize, usize }, ropeman: *const RopeMan) !void {
+        const anchor = Anchor{ .line = a[0], .col = a[1] };
+        if (expected) |e| {
+            const range = RopeMan.CursorRange{
+                .start = .{ .line = e[0], .col = e[1] },
+                .end = .{ .line = e[2], .col = e[3] },
+            };
+            const result = anchor.getWordTextObject(ropeman);
+            try eq(range, result);
+            return;
+        }
+        try eq(null, anchor.getSingleQuoteTextObject(ropeman));
+    }
+
+    ///////////////////////////// '
+
+    fn getPairedTextObjectOnCurrentLine(self: *const @This(), ropeman: *const RopeMan, cb: SeekCallback, ctx: ?*anyopaque) ?RopeMan.CursorRange {
         var start: ?RopeMan.CursorPoint = null;
 
         const backwards_result = ropeman.seekBackwards(self.line, self.col, cb, ctx, true) catch return null;
@@ -960,93 +1065,12 @@ const Anchor = struct {
         return null;
     }
 
-    ///////////////////////////// word
-
-    const TouchedWordBoundaryCtx = struct {
-        ropeman: *const RopeMan,
-        anchor: Anchor,
-        target: TargetCharKind = undefined,
-        buf: [3]u8 = undefined,
-
-        const TargetCharKind = enum {
-            symbol_or_char,
-            spacing_or_symbol,
-            spacing_or_char,
-        };
-
-        fn getTargetCharKind(self: *@This()) TargetCharKind {
-            const cp = self.ropeman.getCharacterAt(.{ .line = self.anchor.line, .col = self.anchor.col }, &self.buf);
-            const from = getCharKind(u21, cp);
-            return switch (from) {
-                .not_found => unreachable,
-                .spacing => TargetCharKind.symbol_or_char,
-                .char => TargetCharKind.spacing_or_symbol,
-                .symbol => TargetCharKind.spacing_or_char,
-            };
-        }
-
-        fn init(ropeman: *const RopeMan, anchor: Anchor) TouchedWordBoundaryCtx {
-            var self = TouchedWordBoundaryCtx{ .ropeman = ropeman, .anchor = anchor };
-            self.target = self.getTargetCharKind();
-            return self;
-        }
-
-        fn touchedWordBoundary(ctx: ?*anyopaque, cp: u21) bool {
-            assert(ctx != null);
-            if (ctx == null) return false;
-
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            const kind = getCharKind(u21, cp);
-
-            // TODO: get back point
-            // TODO: get forward point
-            // --> this is totally different from getTextObjectOnCurrentLine, so go wirte a new method
-
-            return switch (self.target) {
-                .symbol_or_char => kind != .spacing,
-                .spacing_or_symbol => kind == .spacing or kind == .symbol,
-                .spacing_or_char => kind == .spacing or kind == .char,
-            };
-        }
-    };
-
-    fn getWordTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
-        var ctx = TouchedWordBoundaryCtx.init(ropeman, self.*);
-        return self.getTextObjectOnCurrentLine(ropeman, TouchedWordBoundaryCtx.touchedWordBoundary, &ctx);
-    }
-
-    test getWordTextObject {
-        var ropeman = try RopeMan.initFrom(testing_allocator, .string,
-            \\const str = "something-small;not_sure";
-        );
-        defer ropeman.deinit();
-
-        try testGetWordTextObject(.{ 0, 0, 0, 5 }, .{ 0, 0 }, &ropeman);
-    }
-
-    fn testGetWordTextObject(expected: ?struct { usize, usize, usize, usize }, a: struct { usize, usize }, ropeman: *const RopeMan) !void {
-        const anchor = Anchor{ .line = a[0], .col = a[1] };
-        if (expected) |e| {
-            const range = RopeMan.CursorRange{
-                .start = .{ .line = e[0], .col = e[1] },
-                .end = .{ .line = e[2], .col = e[3] },
-            };
-            const result = anchor.getWordTextObject(ropeman);
-            std.debug.print("reslut: {any}\n", .{result});
-            try eq(range, result);
-            return;
-        }
-        try eq(null, anchor.getSingleQuoteTextObject(ropeman));
-    }
-
-    ///////////////////////////// '
-
     fn isSingleQuote(_: ?*anyopaque, cp: u21) bool {
         return cp == '\'';
     }
 
     fn getSingleQuoteTextObject(self: *const @This(), ropeman: *const RopeMan) ?RopeMan.CursorRange {
-        return self.getTextObjectOnCurrentLine(ropeman, isSingleQuote, null);
+        return self.getPairedTextObjectOnCurrentLine(ropeman, isSingleQuote, null);
     }
 
     test getSingleQuoteTextObject {

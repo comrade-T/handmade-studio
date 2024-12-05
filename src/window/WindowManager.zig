@@ -120,6 +120,12 @@ pub fn deleteInSingleQuote(ctx: *anyopaque) !void {
     try window.deleteRanges(self.style_store, .in_single_quote);
 }
 
+pub fn deleteInWord(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const window = self.active_window orelse return;
+    try window.deleteRanges(self.style_store, .in_word);
+}
+
 ///////////////////////////// Visual Mode
 
 pub fn enterVisualMode(ctx: *anyopaque) !void {

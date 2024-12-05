@@ -95,59 +95,64 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Testing
 
-    // y offset
-
-    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines_with_quotes.zig", .{
         .pos = .{ .x = 100, .y = 100 },
         .subscribed_style_sets = &.{0},
-        .bounds = .{
-            .width = 400,
-            .height = 300,
-            .offset = .{ .x = 0, .y = 0 },
-        },
     }, true);
 
-    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-        .pos = .{ .x = 600, .y = 100 },
-        .subscribed_style_sets = &.{0},
-        .bounds = .{
-            .width = 400,
-            .height = 300,
-            .offset = .{ .x = 0, .y = 100 },
-        },
-    }, false);
-
-    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-        .pos = .{ .x = 1100, .y = 100 },
-        .subscribed_style_sets = &.{0},
-        .bounds = .{
-            .width = 400,
-            .height = 300,
-            .offset = .{ .x = 0, .y = 200 },
-        },
-    }, false);
-
-    // x offset
-
-    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-        .pos = .{ .x = 100, .y = 600 },
-        .subscribed_style_sets = &.{0},
-        .bounds = .{
-            .width = 400,
-            .height = 300,
-            .offset = .{ .x = 100, .y = 0 },
-        },
-    }, false);
-
-    try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-        .pos = .{ .x = 600, .y = 600 },
-        .subscribed_style_sets = &.{0},
-        .bounds = .{
-            .width = 400,
-            .height = 300,
-            .offset = .{ .x = 200, .y = 0 },
-        },
-    }, false);
+    // // y offset
+    //
+    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    //     .pos = .{ .x = 100, .y = 100 },
+    //     .subscribed_style_sets = &.{0},
+    //     .bounds = .{
+    //         .width = 400,
+    //         .height = 300,
+    //         .offset = .{ .x = 0, .y = 0 },
+    //     },
+    // }, true);
+    //
+    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    //     .pos = .{ .x = 600, .y = 100 },
+    //     .subscribed_style_sets = &.{0},
+    //     .bounds = .{
+    //         .width = 400,
+    //         .height = 300,
+    //         .offset = .{ .x = 0, .y = 100 },
+    //     },
+    // }, false);
+    //
+    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    //     .pos = .{ .x = 1100, .y = 100 },
+    //     .subscribed_style_sets = &.{0},
+    //     .bounds = .{
+    //         .width = 400,
+    //         .height = 300,
+    //         .offset = .{ .x = 0, .y = 200 },
+    //     },
+    // }, false);
+    //
+    // // x offset
+    //
+    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    //     .pos = .{ .x = 100, .y = 600 },
+    //     .subscribed_style_sets = &.{0},
+    //     .bounds = .{
+    //         .width = 400,
+    //         .height = 300,
+    //         .offset = .{ .x = 100, .y = 0 },
+    //     },
+    // }, false);
+    //
+    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
+    //     .pos = .{ .x = 600, .y = 600 },
+    //     .subscribed_style_sets = &.{0},
+    //     .bounds = .{
+    //         .width = 400,
+    //         .height = 300,
+    //         .offset = .{ .x = 200, .y = 0 },
+    //     },
+    // }, false);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
@@ -193,7 +198,14 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    // TODO: change in word
+    try council.map("normal", &.{ .d, .semicolon }, .{ .f = WindowManager.deleteInWord, .ctx = &wm });
+    try council.map("normal", &.{ .c, .semicolon }, .{
+        .f = WindowManager.deleteInWord,
+        .ctx = &wm,
+        .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
+        .require_clarity_afterwards = true,
+    });
+
     // TODO: change in WORD
 
     ///////////////////////////// Visual Mode
