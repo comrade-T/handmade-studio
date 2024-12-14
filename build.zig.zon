@@ -13,7 +13,7 @@
             .hash = "122068d73abbd37bde306d564ad6b1d40d34353db2e469325e45671c08ce4fc5f48d",
         },
         .ztracy = .{
-            .path = "copied-libs/ztracy",
+            .path = "submodules/ztracy",
         },
         .fuzzig = .{
             .url = "https://github.com/fjebaker/fuzzig/archive/main.tar.gz",

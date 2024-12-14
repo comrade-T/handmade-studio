@@ -19,13 +19,12 @@ pub fn main() !void {
 
     ///////////////////////////// Model
 
-    const distance = 300;
-
+    const offset = 300;
     const points: []const rl.Vector2 = &.{
-        .{ .x = distance, .y = distance },
-        .{ .x = screen_width - distance, .y = distance },
-        .{ .x = distance, .y = screen_height - distance },
-        .{ .x = screen_width - distance, .y = screen_height - distance },
+        .{ .x = offset, .y = offset },
+        .{ .x = screen_width - offset, .y = offset },
+        .{ .x = offset, .y = screen_height - offset },
+        .{ .x = screen_width - offset, .y = screen_height - offset },
     };
 
     var circle_target = points[0];
@@ -38,10 +37,18 @@ pub fn main() !void {
         ///////////////////////////// Update
 
         {
-            if (rl.isKeyPressed(rl.KeyboardKey.key_u)) circle_target = points[0];
-            if (rl.isKeyPressed(rl.KeyboardKey.key_o)) circle_target = points[1];
-            if (rl.isKeyPressed(rl.KeyboardKey.key_h)) circle_target = points[2];
-            if (rl.isKeyPressed(rl.KeyboardKey.key_l)) circle_target = points[3];
+            if (rl.isKeyPressed(rl.KeyboardKey.key_q)) circle_target = points[0];
+            if (rl.isKeyPressed(rl.KeyboardKey.key_e)) circle_target = points[1];
+            if (rl.isKeyPressed(rl.KeyboardKey.key_z)) circle_target = points[2];
+            if (rl.isKeyPressed(rl.KeyboardKey.key_c)) circle_target = points[3];
+
+            const distance = 200;
+            if (rl.isKeyPressed(rl.KeyboardKey.key_w)) circle_target.y -= distance;
+            if (rl.isKeyPressed(rl.KeyboardKey.key_s)) circle_target.y += distance;
+            if (rl.isKeyPressed(rl.KeyboardKey.key_a)) circle_target.x -= distance;
+            if (rl.isKeyPressed(rl.KeyboardKey.key_d)) circle_target.x += distance;
+
+            if (rl.isKeyPressed(rl.KeyboardKey.key_x)) circle_target = .{ .x = screen_width / 2, .y = screen_height / 2 };
         }
 
         {
@@ -57,8 +64,6 @@ pub fn main() !void {
             rl.clearBackground(rl.Color.blank);
 
             rl.drawCircleV(circle_pos, 20, rl.Color.sky_blue);
-
-            rl.drawText("bonamana", 100, 100, 30, rl.Color.ray_white);
         }
     }
 }

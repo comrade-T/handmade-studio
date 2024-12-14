@@ -49,7 +49,7 @@ cap_list: CapList,
 
 const CapList = ArrayList([]StoredCapture);
 
-pub fn create(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangSuite.LangHub) !*WindowSource {
+pub fn create(a: Allocator, from: InitFrom, source: []const u8, may_lang_hub: ?*LangSuite.LangHub) !*WindowSource {
     var self = try a.create(@This());
     self.* = WindowSource{
         .a = a,
@@ -60,9 +60,12 @@ pub fn create(a: Allocator, from: InitFrom, source: []const u8, lang_hub: *LangS
     switch (from) {
         .string => {},
         .file => {
-            self.path = source;
-            try self.initiateTreeSitterForFile(lang_hub);
-            try self.populateCapListWithAllCaptures();
+            assert(may_lang_hub != null);
+            if (may_lang_hub) |lang_hub| {
+                self.path = source;
+                try self.initiateTreeSitterForFile(lang_hub);
+                try self.populateCapListWithAllCaptures();
+            }
         },
     }
     return self;

@@ -33,7 +33,7 @@ const Window = @import("Window");
 a: Allocator,
 
 lang_hub: *LangHub,
-style_store: *const RenderMall,
+mall: *const RenderMall,
 
 active_window: ?*Window = null,
 render_callbacks: RenderMall.RenderCallbacks,
@@ -46,7 +46,7 @@ pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const RenderMall, re
     return WindowManager{
         .a = a,
         .lang_hub = lang_hub,
-        .style_store = style_store,
+        .mall = style_store,
         .render_callbacks = render_callbacks,
         .handlers = WindowSourceHandlerList{},
         .fmap = FilePathToHandlerMap{},
@@ -66,7 +66,7 @@ pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const 
     // if file path exists in fmap
     if (from == .file) {
         if (self.fmap.get(source)) |handler| {
-            const window = try handler.spawnWindow(self.a, opts, self.style_store);
+            const window = try handler.spawnWindow(self.a, opts, self.mall);
             try self.wmap.put(self.a, window, handler);
             if (make_active or self.active_window == null) self.active_window = window;
             return;
@@ -77,7 +77,7 @@ pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const 
     try self.handlers.append(self.a, try WindowSourceHandler.create(self, from, source, self.lang_hub));
     var handler = self.handlers.getLast();
 
-    const window = try handler.spawnWindow(self.a, opts, self.style_store);
+    const window = try handler.spawnWindow(self.a, opts, self.mall);
     try self.wmap.put(self.a, window, handler);
 
     if (from == .file) try self.fmap.put(self.a, source, handler);
@@ -107,7 +107,29 @@ test spawnWindow {
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
-    for (self.wmap.keys()) |window| window.render(self.style_store, view, self.render_callbacks);
+    for (self.wmap.keys()) |window| window.render(self.mall, view, self.render_callbacks);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
+
+pub fn deleteRanges(self: *@This(), kind: WindowSource.DeleteRangesKind) !void {
+    const active_window = self.active_window orelse return;
+
+    var handler = self.wmap.get(active_window) orelse return;
+    const result = try handler.source.deleteRanges(self.a, active_window.cursor_manager, kind) orelse return;
+    defer self.a.free(result);
+
+    for (handler.windows.items) |win| try win.processEditResult(result, self.mall);
+}
+
+pub fn insertChars(self: *@This(), chars: []const u8) !void {
+    const active_window = self.active_window orelse return;
+
+    var handler = self.wmap.get(active_window) orelse return;
+    const result = try handler.source.insertChars(self.a, chars, active_window.cursor_manager) orelse return;
+    defer self.a.free(result);
+
+    for (handler.windows.items) |win| try win.processEditResult(result, self.mall);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
@@ -116,20 +138,17 @@ pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
 
 pub fn deleteInSingleQuote(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.deleteRanges(self.style_store, .in_single_quote);
+    try self.deleteRanges(.in_single_quote);
 }
 
 pub fn deleteInWord(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.deleteRanges(self.style_store, .in_word);
+    try self.deleteRanges(.in_word);
 }
 
 pub fn deleteInWORD(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.deleteRanges(self.style_store, .in_WORD);
+    try self.deleteRanges(.in_WORD);
 }
 
 ///////////////////////////// Visual Mode
@@ -148,22 +167,15 @@ pub fn exitVisualMode(ctx: *anyopaque) !void {
 
 pub fn delete(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.deleteRanges(self.style_store, .range);
+    try self.deleteRanges(.range);
     try exitVisualMode(ctx);
 }
 
 ///////////////////////////// Insert Mode
 
-pub fn insertChars(self: *@This(), chars: []const u8) !void {
-    const window = self.active_window orelse return;
-    try window.insertChars(chars, self.style_store);
-}
-
 pub fn backspace(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.deleteRanges(self.style_store, .backspace);
+    try self.deleteRanges(.backspace);
 }
 
 pub fn enterInsertMode_i(ctx: *anyopaque) !void {

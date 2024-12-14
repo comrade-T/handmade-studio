@@ -16,6 +16,8 @@ const RenderMall = @import("RenderMall");
 const LangSuite = @import("LangSuite");
 const WindowManager = @import("WindowManager");
 
+const FuzzyFinder = @import("FuzzyFinder");
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -57,23 +59,23 @@ pub fn main() anyerror!void {
     defer colorscheme_store.deinit();
     try colorscheme_store.initializeNightflyColorscheme();
 
-    var style_store = RenderMall.init(gpa, &font_store, &colorscheme_store);
-    defer style_store.deinit();
+    var mall = RenderMall.init(gpa, &font_store, &colorscheme_store);
+    defer mall.deinit();
 
     // adding custom rules
-    try style_store.addFontSizeStyle(.{
+    try mall.addFontSizeStyle(.{
         .query_id = 0,
         .capture_id = 5, // @type
         .styleset_id = 0,
     }, 50);
 
-    try style_store.addFontSizeStyle(.{
+    try mall.addFontSizeStyle(.{
         .query_id = 0,
         .capture_id = 6, // @function
         .styleset_id = 0,
     }, 60);
 
-    try style_store.addFontSizeStyle(.{
+    try mall.addFontSizeStyle(.{
         .query_id = 0,
         .capture_id = 0, // @comment
         .styleset_id = 0,
@@ -87,7 +89,7 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
-    var wm = try WindowManager.init(gpa, &lang_hub, &style_store, .{
+    var wm = try WindowManager.init(gpa, &lang_hub, &mall, .{
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
     });
@@ -278,6 +280,18 @@ pub fn main() anyerror!void {
         }
     };
     try council.mapInsertCharacters(&.{"insert"}, &wm, InsertCharsCb.init);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
+
+    var fuzzy_finder = try FuzzyFinder.create(gpa, .{}, &mall);
+    defer fuzzy_finder.destroy();
+
+    try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
+    try council.map("normal", &.{ .left_control, .f }, .{
+        .f = FuzzyFinder.show,
+        .ctx = fuzzy_finder,
+        .contexts = .{ .add = &.{"fuzzy_finder_insert"}, .remove = &.{"normal"} },
+    });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 

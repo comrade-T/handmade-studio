@@ -39,10 +39,34 @@ pub fn build(b: *std.Build) void {
     const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
     _ = s2s;
 
+    const ztracy_options = .{
+        .enable_ztracy = b.option(
+            bool,
+            "enable_ztracy",
+            "Enable Tracy profile markers",
+        ) orelse false,
+        .enable_fibers = b.option(
+            bool,
+            "enable_fibers",
+            "Enable Tracy fiber support",
+        ) orelse false,
+        .on_demand = b.option(
+            bool,
+            "on_demand",
+            "Build tracy with TRACY_ON_DEMAND",
+        ) orelse false,
+    };
+
     const ztracy = b.dependency("ztracy", .{
-        .enable_ztracy = true,
-        .enable_fibers = true,
+        .enable_ztracy = ztracy_options.enable_ztracy,
+        .enable_fibers = ztracy_options.enable_fibers,
+        .on_demand = ztracy_options.on_demand,
     });
+
+    // const ztracy = b.dependency("ztracy", .{
+    //     .enable_ztracy = true,
+    //     .enable_fibers = true,
+    // });
 
     const fuzzig = b.dependency("fuzzig", .{}).module("fuzzig");
 
@@ -151,8 +175,13 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = text_box;
 
-    _ = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{
+    const fuzzy_finder = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
+        .{ .name = "WindowSource", .module = window_source.module },
+        .{ .name = "Window", .module = window.module },
+        .{ .name = "RenderMall", .module = render_mall.module },
+        .{ .name = "input_processor", .module = input_processor.module },
+        .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables
@@ -174,6 +203,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
         exe.root_module.addImport("RenderMall", render_mall.module);
         exe.root_module.addImport("WindowManager", window_manager.module);
+        exe.root_module.addImport("FuzzyFinder", fuzzy_finder.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));

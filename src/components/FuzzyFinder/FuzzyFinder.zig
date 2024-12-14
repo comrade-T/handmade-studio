@@ -9,6 +9,208 @@ const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const assert = std.debug.assert;
 
+const WindowSource = @import("WindowSource");
+const Window = @import("Window");
+const RenderMall = @import("RenderMall");
+const ip = @import("input_processor");
+const code_point = @import("code_point");
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const PathList = ArrayList([]const u8);
+const MatchMap = std.AutoArrayHashMap(usize, Match);
+const Match = struct {
+    score: i32,
+    matches: []const usize,
+};
+
+const SortMatchesCtx = struct {
+    matches: []const Match,
+
+    pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+        return ctx.matches[a_index].score < ctx.matches[b_index].score;
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+a: Allocator,
+visible: bool = false,
+
+path_arena: ArenaAllocator,
+match_arena: ArenaAllocator,
+path_list: PathList,
+match_map: MatchMap,
+
+mall: *const RenderMall,
+input: InputWindow,
+
+pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) !*FuzzyFinder {
+    const self = try a.create(@This());
+    self.* = FuzzyFinder{
+        .a = a,
+
+        .path_arena = ArenaAllocator.init(a),
+        .match_arena = ArenaAllocator.init(a),
+        .path_list = try PathList.initCapacity(a, 128),
+        .match_map = MatchMap.init(a),
+
+        .mall = mall,
+        .input = try InputWindow.init(a, opts, mall),
+    };
+    try self.updateFilePaths();
+    return self;
+}
+
+pub fn destroy(self: *@This()) void {
+    self.input.deinit();
+    self.path_list.deinit();
+    self.match_map.deinit();
+    self.path_arena.deinit();
+    self.match_arena.deinit();
+    self.a.destroy(self);
+}
+
+pub fn show(ctx: *anyopaque) !void {
+    const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
+    try self.updateFilePaths();
+    self.visible = true;
+}
+
+pub fn hide(self: *@This()) !void {
+    self.visible = false;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn render(self: *const @This(), view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
+    if (!self.visible) return;
+    self.input.window.render(self.mall, view, render_callbacks);
+    self.renderResults(render_callbacks);
+}
+
+fn renderResults(self: *@This(), render_callbacks: RenderMall.RenderCallbacks) void {
+    const font = self.mall.font_store.getDefaultFont() orelse unreachable;
+    const font_size = 30;
+    const default_glyph = font.glyph_map.get('?') orelse unreachable;
+
+    const normal_color = 0xffffffff;
+    const match_color = 0xf78c6cff;
+
+    const start_x = 100;
+    const start_y = 100;
+
+    var x: f32 = start_x;
+    var y: f32 = start_y;
+
+    var match_index: usize = 0;
+
+    var iter = self.match_map.iterator();
+    while (iter.next()) |entry| {
+        defer y += font_size;
+
+        var i: usize = 0;
+        var cp_iter = code_point.Iterator{ .bytes = self.path_list.items[entry.key_ptr.*] };
+        while (cp_iter.next()) |cp| {
+            defer i += 1;
+            var color = normal_color;
+
+            const matches = entry.value_ptr.matches;
+            if (match_index + 1 <= matches.len) {
+                if (matches[match_index] == i) {
+                    color = match_color;
+                    match_index += 1;
+                }
+            }
+
+            const char_width = Window.calculateGlyphWidth(font, font_size, cp.code, default_glyph);
+            defer x += char_width;
+
+            render_callbacks.drawCodePoint(font, cp.code, x, y, font_size, color);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn updateFilePaths(self: *@This()) !void {
+    self.path_arena.deinit();
+    self.path_arena = ArenaAllocator.init(self.a);
+
+    self.match_arena.deinit();
+    self.match_arena = ArenaAllocator.init(self.a);
+
+    self.path_list.clearRetainingCapacity();
+    self.match_map.clearRetainingCapacity();
+
+    try appendFileNamesRelativeToCwd(&self.path_arena, ".", &self.path_list, true);
+}
+
+fn insertChars(self: *@This(), chars: []const u8) !void {
+    self.match_arena.deinit();
+    self.match_arena = ArenaAllocator.init(self.a);
+    self.match_map.clearRetainingCapacity();
+
+    try self.input.insertChars(self.a, chars, self.mall);
+    const needle = try self.input.source.buf.ropeman.toString(self.path_arena.allocator(), .lf);
+
+    var searcher = try fuzzig.Ascii.init(self.match_arena.allocator(), 1024 * 4, 1024, .{ .case_sensitive = false });
+    defer searcher.deinit();
+
+    for (self.path_list.items, 0..) |path, i| {
+        const match = searcher.scoreMatches(path, needle);
+        if (match.score) |score| try self.match_map.put(i, Match{
+            .score = score,
+            .matches = try self.match_arena.allocator().dupe(usize, match.matches),
+        });
+    }
+
+    self.match_map.sort(SortMatchesCtx{ .matches = self.match_map.values() });
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const InsertCharsCb = struct {
+    chars: []const u8,
+    target: *FuzzyFinder,
+    fn f(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        try self.target.insertChars(self.chars);
+    }
+    pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, chars: []const u8) !ip.Callback {
+        const self = try allocator.create(@This());
+        const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
+        self.* = .{ .chars = chars, .target = target };
+        return ip.Callback{ .f = @This().f, .ctx = self, .quick = true };
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const InputWindow = struct {
+    source: *WindowSource,
+    window: *Window,
+
+    fn init(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) !InputWindow {
+        const source = try WindowSource.create(a, .string, "", null);
+        return InputWindow{
+            .source = source,
+            .window = try Window.create(a, source, opts, mall),
+        };
+    }
+
+    fn deinit(self: *@This()) void {
+        self.source.destroy();
+        self.window.destroy();
+    }
+
+    fn insertChars(self: *@This(), a: Allocator, chars: []const u8, mall: *const RenderMall) !void {
+        const results = try self.source.insertChars(a, chars, self.window.cursor_manager) orelse return;
+        defer a.free(results);
+        try self.window.processEditResult(results, mall);
+    }
+};
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn getGitIgnorePatternsOfCWD(a: Allocator) !ArrayList([]const u8) {

@@ -7,3 +7,6 @@
 [submodule "submodules/regex"]
 	path = submodules/regex
 	url = https://github.com/tiehuis/zig-regex
+[submodule "submodules/ztracy"]
+	path = submodules/ztracy
+	url = https://github.com/comrade-T/ztracy

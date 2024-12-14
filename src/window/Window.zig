@@ -540,27 +540,9 @@ const Renderer = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
-pub fn insertChars(self: *@This(), chars: []const u8, mall: *const RenderMall) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.insertChars()", 0x00AAFF);
-    defer zone.End();
-
-    const result = try self.ws.insertChars(self.a, chars, self.cursor_manager) orelse return;
-    try self.processEditResult(result, mall);
-}
-
-pub fn deleteRanges(self: *@This(), mall: *const RenderMall, kind: WindowSource.DeleteRangesKind) !void {
-    const zone = ztracy.ZoneNC(@src(), "Window.deleteRanges()", 0x00AAFF);
-    defer zone.End();
-
-    const result = try self.ws.deleteRanges(self.a, self.cursor_manager, kind) orelse return;
-    try self.processEditResult(result, mall);
-}
-
-fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, mall: *const RenderMall) !void {
+pub fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, mall: *const RenderMall) !void {
     const default_font = mall.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
-
-    defer self.a.free(replace_infos);
     for (replace_infos) |ri| try self.updateCacheLines(ri, mall, default_font, default_glyph);
 }
 
@@ -708,7 +690,7 @@ fn getStyleFromStore(T: type, win: *const Window, r: WindowSource.LineIterator.R
     return null;
 }
 
-fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, default_glyph: GlyphData) f32 {
+pub fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, default_glyph: GlyphData) f32 {
     const glyph = font.glyph_map.get(code_point) orelse default_glyph;
     const scale_factor: f32 = font_size / font.base_size;
     const width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
