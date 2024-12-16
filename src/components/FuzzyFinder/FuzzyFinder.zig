@@ -150,13 +150,15 @@ fn updateFilePaths(self: *@This()) !void {
     try appendFileNamesRelativeToCwd(&self.path_arena, ".", &self.path_list, true);
 }
 
-fn insertChars(self: *@This(), chars: []const u8) !void {
+fn updateResults(self: *@This()) !void {
     self.match_arena.deinit();
     self.match_arena = ArenaAllocator.init(self.a);
     self.match_list.clearRetainingCapacity();
 
-    try self.input.insertChars(self.a, chars, self.mall);
-    const needle = try self.input.source.buf.ropeman.toString(self.path_arena.allocator(), .lf);
+    const needle = try self.input.source.buf.ropeman.toString(self.a, .lf);
+    defer self.a.free(needle);
+
+    if (needle.len == 0) return; // fuzzig will crash if needle is an empty string
 
     var searcher = try fuzzig.Ascii.init(self.match_arena.allocator(), 1024 * 4, 1024, .{ .case_sensitive = false });
     defer searcher.deinit();
@@ -171,6 +173,17 @@ fn insertChars(self: *@This(), chars: []const u8) !void {
     }
 
     std.mem.sort(Match, self.match_list.items, {}, Match.lessThan);
+}
+
+fn insertChars(self: *@This(), chars: []const u8) !void {
+    try self.input.insertChars(self.a, chars, self.mall);
+    try self.updateResults();
+}
+
+pub fn backspace(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.input.backspace(self.a, self.mall);
+    try self.updateResults();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -213,6 +226,12 @@ const InputWindow = struct {
         const results = try self.source.insertChars(a, chars, self.window.cursor_manager) orelse return;
         defer a.free(results);
         try self.window.processEditResult(results, mall);
+    }
+
+    fn backspace(self: *@This(), a: Allocator, mall: *const RenderMall) !void {
+        const result = try self.source.deleteRanges(a, self.window.cursor_manager, .backspace) orelse return;
+        defer a.free(result);
+        try self.window.processEditResult(result, mall);
     }
 };
 

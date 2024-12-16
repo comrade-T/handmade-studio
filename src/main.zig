@@ -293,6 +293,8 @@ pub fn main() anyerror!void {
     defer fuzzy_finder.destroy();
 
     try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
+    try council.map("fuzzy_finder_insert", &.{.backspace}, .{ .f = FuzzyFinder.backspace, .ctx = fuzzy_finder });
+
     try council.map("normal", &.{ .left_control, .f }, .{
         .f = FuzzyFinder.show,
         .ctx = fuzzy_finder,
