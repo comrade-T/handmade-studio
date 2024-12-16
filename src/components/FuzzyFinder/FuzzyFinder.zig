@@ -25,8 +25,8 @@ const Match = struct {
     matches: []const usize,
     path_index: usize,
 
-    pub fn lessThan(_: void, a: Match, b: Match) bool {
-        return a.score < b.score;
+    pub fn moreThan(_: void, a: Match, b: Match) bool {
+        return a.score > b.score;
     }
 };
 
@@ -34,6 +34,7 @@ const Match = struct {
 
 a: Allocator,
 visible: bool = false,
+limit: u16 = 100,
 
 path_arena: ArenaAllocator,
 match_arena: ArenaAllocator,
@@ -62,16 +63,20 @@ pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) 
 
 pub fn destroy(self: *@This()) void {
     self.input.deinit();
+
     self.path_list.deinit();
-    self.match_list.deinit();
     self.path_arena.deinit();
+
+    self.match_list.deinit();
     self.match_arena.deinit();
+
     self.a.destroy(self);
 }
 
 pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
     try self.updateFilePaths();
+    try self.updateResults();
     self.visible = true;
 }
 
@@ -102,12 +107,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
     var x: f32 = start_x;
     var y: f32 = start_y;
 
-    var i: usize = self.match_list.items.len;
-
-    while (i > 0) {
-        i -= 1;
-        const match = self.match_list.items[i];
-
+    for (self.match_list.items) |match| {
         defer y += font_size;
         defer x = start_x;
 
@@ -140,13 +140,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
 fn updateFilePaths(self: *@This()) !void {
     self.path_arena.deinit();
     self.path_arena = ArenaAllocator.init(self.a);
-
-    self.match_arena.deinit();
-    self.match_arena = ArenaAllocator.init(self.a);
-
     self.path_list.clearRetainingCapacity();
-    self.match_list.clearRetainingCapacity();
-
     try appendFileNamesRelativeToCwd(&self.path_arena, ".", &self.path_list, true);
 }
 
@@ -158,12 +152,21 @@ fn updateResults(self: *@This()) !void {
     const needle = try self.input.source.buf.ropeman.toString(self.a, .lf);
     defer self.a.free(needle);
 
-    if (needle.len == 0) return; // fuzzig will crash if needle is an empty string
+    // fuzzig will crash if needle is an empty string
+    if (needle.len == 0) {
+        for (self.path_list.items, 0..) |_, i| {
+            if (i >= self.limit) break;
+            try self.match_list.append(Match{ .path_index = i, .score = 0, .matches = &.{} });
+        }
+        return;
+    }
 
     var searcher = try fuzzig.Ascii.init(self.match_arena.allocator(), 1024 * 4, 1024, .{ .case_sensitive = false });
     defer searcher.deinit();
 
     for (self.path_list.items, 0..) |path, i| {
+        if (i >= self.limit) break;
+
         const match = searcher.scoreMatches(path, needle);
         if (match.score) |score| try self.match_list.append(Match{
             .path_index = i,
@@ -172,7 +175,7 @@ fn updateResults(self: *@This()) !void {
         });
     }
 
-    std.mem.sort(Match, self.match_list.items, {}, Match.lessThan);
+    std.mem.sort(Match, self.match_list.items, {}, Match.moreThan);
 }
 
 fn insertChars(self: *@This(), chars: []const u8) !void {
