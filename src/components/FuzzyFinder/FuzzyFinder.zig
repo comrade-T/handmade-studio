@@ -18,17 +18,15 @@ const code_point = @import("code_point");
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const PathList = ArrayList([]const u8);
-const MatchMap = std.AutoArrayHashMap(usize, Match);
+const MatchList = ArrayList(Match);
+
 const Match = struct {
     score: i32,
     matches: []const usize,
-};
+    path_index: usize,
 
-const SortMatchesCtx = struct {
-    matches: []const Match,
-
-    pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-        return ctx.matches[a_index].score < ctx.matches[b_index].score;
+    pub fn lessThan(_: void, a: Match, b: Match) bool {
+        return a.score < b.score;
     }
 };
 
@@ -40,7 +38,7 @@ visible: bool = false,
 path_arena: ArenaAllocator,
 match_arena: ArenaAllocator,
 path_list: PathList,
-match_map: MatchMap,
+match_list: MatchList,
 
 mall: *const RenderMall,
 input: InputWindow,
@@ -53,7 +51,7 @@ pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) 
         .path_arena = ArenaAllocator.init(a),
         .match_arena = ArenaAllocator.init(a),
         .path_list = try PathList.initCapacity(a, 128),
-        .match_map = MatchMap.init(a),
+        .match_list = MatchList.init(a),
 
         .mall = mall,
         .input = try InputWindow.init(a, opts, mall),
@@ -65,7 +63,7 @@ pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) 
 pub fn destroy(self: *@This()) void {
     self.input.deinit();
     self.path_list.deinit();
-    self.match_map.deinit();
+    self.match_list.deinit();
     self.path_arena.deinit();
     self.match_arena.deinit();
     self.a.destroy(self);
@@ -104,22 +102,26 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
     var x: f32 = start_x;
     var y: f32 = start_y;
 
-    var match_index: usize = 0;
+    var i: usize = self.match_list.items.len;
 
-    var iter = self.match_map.iterator();
-    while (iter.next()) |entry| {
+    while (i > 0) {
+        i -= 1;
+        const match = self.match_list.items[i];
+
         defer y += font_size;
         defer x = start_x;
 
-        var i: usize = 0;
-        var cp_iter = code_point.Iterator{ .bytes = self.path_list.items[entry.key_ptr.*] };
+        var match_index: usize = 0;
+        var cp_index: usize = 0;
+
+        var cp_iter = code_point.Iterator{ .bytes = self.path_list.items[match.path_index] };
         while (cp_iter.next()) |cp| {
-            defer i += 1;
+            defer cp_index += 1;
             var color: u32 = normal_color;
 
-            const matches = entry.value_ptr.matches;
+            const matches = match.matches;
             if (match_index + 1 <= matches.len) {
-                if (matches[match_index] == i) {
+                if (matches[match_index] == cp_index) {
                     color = match_color;
                     match_index += 1;
                 }
@@ -143,7 +145,7 @@ fn updateFilePaths(self: *@This()) !void {
     self.match_arena = ArenaAllocator.init(self.a);
 
     self.path_list.clearRetainingCapacity();
-    self.match_map.clearRetainingCapacity();
+    self.match_list.clearRetainingCapacity();
 
     try appendFileNamesRelativeToCwd(&self.path_arena, ".", &self.path_list, true);
 }
@@ -151,7 +153,7 @@ fn updateFilePaths(self: *@This()) !void {
 fn insertChars(self: *@This(), chars: []const u8) !void {
     self.match_arena.deinit();
     self.match_arena = ArenaAllocator.init(self.a);
-    self.match_map.clearRetainingCapacity();
+    self.match_list.clearRetainingCapacity();
 
     try self.input.insertChars(self.a, chars, self.mall);
     const needle = try self.input.source.buf.ropeman.toString(self.path_arena.allocator(), .lf);
@@ -161,13 +163,14 @@ fn insertChars(self: *@This(), chars: []const u8) !void {
 
     for (self.path_list.items, 0..) |path, i| {
         const match = searcher.scoreMatches(path, needle);
-        if (match.score) |score| try self.match_map.put(i, Match{
+        if (match.score) |score| try self.match_list.append(Match{
+            .path_index = i,
             .score = score,
             .matches = try self.match_arena.allocator().dupe(usize, match.matches),
         });
     }
 
-    self.match_map.sort(SortMatchesCtx{ .matches = self.match_map.values() });
+    std.mem.sort(Match, self.match_list.items, {}, Match.lessThan);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
