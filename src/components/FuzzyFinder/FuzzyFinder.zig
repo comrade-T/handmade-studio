@@ -89,7 +89,7 @@ pub fn render(self: *const @This(), view: RenderMall.ScreenView, render_callback
     self.renderResults(render_callbacks);
 }
 
-fn renderResults(self: *@This(), render_callbacks: RenderMall.RenderCallbacks) void {
+fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallbacks) void {
     const font = self.mall.font_store.getDefaultFont() orelse unreachable;
     const font_size = 30;
     const default_glyph = font.glyph_map.get('?') orelse unreachable;
@@ -97,8 +97,9 @@ fn renderResults(self: *@This(), render_callbacks: RenderMall.RenderCallbacks) v
     const normal_color = 0xffffffff;
     const match_color = 0xf78c6cff;
 
-    const start_x = 100;
-    const start_y = 100;
+    const start_x = self.input.window.attr.pos.x;
+    const y_distance_from_input = 100;
+    const start_y = self.input.window.attr.pos.y + y_distance_from_input;
 
     var x: f32 = start_x;
     var y: f32 = start_y;
@@ -108,12 +109,13 @@ fn renderResults(self: *@This(), render_callbacks: RenderMall.RenderCallbacks) v
     var iter = self.match_map.iterator();
     while (iter.next()) |entry| {
         defer y += font_size;
+        defer x = start_x;
 
         var i: usize = 0;
         var cp_iter = code_point.Iterator{ .bytes = self.path_list.items[entry.key_ptr.*] };
         while (cp_iter.next()) |cp| {
             defer i += 1;
-            var color = normal_color;
+            var color: u32 = normal_color;
 
             const matches = entry.value_ptr.matches;
             if (match_index + 1 <= matches.len) {

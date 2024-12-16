@@ -81,6 +81,13 @@ pub fn main() anyerror!void {
         .styleset_id = 0,
     }, 80);
 
+    ///////////////////////////// render_callbacks
+
+    const render_callbacks = RenderMall.RenderCallbacks{
+        .drawCodePoint = drawCodePoint,
+        .drawRectangle = drawRectangle,
+    };
+
     ///////////////////////////// Models
 
     var lang_hub = try LangSuite.LangHub.init(gpa);
@@ -89,18 +96,17 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
-    var wm = try WindowManager.init(gpa, &lang_hub, &mall, .{
-        .drawCodePoint = drawCodePoint,
-        .drawRectangle = drawRectangle,
-    });
+    var wm = try WindowManager.init(gpa, &lang_hub, &mall, render_callbacks);
     defer wm.deinit();
 
     ///////////////////////////// Testing
 
-    try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines_with_quotes.zig", .{
-        .pos = .{ .x = 100, .y = 100 },
-        .subscribed_style_sets = &.{0},
-    }, true);
+    // try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines_with_quotes.zig", .{
+    //     .pos = .{ .x = 100, .y = 100 },
+    //     .subscribed_style_sets = &.{0},
+    // }, true);
+
+    // ------------------------------------
 
     // // y offset
     //
@@ -283,7 +289,7 @@ pub fn main() anyerror!void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
 
-    var fuzzy_finder = try FuzzyFinder.create(gpa, .{}, &mall);
+    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall);
     defer fuzzy_finder.destroy();
 
     try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
@@ -291,6 +297,7 @@ pub fn main() anyerror!void {
         .f = FuzzyFinder.show,
         .ctx = fuzzy_finder,
         .contexts = .{ .add = &.{"fuzzy_finder_insert"}, .remove = &.{"normal"} },
+        .require_clarity_afterwards = true,
     });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
@@ -318,22 +325,30 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                for (wm.wmap.keys()) |window| {
-                    if (window.attr.bounded) {
-                        rl.drawRectangleV(.{
-                            .x = window.attr.pos.x,
-                            .y = window.attr.pos.y,
-                        }, .{
-                            .x = window.attr.bounds.width,
-                            .y = window.attr.bounds.height,
-                        }, rl.Color.init(255, 255, 255, 30));
+                { // show borders for testing bounded windows
+                    for (wm.wmap.keys()) |window| {
+                        if (window.attr.bounded) {
+                            rl.drawRectangleV(.{
+                                .x = window.attr.pos.x,
+                                .y = window.attr.pos.y,
+                            }, .{
+                                .x = window.attr.bounds.width,
+                                .y = window.attr.bounds.height,
+                            }, rl.Color.init(255, 255, 255, 30));
+                        }
                     }
                 }
 
-                wm.render(.{
+                const view = RenderMall.ScreenView{
                     .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
                     .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
-                });
+                };
+
+                // rendering windows via WindowManager
+                wm.render(view);
+
+                // FuzzyFinder
+                fuzzy_finder.render(view, render_callbacks);
             }
         }
     }
