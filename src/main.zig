@@ -296,6 +296,7 @@ pub fn main() anyerror!void {
     try council.map("fuzzy_finder_insert", &.{.backspace}, .{ .f = FuzzyFinder.backspace, .ctx = fuzzy_finder });
     try council.map("fuzzy_finder_insert", &.{ .left_control, .j }, .{ .f = FuzzyFinder.nextItem, .ctx = fuzzy_finder });
     try council.map("fuzzy_finder_insert", &.{ .left_control, .k }, .{ .f = FuzzyFinder.prevItem, .ctx = fuzzy_finder });
+    try council.map("fuzzy_finder_insert", &.{.enter}, .{ .f = FuzzyFinder.confirmItemSelection, .ctx = fuzzy_finder });
 
     try council.map("normal", &.{ .left_control, .f }, .{
         .f = FuzzyFinder.show,

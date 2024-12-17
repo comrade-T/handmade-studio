@@ -86,6 +86,14 @@ pub fn hide(self: *@This()) !void {
     self.visible = false;
 }
 
+pub fn confirmItemSelection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    assert(self.selection_index <= self.match_list.items.len -| 1);
+    const match = self.match_list.items[self.selection_index];
+    const path = self.path_list.items[match.path_index];
+    std.debug.print("selected path: '{s}'\n", .{path});
+}
+
 pub fn nextItem(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.selection_index = @min(self.match_list.items.len -| 1, self.selection_index + 1);
