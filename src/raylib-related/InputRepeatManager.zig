@@ -27,11 +27,7 @@ pub fn updateInputState(self: *@This()) !void {
 }
 
 fn executeTriggerIfExists(self: *@This()) !void {
-    const previous_frame = self.frame.*;
-
     if (self.council.produceFinalTrigger(self.frame)) |trigger| {
-        self.frame.* = previous_frame;
-
         const current_time = std.time.milliTimestamp();
         defer self.last_trigger = trigger;
 
@@ -58,10 +54,14 @@ fn executeTriggerIfExists(self: *@This()) !void {
             if (current_time - self.last_trigger_timestamp < self.trigger_delay) return;
             self.reached_trigger_delay = true;
             self.last_trigger_timestamp = current_time;
-        }
 
-        try self.council.execute(self.frame);
-        return;
+            try self.council.execute(trigger, self.frame);
+            return;
+        }
+    }
+
+    if (self.council.produceFinalTrigger(self.frame)) |trigger| {
+        try self.council.execute(trigger, self.frame);
     }
 }
 

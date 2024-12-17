@@ -161,16 +161,12 @@ pub const MappingCouncil = struct {
                 try up_map.put(chunk_hash, fetched.?.value);
                 continue;
             }
-            if (up_map.get(chunk_hash) == null) {
-                try up_map.put(chunk_hash, callback);
-            }
         }
         try down_map.put(hash(keys), callback);
     }
 
-    pub fn execute(self: *@This(), frame: *InputFrame) !void {
+    pub fn execute(self: *@This(), trigger: u128, frame: *InputFrame) !void {
         const report = frame.produceCandidateReport();
-        const may_trigger = self.produceFinalTrigger(frame);
 
         const require_clarity_afterwards_cpy = self.require_clarity_afterwards;
         defer {
@@ -197,14 +193,12 @@ pub const MappingCouncil = struct {
 
                 // regular
                 if (self.downs.get(context_id)) |trigger_map| {
-                    if (may_trigger) |trigger| {
-                        if (trigger_map.get(trigger)) |cb| {
-                            if (report.quick == trigger and frame.downs.items.len > 1 and self.require_clarity_afterwards) return;
-                            try cb.f(cb.ctx);
-                            try self.resolveContextsAfterCallback(cb);
-                            if (cb.require_clarity_afterwards) self.require_clarity_afterwards = true;
-                            return;
-                        }
+                    if (trigger_map.get(trigger)) |cb| {
+                        if (report.quick == trigger and frame.downs.items.len > 1 and self.require_clarity_afterwards) return;
+                        try cb.f(cb.ctx);
+                        try self.resolveContextsAfterCallback(cb);
+                        if (cb.require_clarity_afterwards) self.require_clarity_afterwards = true;
+                        return;
                     }
                 }
             }
@@ -215,12 +209,10 @@ pub const MappingCouncil = struct {
 
                 // regular
                 if (self.ups.get(context_id)) |trigger_map| {
-                    if (may_trigger) |trigger| {
-                        if (trigger_map.get(trigger)) |cb| {
-                            try cb.f(cb.ctx);
-                            try self.resolveContextsAfterCallback(cb);
-                            return;
-                        }
+                    if (trigger_map.get(trigger)) |cb| {
+                        try cb.f(cb.ctx);
+                        try self.resolveContextsAfterCallback(cb);
+                        return;
                     }
                 }
             }
@@ -327,6 +319,8 @@ pub const MappingCouncil = struct {
         return false;
     }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 test "multiple contexts at same time" {
     var council = try MappingCouncil.init(testing_allocator);

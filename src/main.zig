@@ -206,6 +206,15 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
+    try council.map("normal", &.{.d}, .{ .f = nop, .ctx = &wm });
+    try council.map("normal", &.{.c}, .{ .f = nop, .ctx = &wm });
+
+    try council.map("normal", &.{ .d, .s }, .{ .f = nop2, .ctx = &wm });
+    try council.map("normal", &.{ .s, .d }, .{ .f = nop2, .ctx = &wm });
+
+    try council.map("normal", &.{ .c, .x }, .{ .f = nop2, .ctx = &wm });
+    try council.map("normal", &.{ .x, .c }, .{ .f = nop2, .ctx = &wm });
+
     try council.map("normal", &.{ .d, .semicolon }, .{ .f = WindowManager.deleteInWord, .ctx = &wm });
     try council.map("normal", &.{ .c, .semicolon }, .{
         .f = WindowManager.deleteInWord,
@@ -214,10 +223,7 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    // TODO: add a check so I don't have to map the 'x' key to a dummy fn like this
-    try council.map("normal", &.{.x}, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
-
-    try council.mapMany("normal", &.{ &.{ .d, .x, .semicolon }, &.{ .x, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
+    try council.mapMany("normal", &.{ &.{ .d, .s, .semicolon }, &.{ .s, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
     try council.mapMany("normal", &.{ &.{ .c, .x, .semicolon }, &.{ .x, .c, .semicolon } }, .{
         .f = WindowManager.deleteInWORD,
         .ctx = &wm,
@@ -414,3 +420,11 @@ const ScreenView = struct {
         self.height = self.end.y - self.start.y;
     }
 };
+
+fn nop(_: *anyopaque) !void {
+    std.debug.print("this is NOP\n", .{});
+}
+
+fn nop2(_: *anyopaque) !void {
+    std.debug.print("this is NOP 222\n", .{});
+}
