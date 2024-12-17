@@ -34,7 +34,9 @@ const Match = struct {
 
 a: Allocator,
 visible: bool = false,
+
 limit: u16 = 100,
+selection_index: u16 = 0,
 
 path_arena: ArenaAllocator,
 match_arena: ArenaAllocator,
@@ -84,6 +86,20 @@ pub fn hide(self: *@This()) !void {
     self.visible = false;
 }
 
+pub fn nextItem(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.selection_index = @min(self.match_list.items.len -| 1, self.selection_index + 1);
+}
+
+pub fn prevItem(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.selection_index -|= 1;
+}
+
+fn keepSelectionIndexInBound(self: *@This()) void {
+    self.selection_index = @min(self.match_list.items.len -| 1, self.selection_index);
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn render(self: *const @This(), view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
@@ -107,7 +123,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
     var x: f32 = start_x;
     var y: f32 = start_y;
 
-    for (self.match_list.items) |match| {
+    for (self.match_list.items, 0..) |match, i| {
         defer y += font_size;
         defer x = start_x;
 
@@ -119,9 +135,12 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
             defer cp_index += 1;
             var color: u32 = normal_color;
 
-            const matches = match.matches;
-            if (match_index + 1 <= matches.len) {
-                if (matches[match_index] == cp_index) {
+            pick_color: {
+                if (i == self.selection_index) {
+                    color = match_color;
+                    break :pick_color;
+                }
+                if (match_index + 1 <= match.matches.len and match.matches[match_index] == cp_index) {
                     color = match_color;
                     match_index += 1;
                 }
@@ -145,6 +164,8 @@ fn updateFilePaths(self: *@This()) !void {
 }
 
 fn updateResults(self: *@This()) !void {
+    defer self.keepSelectionIndexInBound();
+
     self.match_arena.deinit();
     self.match_arena = ArenaAllocator.init(self.a);
     self.match_list.clearRetainingCapacity();
