@@ -253,7 +253,7 @@ pub const MappingCouncil = struct {
         return null;
     }
 
-    pub fn produceFinalTriggerComponent(self: *@This(), context_id: []const u8, frame: *InputFrame) ?u128 {
+    pub fn produceFinalTriggerComponent(self: *const @This(), context_id: []const u8, frame: *InputFrame) ?u128 {
         const downs = self.downs.get(context_id) orelse return null;
         const ups = self.ups.get(context_id) orelse return null;
 
@@ -289,7 +289,7 @@ pub const MappingCouncil = struct {
         return self.produceDefaultTriggerComponent(context_id, r, frame);
     }
 
-    fn produceDefaultTriggerComponent(self: *@This(), context_id: []const u8, r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
+    fn produceDefaultTriggerComponent(self: *const @This(), context_id: []const u8, r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
         if (frame.latest_event_type == .down) {
             frame.emitted = true;
             if (self.check(context_id, .down, r.down)) return r.down;
@@ -310,7 +310,7 @@ pub const MappingCouncil = struct {
         return null;
     }
 
-    fn check(self: *@This(), context_id: []const u8, kind: enum { up, down }, trigger: ?u128) bool {
+    fn check(self: *const @This(), context_id: []const u8, kind: enum { up, down }, trigger: ?u128) bool {
         if (trigger == null) return false;
         const context_map = if (kind == .up) self.ups else self.downs;
         if (context_map.get(context_id)) |trigger_map| {

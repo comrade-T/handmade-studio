@@ -125,6 +125,7 @@ pub fn debugPrint(self: *const @This()) !void {
 const SeekResult = struct {
     point: ?CursorPoint,
     init_matches: bool = false,
+    eol_colnr: ?usize = null,
 };
 
 pub const SeekCallback = *const fn (ctx: ?*anyopaque, cp: u21) bool;
@@ -192,10 +193,7 @@ pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize
         }
 
         if (stop_at_eol) {
-            if (!found) {
-                result.point = CursorPoint{ .line = linenr, .col = colnr };
-                found = true;
-            }
+            result.eol_colnr = colnr;
             break;
         }
     }

@@ -964,7 +964,11 @@ const Anchor = struct {
             if (backwards_result.point) |back_point| start = .{ .line = back_point.line, .col = back_point.col + 1 };
 
             const forward_result = self.ropeman.seekForward(self.anchor.line, self.anchor.col, touchedWordBoundary, self, true) catch return null;
-            if (forward_result.point) |forward_point| end = forward_point;
+            if (forward_result.point) |forward_point| {
+                end = forward_point;
+            } else if (forward_result.eol_colnr) |eol_colnr| {
+                end = RopeMan.CursorPoint{ .line = self.anchor.line, .col = eol_colnr };
+            }
 
             return RopeMan.CursorRange{ .start = start, .end = end };
         }
