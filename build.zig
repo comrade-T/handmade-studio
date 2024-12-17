@@ -182,6 +182,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "WindowManager", .module = window_manager.module },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables

@@ -289,14 +289,18 @@ pub fn main() anyerror!void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
 
-    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall);
+    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, &wm);
     defer fuzzy_finder.destroy();
 
     try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
     try council.map("fuzzy_finder_insert", &.{.backspace}, .{ .f = FuzzyFinder.backspace, .ctx = fuzzy_finder });
     try council.map("fuzzy_finder_insert", &.{ .left_control, .j }, .{ .f = FuzzyFinder.nextItem, .ctx = fuzzy_finder });
     try council.map("fuzzy_finder_insert", &.{ .left_control, .k }, .{ .f = FuzzyFinder.prevItem, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{.enter}, .{ .f = FuzzyFinder.confirmItemSelection, .ctx = fuzzy_finder });
+    try council.map("fuzzy_finder_insert", &.{.enter}, .{
+        .f = FuzzyFinder.confirmItemSelection,
+        .ctx = fuzzy_finder,
+        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
+    });
 
     try council.map("normal", &.{ .left_control, .f }, .{
         .f = FuzzyFinder.show,

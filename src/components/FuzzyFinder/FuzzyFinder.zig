@@ -14,6 +14,7 @@ const Window = @import("Window");
 const RenderMall = @import("RenderMall");
 const ip = @import("input_processor");
 const code_point = @import("code_point");
+const WindowManager = @import("WindowManager");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -43,10 +44,11 @@ match_arena: ArenaAllocator,
 path_list: PathList,
 match_list: MatchList,
 
+wm: *WindowManager,
 mall: *const RenderMall,
 input: InputWindow,
 
-pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) !*FuzzyFinder {
+pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall, wm: *WindowManager) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -56,6 +58,7 @@ pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) 
         .path_list = try PathList.initCapacity(a, 128),
         .match_list = MatchList.init(a),
 
+        .wm = wm,
         .mall = mall,
         .input = try InputWindow.init(a, opts, mall),
     };
@@ -82,7 +85,7 @@ pub fn show(ctx: *anyopaque) !void {
     self.visible = true;
 }
 
-pub fn hide(self: *@This()) !void {
+pub fn hide(self: *@This()) void {
     self.visible = false;
 }
 
@@ -91,7 +94,13 @@ pub fn confirmItemSelection(ctx: *anyopaque) !void {
     assert(self.selection_index <= self.match_list.items.len -| 1);
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];
-    std.debug.print("selected path: '{s}'\n", .{path});
+
+    try self.wm.spawnWindow(.file, path, .{
+        .pos = .{ .x = 100, .y = 100 },
+        .subscribed_style_sets = &.{0},
+    }, true);
+
+    self.hide();
 }
 
 pub fn nextItem(ctx: *anyopaque) !void {
