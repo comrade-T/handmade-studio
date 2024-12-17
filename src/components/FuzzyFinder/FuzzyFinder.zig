@@ -326,7 +326,7 @@ pub fn appendFileNamesRelativeToCwd(arena: *ArenaAllocator, sub_path: []const u8
         for (patterns.items) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
         if (relative_path.len == 0) continue;
 
-        try list.append(relative_path);
+        if (entry.kind == .file) try list.append(relative_path);
         if (recursive and entry.kind == .directory) try appendFileNamesRelativeToCwd(arena, relative_path, list, true);
     }
 }
