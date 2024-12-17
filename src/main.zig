@@ -214,6 +214,9 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
+    // TODO: add a check so I don't have to map the 'x' key to a dummy fn like this
+    try council.map("normal", &.{.x}, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
+
     try council.mapMany("normal", &.{ &.{ .d, .x, .semicolon }, &.{ .x, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
     try council.mapMany("normal", &.{ &.{ .c, .x, .semicolon }, &.{ .x, .c, .semicolon } }, .{
         .f = WindowManager.deleteInWORD,

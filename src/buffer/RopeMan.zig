@@ -191,7 +191,13 @@ pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize
             }
         }
 
-        if (stop_at_eol) break;
+        if (stop_at_eol) {
+            if (!found) {
+                result.point = CursorPoint{ .line = linenr, .col = colnr };
+                found = true;
+            }
+            break;
+        }
     }
 
     return result;

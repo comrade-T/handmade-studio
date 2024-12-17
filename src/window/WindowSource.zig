@@ -219,7 +219,7 @@ test getCaptures {
 }
 
 fn populateCapListWithAllCaptures(self: *@This()) !void {
-    assert(self.buf.tstree != null);
+    if (self.buf.tstree == null) return;
 
     var map = try self.getCaptures(0, self.buf.ropeman.getNumOfLines() - 1);
     defer map.deinit();
