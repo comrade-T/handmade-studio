@@ -185,6 +185,11 @@ pub fn build(b: *std.Build) void {
         .{ .name = "WindowManager", .module = window_manager.module },
     }, zig_build_test_step);
 
+    const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
+        .{ .name = "RenderMall", .module = render_mall.module },
+    }, zig_build_test_step);
+    _ = anchor_picker;
+
     ////////////////////////////////////////////////////////////////////////////// Executables
 
     ///////////////////////////// Main

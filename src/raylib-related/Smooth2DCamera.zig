@@ -42,7 +42,7 @@ y_damper: SmoothDamper = .{ .smooth_time = 0.1, .max_speed = 8000 },
 pub fn updateOnNewFrame(self: *@This()) void {
     self.updateOnMouseBtnRight();
     self.updateZoom();
-    self.dampTarget();
+    // self.dampTarget();
 }
 
 pub fn changeTargetXBy(ctx: *anyopaque, by: f32) void {

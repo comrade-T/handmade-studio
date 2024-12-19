@@ -175,6 +175,10 @@ pub const RenderCallbacks = struct {
     drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
 };
 
+pub const InfoCallbacks = struct {
+    getScreenWidthHeight: *const fn () struct { f32, f32 },
+};
+
 pub const ScreenView = struct {
     start: struct { x: f32 = 0, y: f32 = 0 },
     end: struct { x: f32 = 0, y: f32 = 0 },
