@@ -173,6 +173,7 @@ test StyleStore {
 pub const RenderCallbacks = struct {
     drawCodePoint: *const fn (font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void,
     drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
+    drawCircle: *const fn (x: f32, y: f32, radius: f32, color: u32) void,
 };
 
 pub const InfoCallbacks = struct {
@@ -183,3 +184,9 @@ pub const ScreenView = struct {
     start: struct { x: f32 = 0, y: f32 = 0 },
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn lerp(from: f32, to: f32, time: f32) f32 {
+    return from + time * (to - from);
+}

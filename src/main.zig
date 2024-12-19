@@ -34,6 +34,7 @@ const LangSuite = @import("LangSuite");
 const WindowManager = @import("WindowManager");
 
 const FuzzyFinder = @import("FuzzyFinder");
+const AnchorPicker = @import("AnchorPicker");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -100,9 +101,14 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// render_callbacks
 
+    const info_callbacks = RenderMall.InfoCallbacks{
+        .getScreenWidthHeight = getScreenWidthHeight,
+    };
+
     const render_callbacks = RenderMall.RenderCallbacks{
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
+        .drawCircle = drawCircle,
     };
 
     ///////////////////////////// Models
@@ -335,6 +341,44 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
+    ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
+
+    var anchor_picker = AnchorPicker.init(info_callbacks, render_callbacks, 0.22, 20, @intCast(rl.Color.sky_blue.toInt()));
+
+    try council.map("normal", &.{ .left_control, .p }, .{
+        .f = AnchorPicker.show,
+        .ctx = &anchor_picker,
+        .contexts = .{ .add = &.{"anchor_picker"}, .remove = &.{"normal"} },
+        .require_clarity_afterwards = true,
+    });
+    try council.map("anchor_picker", &.{.escape}, .{
+        .f = AnchorPicker.hide,
+        .ctx = &anchor_picker,
+        .contexts = .{ .add = &.{"normal"}, .remove = &.{"anchor_picker"} },
+    });
+
+    const AnchorPickerPercentageCb = struct {
+        x_percent: f32,
+        y_percent: f32,
+        target: *AnchorPicker,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.percentage(self.x_percent, self.y_percent);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x_percent: f32, y_percent: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .x_percent = x_percent, .y_percent = y_percent };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try council.map("anchor_picker", &.{.c}, .{ .f = AnchorPicker.center, .ctx = &anchor_picker });
+    try council.map("anchor_picker", &.{.k}, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 25));
+    try council.map("anchor_picker", &.{.j}, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 75));
+    try council.map("anchor_picker", &.{.h}, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
+    try council.map("anchor_picker", &.{.l}, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
@@ -384,6 +428,9 @@ pub fn main() anyerror!void {
 
                 // FuzzyFinder
                 fuzzy_finder.render(view, render_callbacks);
+
+                // AnchorPicker
+                anchor_picker.render();
             }
         }
     }
@@ -421,6 +468,10 @@ fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
     );
 }
 
+fn drawCircle(x: f32, y: f32, radius: f32, color: u32) void {
+    rl.drawCircleV(.{ .x = x, .y = y }, radius, rl.Color.fromInt(color));
+}
+
 const ScreenView = struct {
     start: rl.Vector2 = .{ .x = 0, .y = 0 },
     end: rl.Vector2 = .{ .x = 0, .y = 0 },
@@ -441,7 +492,10 @@ const ScreenView = struct {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn getScreenWidthHeight() struct { f32, f32 } {
-    return .{ rl.getScreenWidth(), rl.getScreenHeight() };
+    return .{
+        @as(f32, @floatFromInt(rl.getScreenWidth())),
+        @as(f32, @floatFromInt(rl.getScreenHeight())),
+    };
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

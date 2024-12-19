@@ -18,28 +18,59 @@
 const AnchorPicker = @This();
 const std = @import("std");
 
-const InfoCallbacks = @import("RenderMall").InfoCallbacks;
+const RenderMall = @import("RenderMall");
+const RenderCallbacks = RenderMall.RenderCallbacks;
+const InfoCallbacks = RenderMall.InfoCallbacks;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 icb: InfoCallbacks,
+rcb: RenderCallbacks,
 target_anchor: Anchor = .{},
 current_anchor: Anchor = .{},
+radius: f32,
+color: u32,
+lerp_time: f32 = 0.2,
+visible: bool = false,
 
-pub fn init(icb: InfoCallbacks) AnchorPicker {
-    var self = AnchorPicker{ .icb = icb };
-    self.center();
+pub fn init(icb: InfoCallbacks, rcb: RenderCallbacks, lerp_time: f32, radius: f32, color: u32) AnchorPicker {
+    var self = AnchorPicker{ .icb = icb, .rcb = rcb, .lerp_time = lerp_time, .radius = radius, .color = color };
+    const center_anchor = self.getCenter();
+    self.current_anchor = center_anchor;
+    self.target_anchor = center_anchor;
     return self;
 }
 
-pub fn center(self: *@This()) void {
-    const width, const height = self.icb.getScreenWidthHeight();
-    self.target_anchor = .{ .x = width / 2, .y = height / 2 };
+pub fn show(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.visible = true;
+}
+
+pub fn hide(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.visible = false;
+}
+
+pub fn render(self: *@This()) void {
+    if (!self.visible) return;
+    self.current_anchor.x = RenderMall.lerp(self.current_anchor.x, self.target_anchor.x, self.lerp_time);
+    self.current_anchor.y = RenderMall.lerp(self.current_anchor.y, self.target_anchor.y, self.lerp_time);
+    self.rcb.drawCircle(self.current_anchor.x, self.current_anchor.y, self.radius, self.color);
+}
+
+pub fn center(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.target_anchor = self.getCenter();
 }
 
 pub fn percentage(self: *@This(), x_percent: f32, y_percent: f32) void {
     const width, const height = self.icb.getScreenWidthHeight();
     self.target_anchor = .{ .x = width * x_percent / 100, .y = height * y_percent / 100 };
+}
+
+fn getCenter(self: *@This()) Anchor {
+    const width, const height = self.icb.getScreenWidthHeight();
+    return Anchor{ .x = width / 2, .y = height / 2 };
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

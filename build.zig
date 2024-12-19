@@ -188,7 +188,6 @@ pub fn build(b: *std.Build) void {
     const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
     }, zig_build_test_step);
-    _ = anchor_picker;
 
     ////////////////////////////////////////////////////////////////////////////// Executables
 
@@ -210,6 +209,8 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("RenderMall", render_mall.module);
         exe.root_module.addImport("WindowManager", window_manager.module);
         exe.root_module.addImport("FuzzyFinder", fuzzy_finder.module);
+
+        exe.root_module.addImport("AnchorPicker", anchor_picker.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));
