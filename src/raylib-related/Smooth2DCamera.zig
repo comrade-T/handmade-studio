@@ -15,6 +15,7 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const std = @import("std");
 const rl = @import("raylib");
 const SmoothDamper = @import("SmoothDamper.zig");
 
@@ -90,6 +91,9 @@ fn updateZoom(self: *@This()) void {
     if (wheel != 0) {
         const mouse_pos = rl.getMousePosition();
         const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, self.camera);
+
+        std.debug.print("mouse_pos: {d} x {d}\n", .{ mouse_pos.x, mouse_pos.y });
+
         self.camera.offset = mouse_pos;
 
         self.target_camera.target = mouse_world_pos;
@@ -102,5 +106,6 @@ fn updateZoom(self: *@This()) void {
     }
 
     // camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
-    self.camera.zoom = self.zoom_damper.damp(self.camera.zoom, self.target_camera.zoom, rl.getFrameTime());
+    const ft = rl.getFrameTime();
+    self.camera.zoom = self.zoom_damper.damp(self.camera.zoom, self.target_camera.zoom, ft);
 }

@@ -26,19 +26,23 @@ const InfoCallbacks = RenderMall.InfoCallbacks;
 
 icb: InfoCallbacks,
 rcb: RenderCallbacks,
+
+camera: *anyopaque,
+target_camera: *anyopaque,
+
 target_anchor: Anchor = .{},
 current_anchor: Anchor = .{},
+
 radius: f32,
 color: u32,
-lerp_time: f32 = 0.2,
+lerp_time: f32,
+
 visible: bool = false,
 
-pub fn init(icb: InfoCallbacks, rcb: RenderCallbacks, lerp_time: f32, radius: f32, color: u32) AnchorPicker {
-    var self = AnchorPicker{ .icb = icb, .rcb = rcb, .lerp_time = lerp_time, .radius = radius, .color = color };
+pub fn setToCenter(self: *@This()) void {
     const center_anchor = self.getCenter();
     self.current_anchor = center_anchor;
     self.target_anchor = center_anchor;
-    return self;
 }
 
 pub fn show(ctx: *anyopaque) !void {
@@ -66,6 +70,10 @@ pub fn center(ctx: *anyopaque) !void {
 pub fn percentage(self: *@This(), x_percent: f32, y_percent: f32) void {
     const width, const height = self.icb.getScreenWidthHeight();
     self.target_anchor = .{ .x = width * x_percent / 100, .y = height * y_percent / 100 };
+}
+
+pub fn zoom(self: *@This(), scale_factor: f32) void {
+    self.rcb.changeCameraZoom(self.camera, self.target_camera, self.target_anchor.x, self.target_anchor.y, scale_factor);
 }
 
 fn getCenter(self: *@This()) Anchor {

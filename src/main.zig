@@ -109,6 +109,7 @@ pub fn main() anyerror!void {
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
         .drawCircle = drawCircle,
+        .changeCameraZoom = changeCameraZoom,
     };
 
     ///////////////////////////// Models
@@ -343,7 +344,18 @@ pub fn main() anyerror!void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
 
-    var anchor_picker = AnchorPicker.init(info_callbacks, render_callbacks, 0.22, 20, @intCast(rl.Color.sky_blue.toInt()));
+    var anchor_picker = AnchorPicker{
+        .icb = info_callbacks,
+        .rcb = render_callbacks,
+
+        .camera = &smooth_cam.camera,
+        .target_camera = &smooth_cam.target_camera,
+
+        .radius = 20,
+        .color = @intCast(rl.Color.sky_blue.toInt()),
+        .lerp_time = 0.22,
+    };
+    anchor_picker.setToCenter();
 
     try council.map("normal", &.{ .left_control, .p }, .{
         .f = AnchorPicker.show,
@@ -379,6 +391,24 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{.h}, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
     try council.map("anchor_picker", &.{.l}, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
 
+    const AnchorPickerZoomCb = struct {
+        scale_factor: f32,
+        target: *AnchorPicker,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.zoom(self.scale_factor);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, scale_factor: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .scale_factor = scale_factor };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try council.map("anchor_picker", &.{ .z, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.8));
+    try council.map("anchor_picker", &.{ .z, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.25));
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
@@ -399,6 +429,11 @@ pub fn main() anyerror!void {
         {
             rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
+
+            {
+                // AnchorPicker
+                anchor_picker.render();
+            }
 
             {
                 rl.beginMode2D(smooth_cam.camera);
@@ -428,9 +463,6 @@ pub fn main() anyerror!void {
 
                 // FuzzyFinder
                 fuzzy_finder.render(view, render_callbacks);
-
-                // AnchorPicker
-                anchor_picker.render();
             }
         }
     }
@@ -470,6 +502,20 @@ fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
 
 fn drawCircle(x: f32, y: f32, radius: f32, color: u32) void {
     rl.drawCircleV(.{ .x = x, .y = y }, radius, rl.Color.fromInt(color));
+}
+
+fn changeCameraZoom(camera_: *anyopaque, target_camera_: *anyopaque, x: f32, y: f32, scale_factor: f32) void {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
+
+    const anchor_world_pos = rl.getScreenToWorld2D(.{ .x = x, .y = y }, camera.*);
+
+    camera.offset = rl.Vector2{ .x = x, .y = y };
+
+    target_camera.target = anchor_world_pos;
+    camera.target = anchor_world_pos;
+
+    target_camera.zoom = rl.math.clamp(target_camera.zoom * scale_factor, 0.125, 64);
 }
 
 const ScreenView = struct {
