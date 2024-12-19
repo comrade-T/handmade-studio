@@ -76,6 +76,10 @@ pub fn zoom(self: *@This(), scale_factor: f32) void {
     self.rcb.changeCameraZoom(self.camera, self.target_camera, self.target_anchor.x, self.target_anchor.y, scale_factor);
 }
 
+pub fn pan(self: *@This(), x_by: f32, y_by: f32) void {
+    self.rcb.changeCameraPan(self.target_camera, x_by, y_by);
+}
+
 fn getCenter(self: *@This()) Anchor {
     const width, const height = self.icb.getScreenWidthHeight();
     return Anchor{ .x = width / 2, .y = height / 2 };

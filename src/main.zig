@@ -110,6 +110,7 @@ pub fn main() anyerror!void {
         .drawRectangle = drawRectangle,
         .drawCircle = drawCircle,
         .changeCameraZoom = changeCameraZoom,
+        .changeCameraPan = changeCameraPan,
     };
 
     ///////////////////////////// Models
@@ -409,6 +410,27 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .z, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.8));
     try council.map("anchor_picker", &.{ .z, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.25));
 
+    const AnchorPickerPanCb = struct {
+        x_by: f32,
+        y_by: f32,
+        target: *AnchorPicker,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.pan(self.x_by, self.y_by);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x_by: f32, y_by: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .x_by = x_by, .y_by = y_by };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try council.map("anchor_picker", &.{ .p, .w }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, -100));
+    try council.map("anchor_picker", &.{ .p, .s }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, 100));
+    try council.map("anchor_picker", &.{ .p, .a }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 0));
+    try council.map("anchor_picker", &.{ .p, .d }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 0));
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
@@ -516,6 +538,12 @@ fn changeCameraZoom(camera_: *anyopaque, target_camera_: *anyopaque, x: f32, y: 
     camera.target = anchor_world_pos;
 
     target_camera.zoom = rl.math.clamp(target_camera.zoom * scale_factor, 0.125, 64);
+}
+
+fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {
+    const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
+    target_camera.*.target.x += x_by;
+    target_camera.*.target.y += y_by;
 }
 
 const ScreenView = struct {

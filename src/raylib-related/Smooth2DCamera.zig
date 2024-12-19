@@ -43,7 +43,9 @@ y_damper: SmoothDamper = .{ .smooth_time = 0.1, .max_speed = 8000 },
 pub fn updateOnNewFrame(self: *@This()) void {
     self.updateOnMouseBtnRight();
     self.updateZoom();
-    // self.dampTarget();
+
+    self.dampTarget();
+    // self.lerpTarget();
 }
 
 pub fn changeTargetXBy(ctx: *anyopaque, by: f32) void {
@@ -63,17 +65,20 @@ pub fn setTarget(ctx: *anyopaque, x: f32, y: f32) void {
 }
 
 fn dampTarget(self: *@This()) void {
-    // self.camera.target.y = self.y_damper.damp(
-    //     self.camera.target.y,
-    //     self.target_camera.target.y,
-    //     rl.getFrameTime(),
-    // );
-    self.camera.target.y = rl.math.lerp(self.camera.target.y, self.target_camera.target.y, 0.125);
+    self.camera.target.y = self.y_damper.damp(
+        self.camera.target.y,
+        self.target_camera.target.y,
+        rl.getFrameTime(),
+    );
     self.camera.target.x = self.x_damper.damp(
         self.camera.target.x,
         self.target_camera.target.x,
         rl.getFrameTime(),
     );
+}
+fn lerpTarget(self: *@This()) void {
+    self.camera.target.y = rl.math.lerp(self.camera.target.y, self.target_camera.target.y, 0.125);
+    self.camera.target.x = rl.math.lerp(self.camera.target.x, self.target_camera.target.x, 0.125);
 }
 
 fn updateOnMouseBtnRight(self: *@This()) void {
