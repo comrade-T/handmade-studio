@@ -58,6 +58,8 @@ pub const Callback = struct {
     /// With this `always_trigger_on_down` flag, callback A will get executed right on key down.
     always_trigger_on_down: bool = false,
 
+    ignore_trigger_delay: bool = false,
+
     contexts: struct {
         add: []const []const u8 = &.{},
         remove: []const []const u8 = &.{},
@@ -196,6 +198,24 @@ pub const MappingCouncil = struct {
             }
         }
         try down_map.put(hash(keys), callback);
+    }
+
+    pub fn triggerIgnoresDelay(self: *const @This(), trigger: u128, frame: *InputFrame) bool {
+        const keys = self.active_contexts.keys();
+        var i: usize = keys.len;
+
+        while (i > 0) {
+            i -= 1; // prioritize latest context_id
+
+            const context_id = keys[i];
+            if (frame.latest_event_type == .down) {
+                if (self.downs.get(context_id)) |trigger_map| {
+                    if (trigger_map.get(trigger)) |cb| return cb.ignore_trigger_delay;
+                }
+            }
+        }
+
+        return false;
     }
 
     pub fn execute(self: *@This(), trigger: u128, frame: *InputFrame) !void {

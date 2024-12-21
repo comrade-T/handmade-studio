@@ -426,6 +426,7 @@ pub fn main() anyerror!void {
                 .f = @This().f,
                 .ctx = self,
                 .always_trigger_on_down = true,
+                .ignore_trigger_delay = true,
             };
         }
     };

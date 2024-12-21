@@ -54,6 +54,11 @@ fn executeTriggerIfExists(self: *@This()) !void {
             self.last_trigger_timestamp = 0;
         }
 
+        if (self.council.triggerIgnoresDelay(trigger, self.frame)) {
+            try self.council.execute(trigger, self.frame);
+            return;
+        }
+
         trigger: {
             if (self.reached_repeat_rate) {
                 if (current_time - self.last_trigger_timestamp < self.repeat_rate) return;
