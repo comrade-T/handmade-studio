@@ -498,7 +498,7 @@ pub fn main() anyerror!void {
                 anchor_picker.render();
 
                 // FuzzyFinder
-                fuzzy_finder.render(view, render_callbacks); // FIXME: input is getting wrongfully culled
+                fuzzy_finder.render(view, render_callbacks);
             }
 
             {

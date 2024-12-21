@@ -268,10 +268,12 @@ const InputWindow = struct {
     window: *Window,
 
     fn init(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) !InputWindow {
+        var no_culling_opts = opts;
+        no_culling_opts.culling = false;
         const source = try WindowSource.create(a, .string, "", null);
         return InputWindow{
             .source = source,
-            .window = try Window.create(a, source, opts, mall),
+            .window = try Window.create(a, source, no_culling_opts, mall),
         };
     }
 

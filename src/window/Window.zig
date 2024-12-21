@@ -55,6 +55,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const 
         .a = a,
         .ws = ws,
         .attr = .{
+            .culling = opts.culling,
             .pos = opts.pos,
             .padding = if (opts.padding) |p| p else Attributes.Padding{},
             .bounds = if (opts.bounds) |b| b else Attributes.Bounds{},
@@ -122,6 +123,8 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
 }
 
 fn isOutOfView(self: *@This(), view: ScreenView) bool {
+    if (!self.attr.culling) return false;
+
     if (self.attr.pos.x > view.end.x) return true;
     if (self.attr.pos.y > view.end.y) return true;
 
@@ -238,6 +241,8 @@ const Renderer = struct {
     ///////////////////////////// checkers
 
     fn lineYAboveView(self: *@This()) bool {
+        if (!self.win.attr.culling) return false;
+
         const above_screen_view = self.line_y + self.lineHeight() < self.view.start.y;
         if (self.win.attr.bounded) {
             const above_bounds = self.line_y + self.lineHeight() < self.boundStartY();
@@ -247,6 +252,8 @@ const Renderer = struct {
     }
 
     fn lineYBelowView(self: *@This()) bool {
+        if (!self.win.attr.culling) return false;
+
         const below_screen_view = self.line_y > self.view.end.y;
         if (self.win.attr.bounded) {
             const below_bounds = self.line_y > (self.win.attr.pos.y + self.win.attr.bounds.height);
@@ -256,6 +263,8 @@ const Renderer = struct {
     }
 
     fn lineStartPointOutOfView(self: *@This()) bool {
+        if (!self.win.attr.culling) return false;
+
         const line_info = self.win.cached.line_info.items[self.linenr];
 
         const x_starts_out_of_view = self.char_x + line_info.width < self.view.start.x;
@@ -271,6 +280,8 @@ const Renderer = struct {
     }
 
     fn charStartsAfterViewEnds(self: *@This()) bool {
+        if (!self.win.attr.culling) return false;
+
         const char_start_after_view = self.char_x > self.view.end.x;
         if (!self.win.attr.bounded) return char_start_after_view;
 
@@ -279,11 +290,15 @@ const Renderer = struct {
     }
 
     fn charStartsBeforeBounds(self: *@This(), char_width: f32) bool {
+        if (!self.win.attr.culling) return false;
+
         if (!self.win.attr.bounded) return false;
         return self.char_x + char_width < self.boundStartX();
     }
 
     fn charEndsBeforeViewStart(self: *@This(), char_width: f32) bool {
+        if (!self.win.attr.culling) return false;
+
         return self.char_x + char_width < self.view.start.x;
     }
 
@@ -706,6 +721,7 @@ const Defaults = struct {
 };
 
 pub const SpawnOptions = struct {
+    culling: bool = true,
     pos: Attributes.Position = .{},
     bounds: ?Attributes.Bounds = null,
     padding: ?Attributes.Padding = null,
@@ -715,6 +731,7 @@ pub const SpawnOptions = struct {
 };
 
 const Attributes = struct {
+    culling: bool = true,
     pos: Position,
     padding: Padding,
     bounds: Bounds,
