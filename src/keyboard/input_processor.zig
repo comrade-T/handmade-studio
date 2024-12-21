@@ -231,6 +231,7 @@ pub const MappingCouncil = struct {
                         try cb.f(cb.ctx);
                         try self.resolveContextsAfterCallback(cb);
                         if (cb.require_clarity_afterwards) self.require_clarity_afterwards = true;
+                        if (cb.always_trigger_on_down) frame.forceEmittingDownEvent();
                         return;
                     }
                 }
@@ -280,6 +281,10 @@ pub const MappingCouncil = struct {
     pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) ?u128 {
         for (self.active_contexts.keys()) |context_id| {
             if (self.produceFinalTriggerComponent(context_id, frame)) |trigger| {
+
+                // enforcing `InputFrame.force_emitting_down` behavior
+                if (frame.force_emitting_down) frame.latest_event_type = .down;
+
                 return trigger;
             }
         }
@@ -291,6 +296,8 @@ pub const MappingCouncil = struct {
         const ups = self.ups.get(context_id) orelse return null;
 
         const r = frame.produceCandidateReport();
+
+        if (frame.force_emitting_down) return r.down;
 
         if (frame.latest_event_type == .down) {
             if (frame.downs.items.len == 2 and
@@ -325,7 +332,9 @@ pub const MappingCouncil = struct {
     fn produceDefaultTriggerComponent(self: *const @This(), context_id: []const u8, r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
         if (frame.latest_event_type == .down) {
             frame.emitted = true;
-            if (self.check(context_id, .down, r.down)) return r.down;
+            if (self.check(context_id, .down, r.down)) {
+                return r.down;
+            }
             if (self.check(context_id, .up, r.down)) {
                 frame.emitted = false;
                 frame.previous_down_candidate = r.down;
@@ -911,6 +920,11 @@ pub const InputFrame = struct {
     latest_event_type: enum { up, down, none } = .none,
     emitted: bool = false,
 
+    /// This field exists to overwrite the default rules for producing triggers.
+    /// Influenced by `MappingCouncil.execute()`, after executing a `.always_trigger_on_down` callback.
+    /// Only gets set to `false` from `true` once all keys have been released. (see InputFrame.keyUp())
+    force_emitting_down: bool = false,
+
     pub fn init(a: Allocator) !InputFrame {
         return .{
             .a = a,
@@ -927,6 +941,13 @@ pub const InputFrame = struct {
     pub fn cleanUpAfterExecution(self: *@This()) void {
         self.clearKeyUps();
         self.previous_down_candidate = null;
+    }
+
+    /// Meant to only be called by `MappingCouncil.exxecute()`,
+    /// after executing a `.always_trigger_on_down` callback.
+    pub fn forceEmittingDownEvent(self: *@This()) void {
+        self.force_emitting_down = true;
+        self.latest_event_type = .down;
     }
 
     const TimeStampOpttion = union(enum) { now, testing: i64 };
@@ -957,7 +978,14 @@ pub const InputFrame = struct {
             const removed = self.downs.orderedRemove(index);
             try self.ups.append(removed);
         }
-        if (self.downs.items.len == 0) self.emitted = false;
+
+        if (self.downs.items.len == 0) {
+            self.emitted = false;
+
+            // release `force_emitting_down` behavior
+            self.force_emitting_down = false;
+            self.latest_event_type = .up;
+        }
     }
 
     pub fn clearKeyUps(self: *@This()) void {

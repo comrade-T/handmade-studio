@@ -445,6 +445,27 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .p, .d, .w }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100));
     try council.map("anchor_picker", &.{ .p, .d, .s }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100));
 
+    ////////////////////////////////////////////////////////////////////////////////////////////// Debugging
+
+    const DebugPrintCb = struct {
+        msg: []const u8,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            std.debug.print("{s}\n", .{self.msg});
+        }
+        pub fn init(allocator: std.mem.Allocator, msg: []const u8) !ip.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .msg = msg };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try council.map("normal", &.{.z}, try DebugPrintCb.init(council.arena.allocator(), "z"));
+    try council.map("normal", &.{ .z, .j }, try DebugPrintCb.init(council.arena.allocator(), "z -> j"));
+    try council.map("normal", &.{ .z, .j, .k }, try DebugPrintCb.init(council.arena.allocator(), "z -> j -> k"));
+    try council.map("normal", &.{ .z, .k }, try DebugPrintCb.init(council.arena.allocator(), "z -> k"));
+    try council.map("normal", &.{ .z, .k, .j }, try DebugPrintCb.init(council.arena.allocator(), "z -> k -> j"));
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
@@ -466,9 +487,17 @@ pub fn main() anyerror!void {
             rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
 
+            const view = RenderMall.ScreenView{
+                .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
+                .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
+            };
+
             {
                 // AnchorPicker
                 anchor_picker.render();
+
+                // FuzzyFinder
+                fuzzy_finder.render(view, render_callbacks); // FIXME: input is getting wrongfully culled
             }
 
             {
@@ -489,16 +518,8 @@ pub fn main() anyerror!void {
                     }
                 }
 
-                const view = RenderMall.ScreenView{
-                    .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
-                    .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
-                };
-
                 // rendering windows via WindowManager
                 wm.render(view);
-
-                // FuzzyFinder
-                fuzzy_finder.render(view, render_callbacks);
             }
         }
     }
