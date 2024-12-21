@@ -40,8 +40,24 @@ const CallbackMap = std.AutoHashMap(u128, Callback);
 pub const Callback = struct {
     f: *const fn (ctx: *anyopaque) anyerror!void,
     ctx: *anyopaque,
+
+    /// In insert mode, if you type fast enough, keys will overlap.
+    /// For example, you type the word 'something' really quick,
+    /// you type 's' then 'o', but before your 's' key is lifted up,
+    /// your 'o' key is already down.
+    ///
+    /// This option allow for "normal typing behavior" in our current mapping system.
     quick: bool = false,
+
+    /// other mappings will only register after this callback is executed and all keys are lifted up
     require_clarity_afterwards: bool = false,
+
+    /// Always trigger this callback, even if this a precursor to another callback.
+    /// Example: mapping 'a' to callback A, mapping 'a->p' to callback B,
+    /// by default when holding down 'a', nothing will get executed until pressing 'p' or releasing 'a'.
+    /// With this `always_trigger_on_down` flag, callback A will get executed right on key down.
+    always_trigger_on_down: bool = false,
+
     contexts: struct {
         add: []const []const u8 = &.{},
         remove: []const []const u8 = &.{},
@@ -173,7 +189,7 @@ pub const MappingCouncil = struct {
         for (0..keys.len - 1) |i| {
             const key_chunk = keys[0 .. i + 1];
             const chunk_hash = hash(key_chunk);
-            if (down_map.get(chunk_hash) != null) {
+            if (!callback.always_trigger_on_down and down_map.get(chunk_hash) != null) {
                 const fetched = down_map.fetchRemove(chunk_hash);
                 try up_map.put(chunk_hash, fetched.?.value);
                 continue;

@@ -422,7 +422,11 @@ pub fn main() anyerror!void {
             const self = try allocator.create(@This());
             const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
             self.* = .{ .target = target, .x_by = x_by, .y_by = y_by };
-            return ip.Callback{ .f = @This().f, .ctx = self };
+            return ip.Callback{
+                .f = @This().f,
+                .ctx = self,
+                .always_trigger_on_down = true,
+            };
         }
     };
 
@@ -430,6 +434,16 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .p, .s }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, 100));
     try council.map("anchor_picker", &.{ .p, .a }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 0));
     try council.map("anchor_picker", &.{ .p, .d }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 0));
+
+    try council.map("anchor_picker", &.{ .p, .w, .a }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100));
+    try council.map("anchor_picker", &.{ .p, .s, .a }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100));
+    try council.map("anchor_picker", &.{ .p, .a, .w }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100));
+    try council.map("anchor_picker", &.{ .p, .a, .s }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100));
+
+    try council.map("anchor_picker", &.{ .p, .w, .d }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100));
+    try council.map("anchor_picker", &.{ .p, .s, .d }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100));
+    try council.map("anchor_picker", &.{ .p, .d, .w }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100));
+    try council.map("anchor_picker", &.{ .p, .d, .s }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100));
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
