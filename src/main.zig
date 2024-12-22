@@ -392,6 +392,13 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .p, .a }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
     try council.map("anchor_picker", &.{ .p, .d }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
 
+    try council.mapUpNDown("normal", &.{ .z, .c }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = &anchor_picker, .up_ctx = &anchor_picker });
+    try council.map("normal", &.{ .z, .c, .m }, .{ .f = AnchorPicker.center, .ctx = &anchor_picker });
+    try council.map("normal", &.{ .z, .c, .k }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 25));
+    try council.map("normal", &.{ .z, .c, .j }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 75));
+    try council.map("normal", &.{ .z, .c, .h }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
+    try council.map("normal", &.{ .z, .c, .l }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
+
     /////////////////////////////
 
     const AnchorPickerZoomCb = struct {
@@ -414,6 +421,7 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .z, .space, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.8, false));
     try council.map("anchor_picker", &.{ .z, .space, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.25, false));
 
+    try council.mapUpNDown("normal", &.{ .z, .x }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = &anchor_picker, .up_ctx = &anchor_picker });
     try council.map("normal", &.{ .z, .x, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.9, true));
     try council.map("normal", &.{ .z, .x, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.1, true));
     try council.map("normal", &.{ .z, .x, .space, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.8, false));
@@ -535,34 +543,36 @@ pub fn main() anyerror!void {
     //     }
     // };
 
-    const UpNDownDebugPrintCb = struct {
-        up_msg: []const u8,
-        down_msg: []const u8,
-        fn up(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            std.debug.print("{s}\n", .{self.up_msg});
-        }
-        fn down(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            std.debug.print("{s}\n", .{self.down_msg});
-        }
-        pub fn init(allocator: std.mem.Allocator, up_msg: []const u8, down_msg: []const u8) !ip.UpNDownCallback {
-            const self = try allocator.create(@This());
-            self.* = .{ .up_msg = up_msg, .down_msg = down_msg };
-            return ip.UpNDownCallback{
-                .up_f = @This().up,
-                .down_f = @This().down,
-                .up_ctx = self,
-                .down_ctx = self,
-            };
-        }
-    };
+    /////////////////////////////
 
-    try council.mapUpNDown("normal", &.{.z}, try UpNDownDebugPrintCb.init(
-        council.arena.allocator(),
-        "UpNDownDebugPrintCb: z up",
-        "UpNDownDebugPrintCb: z down",
-    ));
+    // const UpNDownDebugPrintCb = struct {
+    //     up_msg: []const u8,
+    //     down_msg: []const u8,
+    //     fn up(ctx: *anyopaque) !void {
+    //         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    //         std.debug.print("{s}\n", .{self.up_msg});
+    //     }
+    //     fn down(ctx: *anyopaque) !void {
+    //         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    //         std.debug.print("{s}\n", .{self.down_msg});
+    //     }
+    //     pub fn init(allocator: std.mem.Allocator, up_msg: []const u8, down_msg: []const u8) !ip.UpNDownCallback {
+    //         const self = try allocator.create(@This());
+    //         self.* = .{ .up_msg = up_msg, .down_msg = down_msg };
+    //         return ip.UpNDownCallback{
+    //             .up_f = @This().up,
+    //             .down_f = @This().down,
+    //             .up_ctx = self,
+    //             .down_ctx = self,
+    //         };
+    //     }
+    // };
+
+    // try council.mapUpNDown("normal", &.{.z}, try UpNDownDebugPrintCb.init(
+    //     council.arena.allocator(),
+    //     "UpNDownDebugPrintCb: z up",
+    //     "UpNDownDebugPrintCb: z down",
+    // ));
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 

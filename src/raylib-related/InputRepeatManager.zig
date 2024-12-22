@@ -41,6 +41,7 @@ pub fn updateInputState(self: *@This()) !void {
     try self.updateKeyUps();
     try self.updateKeyDowns();
     try self.executeTriggerIfExists();
+    try self.council.flushUpNDown(self.frame);
 }
 
 fn executeTriggerIfExists(self: *@This()) !void {

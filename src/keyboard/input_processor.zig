@@ -170,6 +170,48 @@ pub const MappingCouncil = struct {
         try cb_map.put(hash(keys), cb);
     }
 
+    pub fn flushUpNDown(self: *@This(), frame: *const InputFrame) !void {
+        if (frame.latest_event_type != .up) return;
+
+        var pending_ups_n_downs_iter = self.pending_ups_n_downs.valueIterator();
+        while (pending_ups_n_downs_iter.next()) |context_map| {
+            var triggers_to_flush = ArrayList(u128).init(self.a);
+            defer triggers_to_flush.deinit();
+
+            var context_map_iter = context_map.*.iterator();
+            while (context_map_iter.next()) |entry| {
+                for (0..16) |i| {
+                    const trigger = entry.key_ptr.*;
+                    const part: u8 = @intCast(trigger >> (@as(u7, @intCast(15 - i)) * 8) & 0xFF);
+                    if (part == 0) break;
+
+                    const key: Key = @enumFromInt(Key.values[part]);
+
+                    /////////////////////////////
+
+                    var frame_contains_key = false;
+                    for (frame.downs.items) |e| {
+                        if (e.key == key) {
+                            frame_contains_key = true;
+                            break;
+                        }
+                    }
+
+                    if (!frame_contains_key) try triggers_to_flush.append(trigger);
+                }
+            }
+
+            for (triggers_to_flush.items) |trigger| {
+                assert(context_map.*.contains(trigger));
+                const cb = context_map.*.get(trigger) orelse continue;
+                try cb.up_f(cb.up_ctx);
+                try self.resolveUpNDownsContextsAfterCallback(.up, cb);
+                const removed = context_map.*.remove(trigger);
+                assert(removed);
+            }
+        }
+    }
+
     pub fn mapInsertCharacters(self: *@This(), mapping_contexts: []const []const u8, ctx: *anyopaque, cb_maker: CallbackMaker) !void {
         for (0..pairs.len) |i| {
             const keys, const chars = pairs[i];
@@ -253,7 +295,7 @@ pub const MappingCouncil = struct {
             const context_id = keys[i];
             if (frame.latest_event_type == .down) {
                 // ups_n_downs
-                try self.handleUpNDownsDownEvent(context_id, trigger, frame);
+                try self.handleUpNDownsDownEvent(context_id, trigger);
 
                 // regular
                 if (self.downs.get(context_id)) |trigger_map| {
@@ -270,7 +312,7 @@ pub const MappingCouncil = struct {
 
             if (frame.latest_event_type == .up) {
                 // ups_n_downs
-                try self.handleUpNDownsUpEvenet(context_id, trigger, frame);
+                try self.handleUpNDownsUpEvent(context_id, trigger);
 
                 // regular
                 if (self.ups.get(context_id)) |trigger_map| {
@@ -302,7 +344,7 @@ pub const MappingCouncil = struct {
         for (cb.contexts.add) |id| try self.addActiveContext(id);
     }
 
-    fn handleUpNDownsDownEvent(self: *@This(), context_id: []const u8, trigger: u128, frame: *InputFrame) !void {
+    fn handleUpNDownsDownEvent(self: *@This(), context_id: []const u8, trigger: u128) !void {
         if (self.ups_n_downs.get(context_id)) |trigger_map| {
             if (trigger_map.get(trigger)) |cb| {
                 if (!self.pending_ups_n_downs.contains(context_id)) {
@@ -312,15 +354,13 @@ pub const MappingCouncil = struct {
                 }
                 var pending_cb_map = self.pending_ups_n_downs.get(context_id) orelse unreachable;
                 try pending_cb_map.put(trigger, cb);
-                frame.setPreviousDownTriggeredTrigger(trigger);
                 try cb.down_f(cb.down_ctx);
                 try self.resolveUpNDownsContextsAfterCallback(.down, cb);
             }
         }
     }
 
-    fn handleUpNDownsUpEvenet(self: *@This(), context_id: []const u8, trigger: u128, frame: *InputFrame) !void {
-        defer frame.unsetPreviousDownTriggeredTrigger();
+    fn handleUpNDownsUpEvent(self: *@This(), context_id: []const u8, trigger: u128) !void {
         var pending_cb_map = self.pending_ups_n_downs.get(context_id) orelse return;
         var cb = pending_cb_map.get(trigger) orelse return;
         try cb.up_f(cb.up_ctx);
@@ -365,12 +405,7 @@ pub const MappingCouncil = struct {
         if (frame.force_emitting_down) return r.down;
 
         switch (frame.latest_event_type) {
-            .up => {
-                if (self.check(context_id, .up_n_down, frame.previous_down_triggered_trigger)) {
-                    return frame.previous_down_triggered_trigger;
-                }
-                if (self.check(context_id, .up_n_down, r.prev_down)) return r.prev_down;
-            },
+            .up => {},
             .down => if (self.check(context_id, .up_n_down, r.down)) return r.down,
             .none => {},
         }
@@ -998,7 +1033,6 @@ pub const InputFrame = struct {
     threshold_millis: i64 = 250,
 
     previous_down_candidate: ?u128 = null,
-    previous_down_triggered_trigger: ?u128 = null,
     latest_event_type: enum { up, down, none } = .none,
     emitted: bool = false,
 
@@ -1030,18 +1064,6 @@ pub const InputFrame = struct {
     pub fn forceEmittingDownEvent(self: *@This()) void {
         self.force_emitting_down = true;
         self.latest_event_type = .down;
-    }
-
-    /// Meant to only be called by `MappingCouncil.execute()`,
-    /// after executing an `up_n_down` `down` callback.
-    pub fn setPreviousDownTriggeredTrigger(self: *@This(), triggered_trigger: u128) void {
-        self.previous_down_triggered_trigger = triggered_trigger;
-    }
-
-    /// Meant to only be called by `MappingCouncil.execute()`,
-    /// after executing an `up_n_down` `up` callback.
-    pub fn unsetPreviousDownTriggeredTrigger(self: *@This()) void {
-        self.previous_down_triggered_trigger = null;
     }
 
     const TimeStampOpttion = union(enum) { now, testing: i64 };
