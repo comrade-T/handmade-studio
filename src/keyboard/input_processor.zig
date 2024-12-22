@@ -35,7 +35,14 @@ pub const UpNDownCallback = struct {
     up_f: *const fn (ctx: *anyopaque) anyerror!void,
     up_ctx: *anyopaque,
 
-    // TODO: add `context` support
+    up_contexts: struct {
+        add: []const []const u8 = &.{},
+        remove: []const []const u8 = &.{},
+    } = .{},
+    down_contexts: struct {
+        add: []const []const u8 = &.{},
+        remove: []const []const u8 = &.{},
+    } = .{},
 };
 
 const ContextMap = std.StringHashMap(*CallbackMap);
@@ -277,6 +284,19 @@ pub const MappingCouncil = struct {
         }
     }
 
+    fn resolveUpNDownsContextsAfterCallback(self: *@This(), variant: enum { up, down }, cb: UpNDownCallback) !void {
+        switch (variant) {
+            .up => {
+                for (cb.up_contexts.remove) |id| try self.removeActiveContext(id);
+                for (cb.up_contexts.add) |id| try self.addActiveContext(id);
+            },
+            .down => {
+                for (cb.down_contexts.remove) |id| try self.removeActiveContext(id);
+                for (cb.down_contexts.add) |id| try self.addActiveContext(id);
+            },
+        }
+    }
+
     fn resolveContextsAfterCallback(self: *@This(), cb: Callback) !void {
         for (cb.contexts.remove) |id| try self.removeActiveContext(id);
         for (cb.contexts.add) |id| try self.addActiveContext(id);
@@ -294,6 +314,7 @@ pub const MappingCouncil = struct {
                 try pending_cb_map.put(trigger, cb);
                 frame.setPreviousDownTriggeredTrigger(trigger);
                 try cb.down_f(cb.down_ctx);
+                try self.resolveUpNDownsContextsAfterCallback(.down, cb);
             }
         }
     }
@@ -303,6 +324,7 @@ pub const MappingCouncil = struct {
         var pending_cb_map = self.pending_ups_n_downs.get(context_id) orelse return;
         var cb = pending_cb_map.get(trigger) orelse return;
         try cb.up_f(cb.up_ctx);
+        try self.resolveUpNDownsContextsAfterCallback(.up, cb);
         const removed = pending_cb_map.remove(trigger);
         assert(removed);
     }
