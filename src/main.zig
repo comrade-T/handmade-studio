@@ -534,12 +534,35 @@ pub fn main() anyerror!void {
     //         return ip.Callback{ .f = @This().f, .ctx = self };
     //     }
     // };
-    //
-    // try council.map("normal", &.{.z}, try DebugPrintCb.init(council.arena.allocator(), "z"));
-    // try council.map("normal", &.{ .z, .j }, try DebugPrintCb.init(council.arena.allocator(), "z -> j"));
-    // try council.map("normal", &.{ .z, .j, .k }, try DebugPrintCb.init(council.arena.allocator(), "z -> j -> k"));
-    // try council.map("normal", &.{ .z, .k }, try DebugPrintCb.init(council.arena.allocator(), "z -> k"));
-    // try council.map("normal", &.{ .z, .k, .j }, try DebugPrintCb.init(council.arena.allocator(), "z -> k -> j"));
+
+    const UpNDownDebugPrintCb = struct {
+        up_msg: []const u8,
+        down_msg: []const u8,
+        fn up(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            std.debug.print("{s}\n", .{self.up_msg});
+        }
+        fn down(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            std.debug.print("{s}\n", .{self.down_msg});
+        }
+        pub fn init(allocator: std.mem.Allocator, up_msg: []const u8, down_msg: []const u8) !ip.UpNDownCallback {
+            const self = try allocator.create(@This());
+            self.* = .{ .up_msg = up_msg, .down_msg = down_msg };
+            return ip.UpNDownCallback{
+                .up_f = @This().up,
+                .down_f = @This().down,
+                .up_ctx = self,
+                .down_ctx = self,
+            };
+        }
+    };
+
+    try council.mapUpNDown("normal", &.{.z}, try UpNDownDebugPrintCb.init(
+        council.arena.allocator(),
+        "UpNDownDebugPrintCb: z up",
+        "UpNDownDebugPrintCb: z down",
+    ));
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 

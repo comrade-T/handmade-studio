@@ -23,6 +23,7 @@ const testing_allocator = std.testing.allocator;
 const eql = std.mem.eql;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
+const assert = std.debug.assert;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +34,8 @@ pub const UpNDownCallback = struct {
     down_ctx: *anyopaque,
     up_f: *const fn (ctx: *anyopaque) anyerror!void,
     up_ctx: *anyopaque,
+
+    // TODO: add `context` support
 };
 
 const ContextMap = std.StringHashMap(*CallbackMap);
@@ -74,7 +77,7 @@ pub const MappingCouncil = struct {
     ups: *ContextMap,
 
     ups_n_downs: *UpNDownContextMap,
-    pending_ups_n_downs: *ArrayList(UpNDownCallback),
+    pending_ups_n_downs: *UpNDownContextMap,
 
     active_contexts: *ActiveContexts,
     require_clarity_afterwards: bool = false,
@@ -91,8 +94,8 @@ pub const MappingCouncil = struct {
         const ups_n_downs = try a.create(UpNDownContextMap);
         ups_n_downs.* = UpNDownContextMap.init(a);
 
-        const pending_ups_n_downs = try a.create(ArrayList(UpNDownCallback));
-        pending_ups_n_downs.* = ArrayList(UpNDownCallback).init(a);
+        const pending_ups_n_downs = try a.create(UpNDownContextMap);
+        pending_ups_n_downs.* = UpNDownContextMap.init(a);
 
         const active_contexts = try a.create(ActiveContexts);
         active_contexts.* = ActiveContexts.init(a);
@@ -125,6 +128,12 @@ pub const MappingCouncil = struct {
 
         var ups_n_downs_iter = self.ups_n_downs.valueIterator();
         while (ups_n_downs_iter.next()) |cb_map| {
+            cb_map.*.deinit();
+            self.a.destroy(cb_map.*);
+        }
+
+        var pending_ups_n_downs_iter = self.pending_ups_n_downs.valueIterator();
+        while (pending_ups_n_downs_iter.next()) |cb_map| {
             cb_map.*.deinit();
             self.a.destroy(cb_map.*);
         }
@@ -237,12 +246,7 @@ pub const MappingCouncil = struct {
             const context_id = keys[i];
             if (frame.latest_event_type == .down) {
                 // ups_n_downs
-                if (self.ups_n_downs.get(context_id)) |trigger_map| {
-                    if (trigger_map.get(report.down.?)) |cb| {
-                        try self.pending_ups_n_downs.append(cb);
-                        try cb.down_f(cb.down_ctx);
-                    }
-                }
+                try self.handleUpNDownsDownEvent(context_id, trigger, frame);
 
                 // regular
                 if (self.downs.get(context_id)) |trigger_map| {
@@ -259,7 +263,7 @@ pub const MappingCouncil = struct {
 
             if (frame.latest_event_type == .up) {
                 // ups_n_downs
-                if (frame.downs.items.len == 0) try self.cleanUpUpNDowns();
+                try self.handleUpNDownsUpEvenet(context_id, trigger, frame);
 
                 // regular
                 if (self.ups.get(context_id)) |trigger_map| {
@@ -278,10 +282,29 @@ pub const MappingCouncil = struct {
         for (cb.contexts.add) |id| try self.addActiveContext(id);
     }
 
-    fn cleanUpUpNDowns(self: *@This()) !void {
-        for (self.pending_ups_n_downs.items) |cb| try cb.up_f(cb.up_ctx);
-        self.pending_ups_n_downs.deinit();
-        self.pending_ups_n_downs.* = ArrayList(UpNDownCallback).init(self.a);
+    fn handleUpNDownsDownEvent(self: *@This(), context_id: []const u8, trigger: u128, frame: *InputFrame) !void {
+        if (self.ups_n_downs.get(context_id)) |trigger_map| {
+            if (trigger_map.get(trigger)) |cb| {
+                if (!self.pending_ups_n_downs.contains(context_id)) {
+                    const pending_cb_map = try self.a.create(UpNDownCallbackMap);
+                    pending_cb_map.* = UpNDownCallbackMap.init(self.a);
+                    try self.pending_ups_n_downs.put(context_id, pending_cb_map);
+                }
+                var pending_cb_map = self.pending_ups_n_downs.get(context_id) orelse unreachable;
+                try pending_cb_map.put(trigger, cb);
+                frame.setPreviousDownTriggeredTrigger(trigger);
+                try cb.down_f(cb.down_ctx);
+            }
+        }
+    }
+
+    fn handleUpNDownsUpEvenet(self: *@This(), context_id: []const u8, trigger: u128, frame: *InputFrame) !void {
+        defer frame.unsetPreviousDownTriggeredTrigger();
+        var pending_cb_map = self.pending_ups_n_downs.get(context_id) orelse return;
+        var cb = pending_cb_map.get(trigger) orelse return;
+        try cb.up_f(cb.up_ctx);
+        const removed = pending_cb_map.remove(trigger);
+        assert(removed);
     }
 
     pub fn setActiveContext(self: *@This(), context_id: []const u8) !void {
@@ -319,6 +342,17 @@ pub const MappingCouncil = struct {
 
         if (frame.force_emitting_down) return r.down;
 
+        switch (frame.latest_event_type) {
+            .up => {
+                if (self.check(context_id, .up_n_down, frame.previous_down_triggered_trigger)) {
+                    return frame.previous_down_triggered_trigger;
+                }
+                if (self.check(context_id, .up_n_down, r.prev_down)) return r.prev_down;
+            },
+            .down => if (self.check(context_id, .up_n_down, r.down)) return r.down,
+            .none => {},
+        }
+
         if (frame.latest_event_type == .down) {
             if (frame.downs.items.len == 2 and
                 (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
@@ -352,9 +386,7 @@ pub const MappingCouncil = struct {
     fn produceDefaultTriggerComponent(self: *const @This(), context_id: []const u8, r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
         if (frame.latest_event_type == .down) {
             frame.emitted = true;
-            if (self.check(context_id, .down, r.down)) {
-                return r.down;
-            }
+            if (self.check(context_id, .down, r.down)) return r.down;
             if (self.check(context_id, .up, r.down)) {
                 frame.emitted = false;
                 frame.previous_down_candidate = r.down;
@@ -372,8 +404,15 @@ pub const MappingCouncil = struct {
         return null;
     }
 
-    fn check(self: *const @This(), context_id: []const u8, kind: enum { up, down }, trigger: ?u128) bool {
+    fn check(self: *const @This(), context_id: []const u8, kind: enum { up, down, up_n_down }, trigger: ?u128) bool {
         if (trigger == null) return false;
+
+        if (kind == .up_n_down) {
+            if (self.ups_n_downs.get(context_id)) |trigger_map| {
+                if (trigger_map.get(trigger.?)) |_| return true;
+            }
+        }
+
         const context_map = if (kind == .up) self.ups else self.downs;
         if (context_map.get(context_id)) |trigger_map| {
             if (trigger_map.get(trigger.?)) |_| return true;
@@ -937,6 +976,7 @@ pub const InputFrame = struct {
     threshold_millis: i64 = 250,
 
     previous_down_candidate: ?u128 = null,
+    previous_down_triggered_trigger: ?u128 = null,
     latest_event_type: enum { up, down, none } = .none,
     emitted: bool = false,
 
@@ -963,11 +1003,23 @@ pub const InputFrame = struct {
         self.previous_down_candidate = null;
     }
 
-    /// Meant to only be called by `MappingCouncil.exxecute()`,
+    /// Meant to only be called by `MappingCouncil.execute()`,
     /// after executing a `.always_trigger_on_down` callback.
     pub fn forceEmittingDownEvent(self: *@This()) void {
         self.force_emitting_down = true;
         self.latest_event_type = .down;
+    }
+
+    /// Meant to only be called by `MappingCouncil.execute()`,
+    /// after executing an `up_n_down` `down` callback.
+    pub fn setPreviousDownTriggeredTrigger(self: *@This(), triggered_trigger: u128) void {
+        self.previous_down_triggered_trigger = triggered_trigger;
+    }
+
+    /// Meant to only be called by `MappingCouncil.execute()`,
+    /// after executing an `up_n_down` `up` callback.
+    pub fn unsetPreviousDownTriggeredTrigger(self: *@This()) void {
+        self.previous_down_triggered_trigger = null;
     }
 
     const TimeStampOpttion = union(enum) { now, testing: i64 };
@@ -1048,7 +1100,6 @@ pub const InputFrame = struct {
         quick: ?u128 = null,
         down: ?u128 = null,
         prev_down: ?u128 = null,
-        prev_up: ?u128 = null,
     };
 
     pub fn produceCandidateReport(self: *@This()) CandidateReport {
