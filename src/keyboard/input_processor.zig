@@ -200,6 +200,7 @@ pub const MappingCouncil = struct {
             }
 
             for (triggers_to_flush.items) |trigger| {
+                assert(context_map.*.contains(trigger));
                 const cb = context_map.*.get(trigger) orelse continue;
                 try cb.up_f(cb.up_ctx);
                 try self.resolveUpNDownsContextsAfterCallback(.up, cb);
@@ -308,9 +309,6 @@ pub const MappingCouncil = struct {
             }
 
             if (frame.latest_event_type == .up) {
-                // ups_n_downs
-                try self.handleUpNDownsUpEvent(context_id, trigger);
-
                 // regular
                 if (self.ups.get(context_id)) |trigger_map| {
                     if (trigger_map.get(trigger)) |cb| {
@@ -355,15 +353,6 @@ pub const MappingCouncil = struct {
                 try self.resolveUpNDownsContextsAfterCallback(.down, cb);
             }
         }
-    }
-
-    fn handleUpNDownsUpEvent(self: *@This(), context_id: []const u8, trigger: u128) !void {
-        var pending_cb_map = self.pending_ups_n_downs.get(context_id) orelse return;
-        var cb = pending_cb_map.get(trigger) orelse return;
-        try cb.up_f(cb.up_ctx);
-        try self.resolveUpNDownsContextsAfterCallback(.up, cb);
-        const removed = pending_cb_map.remove(trigger);
-        assert(removed);
     }
 
     pub fn setActiveContext(self: *@This(), context_id: []const u8) !void {
