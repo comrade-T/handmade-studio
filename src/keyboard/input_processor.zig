@@ -171,8 +171,6 @@ pub const MappingCouncil = struct {
     }
 
     pub fn flushUpNDown(self: *@This(), frame: *const InputFrame) !void {
-        if (frame.latest_event_type != .up) return;
-
         var pending_ups_n_downs_iter = self.pending_ups_n_downs.valueIterator();
         while (pending_ups_n_downs_iter.next()) |context_map| {
             var triggers_to_flush = ArrayList(u128).init(self.a);
@@ -202,7 +200,6 @@ pub const MappingCouncil = struct {
             }
 
             for (triggers_to_flush.items) |trigger| {
-                assert(context_map.*.contains(trigger));
                 const cb = context_map.*.get(trigger) orelse continue;
                 try cb.up_f(cb.up_ctx);
                 try self.resolveUpNDownsContextsAfterCallback(.up, cb);
