@@ -32,6 +32,7 @@ const RenderMall = @import("RenderMall");
 const ip = @import("input_processor");
 const code_point = @import("code_point");
 const WindowManager = @import("WindowManager");
+const AnchorPicker = @import("AnchorPicker");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -62,10 +63,12 @@ path_list: PathList,
 match_list: MatchList,
 
 wm: *WindowManager,
+ap: *AnchorPicker,
+
 mall: *const RenderMall,
 input: InputWindow,
 
-pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall, wm: *WindowManager) !*FuzzyFinder {
+pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -76,6 +79,8 @@ pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall, 
         .match_list = MatchList.init(a),
 
         .wm = wm,
+        .ap = ap,
+
         .mall = mall,
         .input = try InputWindow.init(a, opts, mall),
     };
@@ -102,7 +107,8 @@ pub fn show(ctx: *anyopaque) !void {
     self.visible = true;
 }
 
-pub fn hide(self: *@This()) void {
+pub fn hide(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.visible = false;
 }
 
@@ -112,12 +118,18 @@ pub fn confirmItemSelection(ctx: *anyopaque) !void {
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];
 
+    const x, const y = self.ap.icb.getScreenToWorld2D(
+        self.ap.camera,
+        self.ap.target_anchor.x,
+        self.ap.target_anchor.y,
+    );
+
     try self.wm.spawnWindow(.file, path, .{
-        .pos = .{ .x = 100, .y = 100 },
+        .pos = .{ .x = x, .y = y },
         .subscribed_style_sets = &.{0},
     }, true);
 
-    self.hide();
+    self.visible = false;
 }
 
 pub fn nextItem(ctx: *anyopaque) !void {

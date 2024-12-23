@@ -103,6 +103,7 @@ pub fn main() anyerror!void {
 
     const info_callbacks = RenderMall.InfoCallbacks{
         .getScreenWidthHeight = getScreenWidthHeight,
+        .getScreenToWorld2D = getScreenToWorld2D,
     };
 
     const render_callbacks = RenderMall.RenderCallbacks{
@@ -321,28 +322,6 @@ pub fn main() anyerror!void {
     };
     try council.mapInsertCharacters(&.{"insert"}, &wm, InsertCharsCb.init);
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
-
-    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, &wm);
-    defer fuzzy_finder.destroy();
-
-    try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
-    try council.map("fuzzy_finder_insert", &.{.backspace}, .{ .f = FuzzyFinder.backspace, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .j }, .{ .f = FuzzyFinder.nextItem, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .k }, .{ .f = FuzzyFinder.prevItem, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{.enter}, .{
-        .f = FuzzyFinder.confirmItemSelection,
-        .ctx = fuzzy_finder,
-        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
-    });
-
-    try council.map("normal", &.{ .left_control, .f }, .{
-        .f = FuzzyFinder.show,
-        .ctx = fuzzy_finder,
-        .contexts = .{ .add = &.{"fuzzy_finder_insert"}, .remove = &.{"normal"} },
-        .require_clarity_afterwards = true,
-    });
-
     ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
 
     var anchor_picker = AnchorPicker{
@@ -528,6 +507,33 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .m, .space, .d, .w }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, false));
     try council.map("anchor_picker", &.{ .m, .space, .d, .s }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, false));
 
+    ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
+
+    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, &wm, &anchor_picker);
+    defer fuzzy_finder.destroy();
+
+    try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
+    try council.map("fuzzy_finder_insert", &.{.backspace}, .{ .f = FuzzyFinder.backspace, .ctx = fuzzy_finder });
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .j }, .{ .f = FuzzyFinder.nextItem, .ctx = fuzzy_finder });
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .k }, .{ .f = FuzzyFinder.prevItem, .ctx = fuzzy_finder });
+    try council.map("fuzzy_finder_insert", &.{.enter}, .{
+        .f = FuzzyFinder.confirmItemSelection,
+        .ctx = fuzzy_finder,
+        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
+    });
+    try council.map("fuzzy_finder_insert", &.{.escape}, .{
+        .f = FuzzyFinder.hide,
+        .ctx = fuzzy_finder,
+        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
+    });
+
+    try council.map("normal", &.{ .left_control, .f }, .{
+        .f = FuzzyFinder.show,
+        .ctx = fuzzy_finder,
+        .contexts = .{ .add = &.{"fuzzy_finder_insert"}, .remove = &.{"normal"} },
+        .require_clarity_afterwards = true,
+    });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Debugging
 
     // const DebugPrintCb = struct {
@@ -681,6 +687,12 @@ fn changeCameraZoom(camera_: *anyopaque, target_camera_: *anyopaque, x: f32, y: 
     camera.target = anchor_world_pos;
 
     target_camera.zoom = rl.math.clamp(target_camera.zoom * scale_factor, 0.125, 64);
+}
+
+fn getScreenToWorld2D(camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 } {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    const result = rl.getScreenToWorld2D(.{ .x = x, .y = y }, camera.*);
+    return .{ result.x, result.y };
 }
 
 fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {

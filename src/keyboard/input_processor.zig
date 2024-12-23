@@ -200,7 +200,6 @@ pub const MappingCouncil = struct {
             }
 
             for (triggers_to_flush.items) |trigger| {
-                assert(context_map.*.contains(trigger));
                 const cb = context_map.*.get(trigger) orelse continue;
                 try cb.up_f(cb.up_ctx);
                 try self.resolveUpNDownsContextsAfterCallback(.up, cb);

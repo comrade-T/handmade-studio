@@ -175,6 +175,10 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = text_box;
 
+    const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
+        .{ .name = "RenderMall", .module = render_mall.module },
+    }, zig_build_test_step);
+
     const fuzzy_finder = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
         .{ .name = "WindowSource", .module = window_source.module },
@@ -183,10 +187,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "WindowManager", .module = window_manager.module },
-    }, zig_build_test_step);
-
-    const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
-        .{ .name = "RenderMall", .module = render_mall.module },
+        .{ .name = "AnchorPicker", .module = anchor_picker.module },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables

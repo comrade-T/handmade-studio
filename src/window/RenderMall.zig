@@ -180,6 +180,7 @@ pub const RenderCallbacks = struct {
 
 pub const InfoCallbacks = struct {
     getScreenWidthHeight: *const fn () struct { f32, f32 },
+    getScreenToWorld2D: *const fn (camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 },
 };
 
 pub const ScreenView = struct {
