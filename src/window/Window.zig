@@ -579,6 +579,7 @@ fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, mall: *const R
         const info = try calculateLineInfo(self, linenr, mall, default_font, default_glyph);
         try replacements.append(info);
     }
+    self.cached.updateWidthHeight();
     try self.cached.line_info.replaceRange(self.a, ri.replace_start, ri.replace_len, replacements.items);
 }
 
@@ -606,11 +607,21 @@ const WindowCache = struct {
         for (0..num_of_lines) |linenr| {
             const info = try calculateLineInfo(win, linenr, mall, default_font, default_glyph);
             try self.line_info.append(a, info);
+
             self.width = @max(self.width, info.width);
             self.height += info.height;
         }
 
         return self;
+    }
+
+    fn updateWidthHeight(self: *@This()) void {
+        self.width = 0;
+        self.height = 0;
+        for (self.line_info.items) |info| {
+            self.width = @max(self.width, info.width);
+            self.height += info.height;
+        }
     }
 
     fn deinit(self: *@This(), a: Allocator) void {
