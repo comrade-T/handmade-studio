@@ -110,6 +110,13 @@ pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
     for (self.wmap.keys()) |window| window.render(self.mall, view, self.render_callbacks);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+
+pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
+    const active_window = self.active_window orelse return;
+    active_window.centerAt(center_x, center_y);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
 pub fn deleteRanges(self: *@This(), kind: WindowSource.DeleteRangesKind) !void {

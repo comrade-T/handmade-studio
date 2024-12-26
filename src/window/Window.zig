@@ -149,6 +149,14 @@ fn getCharColor(self: *@This(), r: WindowSource.LineIterator.Result, colorscheme
     return color;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+
+pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
+    const x = center_x - (self.cached.width / 2);
+    const y = center_y - (self.cached.height / 2);
+    self.attr.pos = .{ .x = x, .y = y };
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Renderer
 
 const LastestRenderedCharInfo = ?struct { x: f32, width: f32, font_size: f32 };

@@ -223,7 +223,7 @@ pub fn main() anyerror!void {
 
     try council.map("normal", &.{ .d, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
 
-    // experimental
+    // text opjects
     try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
     try council.map("normal", &.{ .c, .apostrophe }, .{
         .f = WindowManager.deleteInSingleQuote,
@@ -256,6 +256,26 @@ pub fn main() anyerror!void {
         .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
         .require_clarity_afterwards = true,
     });
+
+    // center
+
+    const CenterAtCb = struct {
+        target: *WindowManager,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const center_x: f32 = @as(f32, @floatFromInt(rl.getScreenWidth())) / 2;
+            const center_y: f32 = @as(f32, @floatFromInt(rl.getScreenHeight())) / 2;
+            self.target.centerAt(center_x, center_y);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try council.map("normal", &.{ .left_control, .c }, try CenterAtCb.init(council.arena.allocator(), &wm));
 
     ///////////////////////////// Visual Mode
 
