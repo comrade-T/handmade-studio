@@ -12,7 +12,7 @@ Use at your own risk and do not rely on it whatsovever.
 
 # Communication
 
-- Join the Handmade Studio Discord server [here](https://discord.gg/VqTMRsaJ)
+- [Discord Server](https://discord.gg/VqTMRsaJ)
 - Please feel free to open Github issues & discussions.
 
 ---

@@ -1,6 +1,6 @@
 zig-out/
 .zig-cache/
-*.ttf
+# *.ttf
 submodules/
 *.log
 copied-libs/ztracy
