@@ -15,6 +15,8 @@ Use at your own risk and do not rely on it whatsovever.
 - Join the Handmade Studio Discord server [here](https://discord.gg/VqTMRsaJ)
 - Please feel free to open Github issues & discussions.
 
+---
+
 ## Table of Contents
 
 1. [Purpose](#purpose)
@@ -44,8 +46,6 @@ Handmade Studio lets the user operates on an infinite canvas, which:
 - Enables view operations like pan & zoom.
 - Enables taking notes on top of / right alongside code files. (NOT YET)
 
----
-
 ### Dynamic Font Sizes & Font Faces
 
 <img src="https://github.com/user-attachments/assets/fd329ee8-0ed3-4b50-a1ba-99abd318edd1" alt="Screenshot from 2024-12-26 23-45-43" width="500"/>
@@ -55,8 +55,6 @@ Planned features:
 - Toggle-able syntax-based font sizes & font faces. (CURRENTLY HARD CODED, NOT TOGGLE-ABLE YET)
 - Windows can have different styles from each other. (NOT YET)
 
----
-
 ### Images (NOT YET)
 
 Planned features:
@@ -65,9 +63,7 @@ Planned features:
 - Images to annotate LSP Diagnostics. (NO LSP YET)
 - Images to annotate jobs / test results. (NOT YET)
 
----
-
-### Input
+### Inputs
 
 Handmade Studio will leverage `Key Combos`, in addition to `Key Chords` like other modal editors.
 
@@ -82,8 +78,6 @@ With HS you can add combos like:
 
 - `Z -> J` (hold down Z, then press J)
 - `Z -> X -> J` (hold down Z, hold down X, then press J)
-
----
 
 ### Canvas-based note-taking (NOT YET)
 
@@ -106,11 +100,14 @@ Like Excalidraw / Obsidian canvas
 - Look at `main.zig` for more mappings you can try out.
 - Try out basic Vim movements & editing.
 
+---
+
 # Credits
 
 Thanks to [@neurocyte](https://github.com/neurocyte/) for making [Flow Control](https://github.com/neurocyte/flow).
+<br>
 I started learning Zig & began this project 6 months ago. From his hard work & directions, I was able to:
 
-- Install, setup & build Tree Sitter.
+- Install, setup & build Tree Sitter in Zig.
 - Learn, copy & modify his Rope data structure implementation.
 - Learn the general structure of a text editor and how to write one.
