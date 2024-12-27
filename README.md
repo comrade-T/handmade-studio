@@ -10,6 +10,10 @@ This project is currently in early stage of development and should be treated li
 It can be extremely buggy and missing a lot of features.
 Use at your own risk and do not rely on it whatsovever.
 
+# Requirements
+
+Having Zig 0.13 installed.
+
 # Communication
 
 - [Discord Server](https://discord.gg/VqTMRsaJ)
