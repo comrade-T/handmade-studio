@@ -1,17 +1,19 @@
 # Handmade Studio
 
-Closed Beta Demo Version
+Demo Version
 
 https://github.com/user-attachments/assets/61e6200f-adee-4286-a54a-822f03c27004
 
 # Disclosure
 
-This project is a tech demo and is currently in an early stage of development.
-Please be aware that it is extremely buggy and missing a lot of features.
-Use at your own risk and do not rely on it for production use.
-I appreciate any feedback and contributions to help improve the project.
+This project is currently in early stage of development and should be treated like a tech demo.
+It can be extremely buggy and missing a lot of features.
+Use at your own risk and do not rely on it whatsovever.
 
----
+# Communication
+
+- Join the Handmade Studio Discord server [here](https://discord.gg/VqTMRsaJ)
+- Please feel free to open Github issues & discussions.
 
 ## Table of Contents
 
