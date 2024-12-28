@@ -283,7 +283,7 @@ const Renderer = struct {
     fn updateMainCursorHorizontalVisibilityReport(self: *@This(), char_x: f32, char_width: f32) void {
         const anchor = self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager);
         if (anchor.line == self.linenr and anchor.col == self.colnr) {
-            if (char_x < self.view.start.x) {
+            if (char_x + 1 < self.view.start.x) {
                 self.main_cursor_horizontal_visibility = .before;
                 return;
             }
@@ -296,22 +296,25 @@ const Renderer = struct {
     }
 
     fn updatePotentialCursorRelocationColnr(self: *@This(), char_x: f32, char_width: f32) void {
-        if (self.first_in_view_linenr) |first_in_view_linenr| {
-            if (self.linenr != first_in_view_linenr) return;
-        }
-
-        if (self.potential_cursor_relocation_line) |potential_cursor_relocation_line| {
-            if (self.linenr != potential_cursor_relocation_line) return;
-        }
-
-        if (self.potential_cursor_relocation_col != null) {
-            if (self.main_cursor_horizontal_visibility != .after) {
-                return;
+        const anchor = self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager);
+        if (anchor.line == self.linenr) {
+            if (self.first_in_view_linenr) |first_in_view_linenr| {
+                if (self.linenr != first_in_view_linenr) return;
             }
-        }
 
-        if (char_x > self.view.start.x and char_x + char_width < self.view.end.x) {
-            self.potential_cursor_relocation_col = self.colnr;
+            if (self.potential_cursor_relocation_line) |potential_cursor_relocation_line| {
+                if (self.linenr != potential_cursor_relocation_line) return;
+            }
+
+            if (self.potential_cursor_relocation_col != null) {
+                if (self.main_cursor_horizontal_visibility != .after) {
+                    return;
+                }
+            }
+
+            if (char_x > self.view.start.x and char_x + char_width < self.view.end.x) {
+                self.potential_cursor_relocation_col = self.colnr;
+            }
         }
     }
 
@@ -701,7 +704,13 @@ const Renderer = struct {
         for (self.win.cursor_manager.cursors.values()) |*cursor| {
             const anchor = cursor.activeAnchor(self.win.cursor_manager);
             if (anchor.line != self.linenr) continue;
+
             const char_width = calculateGlyphWidth(self.default_font, self.win.defaults.font_size, ' ', self.default_glyph);
+
+            // cursor relocation related
+            self.updateMainCursorHorizontalVisibilityReport(self.char_x + char_width, char_width);
+            self.updatePotentialCursorRelocationColnr(self.char_x + char_width, char_width);
+
             self.render_callbacks.drawRectangle(self.char_x, self.line_y, char_width, self.lineHeight(), self.win.defaults.color);
         }
 
