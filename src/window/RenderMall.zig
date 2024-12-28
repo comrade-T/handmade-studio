@@ -36,6 +36,7 @@ fonts: FontMap = undefined,
 font_sizes: FontSizeMap = undefined,
 colorschemes: ColorschemeMap = undefined,
 
+camera_just_moved: bool = false,
 camera: *anyopaque,
 target_camera: *anyopaque,
 

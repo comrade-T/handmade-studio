@@ -65,10 +65,10 @@ match_list: MatchList,
 wm: *WindowManager,
 ap: *AnchorPicker,
 
-mall: *const RenderMall,
+mall: *RenderMall,
 input: InputWindow,
 
-pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
+pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *RenderMall, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -118,8 +118,8 @@ pub fn confirmItemSelection(ctx: *anyopaque) !void {
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];
 
-    const x, const y = self.ap.icb.getScreenToWorld2D(
-        self.ap.camera,
+    const x, const y = self.mall.icb.getScreenToWorld2D(
+        self.mall.camera,
         self.ap.target_anchor.x,
         self.ap.target_anchor.y,
     );

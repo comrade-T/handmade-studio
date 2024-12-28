@@ -24,11 +24,7 @@ const InfoCallbacks = RenderMall.InfoCallbacks;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-icb: InfoCallbacks,
-rcb: RenderCallbacks,
-
-camera: *anyopaque,
-target_camera: *anyopaque,
+mall: *RenderMall,
 
 target_anchor: Anchor = .{},
 current_anchor: Anchor = .{},
@@ -59,7 +55,7 @@ pub fn render(self: *@This()) void {
     if (!self.visible) return;
     self.current_anchor.x = RenderMall.lerp(self.current_anchor.x, self.target_anchor.x, self.lerp_time);
     self.current_anchor.y = RenderMall.lerp(self.current_anchor.y, self.target_anchor.y, self.lerp_time);
-    self.rcb.drawCircle(self.current_anchor.x, self.current_anchor.y, self.radius, self.color);
+    self.mall.rcb.drawCircle(self.current_anchor.x, self.current_anchor.y, self.radius, self.color);
 }
 
 pub fn center(ctx: *anyopaque) !void {
@@ -68,20 +64,22 @@ pub fn center(ctx: *anyopaque) !void {
 }
 
 pub fn percentage(self: *@This(), x_percent: f32, y_percent: f32) void {
-    const width, const height = self.icb.getScreenWidthHeight();
+    const width, const height = self.mall.icb.getScreenWidthHeight();
     self.target_anchor = .{ .x = width * x_percent / 100, .y = height * y_percent / 100 };
 }
 
 pub fn zoom(self: *@This(), scale_factor: f32) void {
-    self.rcb.changeCameraZoom(self.camera, self.target_camera, self.target_anchor.x, self.target_anchor.y, scale_factor);
+    self.mall.rcb.changeCameraZoom(self.mall.camera, self.mall.target_camera, self.target_anchor.x, self.target_anchor.y, scale_factor);
+    self.mall.camera_just_moved = true;
 }
 
 pub fn pan(self: *@This(), x_by: f32, y_by: f32) void {
-    self.rcb.changeCameraPan(self.target_camera, x_by, y_by);
+    self.mall.rcb.changeCameraPan(self.mall.target_camera, x_by, y_by);
+    self.mall.camera_just_moved = true;
 }
 
 fn getCenter(self: *@This()) Anchor {
-    const width, const height = self.icb.getScreenWidthHeight();
+    const width, const height = self.mall.icb.getScreenWidthHeight();
     return Anchor{ .x = width / 2, .y = height / 2 };
 }
 

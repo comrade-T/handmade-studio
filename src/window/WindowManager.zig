@@ -33,7 +33,7 @@ const Window = @import("Window");
 a: Allocator,
 
 lang_hub: *LangHub,
-mall: *const RenderMall,
+mall: *RenderMall,
 
 active_window: ?*Window = null,
 
@@ -41,7 +41,7 @@ handlers: WindowSourceHandlerList,
 fmap: FilePathToHandlerMap,
 wmap: WindowToHandlerMap,
 
-pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const RenderMall) !WindowManager {
+pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowManager {
     return WindowManager{
         .a = a,
         .lang_hub = lang_hub,

@@ -87,7 +87,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall) void {
+pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
 
     ///////////////////////////// Profiling
 
@@ -105,6 +105,11 @@ pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall) void {
 
     const view = mall.icb.getViewFromCamera(mall.camera);
     const target_view = mall.icb.getViewFromCamera(mall.target_camera);
+
+    if (mall.camera_just_moved) {
+        mall.camera_just_moved = false;
+        if (self.cursor_manager.just_moved) self.cursor_manager.setJustMovedToFalse();
+    }
 
     if (self.isOutOfView(view)) return;
 

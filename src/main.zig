@@ -351,12 +351,7 @@ pub fn main() anyerror!void {
     ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
 
     var anchor_picker = AnchorPicker{
-        .icb = info_callbacks,
-        .rcb = render_callbacks,
-
-        .camera = &smooth_cam.camera,
-        .target_camera = &smooth_cam.target_camera,
-
+        .mall = &mall,
         .radius = 20,
         .color = @intCast(rl.Color.sky_blue.toInt()),
         .lerp_time = 0.22,
