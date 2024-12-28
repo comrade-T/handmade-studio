@@ -36,18 +36,16 @@ lang_hub: *LangHub,
 mall: *const RenderMall,
 
 active_window: ?*Window = null,
-render_callbacks: RenderMall.RenderCallbacks,
 
 handlers: WindowSourceHandlerList,
 fmap: FilePathToHandlerMap,
 wmap: WindowToHandlerMap,
 
-pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const RenderMall, render_callbacks: RenderMall.RenderCallbacks) !WindowManager {
+pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *const RenderMall) !WindowManager {
     return WindowManager{
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
-        .render_callbacks = render_callbacks,
         .handlers = WindowSourceHandlerList{},
         .fmap = FilePathToHandlerMap{},
         .wmap = WindowToHandlerMap{},
@@ -109,7 +107,7 @@ test spawnWindow {
 pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
     for (self.wmap.keys()) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
-        window.render(is_active, self.mall, view, self.render_callbacks);
+        window.render(is_active, self.mall, view);
     }
 }
 

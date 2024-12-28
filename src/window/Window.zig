@@ -87,7 +87,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
+pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, _: ScreenView) void {
 
     ///////////////////////////// Profiling
 
@@ -103,14 +103,18 @@ pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: Sc
 
     ///////////////////////////// Culling & Render
 
+    const view = mall.icb.getViewFromCamera(mall.camera);
+    const target_view = mall.icb.getViewFromCamera(mall.target_camera);
+
     if (self.isOutOfView(view)) return;
 
     var renderer = Renderer{
         .win = self,
         .view = view,
+        .target_view = target_view,
         .default_font = default_font,
         .default_glyph = default_glyph,
-        .render_callbacks = render_callbacks,
+        .render_callbacks = mall.rcb,
         .mall = mall,
     };
     if (renderer.shiftBoundedOffsetBy()) |change_by| {
@@ -121,7 +125,7 @@ pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: Sc
     renderer.initialize();
     renderer.render(colorscheme);
 
-    if (is_active) {
+    if (is_active and !self.cursor_manager.just_moved) {
         const active_anchor = self.cursor_manager.mainCursor().activeAnchor(self.cursor_manager);
 
         if (renderer.potential_cursor_relocation_line) |relocation_line| {
@@ -135,6 +139,13 @@ pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: Sc
                 active_anchor.*.col = relocation_col;
             }
         }
+    }
+
+    if (renderer.shiftViewBy()) |shift_by| {
+        mall.rcb.changeCameraPan(mall.target_camera, shift_by[0], shift_by[1]);
+    }
+    if (self.cursor_manager.just_moved and mall.icb.cameraTargetsEqual(mall.camera, mall.target_camera)) {
+        self.cursor_manager.setJustMovedToFalse();
     }
 }
 
@@ -180,6 +191,7 @@ const LastestRenderedCharInfo = ?struct { x: f32, width: f32, font_size: f32 };
 const Renderer = struct {
     win: *Window,
     view: ScreenView,
+    target_view: ScreenView,
 
     default_font: *const FontStore.Font,
     default_glyph: FontStore.Font.GlyphData,
@@ -395,6 +407,43 @@ const Renderer = struct {
         if (!self.win.attr.culling) return false;
 
         return self.char_x + char_width < self.view.start.x;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// check if need to change view to main cursor anchor
+
+    fn shiftViewBy(self: *@This()) ?struct { f32, f32 } {
+        if (self.win.attr.bounded or !self.win.cursor_manager.just_moved) return null;
+
+        var shift_view_x_by: f32 = 0;
+        var shift_view_y_by: f32 = 0;
+
+        const start_y, const end_y, const start_x, const end_x = self.getActiveAnchorCoordinates() catch return null;
+
+        // Cursor relocation behavior can cause friction due to inadequate floating point calculations.
+        // Use COCONUT_OIL to smooth things out.
+        const COCONUT_OIL = 10;
+
+        y_blk: {
+            if (start_y < self.target_view.start.y) {
+                shift_view_y_by = start_y - self.target_view.start.y - COCONUT_OIL;
+                break :y_blk;
+            }
+            if (end_y > self.target_view.end.y) {
+                shift_view_y_by = end_y - self.target_view.end.y + COCONUT_OIL;
+            }
+        }
+
+        x_blk: {
+            if (start_x < self.target_view.start.x) {
+                shift_view_x_by = start_x - self.target_view.start.x - COCONUT_OIL;
+                break :x_blk;
+            }
+            if (end_x > self.target_view.end.x) {
+                shift_view_x_by = end_x - self.target_view.end.x + COCONUT_OIL;
+            }
+        }
+
+        return .{ shift_view_x_by, shift_view_y_by };
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////// check if need to change bounded offset to main cursor anchor

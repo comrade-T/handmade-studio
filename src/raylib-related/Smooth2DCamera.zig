@@ -48,16 +48,6 @@ pub fn updateOnNewFrame(self: *@This()) void {
     // self.lerpTarget();
 }
 
-pub fn changeTargetXBy(ctx: *anyopaque, by: f32) void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.target_camera.target.x += by;
-}
-
-pub fn changeTargetYBy(ctx: *anyopaque, by: f32) void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.target_camera.target.y += by;
-}
-
 pub fn setTarget(ctx: *anyopaque, x: f32, y: f32) void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.target_camera.target.x = x;
@@ -96,8 +86,6 @@ fn updateZoom(self: *@This()) void {
     if (wheel != 0) {
         const mouse_pos = rl.getMousePosition();
         const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, self.camera);
-
-        std.debug.print("mouse_pos: {d} x {d}\n", .{ mouse_pos.x, mouse_pos.y });
 
         self.camera.offset = mouse_pos;
 

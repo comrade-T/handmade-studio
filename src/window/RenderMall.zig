@@ -36,6 +36,12 @@ fonts: FontMap = undefined,
 font_sizes: FontSizeMap = undefined,
 colorschemes: ColorschemeMap = undefined,
 
+camera: *anyopaque,
+target_camera: *anyopaque,
+
+rcb: RenderCallbacks,
+icb: InfoCallbacks,
+
 const FontMap = std.AutoArrayHashMapUnmanaged(StyleKey, u16);
 const FontSizeMap = std.AutoArrayHashMapUnmanaged(StyleKey, f32);
 const ColorschemeMap = std.AutoArrayHashMapUnmanaged(StyleKey, u16);
@@ -45,7 +51,15 @@ pub const StyleKey = struct {
     styleset_id: u16,
 };
 
-pub fn init(a: Allocator, font_store: *FontStore, colorscheme_store: *ColorschemeStore) StyleStore {
+pub fn init(
+    a: Allocator,
+    font_store: *FontStore,
+    colorscheme_store: *ColorschemeStore,
+    icb: InfoCallbacks,
+    rcb: RenderCallbacks,
+    camera: *anyopaque,
+    target_camera: *anyopaque,
+) StyleStore {
     return StyleStore{
         .a = a,
 
@@ -55,6 +69,12 @@ pub fn init(a: Allocator, font_store: *FontStore, colorscheme_store: *Colorschem
         .fonts = FontMap{},
         .font_sizes = FontSizeMap{},
         .colorschemes = ColorschemeMap{},
+
+        .icb = icb,
+        .rcb = rcb,
+
+        .camera = camera,
+        .target_camera = target_camera,
     };
 }
 
@@ -181,12 +201,29 @@ pub const RenderCallbacks = struct {
 pub const InfoCallbacks = struct {
     getScreenWidthHeight: *const fn () struct { f32, f32 },
     getScreenToWorld2D: *const fn (camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 },
+    getViewFromCamera: *const fn (camera_: *anyopaque) ScreenView,
+    cameraTargetsEqual: *const fn (a_: *anyopaque, b: *anyopaque) bool,
 };
 
 pub const ScreenView = struct {
     start: struct { x: f32 = 0, y: f32 = 0 },
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn viewEquals(a_: ScreenView, b_: ScreenView) bool {
+    const a = ScreenView{
+        .start = .{ .x = @round(a_.start.x * 100), .y = @round(b_.start.y * 100) },
+        .end = .{ .x = @round(a_.end.x * 100), .y = @round(b_.end.y * 100) },
+    };
+    const b = ScreenView{
+        .start = .{ .x = @round(b_.start.x * 100), .y = @round(b_.start.y * 100) },
+        .end = .{ .x = @round(b_.end.x * 100), .y = @round(b_.end.y * 100) },
+    };
+    return a.start.x == b.start.x and a.start.y == b.start.y and
+        a.end.x == b.end.x and a.end.y == b.end.y;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

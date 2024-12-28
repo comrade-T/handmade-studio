@@ -148,10 +148,10 @@ fn keepSelectionIndexInBound(self: *@This()) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn render(self: *const @This(), view: RenderMall.ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
+pub fn render(self: *const @This(), view: RenderMall.ScreenView) void {
     if (!self.visible) return;
-    self.input.window.render(false, self.mall, view, render_callbacks);
-    self.renderResults(render_callbacks);
+    self.input.window.render(false, self.mall, view);
+    self.renderResults(self.mall.rcb);
 }
 
 fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallbacks) void {

@@ -68,6 +68,23 @@ pub fn main() anyerror!void {
     defer _ = gpa__.deinit();
     const gpa = gpa__.allocator();
 
+    ///////////////////////////// render_callbacks
+
+    const info_callbacks = RenderMall.InfoCallbacks{
+        .getScreenWidthHeight = getScreenWidthHeight,
+        .getScreenToWorld2D = getScreenToWorld2D,
+        .getViewFromCamera = getViewFromCamera,
+        .cameraTargetsEqual = cameraTargetsEqual,
+    };
+
+    const render_callbacks = RenderMall.RenderCallbacks{
+        .drawCodePoint = drawCodePoint,
+        .drawRectangle = drawRectangle,
+        .drawCircle = drawCircle,
+        .changeCameraZoom = changeCameraZoom,
+        .changeCameraPan = changeCameraPan,
+    };
+
     ///////////////////////////// Stores
 
     var font_store = try FontStore.init(gpa);
@@ -77,7 +94,15 @@ pub fn main() anyerror!void {
     defer colorscheme_store.deinit();
     try colorscheme_store.initializeNightflyColorscheme();
 
-    var mall = RenderMall.init(gpa, &font_store, &colorscheme_store);
+    var mall = RenderMall.init(
+        gpa,
+        &font_store,
+        &colorscheme_store,
+        info_callbacks,
+        render_callbacks,
+        &smooth_cam.camera,
+        &smooth_cam.target_camera,
+    );
     defer mall.deinit();
 
     // adding custom rules
@@ -99,21 +124,6 @@ pub fn main() anyerror!void {
         .styleset_id = 0,
     }, 80);
 
-    ///////////////////////////// render_callbacks
-
-    const info_callbacks = RenderMall.InfoCallbacks{
-        .getScreenWidthHeight = getScreenWidthHeight,
-        .getScreenToWorld2D = getScreenToWorld2D,
-    };
-
-    const render_callbacks = RenderMall.RenderCallbacks{
-        .drawCodePoint = drawCodePoint,
-        .drawRectangle = drawRectangle,
-        .drawCircle = drawCircle,
-        .changeCameraZoom = changeCameraZoom,
-        .changeCameraPan = changeCameraPan,
-    };
-
     ///////////////////////////// Models
 
     var lang_hub = try LangSuite.LangHub.init(gpa);
@@ -122,7 +132,7 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
-    var wm = try WindowManager.init(gpa, &lang_hub, &mall, render_callbacks);
+    var wm = try WindowManager.init(gpa, &lang_hub, &mall);
     defer wm.deinit();
 
     ///////////////////////////// Testing
@@ -631,7 +641,7 @@ pub fn main() anyerror!void {
                 anchor_picker.render();
 
                 // FuzzyFinder
-                fuzzy_finder.render(view, render_callbacks);
+                fuzzy_finder.render(view);
             }
 
             {
@@ -719,6 +729,28 @@ fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {
     const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
     target_camera.*.target.x += x_by;
     target_camera.*.target.y += y_by;
+}
+
+fn getViewFromCamera(camera_: *anyopaque) RenderMall.ScreenView {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    const start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera.*);
+    const end = rl.getScreenToWorld2D(.{
+        .x = @as(f32, @floatFromInt(rl.getScreenWidth())),
+        .y = @as(f32, @floatFromInt(rl.getScreenHeight())),
+    }, camera.*);
+
+    return RenderMall.ScreenView{
+        .start = .{ .x = start.x, .y = start.y },
+        .end = .{ .x = end.x, .y = end.y },
+    };
+}
+
+fn cameraTargetsEqual(a_: *anyopaque, b_: *anyopaque) bool {
+    const a = @as(*rl.Camera2D, @ptrCast(@alignCast(a_)));
+    const b = @as(*rl.Camera2D, @ptrCast(@alignCast(b_)));
+
+    return @round(a.target.x * 100) == @round(b.target.x * 100) and
+        @round(a.target.y * 100) == @round(b.target.y * 100);
 }
 
 const ScreenView = struct {
