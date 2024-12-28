@@ -88,6 +88,7 @@ fn updateZoom(self: *@This()) void {
         const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, self.camera);
 
         self.camera.offset = mouse_pos;
+        self.target_camera.offset = mouse_pos;
 
         self.target_camera.target = mouse_world_pos;
         self.camera.target = mouse_world_pos;

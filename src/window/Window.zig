@@ -87,7 +87,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, _: ScreenView) void {
+pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall) void {
 
     ///////////////////////////// Profiling
 

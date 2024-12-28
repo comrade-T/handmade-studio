@@ -57,10 +57,6 @@ pub fn main() anyerror!void {
     ///////////////////////////// Camera2D
 
     var smooth_cam = Smooth2DCamera{};
-    var screen_view = ScreenView{
-        .width = @as(f32, @floatFromInt(rl.getScreenWidth())),
-        .height = @as(f32, @floatFromInt(rl.getScreenHeight())),
-    };
 
     ///////////////////////////// GPA
 
@@ -621,7 +617,6 @@ pub fn main() anyerror!void {
 
         // Smooth Camera
         smooth_cam.updateOnNewFrame();
-        screen_view.update(smooth_cam.camera);
 
         ///////////////////////////// Draw
 
@@ -631,17 +626,12 @@ pub fn main() anyerror!void {
             rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
 
-            const view = RenderMall.ScreenView{
-                .start = .{ .x = screen_view.start.x, .y = screen_view.start.y },
-                .end = .{ .x = screen_view.end.x, .y = screen_view.end.y },
-            };
-
             {
                 // AnchorPicker
                 anchor_picker.render();
 
                 // FuzzyFinder
-                fuzzy_finder.render(view);
+                fuzzy_finder.render();
             }
 
             {
@@ -663,7 +653,7 @@ pub fn main() anyerror!void {
                 }
 
                 // rendering windows via WindowManager
-                wm.render(view);
+                wm.render();
             }
         }
     }
@@ -712,6 +702,7 @@ fn changeCameraZoom(camera_: *anyopaque, target_camera_: *anyopaque, x: f32, y: 
     const anchor_world_pos = rl.getScreenToWorld2D(.{ .x = x, .y = y }, camera.*);
 
     camera.offset = rl.Vector2{ .x = x, .y = y };
+    target_camera.offset = rl.Vector2{ .x = x, .y = y };
 
     target_camera.target = anchor_world_pos;
     camera.target = anchor_world_pos;
@@ -752,23 +743,6 @@ fn cameraTargetsEqual(a_: *anyopaque, b_: *anyopaque) bool {
     return @round(a.target.x * 100) == @round(b.target.x * 100) and
         @round(a.target.y * 100) == @round(b.target.y * 100);
 }
-
-const ScreenView = struct {
-    start: rl.Vector2 = .{ .x = 0, .y = 0 },
-    end: rl.Vector2 = .{ .x = 0, .y = 0 },
-    width: f32,
-    height: f32,
-
-    pub fn update(self: *@This(), camera: rl.Camera2D) void {
-        self.start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
-        self.end = rl.getScreenToWorld2D(.{
-            .x = @as(f32, @floatFromInt(rl.getScreenWidth())),
-            .y = @as(f32, @floatFromInt(rl.getScreenHeight())),
-        }, camera);
-        self.width = self.end.x - self.start.x;
-        self.height = self.end.y - self.start.y;
-    }
-};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

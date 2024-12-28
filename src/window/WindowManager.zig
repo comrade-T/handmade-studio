@@ -104,10 +104,10 @@ test spawnWindow {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
+pub fn render(self: *@This()) void {
     for (self.wmap.keys()) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
-        window.render(is_active, self.mall, view);
+        window.render(is_active, self.mall);
     }
 }
 
