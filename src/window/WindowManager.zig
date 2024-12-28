@@ -107,7 +107,10 @@ test spawnWindow {
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This(), view: RenderMall.ScreenView) void {
-    for (self.wmap.keys()) |window| window.render(self.mall, view, self.render_callbacks);
+    for (self.wmap.keys()) |window| {
+        const is_active = if (self.active_window) |active_window| active_window == window else false;
+        window.render(is_active, self.mall, view, self.render_callbacks);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning

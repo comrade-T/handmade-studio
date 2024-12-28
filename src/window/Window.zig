@@ -87,7 +87,7 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
+pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: ScreenView, render_callbacks: RenderMall.RenderCallbacks) void {
 
     ///////////////////////////// Profiling
 
@@ -120,6 +120,13 @@ pub fn render(self: *@This(), mall: *const RenderMall, view: ScreenView, render_
     }
     renderer.initialize();
     renderer.render(colorscheme);
+
+    if (is_active) {
+        if (renderer.potential_cursor_relocation_line) |relocation_line| blk: {
+            if (!renderer.main_cursor_out_of_view) break :blk;
+            self.cursor_manager.mainCursor().setActiveAnchor(self.cursor_manager, relocation_line, 0);
+        }
+    }
 }
 
 fn isOutOfView(self: *@This(), view: ScreenView) bool {
@@ -183,6 +190,11 @@ const Renderer = struct {
     last_char_info: LastestRenderedCharInfo = null,
     selection_start_x: ?f32 = null,
 
+    // cursor position related
+
+    potential_cursor_relocation_line: ?usize = null,
+    main_cursor_out_of_view: bool = true,
+
     ///////////////////////////// initial values
 
     fn initialize(self: *@This()) void {
@@ -214,6 +226,23 @@ const Renderer = struct {
         const char_base = font.getAdaptedBaseLine(font_size);
         const char_shift = self.baseLine() - (height_deficit + char_base);
         self.char_y = self.line_y + height_deficit + char_shift;
+    }
+
+    ///////////////////////////// cursor relocation related
+
+    fn updateMainCursorOutOfView(self: *@This(), linenr: usize) void {
+        if (self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager).line == linenr) {
+            if (self.line_y > self.view.start.y and self.line_y + self.lineHeight() < self.view.end.y) {
+                self.main_cursor_out_of_view = false;
+            }
+        }
+    }
+
+    fn updatePotentialCursorRelocationLine(self: *@This(), linenr: usize, char_y: f32) void {
+        if (self.potential_cursor_relocation_line != null) return;
+        if (char_y > self.view.start.y) {
+            self.potential_cursor_relocation_line = linenr;
+        }
     }
 
     ///////////////////////////// getters
@@ -396,11 +425,12 @@ const Renderer = struct {
             if (self.lineYBelowView()) return;
             if (self.lineYAboveView() or self.lineStartPointOutOfView()) continue;
 
+            self.updateMainCursorOutOfView(linenr);
             if (!self.iterateThroughCharsInLine(&chars_rendered, colorscheme)) continue;
 
             self.renderSelectionLinesBetweenStartAndEnd();
             if (self.renderCursorDotAtLineEnd()) continue;
-            if (self.renderCursorOnEmptyLine()) continue;
+            if (self.renderCursorOnEmptyLine(linenr)) continue;
         }
     }
 
@@ -448,6 +478,8 @@ const Renderer = struct {
         assert(self.lineHeight() >= font_size);
         const color = self.win.getCharColor(r, colorscheme);
         self.updateCharY(font, font_size);
+
+        self.updatePotentialCursorRelocationLine(self.linenr, self.char_y);
 
         self.render_callbacks.drawCodePoint(font, r.code_point, self.char_x, self.char_y, font_size, color);
         chars_rendered.* += 1;
@@ -547,8 +579,10 @@ const Renderer = struct {
         return false;
     }
 
-    fn renderCursorOnEmptyLine(self: *@This()) bool {
+    fn renderCursorOnEmptyLine(self: *@This(), linenr: usize) bool {
         if (self.colnr > 0) return false;
+
+        self.updatePotentialCursorRelocationLine(linenr, self.line_y);
 
         for (self.win.cursor_manager.cursors.values()) |*cursor| {
             const anchor = cursor.activeAnchor(self.win.cursor_manager);
