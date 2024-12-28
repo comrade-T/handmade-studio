@@ -123,7 +123,7 @@ pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: Sc
 
     if (is_active) {
         if (renderer.potential_cursor_relocation_line) |relocation_line| blk: {
-            if (!renderer.main_cursor_out_of_view) break :blk;
+            if (renderer.main_cursor_visibility == .in_view) break :blk;
             self.cursor_manager.mainCursor().setActiveAnchor(self.cursor_manager, relocation_line, 0);
         }
     }
@@ -186,14 +186,12 @@ const Renderer = struct {
     line_y: f32 = undefined,
 
     // selection related
-
     last_char_info: LastestRenderedCharInfo = null,
     selection_start_x: ?f32 = null,
 
     // cursor position related
-
     potential_cursor_relocation_line: ?usize = null,
-    main_cursor_out_of_view: bool = true,
+    main_cursor_visibility: enum { above, below, in_view } = .below,
 
     ///////////////////////////// initial values
 
@@ -230,17 +228,25 @@ const Renderer = struct {
 
     ///////////////////////////// cursor relocation related
 
-    fn updateMainCursorOutOfView(self: *@This(), linenr: usize) void {
+    fn updateMainCursorVisibilityReport(self: *@This(), linenr: usize) void {
         if (self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager).line == linenr) {
-            if (self.line_y > self.view.start.y and self.line_y + self.lineHeight() < self.view.end.y) {
-                self.main_cursor_out_of_view = false;
+            if (self.line_y < self.view.start.y) {
+                self.main_cursor_visibility = .above;
+                return;
             }
+            if (self.line_y + self.lineHeight() > self.view.end.y) {
+                self.main_cursor_visibility = .below;
+                return;
+            }
+            self.main_cursor_visibility = .in_view;
         }
     }
 
-    fn updatePotentialCursorRelocationLine(self: *@This(), linenr: usize, char_y: f32) void {
-        if (self.potential_cursor_relocation_line != null) return;
-        if (char_y > self.view.start.y) {
+    fn updatePotentialCursorRelocationLinenr(self: *@This(), linenr: usize) void {
+        if (self.main_cursor_visibility == .above and
+            self.potential_cursor_relocation_line != null) return;
+
+        if (self.line_y > self.view.start.y and self.line_y + self.lineHeight() < self.view.end.y) {
             self.potential_cursor_relocation_line = linenr;
         }
     }
@@ -422,15 +428,17 @@ const Renderer = struct {
             self.linenr = linenr;
             defer self.nextLine();
 
+            self.updateMainCursorVisibilityReport(linenr);
+            self.updatePotentialCursorRelocationLinenr(linenr);
+
             if (self.lineYBelowView()) return;
             if (self.lineYAboveView() or self.lineStartPointOutOfView()) continue;
 
-            self.updateMainCursorOutOfView(linenr);
             if (!self.iterateThroughCharsInLine(&chars_rendered, colorscheme)) continue;
 
             self.renderSelectionLinesBetweenStartAndEnd();
             if (self.renderCursorDotAtLineEnd()) continue;
-            if (self.renderCursorOnEmptyLine(linenr)) continue;
+            if (self.renderCursorOnEmptyLine()) continue;
         }
     }
 
@@ -478,8 +486,6 @@ const Renderer = struct {
         assert(self.lineHeight() >= font_size);
         const color = self.win.getCharColor(r, colorscheme);
         self.updateCharY(font, font_size);
-
-        self.updatePotentialCursorRelocationLine(self.linenr, self.char_y);
 
         self.render_callbacks.drawCodePoint(font, r.code_point, self.char_x, self.char_y, font_size, color);
         chars_rendered.* += 1;
@@ -579,10 +585,8 @@ const Renderer = struct {
         return false;
     }
 
-    fn renderCursorOnEmptyLine(self: *@This(), linenr: usize) bool {
+    fn renderCursorOnEmptyLine(self: *@This()) bool {
         if (self.colnr > 0) return false;
-
-        self.updatePotentialCursorRelocationLine(linenr, self.line_y);
 
         for (self.win.cursor_manager.cursors.values()) |*cursor| {
             const anchor = cursor.activeAnchor(self.win.cursor_manager);
