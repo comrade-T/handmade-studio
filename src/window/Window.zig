@@ -122,9 +122,18 @@ pub fn render(self: *@This(), is_active: bool, mall: *const RenderMall, view: Sc
     renderer.render(colorscheme);
 
     if (is_active) {
-        if (renderer.potential_cursor_relocation_line) |relocation_line| blk: {
-            if (renderer.main_cursor_visibility == .in_view) break :blk;
-            self.cursor_manager.mainCursor().setActiveAnchor(self.cursor_manager, relocation_line, 0);
+        const active_anchor = self.cursor_manager.mainCursor().activeAnchor(self.cursor_manager);
+
+        if (renderer.potential_cursor_relocation_line) |relocation_line| {
+            if (renderer.main_cursor_vertical_visibility != .in_view) {
+                active_anchor.*.line = relocation_line;
+            }
+        }
+
+        if (renderer.potential_cursor_relocation_col) |relocation_col| {
+            if (renderer.main_cursor_horizontal_visibility != .in_view) {
+                active_anchor.*.col = relocation_col;
+            }
         }
     }
 }
@@ -189,9 +198,12 @@ const Renderer = struct {
     last_char_info: LastestRenderedCharInfo = null,
     selection_start_x: ?f32 = null,
 
-    // cursor position related
+    // cursor relocation related
     potential_cursor_relocation_line: ?usize = null,
-    main_cursor_visibility: enum { above, below, in_view } = .below,
+    potential_cursor_relocation_col: ?usize = null,
+    first_in_view_linenr: ?usize = null,
+    main_cursor_vertical_visibility: enum { above, below, in_view } = .below,
+    main_cursor_horizontal_visibility: enum { before, after, in_view } = .after,
 
     ///////////////////////////// initial values
 
@@ -228,26 +240,66 @@ const Renderer = struct {
 
     ///////////////////////////// cursor relocation related
 
-    fn updateMainCursorVisibilityReport(self: *@This(), linenr: usize) void {
+    // vertical
+
+    fn updateMainCursorVerticalVisibilityReport(self: *@This(), linenr: usize) void {
         if (self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager).line == linenr) {
             if (self.line_y < self.view.start.y) {
-                self.main_cursor_visibility = .above;
+                self.main_cursor_vertical_visibility = .above;
                 return;
             }
             if (self.line_y + self.lineHeight() > self.view.end.y) {
-                self.main_cursor_visibility = .below;
+                self.main_cursor_vertical_visibility = .below;
                 return;
             }
-            self.main_cursor_visibility = .in_view;
+            self.main_cursor_vertical_visibility = .in_view;
+            if (self.first_in_view_linenr == null) self.first_in_view_linenr = linenr;
         }
     }
 
     fn updatePotentialCursorRelocationLinenr(self: *@This(), linenr: usize) void {
-        if (self.main_cursor_visibility == .above and
+        if (self.main_cursor_vertical_visibility == .above and
             self.potential_cursor_relocation_line != null) return;
 
         if (self.line_y > self.view.start.y and self.line_y + self.lineHeight() < self.view.end.y) {
             self.potential_cursor_relocation_line = linenr;
+        }
+    }
+
+    // horizontal
+
+    fn updateMainCursorHorizontalVisibilityReport(self: *@This(), char_x: f32, char_width: f32) void {
+        const anchor = self.win.cursor_manager.mainCursor().activeAnchor(self.win.cursor_manager);
+        if (anchor.line == self.linenr and anchor.col == self.colnr) {
+            if (char_x < self.view.start.x) {
+                self.main_cursor_horizontal_visibility = .before;
+                return;
+            }
+            if (char_x + char_width > self.view.end.x) {
+                self.main_cursor_horizontal_visibility = .after;
+                return;
+            }
+            self.main_cursor_horizontal_visibility = .in_view;
+        }
+    }
+
+    fn updatePotentialCursorRelocationColnr(self: *@This(), char_x: f32, char_width: f32) void {
+        if (self.first_in_view_linenr) |first_in_view_linenr| {
+            if (self.linenr != first_in_view_linenr) return;
+        }
+
+        if (self.potential_cursor_relocation_line) |potential_cursor_relocation_line| {
+            if (self.linenr != potential_cursor_relocation_line) return;
+        }
+
+        if (self.potential_cursor_relocation_col != null) {
+            if (self.main_cursor_horizontal_visibility != .after) {
+                return;
+            }
+        }
+
+        if (char_x > self.view.start.x and char_x + char_width < self.view.end.x) {
+            self.potential_cursor_relocation_col = self.colnr;
         }
     }
 
@@ -428,7 +480,8 @@ const Renderer = struct {
             self.linenr = linenr;
             defer self.nextLine();
 
-            self.updateMainCursorVisibilityReport(linenr);
+            // cursor relocation related
+            self.updateMainCursorVerticalVisibilityReport(linenr);
             self.updatePotentialCursorRelocationLinenr(linenr);
 
             if (self.lineYBelowView()) return;
@@ -478,6 +531,10 @@ const Renderer = struct {
 
         const char_width = calculateGlyphWidth(font, font_size, r.code_point, self.default_glyph);
         defer self.char_x += char_width;
+
+        // cursor relocation related
+        self.updateMainCursorHorizontalVisibilityReport(self.char_x, char_width);
+        self.updatePotentialCursorRelocationColnr(self.char_x, char_width);
 
         if (self.charStartsAfterViewEnds()) return .should_break;
         if (self.charStartsBeforeBounds(char_width)) return .should_continue;
@@ -571,6 +628,10 @@ const Renderer = struct {
             for (self.win.cursor_manager.cursors.values()) |*cursor| {
                 const anchor = cursor.activeAnchor(self.win.cursor_manager);
                 if (anchor.line != self.linenr or anchor.col != self.colnr) continue;
+
+                // cursor relocation related
+                self.updateMainCursorHorizontalVisibilityReport(info.x + info.width, info.width);
+                self.updatePotentialCursorRelocationColnr(info.x + info.width, info.width);
 
                 self.render_callbacks.drawRectangle(
                     info.x + info.width,
