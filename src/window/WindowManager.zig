@@ -78,7 +78,7 @@ pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const 
     const window = try handler.spawnWindow(self.a, opts, self.mall);
     try self.wmap.put(self.a, window, handler);
 
-    if (from == .file) try self.fmap.put(self.a, source, handler);
+    if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
 
     if (make_active or self.active_window == null) self.active_window = window;
 }

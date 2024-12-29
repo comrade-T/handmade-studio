@@ -62,7 +62,7 @@ pub fn create(a: Allocator, from: InitFrom, source: []const u8, may_lang_hub: ?*
         .file => {
             assert(may_lang_hub != null);
             if (may_lang_hub) |lang_hub| {
-                self.path = source;
+                self.path = try self.a.dupe(u8, source);
                 try self.initiateTreeSitterForFile(lang_hub);
                 try self.populateCapListWithAllCaptures();
             }
@@ -93,6 +93,7 @@ pub fn destroy(self: *@This()) void {
     self.buf.destroy();
     for (self.cap_list.items) |slice| self.a.free(slice);
     self.cap_list.deinit();
+    if (self.from == .file) self.a.free(self.path);
     self.a.destroy(self);
 }
 
