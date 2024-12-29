@@ -357,13 +357,7 @@ const WindowSourceHandler = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
 
-const RelativeSpawnDirection = enum { left, right, top, bottom };
-const RelativeSpawnResult = struct {
-    width: f32,
-    height: f32,
-    prev_window: ?*Window,
-    direction: RelativeSpawnDirection,
-};
+pub const RelativeSpawnDirection = enum { left, right, top, bottom };
 
 pub fn spawnNewWindowRelativeToActiveWindow(
     self: *@This(),
@@ -372,42 +366,53 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     opts: Window.SpawnOptions,
     direction: RelativeSpawnDirection,
 ) !void {
-    var new_opts = opts;
-    const prev_window = self.active_window;
-    if (self.active_window) |curr| {
-        switch (direction) {
-            .right => {
-                new_opts.pos.x += curr.attr.pos.x + curr.cached.width;
-                new_opts.pos.y += curr.attr.pos.y;
-            },
-            else => unreachable,
-        }
-    }
-    try self.spawnWindow(from, source, new_opts, true);
+    const prev = self.active_window orelse return;
 
+    try self.spawnWindow(from, source, opts, true);
     const new = self.active_window orelse unreachable;
 
-    self.migrateExistingWindows(.{
-        .width = new.cached.width,
-        .height = new.cached.height,
-        .direction = direction,
-        .prev_window = prev_window,
-    });
-}
-
-pub fn migrateExistingWindows(self: *@This(), res: RelativeSpawnResult) void {
-    const prev = res.prev_window orelse return;
-    const new = self.active_window orelse return;
+    switch (direction) {
+        .right => {
+            new.attr.pos.x = prev.attr.pos.x + prev.cached.width;
+            new.attr.pos.y = prev.attr.pos.y;
+        },
+        .left => {
+            new.attr.pos.x = prev.attr.pos.x - new.cached.width;
+            new.attr.pos.y = prev.attr.pos.y;
+        },
+        .bottom => {
+            new.attr.pos.x = prev.attr.pos.x;
+            new.attr.pos.y = prev.attr.pos.y + prev.cached.height;
+        },
+        .top => {
+            new.attr.pos.x = prev.attr.pos.x;
+            new.attr.pos.y = prev.attr.pos.y - new.cached.height;
+        },
+    }
 
     for (self.wmap.keys()) |window| {
         if (window == prev or window == new) continue;
-        switch (res.direction) {
+        switch (direction) {
             .right => {
-                if (window.attr.pos.x > prev.attr.pos.x and
-                    window.verticalIntersect(prev))
-                    window.attr.pos.x += res.width;
+                if (window.attr.pos.x > prev.attr.pos.x and window.verticalIntersect(prev)) {
+                    window.attr.pos.x += new.cached.width;
+                }
             },
-            else => unreachable,
+            .left => {
+                if (window.attr.pos.x < prev.attr.pos.x and
+                    window.verticalIntersect(prev))
+                    window.attr.pos.x -= new.cached.width;
+            },
+            .bottom => {
+                if (window.attr.pos.y > prev.attr.pos.y and
+                    window.horizontalIntersect(prev))
+                    window.attr.pos.x += new.cached.height;
+            },
+            .top => {
+                if (window.attr.pos.y < prev.attr.pos.y and
+                    window.horizontalIntersect(prev))
+                    window.attr.pos.x -= new.cached.height;
+            },
         }
     }
 }

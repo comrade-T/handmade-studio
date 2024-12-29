@@ -542,11 +542,30 @@ pub fn main() anyerror!void {
         .ctx = fuzzy_finder,
         .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
     });
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .v }, .{
-        .f = FuzzyFinder.confirmItemSelectionToTheRight,
-        .ctx = fuzzy_finder,
-        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
-    });
+
+    const RelativeSpawnCb = struct {
+        direction: WindowManager.RelativeSpawnDirection,
+        target: *FuzzyFinder,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.target.spawnRelativeToActiveWindow(self.direction);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.RelativeSpawnDirection) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .direction = direction, .target = target };
+            return ip.Callback{
+                .f = @This().f,
+                .ctx = self,
+                .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
+            };
+        }
+    };
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .right));
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .left_shift, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .left));
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .bottom));
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .left_shift, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .top));
+
     try council.map("fuzzy_finder_insert", &.{.escape}, .{
         .f = FuzzyFinder.hide,
         .ctx = fuzzy_finder,
