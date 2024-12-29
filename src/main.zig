@@ -542,6 +542,11 @@ pub fn main() anyerror!void {
         .ctx = fuzzy_finder,
         .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
     });
+    try council.map("fuzzy_finder_insert", &.{ .left_control, .v }, .{
+        .f = FuzzyFinder.confirmItemSelectionToTheRight,
+        .ctx = fuzzy_finder,
+        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
+    });
     try council.map("fuzzy_finder_insert", &.{.escape}, .{
         .f = FuzzyFinder.hide,
         .ctx = fuzzy_finder,

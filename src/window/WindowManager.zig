@@ -354,3 +354,60 @@ const WindowSourceHandler = struct {
         return window;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
+
+const RelativeSpawnDirection = enum { left, right, top, bottom };
+const RelativeSpawnResult = struct {
+    width: f32,
+    height: f32,
+    prev_window: ?*Window,
+    direction: RelativeSpawnDirection,
+};
+
+pub fn spawnNewWindowRelativeToActiveWindow(
+    self: *@This(),
+    from: WindowSource.InitFrom,
+    source: []const u8,
+    opts: Window.SpawnOptions,
+    direction: RelativeSpawnDirection,
+) !void {
+    var new_opts = opts;
+    const prev_window = self.active_window;
+    if (self.active_window) |curr| {
+        switch (direction) {
+            .right => {
+                new_opts.pos.x += curr.attr.pos.x + curr.cached.width;
+                new_opts.pos.y += curr.attr.pos.y;
+            },
+            else => unreachable,
+        }
+    }
+    try self.spawnWindow(from, source, new_opts, true);
+
+    const new = self.active_window orelse unreachable;
+
+    self.migrateExistingWindows(.{
+        .width = new.cached.width,
+        .height = new.cached.height,
+        .direction = direction,
+        .prev_window = prev_window,
+    });
+}
+
+pub fn migrateExistingWindows(self: *@This(), res: RelativeSpawnResult) void {
+    const prev = res.prev_window orelse return;
+    const new = self.active_window orelse return;
+
+    for (self.wmap.keys()) |window| {
+        if (window == prev or window == new) continue;
+        switch (res.direction) {
+            .right => {
+                if (window.attr.pos.x > prev.attr.pos.x and
+                    window.verticalIntersect(prev))
+                    window.attr.pos.x += res.width;
+            },
+            else => unreachable,
+        }
+    }
+}

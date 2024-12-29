@@ -893,6 +893,22 @@ pub fn calculateGlyphWidth(font: *const Font, font_size: f32, code_point: u21, d
     return width * scale_factor;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Insertsect
+
+pub fn horizontalIntersect(self: *const Window, other: *const Window) bool {
+    return !(self.attr.pos.x > other.attr.pos.x + other.cached.width or
+        self.attr.pos.x + self.cached.width < other.attr.pos.x);
+}
+
+pub fn verticalIntersect(self: *const Window, other: *const Window) bool {
+    return !(self.attr.pos.y > other.attr.pos.y + other.cached.height or
+        self.attr.pos.y + self.cached.height < other.attr.pos.y);
+}
+
+pub fn intersects(self: *const Window, other: *const Window) bool {
+    return horizontalIntersect(self, other) and verticalIntersect(self, other);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
 const Defaults = struct {
