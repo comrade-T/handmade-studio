@@ -132,7 +132,7 @@ pub fn confirmItemSelection(ctx: *anyopaque) !void {
     self.visible = false;
 }
 
-pub fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.RelativeSpawnDirection) !void {
+pub fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) !void {
     assert(self.selection_index <= self.match_list.items.len -| 1);
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];

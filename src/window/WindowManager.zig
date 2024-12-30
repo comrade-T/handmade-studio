@@ -355,16 +355,60 @@ const WindowSourceHandler = struct {
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
+
+pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirection) !void {
+    const curr = self.active_window orelse return;
+    var relative_distance: f32 = std.math.floatMax(f32);
+    var may_candidate: ?*Window = null;
+
+    for (self.wmap.keys()) |window| {
+        if (window == curr) continue;
+        switch (direction) {
+            .right, .left => {
+                const cond = if (direction == .right)
+                    window.attr.pos.x > curr.attr.pos.x
+                else
+                    window.attr.pos.x < curr.attr.pos.x;
+
+                if (cond and window.verticalIntersect(curr)) {
+                    const d = @abs(window.attr.pos.x - curr.attr.pos.x);
+                    if (d < relative_distance) {
+                        may_candidate = window;
+                        relative_distance = d;
+                    }
+                }
+            },
+            .bottom, .top => {
+                const cond = if (direction == .bottom)
+                    window.attr.pos.y > curr.attr.pos.y
+                else
+                    window.attr.pos.y < curr.attr.pos.y;
+
+                if (cond and window.horizontalIntersect(curr)) {
+                    const d = @abs(window.attr.pos.y - curr.attr.pos.y);
+                    if (d < relative_distance) {
+                        may_candidate = window;
+                        relative_distance = d;
+                    }
+                }
+            },
+        }
+    }
+
+    if (may_candidate) |candidate| self.active_window = candidate;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
 
-pub const RelativeSpawnDirection = enum { left, right, top, bottom };
+pub const WindowRelativeDirection = enum { left, right, top, bottom };
 
 pub fn spawnNewWindowRelativeToActiveWindow(
     self: *@This(),
     from: WindowSource.InitFrom,
     source: []const u8,
     opts: Window.SpawnOptions,
-    direction: RelativeSpawnDirection,
+    direction: WindowRelativeDirection,
 ) !void {
     const prev = self.active_window orelse return;
 

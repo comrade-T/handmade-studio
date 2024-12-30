@@ -283,6 +283,25 @@ pub fn main() anyerror!void {
 
     try council.map("normal", &.{ .left_control, .c }, try CenterAtCb.init(council.arena.allocator(), &wm));
 
+    const MakeClosestWindowActiveCb = struct {
+        direction: WindowManager.WindowRelativeDirection,
+        target: *WindowManager,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.target.makeClosestWindowActive(self.direction);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .direction = direction, .target = target };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try council.map("normal", &.{ .left_control, .h }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .left));
+    try council.map("normal", &.{ .left_control, .l }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .right));
+    try council.map("normal", &.{ .left_control, .k }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .top));
+    try council.map("normal", &.{ .left_control, .j }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .bottom));
+
     ///////////////////////////// Visual Mode
 
     try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
@@ -544,13 +563,13 @@ pub fn main() anyerror!void {
     });
 
     const RelativeSpawnCb = struct {
-        direction: WindowManager.RelativeSpawnDirection,
+        direction: WindowManager.WindowRelativeDirection,
         target: *FuzzyFinder,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             try self.target.spawnRelativeToActiveWindow(self.direction);
         }
-        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.RelativeSpawnDirection) !ip.Callback {
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
             const self = try allocator.create(@This());
             const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
             self.* = .{ .direction = direction, .target = target };
@@ -563,8 +582,10 @@ pub fn main() anyerror!void {
     };
     try council.map("fuzzy_finder_insert", &.{ .left_control, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .right));
     try council.map("fuzzy_finder_insert", &.{ .left_control, .left_shift, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .left));
+    try council.map("fuzzy_finder_insert", &.{ .left_shift, .left_control, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .left));
     try council.map("fuzzy_finder_insert", &.{ .left_control, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .bottom));
     try council.map("fuzzy_finder_insert", &.{ .left_control, .left_shift, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .top));
+    try council.map("fuzzy_finder_insert", &.{ .left_shift, .left_control, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .top));
 
     try council.map("fuzzy_finder_insert", &.{.escape}, .{
         .f = FuzzyFinder.hide,
