@@ -162,7 +162,7 @@ fn keepSelectionIndexInBound(self: *@This()) void {
 
 pub fn render(self: *const @This()) void {
     if (!self.visible) return;
-    self.input.window.render(false, self.mall);
+    self.input.window.render(true, self.mall);
     self.renderResults(self.mall.rcb);
 }
 

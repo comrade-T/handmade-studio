@@ -115,6 +115,7 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
 
     var renderer = Renderer{
         .win = self,
+        .win_is_active = is_active,
         .view = view,
         .target_view = target_view,
         .default_font = default_font,
@@ -197,6 +198,7 @@ const Renderer = struct {
     win: *Window,
     view: ScreenView,
     target_view: ScreenView,
+    win_is_active: bool,
 
     default_font: *const FontStore.Font,
     default_glyph: FontStore.Font.GlyphData,
@@ -610,6 +612,13 @@ const Renderer = struct {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// render cursor & visual range
 
+    fn getCursorColor(self: *@This()) u32 {
+        return if (self.win_is_active)
+            self.win.defaults.main_cursor_when_active
+        else
+            self.win.defaults.main_cursor_when_inactive;
+    }
+
     fn updateLastCharInfo(self: *@This(), font_size: f32, char_width: f32) void {
         self.last_char_info = .{ .x = self.char_x, .width = char_width, .font_size = font_size };
     }
@@ -624,7 +633,7 @@ const Renderer = struct {
                 self.char_y,
                 last_char_info.width,
                 last_char_info.font_size,
-                self.win.defaults.color,
+                self.getCursorColor(),
             );
         }
     }
@@ -695,7 +704,7 @@ const Renderer = struct {
                     self.line_y,
                     info.width,
                     info.font_size,
-                    self.win.defaults.color,
+                    self.getCursorColor(),
                 );
             }
             return true;
@@ -716,7 +725,7 @@ const Renderer = struct {
             self.updateMainCursorHorizontalVisibilityReport(self.char_x + char_width, char_width);
             self.updatePotentialCursorRelocationColnr(self.char_x + char_width, char_width);
 
-            self.render_callbacks.drawRectangle(self.char_x, self.line_y, char_width, self.lineHeight(), self.win.defaults.color);
+            self.render_callbacks.drawRectangle(self.char_x, self.line_y, char_width, self.lineHeight(), self.getCursorColor());
         }
 
         return true;
@@ -914,6 +923,8 @@ pub fn intersects(self: *const Window, other: *const Window) bool {
 const Defaults = struct {
     font_size: f32 = 40,
     color: u32 = 0xF5F5F5F5,
+    main_cursor_when_active: u32 = 0xF5F5F5F5,
+    main_cursor_when_inactive: u32 = 0xF5F5F555,
     selection_color: u32 = 0xF5F5F533,
 };
 
