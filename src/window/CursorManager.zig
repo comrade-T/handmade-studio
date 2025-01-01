@@ -28,6 +28,11 @@ const code_point = @import("code_point");
 const RopeMan = @import("RopeMan");
 const SeekCallback = RopeMan.SeekCallback;
 
+const Limit = struct {
+    start_line: u32 = 0,
+    end_line: u32 = std.math.maxInt(u32),
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// CursorManager
 
 a: Allocator,
@@ -40,6 +45,8 @@ cursor_id_count: usize = 0,
 cursors: CursorMap,
 
 just_moved: bool = false,
+
+limit: Limit = .{},
 
 pub fn create(a: Allocator) !*CursorManager {
     var self = try a.create(@This());
@@ -151,6 +158,12 @@ pub fn produceInSingleQuoteRanges(self: *@This(), a: Allocator, ropeman: *const 
 
 pub fn mainCursor(self: *@This()) *Cursor {
     return self.cursors.getPtr(self.main_cursor_id) orelse @panic("Unable to get main cursor");
+}
+
+///////////////////////////// Set Limit
+
+pub fn setLimit(self: *@This(), start_line: u32, end_line: f32) void {
+    self.limit = Limit{ .start_line = start_line, .end_line = end_line };
 }
 
 ///////////////////////////// Mode Activations
@@ -352,27 +365,27 @@ pub fn enterAFTERInsertMode(self: *@This(), ropeman: *const RopeMan) void {
 /////////////////////////////
 
 pub fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveUp);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveUp, self.limit);
 }
 
 pub fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveDown);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveDown, self.limit);
 }
 
 pub fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveRight);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveRight, self.limit);
 }
 
 pub fn moveLeft(self: *@This(), by: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveLeft);
+    self.moveCursorWithHJKLCallback(by, ropeman, Anchor.moveLeft, self.limit);
 }
 
 pub fn forwardWord(self: *@This(), start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, count: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, ropeman, Anchor.forwardWord);
+    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, ropeman, Anchor.forwardWord, self.limit);
 }
 
 pub fn backwardsWord(self: *@This(), start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, count: usize, ropeman: *const RopeMan) void {
-    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, ropeman, Anchor.backwardsWord);
+    self.moveCursorWithVimCallback(self.a, count, start_or_end, boundary_kind, ropeman, Anchor.backwardsWord, self.limit);
 }
 
 test moveUp {
@@ -746,6 +759,7 @@ const VimCallback = *const fn (
     start_or_end: Anchor.StartOrEnd,
     boundary_kind: Anchor.BoundaryKind,
     ropeman: *const RopeMan,
+    limit: Limit,
 ) void;
 
 fn moveCursorWithVimCallback(
@@ -756,6 +770,7 @@ fn moveCursorWithVimCallback(
     boundary_kind: Anchor.BoundaryKind,
     ropeman: *const RopeMan,
     cb: VimCallback,
+    limit: Limit,
 ) void {
     defer self.just_moved = true;
 
@@ -763,12 +778,12 @@ fn moveCursorWithVimCallback(
     switch (self.uniform_mode) {
         .uniformed => {
             for (self.cursors.values()) |*cursor| {
-                cb(cursor.activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman);
+                cb(cursor.activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman, limit);
                 cursor.ensureAnchorOrder(self);
             }
         },
         .single => {
-            cb(self.mainCursor().activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman);
+            cb(self.mainCursor().activeAnchor(self), a, count, start_or_end, boundary_kind, ropeman, limit);
             self.mainCursor().ensureAnchorOrder(self);
         },
     }
@@ -777,21 +792,21 @@ fn moveCursorWithVimCallback(
     self.mergeCursorsIfOverlap();
 }
 
-const HJKLCallback = *const fn (anchor: *Anchor, count: usize, ropeman: *const RopeMan) void;
+const HJKLCallback = *const fn (anchor: *Anchor, count: usize, ropeman: *const RopeMan, limit: Limit) void;
 
-fn moveCursorWithHJKLCallback(self: *@This(), count: usize, ropeman: *const RopeMan, cb: HJKLCallback) void {
+fn moveCursorWithHJKLCallback(self: *@This(), count: usize, ropeman: *const RopeMan, cb: HJKLCallback, limit: Limit) void {
     defer self.just_moved = true;
 
     // move all cursors
     switch (self.uniform_mode) {
         .uniformed => {
             for (self.cursors.values()) |*cursor| {
-                cb(cursor.activeAnchor(self), count, ropeman);
+                cb(cursor.activeAnchor(self), count, ropeman, limit);
                 cursor.ensureAnchorOrder(self);
             }
         },
         .single => {
-            cb(self.mainCursor().activeAnchor(self), count, ropeman);
+            cb(self.mainCursor().activeAnchor(self), count, ropeman, limit);
             self.mainCursor().ensureAnchorOrder(self);
         },
     }
@@ -1142,46 +1157,54 @@ const Anchor = struct {
 
     // hjkl
 
-    fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveUp(self: *@This(), by: usize, ropeman: *const RopeMan, limit: Limit) void {
         self.line -|= by;
         self.restrictCol(ropeman);
+        self.restrictToLimit(limit);
     }
 
-    fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveDown(self: *@This(), by: usize, ropeman: *const RopeMan, limit: Limit) void {
         self.line += by;
         const nol = ropeman.getNumOfLines();
         if (self.line >= nol) self.line = nol -| 1;
         self.restrictCol(ropeman);
+        self.restrictToLimit(limit);
     }
 
-    fn moveLeft(self: *@This(), by: usize, _: *const RopeMan) void {
+    fn moveLeft(self: *@This(), by: usize, _: *const RopeMan, limit: Limit) void {
         self.col -|= by;
+        self.restrictToLimit(limit);
     }
 
-    fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveRight(self: *@This(), by: usize, ropeman: *const RopeMan, limit: Limit) void {
         self.col += by;
         self.restrictCol(ropeman);
+        self.restrictToLimit(limit);
     }
 
     // AFTER Insert Mode
 
-    fn moveRightForAFTERInsertMode(self: *@This(), by: usize, ropeman: *const RopeMan) void {
+    fn moveRightForAFTERInsertMode(self: *@This(), by: usize, ropeman: *const RopeMan, limit: Limit) void {
         self.col += by;
         self.restrictColNoc(ropeman);
+        self.restrictToLimit(limit);
     }
 
     // bol / eol
 
-    fn moveToBeginningOfLine(self: *@This(), _: usize, _: *const RopeMan) void {
+    fn moveToBeginningOfLine(self: *@This(), _: usize, _: *const RopeMan, limit: Limit) void {
         self.col = 0;
+        self.restrictToLimit(limit);
     }
 
-    fn moveToEndOfLine(self: *@This(), _: usize, ropeman: *const RopeMan) void {
+    fn moveToEndOfLine(self: *@This(), _: usize, ropeman: *const RopeMan, limit: Limit) void {
         self.col = ropeman.getNumOfCharsInLine(self.line) -| 1;
+        self.restrictToLimit(limit);
     }
 
-    fn moveToFirstNonSpaceCharacterOfLine(self: *@This(), _: usize, ropeman: *const RopeMan) void {
+    fn moveToFirstNonSpaceCharacterOfLine(self: *@This(), _: usize, ropeman: *const RopeMan, limit: Limit) void {
         self.col = ropeman.getColnrOfFirstNonSpaceCharInLine(self.line);
+        self.restrictToLimit(limit);
     }
 
     // restrictCol
@@ -1196,10 +1219,28 @@ const Anchor = struct {
         if (self.col >= noc) self.col = noc;
     }
 
+    // restrictToLimit
+
+    fn restrictToLimit(self: *@This(), limit: Limit) void {
+        self.line = @max(self.line, limit.start_line);
+        self.line = @min(self.line, limit.end_line);
+    }
+
     ///////////////////////////// b/B
 
-    pub fn backwardsWord(self: *@This(), a: Allocator, count: usize, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
-        for (0..count) |_| self.backwardsWordSingleTime(a, start_or_end, boundary_kind, ropeman);
+    pub fn backwardsWord(
+        self: *@This(),
+        a: Allocator,
+        count: usize,
+        start_or_end: StartOrEnd,
+        boundary_kind: BoundaryKind,
+        ropeman: *const RopeMan,
+        limit: Limit,
+    ) void {
+        for (0..count) |_| {
+            self.backwardsWordSingleTime(a, start_or_end, boundary_kind, ropeman);
+            self.restrictToLimit(limit);
+        }
     }
 
     fn backwardsWordSingleTime(self: *@This(), a: Allocator, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
@@ -1319,8 +1360,19 @@ const Anchor = struct {
 
     ///////////////////////////// w/W e/E
 
-    pub fn forwardWord(self: *@This(), a: Allocator, count: usize, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
-        for (0..count) |_| self.forwardWordSingleTime(a, start_or_end, boundary_kind, ropeman);
+    pub fn forwardWord(
+        self: *@This(),
+        a: Allocator,
+        count: usize,
+        start_or_end: StartOrEnd,
+        boundary_kind: BoundaryKind,
+        ropeman: *const RopeMan,
+        limit: Limit,
+    ) void {
+        for (0..count) |_| {
+            self.forwardWordSingleTime(a, start_or_end, boundary_kind, ropeman);
+            self.restrictToLimit(limit);
+        }
     }
 
     fn forwardWordSingleTime(self: *@This(), a: Allocator, start_or_end: StartOrEnd, boundary_kind: BoundaryKind, ropeman: *const RopeMan) void {
@@ -1392,51 +1444,52 @@ test "Anchor - basic hjkl movements" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "hi\nworld\nhello\nx");
     defer ropeman.deinit();
     var c = Anchor{ .line = 0, .col = 0 };
+    const no_limit = Limit{};
 
     // moveRight()
     {
-        c.moveRight(1, &ropeman);
+        c.moveRight(1, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 1 }, c);
 
-        c.moveRight(2, &ropeman);
+        c.moveRight(2, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 1 }, c);
 
-        c.moveRight(100, &ropeman);
+        c.moveRight(100, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 1 }, c);
     }
 
     // moveLeft()
     {
-        c.moveLeft(1, &ropeman);
+        c.moveLeft(1, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 0 }, c);
-        c.moveLeft(100, &ropeman);
+        c.moveLeft(100, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 0 }, c);
     }
 
     // moveDown()
     {
-        c.moveRight(100, &ropeman);
+        c.moveRight(100, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 1 }, c);
 
-        c.moveDown(1, &ropeman);
+        c.moveDown(1, &ropeman, no_limit);
         try eq(Anchor{ .line = 1, .col = 1 }, c);
 
-        c.moveDown(1, &ropeman);
+        c.moveDown(1, &ropeman, no_limit);
         try eq(Anchor{ .line = 2, .col = 1 }, c);
 
-        c.moveDown(100, &ropeman);
+        c.moveDown(100, &ropeman, no_limit);
         try eq(Anchor{ .line = 3, .col = 0 }, c);
     }
 
     // moveUp()
     {
-        c.moveUp(1, &ropeman);
+        c.moveUp(1, &ropeman, no_limit);
         try eq(Anchor{ .line = 2, .col = 0 }, c);
 
-        c.moveRight(100, &ropeman);
+        c.moveRight(100, &ropeman, no_limit);
         try eq(Anchor{ .line = 2, .col = 4 }, c);
 
-        c.moveUp(100, &ropeman);
+        c.moveUp(100, &ropeman, no_limit);
         try eq(Anchor{ .line = 0, .col = 1 }, c);
     }
 }
@@ -1566,7 +1619,7 @@ test "Anchor - backwardsWord()" {
 
 fn testBackwardsWord(anchor: *Anchor, start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, ropeman: *const RopeMan, expected: []const Anchor) !void {
     for (expected) |e| {
-        anchor.backwardsWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman);
+        anchor.backwardsWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman, Limit{});
         try eq(e, anchor.*);
     }
 }
@@ -1717,7 +1770,7 @@ test "Anchor - forwardWord()" {
 
 fn testForwardWord(anchor: *Anchor, start_or_end: Anchor.StartOrEnd, boundary_kind: Anchor.BoundaryKind, ropeman: *const RopeMan, expected: []const Anchor) !void {
     for (expected) |e| {
-        anchor.forwardWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman);
+        anchor.forwardWord(testing_allocator, 1, start_or_end, boundary_kind, ropeman, Limit{});
         try eq(e, anchor.*);
     }
 }
