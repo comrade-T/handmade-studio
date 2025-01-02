@@ -138,6 +138,12 @@ pub fn main() anyerror!void {
     //     .subscribed_style_sets = &.{0},
     // }, true);
 
+    try wm.spawnWindow(.file, "src/window/fixtures/dummy.zig", .{
+        .pos = .{ .x = 100, .y = 100 },
+        .limit = .{ .start_line = 3, .end_line = 5 },
+        .subscribed_style_sets = &.{0},
+    }, true);
+
     // ------------------------------------
 
     // // y offset

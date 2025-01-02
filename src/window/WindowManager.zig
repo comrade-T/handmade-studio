@@ -351,6 +351,10 @@ const WindowSourceHandler = struct {
     fn spawnWindow(self: *@This(), a: Allocator, opts: Window.SpawnOptions, style_store: *const RenderMall) !*Window {
         const window = try Window.create(a, self.source, opts, style_store);
         try self.windows.append(a, window);
+
+        // quick solution for limiting the cursor to the window limit
+        window.cursor_manager.moveUp(1, &self.source.buf.ropeman);
+
         return window;
     }
 };

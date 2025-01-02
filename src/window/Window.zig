@@ -71,6 +71,11 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const 
     // this must be called last
     self.cached = try WindowCache.init(self.a, self, mall);
 
+    if (opts.limit) |limit| {
+        self.attr.limit = limit;
+        self.cursor_manager.setLimit(limit.start_line, limit.end_line);
+    }
+
     return self;
 }
 
@@ -93,6 +98,10 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
 
     const render_zone = ztracy.ZoneNC(@src(), "Window.render()", 0x00AAFF);
     defer render_zone.End();
+
+    ///////////////////////////// Sanity Checks
+
+    assert(!(self.attr.limit != null and self.attr.bounded));
 
     ///////////////////////////// Temporary Setup
 
@@ -357,6 +366,11 @@ const Renderer = struct {
 
     ///////////////////////////// checkers
 
+    fn withinLimit(self: *@This()) bool {
+        const limit = self.win.attr.limit orelse return true;
+        return self.linenr >= limit.start_line and self.linenr <= limit.end_line;
+    }
+
     fn lineYAboveView(self: *@This()) bool {
         if (!self.win.attr.culling) return false;
 
@@ -537,6 +551,12 @@ const Renderer = struct {
 
         for (0..self.win.ws.buf.ropeman.getNumOfLines()) |linenr| {
             self.linenr = linenr;
+
+            if (self.win.attr.limit) |limit| {
+                if (linenr < limit.start_line) continue;
+                if (linenr > limit.end_line) break;
+            }
+
             defer self.nextLine();
 
             // cursor relocation related
@@ -752,6 +772,36 @@ fn updateCacheLines(self: *@This(), ri: WindowSource.ReplaceInfo, mall: *const R
     }
     self.cached.updateWidthHeight();
     try self.cached.line_info.replaceRange(self.a, ri.replace_start, ri.replace_len, replacements.items);
+
+    // limit related
+    if (self.attr.limit) |limit| {
+        self.attr.limit = getUpdatedLimits(limit, ri);
+        self.cursor_manager.setLimit(self.attr.limit.?.start_line, self.attr.limit.?.end_line);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Update Limits
+
+fn getUpdatedLimits(curr_: ?CursorManager.Limit, ri: WindowSource.ReplaceInfo) ?CursorManager.Limit {
+    const curr = curr_ orelse return null;
+    const line_number_deficit = @as(i64, @intCast(ri.end_line + 1)) - @as(i64, @intCast(ri.start_line)) - @as(i64, @intCast(ri.replace_len));
+
+    const totally_above = ri.start_line < curr.start_line and ri.end_line < curr.end_line;
+    if (totally_above) {
+        return CursorManager.Limit{
+            .start_line = @intCast(@as(i64, @intCast(curr.start_line)) + line_number_deficit),
+            .end_line = @intCast(@as(i64, @intCast(curr.end_line)) + line_number_deficit),
+        };
+    }
+
+    if (ri.start_line >= curr.start_line and ri.end_line >= curr.end_line) {
+        return CursorManager.Limit{
+            .start_line = curr.start_line,
+            .end_line = @intCast(@as(i64, @intCast(curr.end_line)) + line_number_deficit),
+        };
+    }
+
+    return curr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowCache
@@ -933,6 +983,7 @@ pub const SpawnOptions = struct {
     pos: Attributes.Position = .{},
     bounds: ?Attributes.Bounds = null,
     padding: ?Attributes.Padding = null,
+    limit: ?CursorManager.Limit = null,
     defaults: Defaults = Defaults{},
 
     subscribed_style_sets: ?[]const u16 = null,
@@ -944,6 +995,7 @@ const Attributes = struct {
     padding: Padding,
     bounds: Bounds,
     bounded: bool,
+    limit: ?CursorManager.Limit = null,
 
     const Position = struct {
         x: f32 = 0,

@@ -28,7 +28,7 @@ const code_point = @import("code_point");
 const RopeMan = @import("RopeMan");
 const SeekCallback = RopeMan.SeekCallback;
 
-const Limit = struct {
+pub const Limit = struct {
     start_line: u32 = 0,
     end_line: u32 = std.math.maxInt(u32),
 };
@@ -162,7 +162,7 @@ pub fn mainCursor(self: *@This()) *Cursor {
 
 ///////////////////////////// Set Limit
 
-pub fn setLimit(self: *@This(), start_line: u32, end_line: f32) void {
+pub fn setLimit(self: *@This(), start_line: u32, end_line: u32) void {
     self.limit = Limit{ .start_line = start_line, .end_line = end_line };
 }
 
@@ -345,21 +345,21 @@ fn eqCursor(expected: struct { usize, usize, usize, usize }, cursor: Cursor) !vo
 ////////////////////////////////////////////////////////////////////////////////////////////// Movement
 
 pub fn moveToBeginningOfLine(self: *@This(), ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToBeginningOfLine);
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToBeginningOfLine, self.limit);
 }
 
 pub fn moveToEndOfLine(self: *@This(), ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToEndOfLine);
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToEndOfLine, self.limit);
 }
 
 pub fn moveToFirstNonSpaceCharacterOfLine(self: *@This(), ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToFirstNonSpaceCharacterOfLine);
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveToFirstNonSpaceCharacterOfLine, self.limit);
 }
 
 /////////////////////////////
 
 pub fn enterAFTERInsertMode(self: *@This(), ropeman: *const RopeMan) void {
-    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveRightForAFTERInsertMode);
+    self.moveCursorWithHJKLCallback(1, ropeman, Anchor.moveRightForAFTERInsertMode, self.limit);
 }
 
 /////////////////////////////
@@ -1222,8 +1222,14 @@ const Anchor = struct {
     // restrictToLimit
 
     fn restrictToLimit(self: *@This(), limit: Limit) void {
-        self.line = @max(self.line, limit.start_line);
-        self.line = @min(self.line, limit.end_line);
+        if (self.line < limit.start_line) {
+            self.line = limit.start_line;
+            return;
+        }
+        if (self.line > limit.end_line) {
+            self.line = limit.end_line;
+            return;
+        }
     }
 
     ///////////////////////////// b/B
