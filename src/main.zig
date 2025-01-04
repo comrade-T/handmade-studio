@@ -286,8 +286,27 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-
     try council.map("normal", &.{ .left_control, .c }, try CenterAtCb.init(council.arena.allocator(), &wm));
+
+    const MoveByCb = struct {
+        target: *WindowManager,
+        x: f32,
+        y: f32,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.moveBy(self.x, self.y);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x: f32, y: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .x = x, .y = y };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try council.map("normal", &.{ .m, .a }, try MoveByCb.init(council.arena.allocator(), &wm, -100, 0));
+    try council.map("normal", &.{ .m, .d }, try MoveByCb.init(council.arena.allocator(), &wm, 100, 0));
+    try council.map("normal", &.{ .m, .w }, try MoveByCb.init(council.arena.allocator(), &wm, 0, -100));
+    try council.map("normal", &.{ .m, .s }, try MoveByCb.init(council.arena.allocator(), &wm, 0, 100));
 
     const MakeClosestWindowActiveCb = struct {
         direction: WindowManager.WindowRelativeDirection,

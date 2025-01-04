@@ -118,6 +118,12 @@ pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
     active_window.centerAt(center_x, center_y);
 }
 
+pub fn moveBy(self: *@This(), x: f32, y: f32) void {
+    const active_window = self.active_window orelse return;
+    active_window.attr.pos.x += x;
+    active_window.attr.pos.y += y;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
 pub fn deleteRanges(self: *@This(), kind: WindowSource.DeleteRangesKind) !void {
