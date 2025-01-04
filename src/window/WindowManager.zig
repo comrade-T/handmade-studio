@@ -426,47 +426,50 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     try self.spawnWindow(from, source, opts, true);
     const new = self.active_window orelse unreachable;
 
+    var new_x: f32 = new.attr.target_pos.x;
+    var new_y: f32 = new.attr.target_pos.y;
     switch (direction) {
         .right => {
-            new.attr.pos.x = prev.attr.pos.x + prev.cached.width;
-            new.attr.pos.y = prev.attr.pos.y;
+            new_x = prev.attr.pos.x + prev.cached.width;
+            new_y = prev.attr.pos.y;
         },
         .left => {
-            new.attr.pos.x = prev.attr.pos.x - new.cached.width;
-            new.attr.pos.y = prev.attr.pos.y;
+            new_x = prev.attr.pos.x - new.cached.width;
+            new_y = prev.attr.pos.y;
         },
         .bottom => {
-            new.attr.pos.x = prev.attr.pos.x;
-            new.attr.pos.y = prev.attr.pos.y + prev.cached.height;
+            new_x = prev.attr.pos.x;
+            new_y = prev.attr.pos.y + prev.cached.height;
         },
         .top => {
-            new.attr.pos.x = prev.attr.pos.x;
-            new.attr.pos.y = prev.attr.pos.y - new.cached.height;
+            new_x = prev.attr.pos.x;
+            new_y = prev.attr.pos.y - new.cached.height;
         },
     }
+    new.setPosition(new_x, new_y);
 
     for (self.wmap.keys()) |window| {
         if (window == prev or window == new) continue;
         switch (direction) {
             .right => {
                 if (window.attr.pos.x > prev.attr.pos.x and window.verticalIntersect(prev)) {
-                    window.attr.pos.x += new.cached.width;
+                    window.moveBy(new.cached.width, 0);
                 }
             },
             .left => {
                 if (window.attr.pos.x < prev.attr.pos.x and
                     window.verticalIntersect(prev))
-                    window.attr.pos.x -= new.cached.width;
+                    window.moveBy(-new.cached.width, 0);
             },
             .bottom => {
                 if (window.attr.pos.y > prev.attr.pos.y and
                     window.horizontalIntersect(prev))
-                    window.attr.pos.x += new.cached.height;
+                    window.moveBy(0, new.cached.height);
             },
             .top => {
                 if (window.attr.pos.y < prev.attr.pos.y and
                     window.horizontalIntersect(prev))
-                    window.attr.pos.x -= new.cached.height;
+                    window.moveBy(0, -new.cached.height);
             },
         }
     }

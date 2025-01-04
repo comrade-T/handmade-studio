@@ -106,6 +106,11 @@ pub fn moveBy(self: *@This(), x: f32, y: f32) void {
     self.attr.target_pos.y += y;
 }
 
+pub fn setPosition(self: *@This(), x: f32, y: f32) void {
+    self.attr.target_pos.x = x;
+    self.attr.target_pos.y = y;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
