@@ -269,7 +269,7 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    // center
+    ///////////////////////////// Layout Related
 
     const CenterAtCb = struct {
         target: *WindowManager,
@@ -327,7 +327,27 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_control, .k }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .top));
     try council.map("normal", &.{ .left_control, .j }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .bottom));
 
-    ///////////////////////////// Visual Mode
+    ///////////////////////////// Spawn Blank Window
+
+    const SpawnBlankWindowCb = struct {
+        direction: WindowManager.WindowRelativeDirection,
+        target: *WindowManager,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.target.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .direction = direction, .target = target };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .right));
+    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .left));
+    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .left));
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Visual Mode
 
     try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
 
@@ -353,7 +373,7 @@ pub fn main() anyerror!void {
     try council.map("visual", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = &wm });
     try council.map("visual", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
 
-    ///////////////////////////// Insert Mode
+    ////////////////////////////////////////////////////////////////////////////////////////////// Insert Mode
 
     try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode_i, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
     try council.map("normal", &.{.a}, .{ .f = WindowManager.enterInsertMode_a, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });

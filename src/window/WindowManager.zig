@@ -59,49 +59,6 @@ pub fn deinit(self: *@This()) void {
     self.wmap.deinit(self.a);
 }
 
-pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions, make_active: bool) !void {
-
-    // if file path exists in fmap
-    if (from == .file) {
-        if (self.fmap.get(source)) |handler| {
-            const window = try handler.spawnWindow(self.a, opts, self.mall);
-            try self.wmap.put(self.a, window, handler);
-            if (make_active or self.active_window == null) self.active_window = window;
-            return;
-        }
-    }
-
-    // spawn from scratch
-    try self.handlers.append(self.a, try WindowSourceHandler.create(self, from, source, self.lang_hub));
-    var handler = self.handlers.getLast();
-
-    const window = try handler.spawnWindow(self.a, opts, self.mall);
-    try self.wmap.put(self.a, window, handler);
-
-    if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
-
-    if (make_active or self.active_window == null) self.active_window = window;
-}
-
-test spawnWindow {
-    var lang_hub = try LangHub.init(testing_allocator);
-    defer lang_hub.deinit();
-
-    const style_store = try RenderMall.createStyleStoreForTesting(testing_allocator);
-    defer RenderMall.freeTestStyleStore(testing_allocator, style_store);
-
-    {
-        var wm = try WindowManager.init(testing_allocator, &lang_hub, style_store);
-        defer wm.deinit();
-
-        // spawn .string Window
-        try wm.spawnWindow(.string, "hello world", .{});
-        try eq(1, wm.handlers.items.len);
-        try eq(1, wm.wmap.values().len);
-        try eq(0, wm.fmap.values().len);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This()) void {
@@ -407,6 +364,51 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
     }
 
     if (may_candidate) |candidate| self.active_window = candidate;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Spawn
+
+pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions, make_active: bool) !void {
+
+    // if file path exists in fmap
+    if (from == .file) {
+        if (self.fmap.get(source)) |handler| {
+            const window = try handler.spawnWindow(self.a, opts, self.mall);
+            try self.wmap.put(self.a, window, handler);
+            if (make_active or self.active_window == null) self.active_window = window;
+            return;
+        }
+    }
+
+    // spawn from scratch
+    try self.handlers.append(self.a, try WindowSourceHandler.create(self, from, source, self.lang_hub));
+    var handler = self.handlers.getLast();
+
+    const window = try handler.spawnWindow(self.a, opts, self.mall);
+    try self.wmap.put(self.a, window, handler);
+
+    if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
+
+    if (make_active or self.active_window == null) self.active_window = window;
+}
+
+test spawnWindow {
+    var lang_hub = try LangHub.init(testing_allocator);
+    defer lang_hub.deinit();
+
+    const style_store = try RenderMall.createStyleStoreForTesting(testing_allocator);
+    defer RenderMall.freeTestStyleStore(testing_allocator, style_store);
+
+    {
+        var wm = try WindowManager.init(testing_allocator, &lang_hub, style_store);
+        defer wm.deinit();
+
+        // spawn .string Window
+        try wm.spawnWindow(.string, "hello world", .{});
+        try eq(1, wm.handlers.items.len);
+        try eq(1, wm.wmap.values().len);
+        try eq(0, wm.fmap.values().len);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
