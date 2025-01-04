@@ -77,8 +77,7 @@ pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
 
 pub fn moveBy(self: *@This(), x: f32, y: f32) void {
     const active_window = self.active_window orelse return;
-    active_window.attr.pos.x += x;
-    active_window.attr.pos.y += y;
+    active_window.moveBy(x, y);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete

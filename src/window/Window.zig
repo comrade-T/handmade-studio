@@ -56,7 +56,10 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const 
         .ws = ws,
         .attr = .{
             .culling = opts.culling,
+
             .pos = opts.pos,
+            .target_pos = opts.pos,
+
             .padding = if (opts.padding) |p| p else Attributes.Padding{},
             .bounds = if (opts.bounds) |b| b else Attributes.Bounds{},
             .bounded = if (opts.bounds) |_| true else false,
@@ -98,6 +101,11 @@ pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
     self.attr.pos = .{ .x = x, .y = y };
 }
 
+pub fn moveBy(self: *@This(), x: f32, y: f32) void {
+    self.attr.target_pos.x += x;
+    self.attr.target_pos.y += y;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
@@ -110,6 +118,10 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
     ///////////////////////////// Sanity Checks
 
     assert(!(self.attr.limit != null and self.attr.bounded));
+
+    ///////////////////////////// Animation Updates
+
+    self.attr.pos.update(self.attr.target_pos);
 
     ///////////////////////////// Temporary Setup
 
@@ -309,7 +321,10 @@ pub const SpawnOptions = struct {
 
 const Attributes = struct {
     culling: bool = true,
+
     pos: Position,
+    target_pos: Attributes.Position = .{},
+
     padding: Padding,
     bounds: Bounds,
     bounded: bool,
@@ -318,6 +333,12 @@ const Attributes = struct {
     const Position = struct {
         x: f32 = 0,
         y: f32 = 0,
+        lerp_time: f32 = 1,
+
+        fn update(self: *@This(), target: Position) void {
+            self.x = RenderMall.lerp(self.x, target.x, self.lerp_time);
+            self.y = RenderMall.lerp(self.y, target.y, self.lerp_time);
+        }
     };
 
     const Bounds = struct {
