@@ -56,7 +56,7 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Camera2D
 
-    var smooth_cam = Smooth2DCamera{};
+    var smooth_cam = Smooth2DCamera{ .damp_target = false, .damp_zoom = false };
 
     ///////////////////////////// GPA
 
@@ -486,10 +486,10 @@ pub fn main() anyerror!void {
     try council.map("anchor_picker", &.{ .z, .space, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.25, false));
 
     try council.mapUpNDown("normal", &.{ .z, .x }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = &anchor_picker, .up_ctx = &anchor_picker });
-    try council.map("normal", &.{ .z, .x, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.9, true));
-    try council.map("normal", &.{ .z, .x, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.1, true));
-    try council.map("normal", &.{ .z, .x, .space, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.8, false));
-    try council.map("normal", &.{ .z, .x, .space, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.25, false));
+    try council.map("normal", &.{ .z, .x, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.8, false));
+    try council.map("normal", &.{ .z, .x, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.25, false));
+    try council.map("normal", &.{ .z, .x, .space, .j }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 0.9, true));
+    try council.map("normal", &.{ .z, .x, .space, .k }, try AnchorPickerZoomCb.init(council.arena.allocator(), &anchor_picker, 1.1, true));
 
     /////////////////////////////
 
@@ -514,31 +514,31 @@ pub fn main() anyerror!void {
         }
     };
 
-    try council.map("normal", &.{ .z, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, -100, true));
-    try council.map("normal", &.{ .z, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, 100, true));
-    try council.map("normal", &.{ .z, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 0, true));
-    try council.map("normal", &.{ .z, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 0, true));
-    try council.map("normal", &.{ .z, .k, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, true));
-    try council.map("normal", &.{ .z, .k, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, true));
-    try council.map("normal", &.{ .z, .j, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, true));
-    try council.map("normal", &.{ .z, .j, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, true));
-    try council.map("normal", &.{ .z, .h, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, true));
-    try council.map("normal", &.{ .z, .h, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, true));
-    try council.map("normal", &.{ .z, .l, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, true));
-    try council.map("normal", &.{ .z, .l, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, true));
+    try council.map("normal", &.{ .z, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, -100, false));
+    try council.map("normal", &.{ .z, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, 100, false));
+    try council.map("normal", &.{ .z, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 0, false));
+    try council.map("normal", &.{ .z, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 0, false));
+    try council.map("normal", &.{ .z, .k, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, false));
+    try council.map("normal", &.{ .z, .k, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, false));
+    try council.map("normal", &.{ .z, .j, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, false));
+    try council.map("normal", &.{ .z, .j, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, false));
+    try council.map("normal", &.{ .z, .h, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, false));
+    try council.map("normal", &.{ .z, .h, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, false));
+    try council.map("normal", &.{ .z, .l, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, false));
+    try council.map("normal", &.{ .z, .l, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, false));
 
-    try council.map("normal", &.{ .z, .space, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, -100, false));
-    try council.map("normal", &.{ .z, .space, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, 100, false));
-    try council.map("normal", &.{ .z, .space, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 0, false));
-    try council.map("normal", &.{ .z, .space, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 0, false));
-    try council.map("normal", &.{ .z, .k, .space, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, false));
-    try council.map("normal", &.{ .z, .k, .space, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, false));
-    try council.map("normal", &.{ .z, .j, .space, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, false));
-    try council.map("normal", &.{ .z, .j, .space, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, false));
-    try council.map("normal", &.{ .z, .h, .space, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, false));
-    try council.map("normal", &.{ .z, .h, .space, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, false));
-    try council.map("normal", &.{ .z, .l, .space, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, false));
-    try council.map("normal", &.{ .z, .l, .space, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, false));
+    try council.map("normal", &.{ .z, .space, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, -100, true));
+    try council.map("normal", &.{ .z, .space, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 0, 100, true));
+    try council.map("normal", &.{ .z, .space, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 0, true));
+    try council.map("normal", &.{ .z, .space, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 0, true));
+    try council.map("normal", &.{ .z, .k, .space, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, true));
+    try council.map("normal", &.{ .z, .k, .space, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, true));
+    try council.map("normal", &.{ .z, .j, .space, .h }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, true));
+    try council.map("normal", &.{ .z, .j, .space, .l }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, true));
+    try council.map("normal", &.{ .z, .h, .space, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, -100, true));
+    try council.map("normal", &.{ .z, .h, .space, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, -100, 100, true));
+    try council.map("normal", &.{ .z, .l, .space, .k }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, -100, true));
+    try council.map("normal", &.{ .z, .l, .space, .j }, try AnchorPickerPanCb.init(council.arena.allocator(), &anchor_picker, 100, 100, true));
 
     //
 

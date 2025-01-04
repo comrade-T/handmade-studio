@@ -37,6 +37,9 @@ target_camera: rl.Camera2D = .{
 
 zoom_damper: SmoothDamper = .{},
 
+damp_target: bool = true,
+damp_zoom: bool = true,
+
 x_damper: SmoothDamper = .{ .smooth_time = 0.1, .max_speed = 8000 },
 y_damper: SmoothDamper = .{ .smooth_time = 0.1, .max_speed = 8000 },
 
@@ -55,6 +58,11 @@ pub fn setTarget(ctx: *anyopaque, x: f32, y: f32) void {
 }
 
 fn dampTarget(self: *@This()) void {
+    if (!self.damp_target) {
+        self.camera.target = self.target_camera.target;
+        return;
+    }
+
     self.camera.target.y = self.y_damper.damp(
         self.camera.target.y,
         self.target_camera.target.y,
@@ -88,7 +96,6 @@ fn updateZoom(self: *@This()) void {
         const mouse_world_pos = rl.getScreenToWorld2D(mouse_pos, self.camera);
 
         self.camera.offset = mouse_pos;
-        self.target_camera.offset = mouse_pos;
 
         self.target_camera.target = mouse_world_pos;
         self.camera.target = mouse_world_pos;
@@ -97,6 +104,11 @@ fn updateZoom(self: *@This()) void {
         if (wheel < 0) scale_factor = 1 / scale_factor;
 
         self.target_camera.zoom = rl.math.clamp(self.target_camera.zoom * scale_factor, 0.125, 64);
+    }
+
+    if (!self.damp_zoom) {
+        self.camera.zoom = self.target_camera.zoom;
+        return;
     }
 
     // camera.zoom = rl.math.lerp(camera.zoom, cam_zoom_target, 0.25);
