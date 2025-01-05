@@ -327,26 +327,6 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_control, .k }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .top));
     try council.map("normal", &.{ .left_control, .j }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .bottom));
 
-    ///////////////////////////// Spawn Blank Window
-
-    const SpawnBlankWindowCb = struct {
-        direction: WindowManager.WindowRelativeDirection,
-        target: *WindowManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.target.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
-            const self = try allocator.create(@This());
-            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
-            self.* = .{ .direction = direction, .target = target };
-            return ip.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .right));
-    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .left));
-    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .left));
-
     ///////////////////////////// WIP
 
     try council.map("normal", &.{ .left_control, .left_shift, .p }, .{ .f = WindowManager.saveSession, .ctx = &wm });
@@ -470,6 +450,47 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .z, .c, .j }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 75));
     try council.map("normal", &.{ .z, .c, .h }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
     try council.map("normal", &.{ .z, .c, .l }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
+
+    ///////////////////////////// Spawn Blank Window
+
+    const SpawnBlankWindowCb = struct {
+        direction: WindowManager.WindowRelativeDirection,
+        wm: *WindowManager,
+        mall: *const RenderMall,
+        ap: *const AnchorPicker,
+
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+            if (self.wm.active_window == null) {
+                const x, const y = info_callbacks.getScreenToWorld2D(
+                    self.mall.camera,
+                    self.ap.target_anchor.x,
+                    self.ap.target_anchor.y,
+                );
+
+                try self.wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true);
+                return;
+            }
+
+            try self.wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction);
+        }
+
+        pub fn init(
+            allocator: std.mem.Allocator,
+            wm_: *WindowManager,
+            mall_: *const RenderMall,
+            ap_: *const AnchorPicker,
+            direction: WindowManager.WindowRelativeDirection,
+        ) !ip.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .direction = direction, .wm = wm_, .mall = mall_, .ap = ap_ };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .right));
+    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .left));
+    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .left));
 
     /////////////////////////////
 

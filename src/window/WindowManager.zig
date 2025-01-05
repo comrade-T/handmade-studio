@@ -525,11 +525,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
 }
 
 fn writeToFile(str: []const u8) !void {
-    var file = std.fs.cwd().openFile(session_file_path, .{ .mode = .write_only }) catch |err| switch (err) {
-        error.FileNotFound => std.fs.cwd().createFile(session_file_path, .{}) catch unreachable,
-        else => return err,
-    };
+    var file = try std.fs.cwd().createFile(session_file_path, .{});
     defer file.close();
-
     try file.writeAll(str);
 }
