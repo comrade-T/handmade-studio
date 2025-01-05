@@ -351,25 +351,7 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
                             continue;
                         }
                     }
-
-                    if (candidate_status == .loose) {
-                        const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
-                        const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
-
-                        if ((dx + dy) < (x_distance + y_distance)) {
-                            may_candidate = window;
-                            x_distance = dx;
-                            y_distance = dy;
-                        }
-                    }
-                }
-
-                if (cond and (window.verticalIntersect(curr) or may_candidate == null)) {
-                    const d = @abs(window.attr.pos.x - curr.attr.pos.x);
-                    if (d < x_distance) {
-                        may_candidate = window;
-                        x_distance = d;
-                    }
+                    if (candidate_status == .loose) handleLooseCandidate(window, curr, &x_distance, &y_distance, &may_candidate);
                 }
             },
             .bottom, .top => {
@@ -388,23 +370,24 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
                             continue;
                         }
                     }
-
-                    if (candidate_status == .loose) {
-                        const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
-                        const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
-
-                        if ((dx + dy) < (x_distance + y_distance)) {
-                            may_candidate = window;
-                            x_distance = dx;
-                            y_distance = dy;
-                        }
-                    }
+                    if (candidate_status == .loose) handleLooseCandidate(window, curr, &x_distance, &y_distance, &may_candidate);
                 }
             },
         }
     }
 
     if (may_candidate) |candidate| self.active_window = candidate;
+}
+
+fn handleLooseCandidate(window: *Window, curr: *Window, x_distance: *f32, y_distance: *f32, may_candidate: *?*Window) void {
+    const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
+    const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
+
+    if ((dx + dy) < (x_distance.* + y_distance.*)) {
+        may_candidate.* = window;
+        x_distance.* = dx;
+        y_distance.* = dy;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Spawn
