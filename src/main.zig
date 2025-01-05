@@ -347,6 +347,11 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .left));
     try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, .left));
 
+    ///////////////////////////// WIP
+
+    try council.map("normal", &.{ .left_control, .left_shift, .p }, .{ .f = WindowManager.saveSession, .ctx = &wm });
+    try council.map("normal", &.{ .left_shift, .left_control, .p }, .{ .f = WindowManager.saveSession, .ctx = &wm });
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Visual Mode
 
     try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });

@@ -474,3 +474,25 @@ pub fn spawnNewWindowRelativeToActiveWindow(
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Session
+
+pub fn saveSession(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    std.debug.print("=========================================================\n", .{});
+
+    var list = std.ArrayList(Window.WritableWindowState).init(arena.allocator());
+    for (self.wmap.keys()) |window| {
+        const data = try window.produceWritableState(&arena);
+        try list.append(data);
+    }
+
+    const str = try std.json.stringifyAlloc(arena.allocator(), list.items, .{
+        .whitespace = .indent_4,
+    });
+    std.debug.print("str: '{s}'\n", .{str});
+}

@@ -301,6 +301,37 @@ pub fn intersects(self: *const Window, other: *const Window) bool {
     return horizontalIntersect(self, other) and verticalIntersect(self, other);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Session
+
+fn produceSpawnOptions(self: *@This()) SpawnOptions {
+    return SpawnOptions{
+        .culling = self.attr.culling,
+        .pos = self.attr.target_pos,
+        .bounds = self.attr.bounds,
+        .padding = self.attr.padding,
+        .limit = self.attr.limit,
+        // .defaults = self.defaults,
+        .subscribed_style_sets = self.subscribed_style_sets.items,
+    };
+}
+
+pub fn produceWritableState(self: *@This(), arena: *std.heap.ArenaAllocator) !WritableWindowState {
+    return WritableWindowState{
+        .opts = self.produceSpawnOptions(),
+        .from = self.ws.from,
+        .source = switch (self.ws.from) {
+            .file => self.ws.path,
+            .string => try self.ws.buf.ropeman.toString(arena.allocator(), .lf),
+        },
+    };
+}
+
+pub const WritableWindowState = struct {
+    opts: Window.SpawnOptions,
+    from: WindowSource.InitFrom,
+    source: []const u8,
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
 const SubscribedStyleSets = std.ArrayListUnmanaged(u16);
@@ -328,7 +359,7 @@ const Attributes = struct {
     culling: bool = true,
 
     pos: Position,
-    target_pos: Attributes.Position = .{},
+    target_pos: Position = .{},
 
     padding: Padding,
     bounds: Bounds,
