@@ -5,3 +5,4 @@ submodules/
 *.log
 copied-libs/ztracy
 *.tracy
+.handmade_studio/

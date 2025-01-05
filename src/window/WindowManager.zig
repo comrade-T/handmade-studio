@@ -477,13 +477,38 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
 
+const session_file_path = ".handmade_studio/session.json";
+
+pub fn loadSession(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+    const file = std.fs.cwd().openFile(session_file_path, .{ .mode = .read_only }) catch |err| {
+        std.debug.print("catched err: {any} --> returning.\n", .{err});
+        return;
+    };
+    defer file.close();
+    const stat = try file.stat();
+
+    const buf = try self.a.alloc(u8, stat.size);
+    defer self.a.free(buf);
+    const read_size = try file.reader().read(buf);
+    if (read_size != stat.size) return error.BufferUnderrun;
+
+    /////////////////////////////
+
+    const parsed = try std.json.parseFromSlice([]const Window.WritableWindowState, self.a, buf, .{});
+    defer parsed.deinit();
+
+    for (parsed.value) |state| {
+        try self.spawnWindow(state.from, state.source, state.opts, true);
+    }
+}
+
 pub fn saveSession(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-
-    std.debug.print("=========================================================\n", .{});
 
     var list = std.ArrayList(Window.WritableWindowState).init(arena.allocator());
     for (self.wmap.keys()) |window| {
@@ -494,5 +519,17 @@ pub fn saveSession(ctx: *anyopaque) !void {
     const str = try std.json.stringifyAlloc(arena.allocator(), list.items, .{
         .whitespace = .indent_4,
     });
-    std.debug.print("str: '{s}'\n", .{str});
+
+    try writeToFile(str);
+    std.debug.print("session written to file\n", .{});
+}
+
+fn writeToFile(str: []const u8) !void {
+    var file = std.fs.cwd().openFile(session_file_path, .{ .mode = .write_only }) catch |err| switch (err) {
+        error.FileNotFound => std.fs.cwd().createFile(session_file_path, .{}) catch unreachable,
+        else => return err,
+    };
+    defer file.close();
+
+    try file.writeAll(str);
 }

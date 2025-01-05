@@ -307,7 +307,7 @@ fn produceSpawnOptions(self: *@This()) SpawnOptions {
     return SpawnOptions{
         .culling = self.attr.culling,
         .pos = self.attr.target_pos,
-        .bounds = self.attr.bounds,
+        .bounds = if (self.attr.bounded) self.attr.bounds else null,
         .padding = self.attr.padding,
         .limit = self.attr.limit,
         // .defaults = self.defaults,
@@ -361,9 +361,11 @@ const Attributes = struct {
     pos: Position,
     target_pos: Position = .{},
 
-    padding: Padding,
-    bounds: Bounds,
     bounded: bool,
+    bounds: Bounds,
+
+    padding: Padding,
+
     limit: ?CursorManager.Limit = null,
 
     const Position = struct {
