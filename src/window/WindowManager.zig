@@ -325,8 +325,10 @@ const WindowSourceHandler = struct {
 
 pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirection) !void {
     const curr = self.active_window orelse return;
-    var relative_distance: f32 = std.math.floatMax(f32);
+    var x_distance: f32 = std.math.floatMax(f32);
+    var y_distance: f32 = std.math.floatMax(f32);
     var may_candidate: ?*Window = null;
+    var candidate_status: enum { none, intersect, loose } = .none;
 
     for (self.wmap.keys()) |window| {
         if (window == curr) continue;
@@ -337,11 +339,36 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
                 else
                     window.attr.pos.x < curr.attr.pos.x;
 
-                if (cond and window.verticalIntersect(curr)) {
+                if (window.verticalIntersect(curr)) candidate_status = .intersect;
+
+                if (cond) {
+                    if (window.verticalIntersect(curr) or may_candidate == null) {
+                        const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
+                        if (dx < x_distance) {
+                            may_candidate = window;
+                            x_distance = dx;
+                            if (candidate_status != .intersect) candidate_status = .loose;
+                            continue;
+                        }
+                    }
+
+                    if (candidate_status == .loose) {
+                        const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
+                        const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
+
+                        if ((dx + dy) < (x_distance + y_distance)) {
+                            may_candidate = window;
+                            x_distance = dx;
+                            y_distance = dy;
+                        }
+                    }
+                }
+
+                if (cond and (window.verticalIntersect(curr) or may_candidate == null)) {
                     const d = @abs(window.attr.pos.x - curr.attr.pos.x);
-                    if (d < relative_distance) {
+                    if (d < x_distance) {
                         may_candidate = window;
-                        relative_distance = d;
+                        x_distance = d;
                     }
                 }
             },
@@ -351,11 +378,26 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
                 else
                     window.attr.pos.y < curr.attr.pos.y;
 
-                if (cond and window.horizontalIntersect(curr)) {
-                    const d = @abs(window.attr.pos.y - curr.attr.pos.y);
-                    if (d < relative_distance) {
-                        may_candidate = window;
-                        relative_distance = d;
+                if (cond) {
+                    if (window.horizontalIntersect(curr) or may_candidate == null) {
+                        const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
+                        if (dy < y_distance) {
+                            may_candidate = window;
+                            y_distance = dy;
+                            if (candidate_status != .intersect) candidate_status = .loose;
+                            continue;
+                        }
+                    }
+
+                    if (candidate_status == .loose) {
+                        const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
+                        const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
+
+                        if ((dx + dy) < (x_distance + y_distance)) {
+                            may_candidate = window;
+                            x_distance = dx;
+                            y_distance = dy;
+                        }
                     }
                 }
             },

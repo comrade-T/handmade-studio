@@ -340,7 +340,7 @@ const Defaults = struct {
     font_size: f32 = 40,
     color: u32 = 0xF5F5F5F5,
     main_cursor_when_active: u32 = 0xF5F5F5F5,
-    main_cursor_when_inactive: u32 = 0xF5F5F555,
+    main_cursor_when_inactive: u32 = 0xF5F5F500,
     selection_color: u32 = 0xF5F5F533,
 };
 
