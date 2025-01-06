@@ -40,6 +40,7 @@ const WindowCache = @import("Window/WindowCache.zig");
 const Renderer = @import("Window/Renderer.zig");
 
 pub const UNSET_WIN_ID = std.math.maxInt(i128);
+pub const ID = i128;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -51,7 +52,7 @@ defaults: Defaults,
 subscribed_style_sets: SubscribedStyleSets,
 cursor_manager: *CursorManager,
 
-id: i128 = UNSET_WIN_ID,
+id: ID = UNSET_WIN_ID,
 
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const RenderMall) !*Window {
     var self = try a.create(@This());
@@ -116,7 +117,7 @@ pub fn setPosition(self: *@This(), x: f32, y: f32) void {
     self.attr.target_pos.y = y;
 }
 
-pub fn setID(self: *@This(), id: i128) void {
+pub fn setID(self: *@This(), id: ID) void {
     self.id = id;
 }
 
@@ -325,7 +326,7 @@ fn produceSpawnOptions(self: *@This()) SpawnOptions {
     };
 }
 
-pub fn produceWritableState(self: *@This(), may_string_id: ?i128) !WritableWindowState {
+pub fn produceWritableState(self: *@This(), may_string_id: ?ID) !WritableWindowState {
     return WritableWindowState{
         .opts = self.produceSpawnOptions(),
         .source = switch (self.ws.from) {
@@ -339,7 +340,7 @@ pub const WritableWindowState = struct {
     opts: Window.SpawnOptions,
     source: union(enum) {
         file: []const u8,
-        string: i128,
+        string: ID,
     },
 };
 
@@ -365,7 +366,7 @@ pub const SpawnOptions = struct {
 
     subscribed_style_sets: ?[]const u16 = null,
 
-    id: ?i128 = null,
+    id: ?ID = null,
 };
 
 const Attributes = struct {
@@ -410,3 +411,9 @@ const Attributes = struct {
         left: f32 = 0,
     };
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test {
+    try eq(208, @sizeOf(Window));
+}

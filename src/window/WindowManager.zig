@@ -42,9 +42,9 @@ last_win_id: i128 = Window.UNSET_WIN_ID,
 
 fmap: FilePathToHandlerMap = FilePathToHandlerMap{},
 wmap: WindowToHandlerMap = WindowToHandlerMap{},
-widmap: WinIDToWindowMap = WinIDToWindowMap{},
 
 connections: ConnectionList = ConnectionList{},
+tracker_map: TrackerMap = TrackerMap{},
 pending_connection: ?Connection = null,
 
 pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowManager {
@@ -58,9 +58,16 @@ pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowM
 pub fn deinit(self: *@This()) void {
     for (self.handlers.items) |handler| handler.destroy(self.a);
     self.handlers.deinit(self.a);
+
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
-    self.widmap.deinit(self.a);
+
+    for (self.tracker_map.values()) |*tracker| {
+        tracker.incoming.deinit(self.a);
+        tracker.outgoing.deinit(self.a);
+    }
+    self.tracker_map.deinit(self.a);
+
     self.connections.deinit(self.a);
 }
 
@@ -292,7 +299,6 @@ pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
 
 const WindowToHandlerMap = std.AutoArrayHashMapUnmanaged(*Window, *WindowSourceHandler);
 const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandler);
-const WinIDToWindowMap = std.AutoArrayHashMapUnmanaged(i128, *Window);
 
 const WindowSourceHandlerList = std.ArrayListUnmanaged(*WindowSourceHandler);
 const WindowSourceHandler = struct {
@@ -337,7 +343,7 @@ const WindowSourceHandler = struct {
         }
 
         assert(window.id != Window.UNSET_WIN_ID);
-        try wm.widmap.put(wm.a, window.id, window);
+        try wm.tracker_map.put(wm.a, window.id, WindowConnectionsTracker{ .win = window });
 
         // quick & hacky solution for limiting the cursor to the window limit
         window.cursor_manager.moveUp(1, &self.source.buf.ropeman);
@@ -539,6 +545,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 ////////////////////////////////////////////////////////////////////////////////////////////// Connections
 
 const ConnectionList = std.ArrayListUnmanaged(Connection);
+const ConnectionPtrList = std.ArrayListUnmanaged(*Connection);
 pub const Connection = struct {
     start: Point,
     end: Point,
@@ -560,8 +567,9 @@ pub const Connection = struct {
         win_id: i128,
         anchor: Anchor = .E,
 
-        fn getPosition(self: *const @This(), wm: *const WindowManager) error{WindowNotFound}!struct { f32, f32 } {
-            const win = wm.widmap.get(self.win_id) orelse return error.WindowNotFound;
+        fn getPosition(self: *const @This(), wm: *const WindowManager) error{TrackerNotFound}!struct { f32, f32 } {
+            const tracker = wm.tracker_map.get(self.win_id) orelse return error.TrackerNotFound;
+            const win = tracker.win;
             switch (self.anchor) {
                 .N => return .{ win.attr.pos.x + win.cached.width / 2, win.attr.pos.y },
                 .E => return .{ win.attr.pos.x + win.cached.width, win.attr.pos.y + win.cached.height / 2 },
@@ -576,8 +584,8 @@ pub const Connection = struct {
 
 pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowRelativeDirection) void {
     const pc = self.pending_connection orelse return;
-    const curr = self.widmap.get(pc.end.win_id) orelse return;
-    const may_candidate = self.findClosestWindow(curr, direction);
+    const tracker = self.tracker_map.get(pc.end.win_id) orelse return;
+    const may_candidate = self.findClosestWindow(tracker.win, direction);
     if (may_candidate) |candidate| self.pending_connection.?.end.win_id = candidate.id;
 }
 
@@ -593,7 +601,28 @@ pub fn confirmPendingConnection(ctx: *anyopaque) !void {
     if (pc.start.win_id == pc.end.win_id) return;
 
     try self.connections.append(self.a, pc);
-    self.pending_connection = null;
+    defer self.pending_connection = null;
+
+    try self.notifyTrackers(pc);
+}
+
+///////////////////////////// WindowConnectionsTracker
+
+const TrackerMap = std.AutoArrayHashMapUnmanaged(Window.ID, WindowConnectionsTracker);
+const WindowConnectionsTracker = struct {
+    win: *Window,
+    incoming: ConnectionPtrList = ConnectionPtrList{},
+    outgoing: ConnectionPtrList = ConnectionPtrList{},
+};
+
+fn notifyTrackers(self: *@This(), conn: Connection) !void {
+    var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
+    var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
+
+    assert(self.connections.items.len > 0);
+    const lastest_connection = &self.connections.items[self.connections.items.len - 1];
+    try start_tracker.outgoing.append(self.a, lastest_connection);
+    try end_tracker.incoming.append(self.a, lastest_connection);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
@@ -654,7 +683,11 @@ pub fn loadSession(ctx: *anyopaque) !void {
     }
 
     ///////////////////////////// load connections
-    for (parsed.value.connections) |conn| try self.connections.append(self.a, conn);
+
+    for (parsed.value.connections) |conn| {
+        try self.connections.append(self.a, conn);
+        try self.notifyTrackers(conn);
+    }
 }
 
 pub fn saveSession(ctx: *anyopaque) !void {
