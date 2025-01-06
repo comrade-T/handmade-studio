@@ -37,22 +37,21 @@ mall: *RenderMall,
 
 active_window: ?*Window = null,
 
-handlers: WindowSourceHandlerList,
+handlers: WindowSourceHandlerList = WindowSourceHandlerList{},
 last_win_id: i128 = Window.UNSET_WIN_ID,
 
-fmap: FilePathToHandlerMap,
-wmap: WindowToHandlerMap,
-widmap: WinIDToWindowMap,
+fmap: FilePathToHandlerMap = FilePathToHandlerMap{},
+wmap: WindowToHandlerMap = WindowToHandlerMap{},
+widmap: WinIDToWindowMap = WinIDToWindowMap{},
+
+connections: ConnectionList = ConnectionList{},
+pending_connection: ?Connection = null,
 
 pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowManager {
     return WindowManager{
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
-        .handlers = WindowSourceHandlerList{},
-        .fmap = FilePathToHandlerMap{},
-        .wmap = WindowToHandlerMap{},
-        .widmap = WinIDToWindowMap{},
     };
 }
 
@@ -62,6 +61,7 @@ pub fn deinit(self: *@This()) void {
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
     self.widmap.deinit(self.a);
+    self.connections.deinit(self.a);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -71,6 +71,7 @@ pub fn render(self: *@This()) void {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
         window.render(is_active, self.mall);
     }
+    for (self.connections.items) |conn| conn.render(self);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
@@ -349,6 +350,11 @@ const WindowSourceHandler = struct {
 
 pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirection) !void {
     const curr = self.active_window orelse return;
+    const may_candidate = self.findClosestWindow(curr, direction);
+    if (may_candidate) |candidate| self.active_window = candidate;
+}
+
+fn findClosestWindow(self: *@This(), curr: *Window, direction: WindowRelativeDirection) ?*Window {
     var x_distance: f32 = std.math.floatMax(f32);
     var y_distance: f32 = std.math.floatMax(f32);
     var may_candidate: ?*Window = null;
@@ -400,7 +406,7 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
         }
     }
 
-    if (may_candidate) |candidate| self.active_window = candidate;
+    return may_candidate;
 }
 
 fn handleLooseCandidate(window: *Window, curr: *Window, x_distance: *f32, y_distance: *f32, may_candidate: *?*Window) void {
@@ -532,19 +538,27 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Connections
 
-const Connection = struct {
+const ConnectionList = std.ArrayListUnmanaged(Connection);
+pub const Connection = struct {
     start: Point,
     end: Point,
 
+    fn new(start_win_id: i128) Connection {
+        return Connection{
+            .start = .{ .win_id = start_win_id },
+            .end = .{ .win_id = start_win_id },
+        };
+    }
+
     fn render(self: *const @This(), wm: *const WindowManager) void {
         const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
-        const end_x, const end_y = self.start.getPosition(wm) catch return assert(false);
+        const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 0xffffffff);
     }
 
     const Point = struct {
         win_id: i128,
-        anchor: Anchor,
+        anchor: Anchor = .E,
 
         fn getPosition(self: *const @This(), wm: *const WindowManager) error{WindowNotFound}!struct { f32, f32 } {
             const win = wm.widmap.get(self.win_id) orelse return error.WindowNotFound;
@@ -557,8 +571,30 @@ const Connection = struct {
             unreachable;
         }
     };
-    const Anchor = enum { N, E, S, W };
+    pub const Anchor = enum { N, E, S, W };
 };
+
+pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowRelativeDirection) void {
+    const pc = self.pending_connection orelse return;
+    const curr = self.widmap.get(pc.end.win_id) orelse return;
+    const may_candidate = self.findClosestWindow(curr, direction);
+    if (may_candidate) |candidate| self.pending_connection.?.end.win_id = candidate.id;
+}
+
+pub fn startPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_window = self.active_window orelse return;
+    self.pending_connection = Connection.new(active_window.id);
+}
+
+pub fn confirmPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const pc = self.pending_connection orelse return;
+    if (pc.start.win_id == pc.end.win_id) return;
+
+    try self.connections.append(self.a, pc);
+    self.pending_connection = null;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
 
