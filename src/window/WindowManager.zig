@@ -607,6 +607,7 @@ const StringSource = struct {
 
 const Session = struct {
     string_sources: []const StringSource,
+    connections: []const Connection,
     windows: []const Window.WritableWindowState,
 };
 
@@ -651,6 +652,9 @@ pub fn loadSession(ctx: *anyopaque) !void {
             },
         }
     }
+
+    ///////////////////////////// load connections
+    for (parsed.value.connections) |conn| try self.connections.append(self.a, conn);
 }
 
 pub fn saveSession(ctx: *anyopaque) !void {
@@ -705,6 +709,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
     const session = Session{
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
+        .connections = self.connections.items,
     };
 
     const str = try std.json.stringifyAlloc(arena.allocator(), session, .{
@@ -712,7 +717,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
     });
 
     try writeToFile(str);
-    std.debug.print("session written to file\n", .{});
+    std.debug.print("session written to file successfully\n", .{});
 }
 
 fn writeToFile(str: []const u8) !void {
