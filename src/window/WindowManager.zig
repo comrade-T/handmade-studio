@@ -521,6 +521,9 @@ const Session = struct {
 };
 
 pub fn loadSession(ctx: *anyopaque) !void {
+
+    ///////////////////////////// read file & parse
+
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
     const file = std.fs.cwd().openFile(session_file_path, .{ .mode = .read_only }) catch |err| {
@@ -535,16 +538,17 @@ pub fn loadSession(ctx: *anyopaque) !void {
     const read_size = try file.reader().read(buf);
     if (read_size != stat.size) return error.BufferUnderrun;
 
-    /////////////////////////////
-
     const parsed = try std.json.parseFromSlice(Session, self.a, buf, .{});
     defer parsed.deinit();
+
+    ///////////////////////////// create handlers & spawn windows
 
     var strid_to_handler_map = std.AutoArrayHashMap(i128, *WindowSourceHandler).init(self.a);
     defer strid_to_handler_map.deinit();
 
     for (parsed.value.string_sources) |str_source| {
         const handler = try WindowSourceHandler.create(self, .string, str_source.contents, self.lang_hub);
+        try self.handlers.append(self.a, handler);
         try strid_to_handler_map.put(str_source.id, handler);
     }
 
@@ -565,11 +569,13 @@ pub fn saveSession(ctx: *anyopaque) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    var source_list = std.ArrayList(StringSource).init(self.a);
-    defer source_list.deinit();
+    var string_source_list = std.ArrayList(StringSource).init(self.a);
+    defer string_source_list.deinit();
 
     var window_to_id_map = std.AutoArrayHashMap(*Window, i128).init(self.a);
     defer window_to_id_map.deinit();
+
+    ///////////////////////////// handle string sources
 
     var last_id: i128 = std.math.maxInt(i128);
     for (self.handlers.items) |handler| {
@@ -583,7 +589,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
         last_id = id;
 
         const contents = try handler.source.buf.ropeman.toString(arena.allocator(), .lf);
-        try source_list.append(StringSource{
+        try string_source_list.append(StringSource{
             .id = id,
             .contents = contents,
         });
@@ -593,16 +599,25 @@ pub fn saveSession(ctx: *anyopaque) !void {
         }
     }
 
-    var state_list = std.ArrayList(Window.WritableWindowState).init(self.a);
-    defer state_list.deinit();
+    /////////////////////////////
+
+    var window_state_list = std.ArrayList(Window.WritableWindowState).init(self.a);
+    defer window_state_list.deinit();
 
     for (self.wmap.keys()) |window| {
         const string_id: ?i128 = window_to_id_map.get(window) orelse null;
         const data = try window.produceWritableState(string_id);
-        try state_list.append(data);
+        try window_state_list.append(data);
     }
 
-    const str = try std.json.stringifyAlloc(arena.allocator(), state_list.items, .{
+    /////////////////////////////
+
+    const session = Session{
+        .windows = window_state_list.items,
+        .string_sources = string_source_list.items,
+    };
+
+    const str = try std.json.stringifyAlloc(arena.allocator(), session, .{
         .whitespace = .indent_4,
     });
 

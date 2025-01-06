@@ -321,7 +321,7 @@ fn produceSpawnOptions(self: *@This()) SpawnOptions {
     };
 }
 
-pub fn produceWritableState(self: *@This(), may_string_id: ?u128) !WritableWindowState {
+pub fn produceWritableState(self: *@This(), may_string_id: ?i128) !WritableWindowState {
     return WritableWindowState{
         .opts = self.produceSpawnOptions(),
         .source = switch (self.ws.from) {
