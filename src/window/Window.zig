@@ -49,6 +49,8 @@ defaults: Defaults,
 subscribed_style_sets: SubscribedStyleSets,
 cursor_manager: *CursorManager,
 
+id: i128 = std.math.maxInt(i128),
+
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const RenderMall) !*Window {
     var self = try a.create(@This());
     self.* = .{
@@ -93,7 +95,7 @@ pub fn destroy(self: *@This()) void {
 //     try self.subscribed_style_sets.append(self.a, styleset_id);
 // }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+////////////////////////////////////////////////////////////////////////////////////////////// Setters
 
 pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
     const x = center_x - (self.cached.width / 2);
@@ -109,6 +111,10 @@ pub fn moveBy(self: *@This(), x: f32, y: f32) void {
 pub fn setPosition(self: *@This(), x: f32, y: f32) void {
     self.attr.target_pos.x = x;
     self.attr.target_pos.y = y;
+}
+
+pub fn setID(self: *@This(), id: i128) void {
+    self.id = id;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -315,21 +321,22 @@ fn produceSpawnOptions(self: *@This()) SpawnOptions {
     };
 }
 
-pub fn produceWritableState(self: *@This(), arena: *std.heap.ArenaAllocator) !WritableWindowState {
+pub fn produceWritableState(self: *@This(), may_string_id: ?u128) !WritableWindowState {
     return WritableWindowState{
         .opts = self.produceSpawnOptions(),
-        .from = self.ws.from,
         .source = switch (self.ws.from) {
-            .file => self.ws.path,
-            .string => try self.ws.buf.ropeman.toString(arena.allocator(), .lf),
+            .file => .{ .file = self.ws.path },
+            .string => .{ .string = may_string_id.? },
         },
     };
 }
 
 pub const WritableWindowState = struct {
     opts: Window.SpawnOptions,
-    from: WindowSource.InitFrom,
-    source: []const u8,
+    source: union(enum) {
+        file: []const u8,
+        string: i128,
+    },
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types

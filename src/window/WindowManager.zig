@@ -392,6 +392,12 @@ fn handleLooseCandidate(window: *Window, curr: *Window, x_distance: *f32, y_dist
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Spawn
 
+pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !void {
+    const window = try handler.spawnWindow(self.a, opts, self.mall);
+    try self.wmap.put(self.a, window, handler);
+    if (make_active or self.active_window == null) self.active_window = window;
+}
+
 pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions, make_active: bool) !void {
 
     // if file path exists in fmap
@@ -504,6 +510,16 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 
 const session_file_path = ".handmade_studio/session.json";
 
+const StringSource = struct {
+    id: i128,
+    contents: []const u8,
+};
+
+const Session = struct {
+    string_sources: []const StringSource,
+    windows: []const Window.WritableWindowState,
+};
+
 pub fn loadSession(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
@@ -521,11 +537,25 @@ pub fn loadSession(ctx: *anyopaque) !void {
 
     /////////////////////////////
 
-    const parsed = try std.json.parseFromSlice([]const Window.WritableWindowState, self.a, buf, .{});
+    const parsed = try std.json.parseFromSlice(Session, self.a, buf, .{});
     defer parsed.deinit();
 
-    for (parsed.value) |state| {
-        try self.spawnWindow(state.from, state.source, state.opts, true);
+    var strid_to_handler_map = std.AutoArrayHashMap(i128, *WindowSourceHandler).init(self.a);
+    defer strid_to_handler_map.deinit();
+
+    for (parsed.value.string_sources) |str_source| {
+        const handler = try WindowSourceHandler.create(self, .string, str_source.contents, self.lang_hub);
+        try strid_to_handler_map.put(str_source.id, handler);
+    }
+
+    for (parsed.value.windows) |state| {
+        switch (state.source) {
+            .file => |path| try self.spawnWindow(.file, path, state.opts, true),
+            .string => |string_id| {
+                const handler = strid_to_handler_map.get(string_id) orelse continue;
+                try self.spawnWindowFromHandler(handler, state.opts, true);
+            },
+        }
     }
 }
 
@@ -535,13 +565,44 @@ pub fn saveSession(ctx: *anyopaque) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    var list = std.ArrayList(Window.WritableWindowState).init(arena.allocator());
-    for (self.wmap.keys()) |window| {
-        const data = try window.produceWritableState(&arena);
-        try list.append(data);
+    var source_list = std.ArrayList(StringSource).init(self.a);
+    defer source_list.deinit();
+
+    var window_to_id_map = std.AutoArrayHashMap(*Window, i128).init(self.a);
+    defer window_to_id_map.deinit();
+
+    var last_id: i128 = std.math.maxInt(i128);
+    for (self.handlers.items) |handler| {
+        if (handler.source.from == .file) continue;
+
+        var id = std.time.nanoTimestamp();
+        while (true) {
+            if (id != last_id) break;
+            id = std.time.nanoTimestamp();
+        }
+        last_id = id;
+
+        const contents = try handler.source.buf.ropeman.toString(arena.allocator(), .lf);
+        try source_list.append(StringSource{
+            .id = id,
+            .contents = contents,
+        });
+
+        for (handler.windows.items) |window| {
+            try window_to_id_map.put(window, id);
+        }
     }
 
-    const str = try std.json.stringifyAlloc(arena.allocator(), list.items, .{
+    var state_list = std.ArrayList(Window.WritableWindowState).init(self.a);
+    defer state_list.deinit();
+
+    for (self.wmap.keys()) |window| {
+        const string_id: ?i128 = window_to_id_map.get(window) orelse null;
+        const data = try window.produceWritableState(string_id);
+        try state_list.append(data);
+    }
+
+    const str = try std.json.stringifyAlloc(arena.allocator(), state_list.items, .{
         .whitespace = .indent_4,
     });
 
