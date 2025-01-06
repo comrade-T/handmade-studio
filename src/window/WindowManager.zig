@@ -38,6 +38,8 @@ mall: *RenderMall,
 active_window: ?*Window = null,
 
 handlers: WindowSourceHandlerList,
+last_win_id: i128 = Window.UNSET_WIN_ID,
+
 fmap: FilePathToHandlerMap,
 wmap: WindowToHandlerMap,
 
@@ -310,11 +312,26 @@ const WindowSourceHandler = struct {
         a.destroy(self);
     }
 
-    fn spawnWindow(self: *@This(), a: Allocator, opts: Window.SpawnOptions, style_store: *const RenderMall) !*Window {
-        const window = try Window.create(a, self.source, opts, style_store);
-        try self.windows.append(a, window);
+    fn spawnWindow(self: *@This(), wm: *WindowManager, opts: Window.SpawnOptions) !*Window {
+        const window = try Window.create(wm.a, self.source, opts, wm.mall);
+        try self.windows.append(wm.a, window);
 
-        // quick solution for limiting the cursor to the window limit
+        set_win_id: { // set id for window
+            if (opts.id) |id| {
+                window.setID(id);
+                break :set_win_id;
+            }
+
+            var id = std.time.nanoTimestamp();
+            while (true) {
+                if (id != wm.last_win_id) break;
+                id = std.time.nanoTimestamp();
+            }
+            wm.last_win_id = id;
+            window.setID(id);
+        }
+
+        // quick & hacky solution for limiting the cursor to the window limit
         window.cursor_manager.moveUp(1, &self.source.buf.ropeman);
 
         return window;
@@ -393,7 +410,7 @@ fn handleLooseCandidate(window: *Window, curr: *Window, x_distance: *f32, y_dist
 ////////////////////////////////////////////////////////////////////////////////////////////// Spawn
 
 pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !void {
-    const window = try handler.spawnWindow(self.a, opts, self.mall);
+    const window = try handler.spawnWindow(self, opts);
     try self.wmap.put(self.a, window, handler);
     if (make_active or self.active_window == null) self.active_window = window;
 }
@@ -403,7 +420,7 @@ pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const 
     // if file path exists in fmap
     if (from == .file) {
         if (self.fmap.get(source)) |handler| {
-            const window = try handler.spawnWindow(self.a, opts, self.mall);
+            const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
             if (make_active or self.active_window == null) self.active_window = window;
             return;
@@ -414,7 +431,7 @@ pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const 
     try self.handlers.append(self.a, try WindowSourceHandler.create(self, from, source, self.lang_hub));
     var handler = self.handlers.getLast();
 
-    const window = try handler.spawnWindow(self.a, opts, self.mall);
+    const window = try handler.spawnWindow(self, opts);
     try self.wmap.put(self.a, window, handler);
 
     if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);

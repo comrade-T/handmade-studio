@@ -39,6 +39,8 @@ const CursorManager = @import("CursorManager");
 const WindowCache = @import("Window/WindowCache.zig");
 const Renderer = @import("Window/Renderer.zig");
 
+pub const UNSET_WIN_ID = std.math.maxInt(i128);
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
@@ -49,7 +51,7 @@ defaults: Defaults,
 subscribed_style_sets: SubscribedStyleSets,
 cursor_manager: *CursorManager,
 
-id: i128 = std.math.maxInt(i128),
+id: i128 = UNSET_WIN_ID,
 
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const RenderMall) !*Window {
     var self = try a.create(@This());
@@ -72,6 +74,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const 
     };
 
     if (opts.subscribed_style_sets) |slice| try self.subscribed_style_sets.appendSlice(self.a, slice);
+    if (opts.id) |id| self.id = id;
 
     // this must be called last
     self.cached = try WindowCache.init(self.a, self, mall);
@@ -318,6 +321,7 @@ fn produceSpawnOptions(self: *@This()) SpawnOptions {
         .limit = self.attr.limit,
         // .defaults = self.defaults,
         .subscribed_style_sets = self.subscribed_style_sets.items,
+        .id = if (self.id != UNSET_WIN_ID) self.id else null,
     };
 }
 
@@ -360,6 +364,8 @@ pub const SpawnOptions = struct {
     defaults: Defaults = Defaults{},
 
     subscribed_style_sets: ?[]const u16 = null,
+
+    id: ?i128 = null,
 };
 
 const Attributes = struct {
