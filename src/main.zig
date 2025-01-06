@@ -77,6 +77,7 @@ pub fn main() anyerror!void {
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
         .drawCircle = drawCircle,
+        .drawLine = drawLine,
         .changeCameraZoom = changeCameraZoom,
         .changeCameraPan = changeCameraPan,
     };
@@ -807,6 +808,14 @@ fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
 
 fn drawCircle(x: f32, y: f32, radius: f32, color: u32) void {
     rl.drawCircleV(.{ .x = x, .y = y }, radius, rl.Color.fromInt(color));
+}
+
+fn drawLine(start_x: f32, start_y: f32, end_x: f32, end_y: f32, color: u32) void {
+    rl.drawLineV(
+        .{ .x = start_x, .y = start_y },
+        .{ .x = end_x, .y = end_y },
+        rl.Color.fromInt(color),
+    );
 }
 
 fn changeCameraZoom(camera_: *anyopaque, target_camera_: *anyopaque, x: f32, y: f32, scale_factor: f32) void {

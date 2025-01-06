@@ -195,6 +195,7 @@ pub const RenderCallbacks = struct {
     drawCodePoint: *const fn (font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void,
     drawRectangle: *const fn (x: f32, y: f32, width: f32, height: f32, color: u32) void,
     drawCircle: *const fn (x: f32, y: f32, radius: f32, color: u32) void,
+    drawLine: *const fn (start_x: f32, start_y: f32, end_x: f32, end_y: f32, color: u32) void,
     changeCameraZoom: *const fn (camera: *anyopaque, target_camera: *anyopaque, x: f32, y: f32, scale_factor: f32) void,
     changeCameraPan: *const fn (target_camera_: *anyopaque, x_by: f32, y_by: f32) void,
 };

@@ -42,6 +42,7 @@ last_win_id: i128 = Window.UNSET_WIN_ID,
 
 fmap: FilePathToHandlerMap,
 wmap: WindowToHandlerMap,
+widmap: WinIDToWindowMap,
 
 pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowManager {
     return WindowManager{
@@ -51,6 +52,7 @@ pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowM
         .handlers = WindowSourceHandlerList{},
         .fmap = FilePathToHandlerMap{},
         .wmap = WindowToHandlerMap{},
+        .widmap = WinIDToWindowMap{},
     };
 }
 
@@ -59,6 +61,7 @@ pub fn deinit(self: *@This()) void {
     self.handlers.deinit(self.a);
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
+    self.widmap.deinit(self.a);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -288,6 +291,7 @@ pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
 
 const WindowToHandlerMap = std.AutoArrayHashMapUnmanaged(*Window, *WindowSourceHandler);
 const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandler);
+const WinIDToWindowMap = std.AutoArrayHashMapUnmanaged(i128, *Window);
 
 const WindowSourceHandlerList = std.ArrayListUnmanaged(*WindowSourceHandler);
 const WindowSourceHandler = struct {
@@ -330,6 +334,9 @@ const WindowSourceHandler = struct {
             wm.last_win_id = id;
             window.setID(id);
         }
+
+        assert(window.id != Window.UNSET_WIN_ID);
+        try wm.widmap.put(wm.a, window.id, window);
 
         // quick & hacky solution for limiting the cursor to the window limit
         window.cursor_manager.moveUp(1, &self.source.buf.ropeman);
@@ -522,6 +529,36 @@ pub fn spawnNewWindowRelativeToActiveWindow(
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Connections
+
+const Connection = struct {
+    start: Point,
+    end: Point,
+
+    fn render(self: *const @This(), wm: *const WindowManager) void {
+        const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
+        const end_x, const end_y = self.start.getPosition(wm) catch return assert(false);
+        wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 0xffffffff);
+    }
+
+    const Point = struct {
+        win_id: i128,
+        anchor: Anchor,
+
+        fn getPosition(self: *const @This(), wm: *const WindowManager) error{WindowNotFound}!struct { f32, f32 } {
+            const win = wm.widmap.get(self.win_id) orelse return error.WindowNotFound;
+            switch (self.anchor) {
+                .N => return .{ win.attr.pos.x + win.cached.width / 2, win.attr.pos.y },
+                .E => return .{ win.attr.pos.x + win.cached.width, win.attr.pos.y + win.cached.height / 2 },
+                .S => return .{ win.attr.pos.x + win.cached.width / 2, win.attr.pos.y + win.cached.height },
+                .W => return .{ win.attr.pos.x, win.attr.pos.y + win.cached.height / 2 },
+            }
+            unreachable;
+        }
+    };
+    const Anchor = enum { N, E, S, W };
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
 
