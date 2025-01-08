@@ -684,7 +684,7 @@ pub fn main() anyerror!void {
     });
 
     try council.map("pending_connection", &.{.escape}, .{
-        .f = nop,
+        .f = WindowManager.cancelPendingConnection,
         .ctx = &wm,
         .contexts = .{ .remove = &.{"pending_connection"}, .add = &.{"normal"} },
     });

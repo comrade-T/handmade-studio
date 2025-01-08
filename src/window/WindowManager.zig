@@ -79,6 +79,7 @@ pub fn render(self: *@This()) void {
         window.render(is_active, self.mall);
     }
     for (self.connections.items) |conn| conn.render(self);
+    if (self.pending_connection) |*pc| pc.renderPendingConnectionIndicators(self);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
@@ -563,6 +564,13 @@ pub const Connection = struct {
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 0xffffffff);
     }
 
+    fn renderPendingConnectionIndicators(self: *const @This(), wm: *const WindowManager) void {
+        const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
+        const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
+        wm.mall.rcb.drawCircle(start_x, start_y, 10, 0x03d3fcff);
+        wm.mall.rcb.drawCircle(end_x, end_y, 10, 0xd11daaff);
+    }
+
     const Point = struct {
         win_id: i128,
         anchor: Anchor = .E,
@@ -604,6 +612,11 @@ pub fn confirmPendingConnection(ctx: *anyopaque) !void {
     defer self.pending_connection = null;
 
     try self.notifyTrackers(pc);
+}
+
+pub fn cancelPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.pending_connection = null;
 }
 
 ///////////////////////////// WindowConnectionsTracker
