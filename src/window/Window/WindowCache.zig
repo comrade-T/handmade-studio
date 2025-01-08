@@ -132,6 +132,7 @@ pub fn updateCacheLines(
         const info = try calculateLineInfo(win, linenr, mall, default_font, default_glyph);
         try replacements.append(info);
     }
-    self.updateWidthHeight();
     try self.line_info.replaceRange(win.a, ri.replace_start, ri.replace_len, replacements.items);
+
+    self.updateWidthHeight();
 }
