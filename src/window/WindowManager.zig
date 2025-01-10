@@ -84,14 +84,20 @@ pub fn render(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
 
-pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
+pub fn centerActiveWindowAt(self: *@This(), center_x: f32, center_y: f32) void {
     const active_window = self.active_window orelse return;
     active_window.centerAt(center_x, center_y);
 }
 
-pub fn moveBy(self: *@This(), x: f32, y: f32) void {
+pub fn moveActiveWindowBy(self: *@This(), x: f32, y: f32) void {
     const active_window = self.active_window orelse return;
     active_window.moveBy(x, y);
+}
+
+pub fn toggleActiveWindowBorder(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_window = self.active_window orelse return;
+    active_window.toggleBorder();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete

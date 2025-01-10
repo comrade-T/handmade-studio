@@ -382,6 +382,19 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
         if (self.renderCursorDotAtLineEnd()) continue;
         if (self.renderCursorOnEmptyLine()) continue;
     }
+
+    // render border
+    if (self.win.attr.bordered) {
+        const THICKNESS = 2;
+        self.mall.rcb.drawRectangleLines(
+            self.win.getX(),
+            self.win.getY(),
+            self.win.getWidth(),
+            self.win.getHeight(),
+            THICKNESS,
+            self.win.defaults.border_color,
+        );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// iterate through characters in line

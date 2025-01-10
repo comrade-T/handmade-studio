@@ -76,6 +76,7 @@ pub fn main() anyerror!void {
     const render_callbacks = RenderMall.RenderCallbacks{
         .drawCodePoint = drawCodePoint,
         .drawRectangle = drawRectangle,
+        .drawRectangleLines = drawRectangleLines,
         .drawCircle = drawCircle,
         .drawLine = drawLine,
         .changeCameraZoom = changeCameraZoom,
@@ -270,6 +271,8 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
+    try council.map("normal", &.{ .left_control, .b }, .{ .f = WindowManager.toggleActiveWindowBorder, .ctx = &wm });
+
     ///////////////////////////// Layout Related
 
     const CenterAtCb = struct {
@@ -278,7 +281,7 @@ pub fn main() anyerror!void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const center_x: f32 = @as(f32, @floatFromInt(rl.getScreenWidth())) / 2;
             const center_y: f32 = @as(f32, @floatFromInt(rl.getScreenHeight())) / 2;
-            self.target.centerAt(center_x, center_y);
+            self.target.centerActiveWindowAt(center_x, center_y);
         }
         pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque) !ip.Callback {
             const self = try allocator.create(@This());
@@ -295,7 +298,7 @@ pub fn main() anyerror!void {
         y: f32,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.target.moveBy(self.x, self.y);
+            self.target.moveActiveWindowBy(self.x, self.y);
         }
         pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x: f32, y: f32) !ip.Callback {
             const self = try allocator.create(@This());
@@ -867,6 +870,14 @@ fn drawRectangle(x: f32, y: f32, width: f32, height: f32, color: u32) void {
         @as(i32, @intFromFloat(y)),
         @as(i32, @intFromFloat(width)),
         @as(i32, @intFromFloat(height)),
+        rl.Color.fromInt(color),
+    );
+}
+
+fn drawRectangleLines(x: f32, y: f32, width: f32, height: f32, line_thick: f32, color: u32) void {
+    rl.drawRectangleLinesEx(
+        .{ .x = x, .y = y, .width = width, .height = height },
+        line_thick,
         rl.Color.fromInt(color),
     );
 }

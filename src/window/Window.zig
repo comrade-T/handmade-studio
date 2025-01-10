@@ -65,6 +65,7 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const 
             .pos = opts.pos,
             .target_pos = opts.pos,
 
+            .bordered = opts.bordered,
             .padding = if (opts.padding) |p| p else Attributes.Padding{},
             .bounds = if (opts.bounds) |b| b else Attributes.Bounds{},
             .bounded = if (opts.bounds) |_| true else false,
@@ -119,6 +120,36 @@ pub fn setPosition(self: *@This(), x: f32, y: f32) void {
 
 pub fn setID(self: *@This(), id: ID) void {
     self.id = id;
+}
+
+pub fn toggleBorder(self: *@This()) void {
+    self.attr.bordered = !self.attr.bordered;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Getters
+
+pub fn getX(self: *@This()) f32 {
+    return self.attr.pos.x;
+}
+
+pub fn getY(self: *@This()) f32 {
+    return self.attr.pos.y;
+}
+
+pub fn getContentWidth(self: *@This()) f32 {
+    return self.cached.width;
+}
+
+pub fn getContentHeight(self: *@This()) f32 {
+    return self.cached.height;
+}
+
+pub fn getWidth(self: *@This()) f32 {
+    return self.getContentWidth() + self.attr.padding.left + self.attr.padding.right;
+}
+
+pub fn getHeight(self: *@This()) f32 {
+    return self.getContentHeight() + self.attr.padding.top + self.attr.padding.bottom;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -323,6 +354,7 @@ fn produceSpawnOptions(self: *@This()) SpawnOptions {
         // .defaults = self.defaults,
         .subscribed_style_sets = self.subscribed_style_sets.items,
         .id = if (self.id != UNSET_WIN_ID) self.id else null,
+        .bordered = self.attr.bordered,
     };
 }
 
@@ -354,6 +386,7 @@ const Defaults = struct {
     main_cursor_when_active: u32 = 0xF5F5F5F5,
     main_cursor_when_inactive: u32 = 0xF5F5F500,
     selection_color: u32 = 0xF5F5F533,
+    border_color: u32 = 0xF5F5F5F5,
 };
 
 pub const SpawnOptions = struct {
@@ -363,6 +396,8 @@ pub const SpawnOptions = struct {
     padding: ?Attributes.Padding = null,
     limit: ?CursorManager.Limit = null,
     defaults: Defaults = Defaults{},
+
+    bordered: bool = false,
 
     subscribed_style_sets: ?[]const u16 = null,
 
@@ -378,6 +413,7 @@ const Attributes = struct {
     bounded: bool,
     bounds: Bounds,
 
+    bordered: bool,
     padding: Padding,
 
     limit: ?CursorManager.Limit = null,
