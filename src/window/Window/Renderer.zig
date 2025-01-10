@@ -359,6 +359,19 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
     var chars_rendered: i64 = 0;
     defer ztracy.PlotI("chars_rendered", chars_rendered);
 
+    // render border
+    defer if (self.win.attr.bordered) {
+        const THICKNESS = 2;
+        self.mall.rcb.drawRectangleLines(
+            self.win.getX(),
+            self.win.getY(),
+            self.win.getWidth(),
+            self.win.getHeight(),
+            THICKNESS,
+            self.win.defaults.border_color,
+        );
+    };
+
     for (0..self.win.ws.buf.ropeman.getNumOfLines()) |linenr| {
         self.linenr = linenr;
 
@@ -381,19 +394,6 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
         self.renderSelectionLinesBetweenStartAndEnd();
         if (self.renderCursorDotAtLineEnd()) continue;
         if (self.renderCursorOnEmptyLine()) continue;
-    }
-
-    // render border
-    if (self.win.attr.bordered) {
-        const THICKNESS = 2;
-        self.mall.rcb.drawRectangleLines(
-            self.win.getX(),
-            self.win.getY(),
-            self.win.getWidth(),
-            self.win.getHeight(),
-            THICKNESS,
-            self.win.defaults.border_color,
-        );
     }
 }
 

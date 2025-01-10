@@ -332,6 +332,27 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .space, .p, .w }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 0, 10));
     try council.map("normal", &.{ .space, .p, .s }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 0, -10));
 
+    const ChangeBoundSizeByCb = struct {
+        target: *WindowManager,
+        width_by: f32,
+        height_by: f32,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.changeActiveWindowBoundSizeBy(self.width_by, self.height_by);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, width_by: f32, height_by: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .width_by = width_by, .height_by = height_by };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try council.map("normal", &.{ .space, .b }, .{ .f = WindowManager.toggleActiveWindowBounds, .ctx = &wm, .require_clarity_afterwards = true });
+    try council.map("normal", &.{ .space, .b, .j }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 0, -20));
+    try council.map("normal", &.{ .space, .b, .k }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 0, 20));
+    try council.map("normal", &.{ .space, .b, .h }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, -20, 0));
+    try council.map("normal", &.{ .space, .b, .l }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 20, 0));
+
     const MakeClosestWindowActiveCb = struct {
         direction: WindowManager.WindowRelativeDirection,
         target: *WindowManager,
@@ -841,19 +862,19 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                { // show borders for testing bounded windows
-                    for (wm.wmap.keys()) |window| {
-                        if (window.attr.bounded) {
-                            rl.drawRectangleV(.{
-                                .x = window.attr.pos.x,
-                                .y = window.attr.pos.y,
-                            }, .{
-                                .x = window.attr.bounds.width,
-                                .y = window.attr.bounds.height,
-                            }, rl.Color.init(255, 255, 255, 30));
-                        }
-                    }
-                }
+                // { // show borders for testing bounded windows
+                //     for (wm.wmap.keys()) |window| {
+                //         if (window.attr.bounded) {
+                //             rl.drawRectangleV(.{
+                //                 .x = window.attr.pos.x,
+                //                 .y = window.attr.pos.y,
+                //             }, .{
+                //                 .x = window.attr.bounds.width,
+                //                 .y = window.attr.bounds.height,
+                //             }, rl.Color.init(255, 255, 255, 30));
+                //         }
+                //     }
+                // }
 
                 // rendering windows via WindowManager
                 wm.render();

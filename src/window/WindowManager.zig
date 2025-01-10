@@ -105,6 +105,17 @@ pub fn changeActiveWindowPaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
     active_window.changePaddingBy(x_by, y_by);
 }
 
+pub fn toggleActiveWindowBounds(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_window = self.active_window orelse return;
+    active_window.toggleBounds();
+}
+
+pub fn changeActiveWindowBoundSizeBy(self: *@This(), width_by: f32, height_by: f32) void {
+    const active_window = self.active_window orelse return;
+    active_window.changeBoundSizeBy(width_by, height_by);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
 pub fn deleteRanges(self: *@This(), kind: WindowSource.DeleteRangesKind) !void {

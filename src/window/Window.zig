@@ -126,6 +126,16 @@ pub fn toggleBorder(self: *@This()) void {
     self.attr.bordered = !self.attr.bordered;
 }
 
+pub fn changeBoundSizeBy(self: *@This(), width_by: f32, height_by: f32) void {
+    if (!self.attr.bounded) return;
+    self.attr.bounds.width += width_by;
+    self.attr.bounds.height += height_by;
+}
+
+pub fn toggleBounds(self: *@This()) void {
+    self.attr.bounded = !self.attr.bounded;
+}
+
 pub fn changePaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
     self.attr.padding.left += x_by;
     self.attr.padding.right += x_by;
@@ -152,10 +162,12 @@ pub fn getContentHeight(self: *@This()) f32 {
 }
 
 pub fn getWidth(self: *@This()) f32 {
+    if (self.attr.bounded) return self.attr.bounds.width;
     return self.getContentWidth() + self.attr.padding.left + self.attr.padding.right;
 }
 
 pub fn getHeight(self: *@This()) f32 {
+    if (self.attr.bounded) return self.attr.bounds.height;
     return self.getContentHeight() + self.attr.padding.top + self.attr.padding.bottom;
 }
 
