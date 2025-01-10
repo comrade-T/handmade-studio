@@ -1040,6 +1040,7 @@ pub const InputFrame = struct {
     }
 
     pub fn cleanUpAfterExecution(self: *@This()) void {
+        if (!self.force_emitting_down) self.emitted = true;
         self.clearKeyUps();
         self.previous_down_candidate = null;
     }
