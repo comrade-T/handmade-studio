@@ -51,13 +51,13 @@ pub fn initialize(self: *@This()) void {
 }
 
 fn calculateInitialLineX(self: *@This()) f32 {
-    if (self.win.attr.bounded) return self.win.attr.pos.x - self.win.attr.bounds.offset.x;
-    return self.win.attr.pos.x;
+    if (self.win.attr.bounded) return self.win.attr.pos.x - self.win.attr.bounds.offset.x + self.win.attr.padding.left;
+    return self.win.attr.pos.x + self.win.attr.padding.left;
 }
 
 fn calculateInitialLineY(self: *@This()) f32 {
-    if (self.win.attr.bounded) return self.win.attr.pos.y - self.win.attr.bounds.offset.y;
-    return self.win.attr.pos.y;
+    if (self.win.attr.bounded) return self.win.attr.pos.y - self.win.attr.bounds.offset.y + self.win.attr.padding.top;
+    return self.win.attr.pos.y + self.win.attr.padding.top;
 }
 
 ///////////////////////////// updates

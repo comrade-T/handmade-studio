@@ -312,6 +312,26 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .m, .w }, try MoveByCb.init(council.arena.allocator(), &wm, 0, -100));
     try council.map("normal", &.{ .m, .s }, try MoveByCb.init(council.arena.allocator(), &wm, 0, 100));
 
+    const ChangePaddingByCb = struct {
+        target: *WindowManager,
+        x_by: f32,
+        y_by: f32,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.changeActiveWindowPaddingBy(self.x_by, self.y_by);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x_by: f32, y_by: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .x_by = x_by, .y_by = y_by };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try council.map("normal", &.{ .space, .p, .a }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, -10, 0));
+    try council.map("normal", &.{ .space, .p, .d }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 10, 0));
+    try council.map("normal", &.{ .space, .p, .w }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 0, 10));
+    try council.map("normal", &.{ .space, .p, .s }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 0, -10));
+
     const MakeClosestWindowActiveCb = struct {
         direction: WindowManager.WindowRelativeDirection,
         target: *WindowManager,

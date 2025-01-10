@@ -126,6 +126,13 @@ pub fn toggleBorder(self: *@This()) void {
     self.attr.bordered = !self.attr.bordered;
 }
 
+pub fn changePaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
+    self.attr.padding.left += x_by;
+    self.attr.padding.right += x_by;
+    self.attr.padding.top += y_by;
+    self.attr.padding.bottom += y_by;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Getters
 
 pub fn getX(self: *@This()) f32 {

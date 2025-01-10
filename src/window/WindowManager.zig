@@ -100,6 +100,11 @@ pub fn toggleActiveWindowBorder(ctx: *anyopaque) !void {
     active_window.toggleBorder();
 }
 
+pub fn changeActiveWindowPaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
+    const active_window = self.active_window orelse return;
+    active_window.changePaddingBy(x_by, y_by);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
 pub fn deleteRanges(self: *@This(), kind: WindowSource.DeleteRangesKind) !void {
@@ -585,10 +590,10 @@ pub const Connection = struct {
             const tracker = wm.tracker_map.get(self.win_id) orelse return error.TrackerNotFound;
             const win = tracker.win;
             switch (self.anchor) {
-                .N => return .{ win.attr.pos.x + win.cached.width / 2, win.attr.pos.y },
-                .E => return .{ win.attr.pos.x + win.cached.width, win.attr.pos.y + win.cached.height / 2 },
-                .S => return .{ win.attr.pos.x + win.cached.width / 2, win.attr.pos.y + win.cached.height },
-                .W => return .{ win.attr.pos.x, win.attr.pos.y + win.cached.height / 2 },
+                .N => return .{ win.attr.pos.x + win.getWidth() / 2, win.attr.pos.y },
+                .E => return .{ win.attr.pos.x + win.getWidth(), win.attr.pos.y + win.getHeight() / 2 },
+                .S => return .{ win.attr.pos.x + win.getWidth() / 2, win.attr.pos.y + win.getHeight() },
+                .W => return .{ win.attr.pos.x, win.attr.pos.y + win.getHeight() / 2 },
             }
             unreachable;
         }
