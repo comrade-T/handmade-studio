@@ -347,11 +347,11 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .space, .b }, .{ .f = WindowManager.toggleActiveWindowBounds, .ctx = &wm, .require_clarity_afterwards = true });
     try council.map("normal", &.{ .space, .b, .k }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 0, -20));
     try council.map("normal", &.{ .space, .b, .j }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 0, 20));
     try council.map("normal", &.{ .space, .b, .h }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, -20, 0));
     try council.map("normal", &.{ .space, .b, .l }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 20, 0));
+    try council.map("normal", &.{ .space, .b }, .{ .f = WindowManager.toggleActiveWindowBounds, .ctx = &wm, .require_clarity_afterwards = true });
 
     const MakeClosestWindowActiveCb = struct {
         direction: WindowManager.WindowRelativeDirection,

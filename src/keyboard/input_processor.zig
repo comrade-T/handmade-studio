@@ -76,6 +76,8 @@ pub const Callback = struct {
     } = .{},
 };
 
+fn nop(_: *anyopaque) !void {}
+
 pub const MappingCouncil = struct {
     a: Allocator,
     arena: std.heap.ArenaAllocator,
@@ -88,6 +90,8 @@ pub const MappingCouncil = struct {
 
     active_contexts: *ActiveContexts,
     require_clarity_afterwards: bool = false,
+
+    nop_callback: Callback,
 
     const ActiveContexts = std.StringArrayHashMap(bool);
 
@@ -116,7 +120,12 @@ pub const MappingCouncil = struct {
             .ups_n_downs = ups_n_downs,
             .pending_ups_n_downs = pending_ups_n_downs,
             .active_contexts = active_contexts,
+            .nop_callback = Callback{
+                .f = nop,
+                .ctx = self,
+            },
         };
+
         return self;
     }
 
@@ -243,16 +252,33 @@ pub const MappingCouncil = struct {
             return down_map.put(key_hash, callback);
         }
 
+        const keys_hash = hash(keys);
+
+        // #1B:
+        if (up_map.get(keys_hash)) |result| {
+            if (result.f == nop) {
+                try up_map.put(keys_hash, callback);
+                return;
+            }
+        }
+
         for (0..keys.len - 1) |i| {
             const key_chunk = keys[0 .. i + 1];
             const chunk_hash = hash(key_chunk);
+
+            // #1A: Let's say `&.{ .space, .b, .k }` is registered gets mapped first,
+            // this makes sure something like `&.{ .space, .b }` gets mapped correctly afterwards.
+            if (!up_map.contains(chunk_hash) and !down_map.contains(chunk_hash)) {
+                try up_map.put(chunk_hash, self.nop_callback);
+            }
+
             if (!callback.always_trigger_on_down and down_map.get(chunk_hash) != null) {
                 const fetched = down_map.fetchRemove(chunk_hash);
                 try up_map.put(chunk_hash, fetched.?.value);
                 continue;
             }
         }
-        try down_map.put(hash(keys), callback);
+        try down_map.put(keys_hash, callback);
     }
 
     pub fn triggerIgnoresDelay(self: *const @This(), trigger: u128, frame: *InputFrame) bool {
