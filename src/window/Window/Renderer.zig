@@ -361,20 +361,43 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
     var chars_rendered: i64 = 0;
     defer ztracy.PlotI("chars_rendered", chars_rendered);
 
-    // render border
+    ///////////////////////////// Render Border
+
+    const mall = self.mall;
+    const win = self.win;
+
     defer if (self.win.attr.bordered) {
         const THICKNESS = 2;
-        self.mall.rcb.drawRectangleLines(
-            self.win.getX(),
-            self.win.getY(),
-            self.win.getWidth(),
-            self.win.getHeight(),
+        mall.rcb.drawRectangleLines(
+            win.getX(),
+            win.getY(),
+            win.getWidth(),
+            win.getHeight(),
             THICKNESS,
-            self.win.defaults.border_color,
+            win.defaults.border_color,
         );
     };
 
-    for (0..self.win.ws.buf.ropeman.getNumOfLines()) |linenr| {
+    ///////////////////////////// Scissoring
+
+    if (win.attr.bounded) {
+        const screen_x, const screen_y = mall.icb.getWorldToScreen2D(mall.camera, win.getX(), win.getY());
+
+        const camera_zoom = mall.icb.getCameraZoom(mall.camera);
+
+        const screen_width = (win.attr.bounds.width - win.attr.padding.right) * camera_zoom;
+        const screen_height = (win.attr.bounds.height - win.attr.padding.bottom) * camera_zoom;
+
+        mall.rcb.beginScissorMode(screen_x, screen_y, screen_width, screen_height);
+    }
+
+    defer if (win.attr.bounded) {
+        mall.rcb.endScissorMode();
+    };
+
+    ///////////////////////////// Text Rendering
+
+    for (0..win.ws.buf.ropeman.getNumOfLines()) |linenr| {
         self.linenr = linenr;
 
         if (self.win.attr.limit) |limit| {

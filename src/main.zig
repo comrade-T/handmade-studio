@@ -69,8 +69,10 @@ pub fn main() anyerror!void {
     const info_callbacks = RenderMall.InfoCallbacks{
         .getScreenWidthHeight = getScreenWidthHeight,
         .getScreenToWorld2D = getScreenToWorld2D,
+        .getWorldToScreen2D = getWorldToScreen2D,
         .getViewFromCamera = getViewFromCamera,
         .cameraTargetsEqual = cameraTargetsEqual,
+        .getCameraZoom = getCameraZoom,
     };
 
     const render_callbacks = RenderMall.RenderCallbacks{
@@ -81,6 +83,8 @@ pub fn main() anyerror!void {
         .drawLine = drawLine,
         .changeCameraZoom = changeCameraZoom,
         .changeCameraPan = changeCameraPan,
+        .beginScissorMode = beginScissorMode,
+        .endScissorMode = endScissorMode,
     };
 
     ///////////////////////////// Stores
@@ -956,10 +960,21 @@ fn getScreenToWorld2D(camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 } {
     return .{ result.x, result.y };
 }
 
+fn getWorldToScreen2D(camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 } {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    const result = rl.getWorldToScreen2D(.{ .x = x, .y = y }, camera.*);
+    return .{ result.x, result.y };
+}
+
 fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {
     const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
     target_camera.*.target.x += x_by;
     target_camera.*.target.y += y_by;
+}
+
+fn getCameraZoom(camera_: *anyopaque) f32 {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    return camera.zoom;
 }
 
 fn getViewFromCamera(camera_: *anyopaque) RenderMall.ScreenView {
@@ -982,6 +997,19 @@ fn cameraTargetsEqual(a_: *anyopaque, b_: *anyopaque) bool {
 
     return @round(a.target.x * 100) == @round(b.target.x * 100) and
         @round(a.target.y * 100) == @round(b.target.y * 100);
+}
+
+fn beginScissorMode(x: f32, y: f32, width: f32, height: f32) void {
+    rl.beginScissorMode(
+        @intFromFloat(x),
+        @intFromFloat(y),
+        @intFromFloat(width),
+        @intFromFloat(height),
+    );
+}
+
+fn endScissorMode() void {
+    rl.endScissorMode();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

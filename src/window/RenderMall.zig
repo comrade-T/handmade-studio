@@ -199,11 +199,16 @@ pub const RenderCallbacks = struct {
     drawLine: *const fn (start_x: f32, start_y: f32, end_x: f32, end_y: f32, color: u32) void,
     changeCameraZoom: *const fn (camera: *anyopaque, target_camera: *anyopaque, x: f32, y: f32, scale_factor: f32) void,
     changeCameraPan: *const fn (target_camera_: *anyopaque, x_by: f32, y_by: f32) void,
+
+    beginScissorMode: *const fn (x: f32, y: f32, width: f32, height: f32) void,
+    endScissorMode: *const fn () void,
 };
 
 pub const InfoCallbacks = struct {
     getScreenWidthHeight: *const fn () struct { f32, f32 },
     getScreenToWorld2D: *const fn (camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 },
+    getWorldToScreen2D: *const fn (camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 },
+    getCameraZoom: *const fn (camera_: *anyopaque) f32,
     getViewFromCamera: *const fn (camera_: *anyopaque) ScreenView,
     cameraTargetsEqual: *const fn (a_: *anyopaque, b: *anyopaque) bool,
 };
