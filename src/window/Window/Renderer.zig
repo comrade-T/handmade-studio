@@ -156,22 +156,24 @@ fn baseLine(self: *@This()) f32 {
 
 fn boundStartX(self: *@This()) f32 {
     assert(self.win.attr.bounded);
-    return self.win.attr.pos.x;
+    return self.win.attr.pos.x + self.win.attr.padding.left;
 }
 
 fn boundStartY(self: *@This()) f32 {
     assert(self.win.attr.bounded);
-    return self.win.attr.pos.y;
+    return self.win.attr.pos.y + self.win.attr.padding.top;
 }
 
 fn boundEndX(self: *@This()) f32 {
     assert(self.win.attr.bounded);
-    return self.win.attr.pos.x + self.win.attr.bounds.width;
+    return self.win.attr.pos.x + self.win.attr.bounds.width -
+        self.win.attr.padding.right;
 }
 
 fn boundEndY(self: *@This()) f32 {
     assert(self.win.attr.bounded);
-    return self.win.attr.pos.y + self.win.attr.bounds.height;
+    return self.win.attr.pos.y + self.win.attr.bounds.height -
+        self.win.attr.padding.bottom;
 }
 
 ///////////////////////////// checkers
