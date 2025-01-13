@@ -145,28 +145,28 @@ pub fn changePaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Getters
 
-pub fn getX(self: *@This()) f32 {
+pub fn getX(self: *const @This()) f32 {
     return self.attr.pos.x;
 }
 
-pub fn getY(self: *@This()) f32 {
+pub fn getY(self: *const @This()) f32 {
     return self.attr.pos.y;
 }
 
-pub fn getContentWidth(self: *@This()) f32 {
+pub fn getContentWidth(self: *const @This()) f32 {
     return self.cached.width;
 }
 
-pub fn getContentHeight(self: *@This()) f32 {
+pub fn getContentHeight(self: *const @This()) f32 {
     return self.cached.height;
 }
 
-pub fn getWidth(self: *@This()) f32 {
+pub fn getWidth(self: *const @This()) f32 {
     if (self.attr.bounded) return self.attr.bounds.width;
     return self.getContentWidth() + self.attr.padding.left + self.attr.padding.right;
 }
 
-pub fn getHeight(self: *@This()) f32 {
+pub fn getHeight(self: *const @This()) f32 {
     if (self.attr.bounded) return self.attr.bounds.height;
     return self.getContentHeight() + self.attr.padding.top + self.attr.padding.bottom;
 }

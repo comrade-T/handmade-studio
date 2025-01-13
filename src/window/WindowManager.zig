@@ -613,10 +613,49 @@ pub const Connection = struct {
 };
 
 pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowRelativeDirection) void {
-    const pc = self.pending_connection orelse return;
-    const tracker = self.tracker_map.get(pc.end.win_id) orelse return;
-    const may_candidate = self.findClosestWindow(tracker.win, direction);
-    if (may_candidate) |candidate| self.pending_connection.?.end.win_id = candidate.id;
+    if (self.pending_connection) |*pc| {
+        const initial_end = self.tracker_map.get(pc.end.win_id) orelse return;
+        const may_candidate = self.findClosestWindow(initial_end.win, direction);
+        if (may_candidate) |candidate| {
+            pc.end.win_id = candidate.id;
+            const start = self.tracker_map.get(pc.start.win_id) orelse return;
+            const end = self.tracker_map.get(pc.end.win_id) orelse return;
+            pc.start.anchor, pc.end.anchor = calculateOptimalAnchorPoints(start.win, end.win);
+        }
+    }
+}
+
+fn calculateOptimalAnchorPoints(a: *const Window, b: *const Window) struct { Connection.Anchor, Connection.Anchor } {
+    const cx_a = a.getX() + a.getWidth() / 2;
+    const cy_a = a.getY() + a.getHeight() / 2;
+    const cx_b = b.getX() + b.getWidth() / 2;
+    const cy_b = b.getY() + b.getHeight() / 2;
+
+    const x_diff = @abs(cx_a - cx_b);
+    const y_diff = @abs(cy_a - cy_b);
+
+    var anchor_a = Connection.Anchor.E;
+    var anchor_b = Connection.Anchor.E;
+
+    if (x_diff >= y_diff) {
+        if (cx_a > cx_b) {
+            anchor_a = .W;
+            anchor_b = .E;
+        } else {
+            anchor_a = .E;
+            anchor_b = .W;
+        }
+    } else {
+        if (cy_a > cy_b) {
+            anchor_a = .N;
+            anchor_b = .S;
+        } else {
+            anchor_a = .S;
+            anchor_b = .N;
+        }
+    }
+
+    return .{ anchor_a, anchor_b };
 }
 
 pub fn startPendingConnection(ctx: *anyopaque) !void {
