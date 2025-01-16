@@ -89,30 +89,28 @@ pub fn deinit(self: *@This()) void {
 }
 
 pub fn render(self: *const @This()) void {
-    connections: {
-        var selected_connection: ?*Connection = null;
-        if (self.selected_query) |query| {
-            const active_window = self.wm.active_window orelse break :connections;
-            const tracker = self.tracker_map.getPtr(active_window.id) orelse break :connections;
-
-            const source = switch (query.kind) {
-                .start => tracker.incoming,
-                .end => tracker.outgoing,
-            };
-            selected_connection = source.items[query.index];
-        }
-
-        for (self.connections.items) |conn| {
-            if (selected_connection) |selconn| {
-                if (conn == selconn) {
-                    conn.render(self.wm, Connection.SELECTED_THICKNESS);
-                    continue;
-                }
-            }
-            conn.render(self.wm, Connection.NORMAL_THICKNESS);
-        }
+    var selected_connection: ?*Connection = null;
+    if (self.selected_query) |query| thickness: {
+        const active_window = self.wm.active_window orelse break :thickness;
+        const tracker = self.tracker_map.getPtr(active_window.id) orelse break :thickness;
+        const source = switch (query.kind) {
+            .start => tracker.incoming,
+            .end => tracker.outgoing,
+        };
+        selected_connection = source.items[query.index];
     }
-    if (self.pending_connection) |*pc| pc.renderPendingConnectionIndicators(self.wm);
+
+    for (self.connections.items) |conn| {
+        if (selected_connection) |selected| {
+            if (conn == selected) {
+                conn.render(self.wm, Connection.SELECTED_THICKNESS);
+                continue;
+            }
+        }
+        conn.render(self.wm, Connection.NORMAL_THICKNESS);
+    }
+
+    if (self.pending_connection) |*pc| pc.renderPendingIndicators(self.wm);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -142,7 +140,7 @@ pub const Connection = struct {
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, CONNECTION_COLOR);
     }
 
-    fn renderPendingConnectionIndicators(self: *const @This(), wm: *const WindowManager) void {
+    fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {
         const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
         const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
         wm.mall.rcb.drawCircle(start_x, start_y, 10, CONNECTION_START_POINT_COLOR);
