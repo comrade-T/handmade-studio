@@ -26,6 +26,50 @@ const WM = WindowManager;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
+
+    ///////////////////////////// modes & contexts involved
+
+    const NORMAL = "normal";
+    const CYCLING = "cycling_connections";
+    const PENDING = "pending_connection";
+
+    const NORMAL_TO_CYCLING = WM.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{CYCLING} };
+    const CYCLING_TO_NORMAL = WM.Callback.Contexts{ .remove = &.{CYCLING}, .add = &.{NORMAL} };
+
+    const NORMAL_TO_PENDING = WM.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{PENDING} };
+    const PENDING_TO_NORMAL = WM.Callback.Contexts{ .remove = &.{PENDING}, .add = &.{NORMAL} };
+
+    ///////////////////////////// cycling connections
+
+    const CycleCb = struct {
+        direction: PrevOrNext,
+        connman: *ConnectionManager,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.connman.cycleThroughActiveWindowConnections(self.direction);
+        }
+        pub fn init(allocator: std.mem.Allocator, cm_: *ConnectionManager, direction: PrevOrNext) !WM.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .direction = direction, .connman = cm_ };
+            return WM.Callback{ .f = @This().f, .ctx = self, .contexts = NORMAL_TO_CYCLING };
+        }
+    };
+
+    try council.map(NORMAL, &.{ .c, .l }, try CycleCb.init(council.arena.allocator(), connman, .next));
+    try council.map(CYCLING, &.{.j}, try CycleCb.init(council.arena.allocator(), connman, .next));
+    try council.map(CYCLING, &.{.k}, try CycleCb.init(council.arena.allocator(), connman, .prev));
+    try council.map(CYCLING, &.{.escape}, .{ .f = exitConnectionCycleMode, .ctx = connman, .contexts = CYCLING_TO_NORMAL });
+
+    ///////////////////////////// pending connection
+
+    try council.map(NORMAL, &.{ .left_control, .c }, .{ .f = startPendingConnection, .ctx = connman, .contexts = NORMAL_TO_PENDING });
+    try council.map(PENDING, &.{.escape}, .{ .f = cancelPendingConnection, .ctx = connman, .contexts = PENDING_TO_NORMAL });
+    try council.map(PENDING, &.{.enter}, .{ .f = confirmPendingConnection, .ctx = connman, .contexts = PENDING_TO_NORMAL });
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 wm: *const WindowManager,
 
 connections: ConnectionPtrList = ConnectionPtrList{},
@@ -170,12 +214,14 @@ fn calculateOptimalAnchorPoints(a: *const WM.Window, b: *const WM.Window) struct
     return .{ anchor_a, anchor_b };
 }
 
-pub fn startPendingConnection(self: *@This()) void {
+pub fn startPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const active_window = self.wm.active_window orelse return;
     self.pending_connection = Connection.new(active_window.id);
 }
 
-pub fn confirmPendingConnection(self: *@This()) !void {
+pub fn confirmPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const pc = self.pending_connection orelse return;
     if (pc.start.win_id == pc.end.win_id) return;
 
@@ -183,7 +229,8 @@ pub fn confirmPendingConnection(self: *@This()) !void {
     try self.notifyTrackers(pc);
 }
 
-pub fn cancelPendingConnection(self: *@This()) void {
+pub fn cancelPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.pending_connection = null;
 }
 
@@ -217,7 +264,8 @@ const SelectedConnectionQuery = struct {
 
 pub const PrevOrNext = enum { prev, next };
 
-pub fn exitConnectionCycleMode(self: *@This()) void {
+pub fn exitConnectionCycleMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.selected_query = null;
 }
 

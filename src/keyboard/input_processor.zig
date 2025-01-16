@@ -70,10 +70,12 @@ pub const Callback = struct {
 
     ignore_trigger_delay: bool = false,
 
-    contexts: struct {
+    contexts: Contexts = .{},
+
+    pub const Contexts = struct {
         add: []const []const u8 = &.{},
         remove: []const []const u8 = &.{},
-    } = .{},
+    };
 };
 
 fn nop(_: *anyopaque) !void {}

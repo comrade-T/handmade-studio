@@ -28,6 +28,10 @@ const RenderMall = @import("RenderMall");
 const WindowSource = @import("WindowSource");
 pub const Window = @import("Window");
 
+const ip_ = @import("input_processor");
+pub const MappingCouncil = ip_.MappingCouncil;
+pub const Callback = ip_.Callback;
+
 pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,6 +60,10 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .connman = ConnectionManager{ .wm = self },
     };
     return self;
+}
+
+pub fn mapKeys(self: *@This(), council: *MappingCouncil) !void {
+    try self.connman.mapKeys(council);
 }
 
 pub fn destroy(self: *@This()) void {
@@ -691,26 +699,4 @@ fn writeToFile(str: []const u8) !void {
     var file = try std.fs.cwd().createFile(session_file_path, .{});
     defer file.close();
     try file.writeAll(str);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Connection Callbacks
-
-pub fn exitConnectionCycleMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.connman.exitConnectionCycleMode();
-}
-
-pub fn startPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.connman.startPendingConnection();
-}
-
-pub fn cancelPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.connman.cancelPendingConnection();
-}
-
-pub fn confirmPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.connman.confirmPendingConnection();
 }

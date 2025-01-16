@@ -208,7 +208,7 @@ pub fn main() anyerror!void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
-    ///////////////////////////// Setup
+    ///////////////////////////// Mapping Council Setup
 
     var council = try ip.MappingCouncil.init(gpa);
     defer council.deinit();
@@ -217,6 +217,8 @@ pub fn main() anyerror!void {
     defer input_frame.deinit();
 
     var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
+
+    try wm.mapKeys(council);
 
     ///////////////////////////// Normal Mode
 
@@ -724,49 +726,6 @@ pub fn main() anyerror!void {
     });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Connections
-
-    const CycleThroughActiveWindowConnectionsCb = struct {
-        direction: WindowManager.ConnectionManager.PrevOrNext,
-        wm: *WindowManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.wm.connman.cycleThroughActiveWindowConnections(self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, direction: WindowManager.ConnectionManager.PrevOrNext) !ip.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .direction = direction, .wm = wm_ };
-            return ip.Callback{
-                .f = @This().f,
-                .ctx = self,
-                .contexts = .{ .remove = &.{"normal"}, .add = &.{"cyling_connections"} },
-            };
-        }
-    };
-    try council.map("normal", &.{ .c, .l }, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), wm, .next));
-    try council.map("cyling_connections", &.{.j}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), wm, .next));
-    try council.map("cyling_connections", &.{.k}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), wm, .prev));
-    try council.map("cyling_connections", &.{.escape}, .{
-        .f = WindowManager.exitConnectionCycleMode,
-        .ctx = wm,
-        .contexts = .{ .remove = &.{"cyling_connections"}, .add = &.{"normal"} },
-    });
-
-    try council.map("normal", &.{ .left_control, .c }, .{
-        .f = WindowManager.startPendingConnection,
-        .ctx = wm,
-        .contexts = .{ .remove = &.{"normal"}, .add = &.{"pending_connection"} },
-    });
-
-    try council.map("pending_connection", &.{.escape}, .{
-        .f = WindowManager.cancelPendingConnection,
-        .ctx = wm,
-        .contexts = .{ .remove = &.{"pending_connection"}, .add = &.{"normal"} },
-    });
-    try council.map("pending_connection", &.{.enter}, .{
-        .f = WindowManager.confirmPendingConnection,
-        .ctx = wm,
-        .contexts = .{ .remove = &.{"pending_connection"}, .add = &.{"normal"} },
-    });
 
     const ChangeConnectionEndWinIDCb = struct {
         direction: WindowManager.WindowRelativeDirection,

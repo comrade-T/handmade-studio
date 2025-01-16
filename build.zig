@@ -163,6 +163,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "WindowSource", .module = window_source.module },
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "Window", .module = window.module },
+        .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
 
     ///////////////////////////// Fuzzy Finder
