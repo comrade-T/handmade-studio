@@ -725,54 +725,6 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// Connections
-
-    const ChangeConnectionEndWinIDCb = struct {
-        direction: WindowManager.WindowRelativeDirection,
-        wm: *WindowManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.wm.connman.switchPendingConnectionEndWindow(self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .direction = direction, .wm = wm_ };
-            return ip.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-    try council.map("pending_connection", &.{ .left_control, .h }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .left));
-    try council.map("pending_connection", &.{ .left_control, .l }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .right));
-    try council.map("pending_connection", &.{ .left_control, .k }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .top));
-    try council.map("pending_connection", &.{ .left_control, .j }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .bottom));
-
-    const ChangeConnectionAnchorCb = struct {
-        const Which = enum { start, end };
-        which: Which,
-        anchor: WindowManager.ConnectionManager.Connection.Anchor,
-        wm: *WindowManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            if (self.wm.connman.pending_connection == null) return;
-            switch (self.which) {
-                .start => self.wm.connman.pending_connection.?.start.anchor = self.anchor,
-                .end => self.wm.connman.pending_connection.?.end.anchor = self.anchor,
-            }
-        }
-        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, which: Which, anchor: WindowManager.ConnectionManager.Connection.Anchor) !ip.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .which = which, .anchor = anchor, .wm = wm_ };
-            return ip.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-    try council.map("pending_connection", &.{ .s, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .W));
-    try council.map("pending_connection", &.{ .s, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .E));
-    try council.map("pending_connection", &.{ .s, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .N));
-    try council.map("pending_connection", &.{ .s, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .S));
-    try council.map("pending_connection", &.{ .e, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .W));
-    try council.map("pending_connection", &.{ .e, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .E));
-    try council.map("pending_connection", &.{ .e, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .N));
-    try council.map("pending_connection", &.{ .e, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .S));
-
     ////////////////////////////////////////////////////////////////////////////////////////////// Debugging
 
     // const DebugPrintCb = struct {

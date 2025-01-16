@@ -372,8 +372,7 @@ const WindowSourceHandler = struct {
         }
 
         assert(window.id != Window.UNSET_WIN_ID);
-        // TODO: make this a method
-        try wm.connman.tracker_map.put(wm.a, window.id, ConnectionManager.WindowConnectionsTracker{ .win = window });
+        try wm.connman.registerWindow(window);
 
         // quick & hacky solution for limiting the cursor to the window limit
         window.cursor_manager.moveUp(1, &self.source.buf.ropeman);
