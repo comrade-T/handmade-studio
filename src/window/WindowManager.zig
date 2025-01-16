@@ -26,7 +26,9 @@ const assert = std.debug.assert;
 const LangHub = @import("LangSuite").LangHub;
 const RenderMall = @import("RenderMall");
 const WindowSource = @import("WindowSource");
-const Window = @import("Window");
+pub const Window = @import("Window");
+
+pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -43,34 +45,29 @@ last_win_id: i128 = Window.UNSET_WIN_ID,
 fmap: FilePathToHandlerMap = FilePathToHandlerMap{},
 wmap: WindowToHandlerMap = WindowToHandlerMap{},
 
-connections: ConnectionPtrList = ConnectionPtrList{},
-tracker_map: TrackerMap = TrackerMap{},
-pending_connection: ?Connection = null,
-selected_connection_query: ?SelectedConnectionQuery = null,
+connman: ConnectionManager,
 
-pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !WindowManager {
-    return WindowManager{
+pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
+    const self = try a.create(@This());
+    self.* = WindowManager{
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
+        .connman = ConnectionManager{ .wm = self },
     };
+    return self;
 }
 
-pub fn deinit(self: *@This()) void {
+pub fn destroy(self: *@This()) void {
+    self.connman.deinit();
+
     for (self.handlers.items) |handler| handler.destroy(self.a);
     self.handlers.deinit(self.a);
 
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
 
-    for (self.tracker_map.values()) |*tracker| {
-        tracker.incoming.deinit(self.a);
-        tracker.outgoing.deinit(self.a);
-    }
-    self.tracker_map.deinit(self.a);
-
-    for (self.connections.items) |conn| self.a.destroy(conn);
-    self.connections.deinit(self.a);
+    self.a.destroy(self);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -80,30 +77,7 @@ pub fn render(self: *@This()) void {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
         window.render(is_active, self.mall);
     }
-    connections: {
-        var selected_connection: ?*Connection = null;
-        if (self.selected_connection_query) |query| {
-            const active_window = self.active_window orelse break :connections;
-            const tracker = self.tracker_map.getPtr(active_window.id) orelse break :connections;
-
-            const source = switch (query.kind) {
-                .start => tracker.incoming,
-                .end => tracker.outgoing,
-            };
-            selected_connection = source.items[query.index];
-        }
-
-        for (self.connections.items) |conn| {
-            if (selected_connection) |selconn| {
-                if (conn == selconn) {
-                    conn.render(self, Connection.SELECTED_THICKNESS);
-                    continue;
-                }
-            }
-            conn.render(self, Connection.NORMAL_THICKNESS);
-        }
-    }
-    if (self.pending_connection) |*pc| pc.renderPendingConnectionIndicators(self);
+    self.connman.render();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
@@ -390,7 +364,8 @@ const WindowSourceHandler = struct {
         }
 
         assert(window.id != Window.UNSET_WIN_ID);
-        try wm.tracker_map.put(wm.a, window.id, WindowConnectionsTracker{ .win = window });
+        // TODO: make this a method
+        try wm.connman.tracker_map.put(wm.a, window.id, ConnectionManager.WindowConnectionsTracker{ .win = window });
 
         // quick & hacky solution for limiting the cursor to the window limit
         window.cursor_manager.moveUp(1, &self.source.buf.ropeman);
@@ -407,7 +382,7 @@ pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirectio
     if (may_candidate) |candidate| self.active_window = candidate;
 }
 
-fn findClosestWindow(self: *@This(), curr: *Window, direction: WindowRelativeDirection) ?*Window {
+pub fn findClosestWindow(self: *const @This(), curr: *Window, direction: WindowRelativeDirection) ?*Window {
     var x_distance: f32 = std.math.floatMax(f32);
     var y_distance: f32 = std.math.floatMax(f32);
     var may_candidate: ?*Window = null;
@@ -589,233 +564,6 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Connections
-
-const ConnectionPtrList = std.ArrayListUnmanaged(*Connection);
-pub const Connection = struct {
-    start: Point,
-    end: Point,
-
-    fn new(start_win_id: i128) Connection {
-        return Connection{
-            .start = .{ .win_id = start_win_id },
-            .end = .{ .win_id = start_win_id },
-        };
-    }
-
-    const CONNECTION_COLOR = 0xffffffff;
-    const CONNECTION_START_POINT_COLOR = 0x03d3fcff;
-    const CONNECTION_END_POINT_COLOR = 0xd11daaff;
-
-    const NORMAL_THICKNESS = 1;
-    const SELECTED_THICKNESS = 5;
-
-    fn render(self: *const @This(), wm: *const WindowManager, thickness: f32) void {
-        const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
-        const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
-        wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, CONNECTION_COLOR);
-    }
-
-    fn renderPendingConnectionIndicators(self: *const @This(), wm: *const WindowManager) void {
-        const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
-        const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
-        wm.mall.rcb.drawCircle(start_x, start_y, 10, CONNECTION_START_POINT_COLOR);
-        wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
-    }
-
-    const Point = struct {
-        win_id: i128,
-        anchor: Anchor = .E,
-
-        fn getPosition(self: *const @This(), wm: *const WindowManager) error{TrackerNotFound}!struct { f32, f32 } {
-            const tracker = wm.tracker_map.get(self.win_id) orelse return error.TrackerNotFound;
-            const win = tracker.win;
-            switch (self.anchor) {
-                .N => return .{ win.attr.pos.x + win.getWidth() / 2, win.attr.pos.y },
-                .E => return .{ win.attr.pos.x + win.getWidth(), win.attr.pos.y + win.getHeight() / 2 },
-                .S => return .{ win.attr.pos.x + win.getWidth() / 2, win.attr.pos.y + win.getHeight() },
-                .W => return .{ win.attr.pos.x, win.attr.pos.y + win.getHeight() / 2 },
-            }
-            unreachable;
-        }
-    };
-    pub const Anchor = enum { N, E, S, W };
-};
-
-pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowRelativeDirection) void {
-    if (self.pending_connection) |*pc| {
-        const initial_end = self.tracker_map.get(pc.end.win_id) orelse return;
-        const may_candidate = self.findClosestWindow(initial_end.win, direction);
-        if (may_candidate) |candidate| {
-            pc.end.win_id = candidate.id;
-            const start = self.tracker_map.get(pc.start.win_id) orelse return;
-            const end = self.tracker_map.get(pc.end.win_id) orelse return;
-            pc.start.anchor, pc.end.anchor = calculateOptimalAnchorPoints(start.win, end.win);
-        }
-    }
-}
-
-fn calculateOptimalAnchorPoints(a: *const Window, b: *const Window) struct { Connection.Anchor, Connection.Anchor } {
-    const cx_a = a.getX() + a.getWidth() / 2;
-    const cy_a = a.getY() + a.getHeight() / 2;
-    const cx_b = b.getX() + b.getWidth() / 2;
-    const cy_b = b.getY() + b.getHeight() / 2;
-
-    const x_diff = @abs(cx_a - cx_b);
-    const y_diff = @abs(cy_a - cy_b);
-
-    var anchor_a = Connection.Anchor.E;
-    var anchor_b = Connection.Anchor.E;
-
-    if (x_diff >= y_diff) {
-        if (cx_a > cx_b) {
-            anchor_a = .W;
-            anchor_b = .E;
-        } else {
-            anchor_a = .E;
-            anchor_b = .W;
-        }
-    } else {
-        if (cy_a > cy_b) {
-            anchor_a = .N;
-            anchor_b = .S;
-        } else {
-            anchor_a = .S;
-            anchor_b = .N;
-        }
-    }
-
-    return .{ anchor_a, anchor_b };
-}
-
-pub fn startPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const active_window = self.active_window orelse return;
-    self.pending_connection = Connection.new(active_window.id);
-}
-
-pub fn confirmPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const pc = self.pending_connection orelse return;
-    if (pc.start.win_id == pc.end.win_id) return;
-
-    defer self.pending_connection = null;
-    try self.notifyTrackers(pc);
-}
-
-pub fn cancelPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.pending_connection = null;
-}
-
-///////////////////////////// WindowConnectionsTracker
-
-const TrackerMap = std.AutoArrayHashMapUnmanaged(Window.ID, WindowConnectionsTracker);
-const WindowConnectionsTracker = struct {
-    win: *Window,
-    incoming: ConnectionPtrList = ConnectionPtrList{},
-    outgoing: ConnectionPtrList = ConnectionPtrList{},
-};
-
-fn notifyTrackers(self: *@This(), conn: Connection) !void {
-    var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
-    var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
-
-    const c = try self.a.create(Connection);
-    c.* = conn;
-    try self.connections.append(self.a, c);
-
-    try start_tracker.outgoing.append(self.a, c);
-    try end_tracker.incoming.append(self.a, c);
-}
-
-///////////////////////////// Some shting
-
-const SelectedConnectionQuery = struct {
-    kind: enum { start, end },
-    index: usize,
-};
-
-pub const PrevOrNext = enum { prev, next };
-
-pub fn exitConnectionCycleMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.selected_connection_query = null;
-}
-
-pub fn cycleThroughActiveWindowConnections(self: *@This(), direction: PrevOrNext) !void {
-    const active_window = self.active_window orelse return;
-    const tracker = self.tracker_map.getPtr(active_window.id) orelse return;
-
-    if (tracker.incoming.items.len == 0 and tracker.outgoing.items.len == 0) return;
-
-    if (self.selected_connection_query) |*query| {
-        switch (direction) {
-            .prev => {
-                switch (query.kind) {
-                    .start => {
-                        assert(tracker.incoming.items.len > 0);
-                        if (query.index > 0) {
-                            query.index -= 1;
-                            return;
-                        }
-                        if (tracker.outgoing.items.len > 0) {
-                            query.kind = .end;
-                            query.index = tracker.outgoing.items.len - 1;
-                        }
-                        query.index = tracker.incoming.items.len - 1;
-                        return;
-                    },
-                    .end => {
-                        assert(tracker.outgoing.items.len > 0);
-                        if (query.index > 0) {
-                            query.index -= 1;
-                            return;
-                        }
-                        if (tracker.incoming.items.len > 0) {
-                            query.kind = .end;
-                            query.index = tracker.incoming.items.len - 1;
-                        }
-                        query.index = tracker.outgoing.items.len - 1;
-                        return;
-                    },
-                }
-            },
-            .next => {
-                switch (query.kind) {
-                    .start => {
-                        assert(tracker.incoming.items.len > 0);
-                        if (query.index + 1 < tracker.incoming.items.len) {
-                            query.index += 1;
-                            return;
-                        }
-                        if (tracker.outgoing.items.len > 0) query.kind = .end;
-                        query.index = 0;
-                        return;
-                    },
-                    .end => {
-                        assert(tracker.outgoing.items.len > 0);
-                        if (query.index + 1 < tracker.outgoing.items.len) {
-                            query.index += 1;
-                            return;
-                        }
-                        if (tracker.incoming.items.len > 0) query.kind = .start;
-                        query.index = 0;
-                        return;
-                    },
-                }
-            },
-        }
-    }
-
-    assert(self.selected_connection_query == null);
-    assert(tracker.incoming.items.len > 0 or tracker.outgoing.items.len > 0);
-    self.selected_connection_query = .{
-        .index = 0,
-        .kind = if (tracker.incoming.items.len > 0) .start else .end,
-    };
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
 
 const session_file_path = ".handmade_studio/session.json";
@@ -827,7 +575,7 @@ const StringSource = struct {
 
 const Session = struct {
     string_sources: []const StringSource,
-    connections: []*const Connection,
+    connections: []*const ConnectionManager.Connection,
     windows: []const Window.WritableWindowState,
 };
 
@@ -873,7 +621,7 @@ pub fn loadSession(ctx: *anyopaque) !void {
         }
     }
 
-    for (parsed.value.connections) |conn| try self.notifyTrackers(conn.*);
+    for (parsed.value.connections) |conn| try self.connman.notifyTrackers(conn.*);
 }
 
 pub fn saveSession(ctx: *anyopaque) !void {
@@ -928,7 +676,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
     const session = Session{
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
-        .connections = self.connections.items,
+        .connections = self.connman.connections.items,
     };
 
     const str = try std.json.stringifyAlloc(arena.allocator(), session, .{
@@ -943,4 +691,26 @@ fn writeToFile(str: []const u8) !void {
     var file = try std.fs.cwd().createFile(session_file_path, .{});
     defer file.close();
     try file.writeAll(str);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Connection Callbacks
+
+pub fn exitConnectionCycleMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.connman.exitConnectionCycleMode();
+}
+
+pub fn startPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.connman.startPendingConnection();
+}
+
+pub fn cancelPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.connman.cancelPendingConnection();
+}
+
+pub fn confirmPendingConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.connman.confirmPendingConnection();
 }

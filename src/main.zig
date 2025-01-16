@@ -134,8 +134,8 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
-    var wm = try WindowManager.init(gpa, &lang_hub, &mall);
-    defer wm.deinit();
+    var wm = try WindowManager.create(gpa, &lang_hub, &mall);
+    defer wm.destroy();
 
     ///////////////////////////// Testing
 
@@ -222,60 +222,60 @@ pub fn main() anyerror!void {
 
     try council.setActiveContext("normal");
 
-    try council.map("normal", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = &wm });
-    try council.map("normal", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = &wm });
-    try council.map("normal", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = &wm });
-    try council.map("normal", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = &wm });
+    try council.map("normal", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = wm });
+    try council.map("normal", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = wm });
+    try council.map("normal", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = wm });
+    try council.map("normal", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = wm });
 
-    try council.map("normal", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = &wm });
-    try council.map("normal", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = &wm });
-    try council.map("normal", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = &wm });
+    try council.map("normal", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = wm });
+    try council.map("normal", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = wm });
+    try council.map("normal", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = wm });
 
-    try council.map("normal", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = &wm });
-    try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
-    try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });
+    try council.map("normal", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = wm });
+    try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = wm });
+    try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = wm });
 
-    try council.map("normal", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = &wm });
-    try council.map("normal", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = &wm });
-    try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
+    try council.map("normal", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = wm });
+    try council.map("normal", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = wm });
+    try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = wm });
 
-    try council.map("normal", &.{ .d, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
+    try council.map("normal", &.{ .d, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = wm });
 
     // text opjects
-    try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = &wm });
+    try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = wm });
     try council.map("normal", &.{ .c, .apostrophe }, .{
         .f = WindowManager.deleteInSingleQuote,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
         .require_clarity_afterwards = true,
     });
 
-    try council.map("normal", &.{.d}, .{ .f = nop, .ctx = &wm });
-    try council.map("normal", &.{.c}, .{ .f = nop, .ctx = &wm });
+    try council.map("normal", &.{.d}, .{ .f = nop, .ctx = wm });
+    try council.map("normal", &.{.c}, .{ .f = nop, .ctx = wm });
 
-    try council.map("normal", &.{ .d, .s }, .{ .f = nop2, .ctx = &wm });
-    try council.map("normal", &.{ .s, .d }, .{ .f = nop2, .ctx = &wm });
+    try council.map("normal", &.{ .d, .s }, .{ .f = nop2, .ctx = wm });
+    try council.map("normal", &.{ .s, .d }, .{ .f = nop2, .ctx = wm });
 
-    try council.map("normal", &.{ .c, .x }, .{ .f = nop2, .ctx = &wm });
-    try council.map("normal", &.{ .x, .c }, .{ .f = nop2, .ctx = &wm });
+    try council.map("normal", &.{ .c, .x }, .{ .f = nop2, .ctx = wm });
+    try council.map("normal", &.{ .x, .c }, .{ .f = nop2, .ctx = wm });
 
-    try council.map("normal", &.{ .d, .semicolon }, .{ .f = WindowManager.deleteInWord, .ctx = &wm });
+    try council.map("normal", &.{ .d, .semicolon }, .{ .f = WindowManager.deleteInWord, .ctx = wm });
     try council.map("normal", &.{ .c, .semicolon }, .{
         .f = WindowManager.deleteInWord,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
         .require_clarity_afterwards = true,
     });
 
-    try council.mapMany("normal", &.{ &.{ .d, .s, .semicolon }, &.{ .s, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = &wm });
+    try council.mapMany("normal", &.{ &.{ .d, .s, .semicolon }, &.{ .s, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = wm });
     try council.mapMany("normal", &.{ &.{ .c, .x, .semicolon }, &.{ .x, .c, .semicolon } }, .{
         .f = WindowManager.deleteInWORD,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
         .require_clarity_afterwards = true,
     });
 
-    try council.map("normal", &.{ .left_control, .b }, .{ .f = WindowManager.toggleActiveWindowBorder, .ctx = &wm });
+    try council.map("normal", &.{ .left_control, .b }, .{ .f = WindowManager.toggleActiveWindowBorder, .ctx = wm });
 
     ///////////////////////////// Layout Related
 
@@ -294,7 +294,7 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .left_control, .c }, try CenterAtCb.init(council.arena.allocator(), &wm));
+    try council.map("normal", &.{ .left_control, .c }, try CenterAtCb.init(council.arena.allocator(), wm));
 
     const MoveByCb = struct {
         target: *WindowManager,
@@ -311,10 +311,10 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .m, .a }, try MoveByCb.init(council.arena.allocator(), &wm, -100, 0));
-    try council.map("normal", &.{ .m, .d }, try MoveByCb.init(council.arena.allocator(), &wm, 100, 0));
-    try council.map("normal", &.{ .m, .w }, try MoveByCb.init(council.arena.allocator(), &wm, 0, -100));
-    try council.map("normal", &.{ .m, .s }, try MoveByCb.init(council.arena.allocator(), &wm, 0, 100));
+    try council.map("normal", &.{ .m, .a }, try MoveByCb.init(council.arena.allocator(), wm, -100, 0));
+    try council.map("normal", &.{ .m, .d }, try MoveByCb.init(council.arena.allocator(), wm, 100, 0));
+    try council.map("normal", &.{ .m, .w }, try MoveByCb.init(council.arena.allocator(), wm, 0, -100));
+    try council.map("normal", &.{ .m, .s }, try MoveByCb.init(council.arena.allocator(), wm, 0, 100));
 
     const ChangePaddingByCb = struct {
         target: *WindowManager,
@@ -331,10 +331,10 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .space, .p, .a }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, -10, 0));
-    try council.map("normal", &.{ .space, .p, .d }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 10, 0));
-    try council.map("normal", &.{ .space, .p, .w }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 0, 10));
-    try council.map("normal", &.{ .space, .p, .s }, try ChangePaddingByCb.init(council.arena.allocator(), &wm, 0, -10));
+    try council.map("normal", &.{ .space, .p, .a }, try ChangePaddingByCb.init(council.arena.allocator(), wm, -10, 0));
+    try council.map("normal", &.{ .space, .p, .d }, try ChangePaddingByCb.init(council.arena.allocator(), wm, 10, 0));
+    try council.map("normal", &.{ .space, .p, .w }, try ChangePaddingByCb.init(council.arena.allocator(), wm, 0, 10));
+    try council.map("normal", &.{ .space, .p, .s }, try ChangePaddingByCb.init(council.arena.allocator(), wm, 0, -10));
 
     const ChangeBoundSizeByCb = struct {
         target: *WindowManager,
@@ -351,11 +351,11 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .space, .b, .k }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 0, -20));
-    try council.map("normal", &.{ .space, .b, .j }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 0, 20));
-    try council.map("normal", &.{ .space, .b, .h }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, -20, 0));
-    try council.map("normal", &.{ .space, .b, .l }, try ChangeBoundSizeByCb.init(council.arena.allocator(), &wm, 20, 0));
-    try council.map("normal", &.{ .space, .b }, .{ .f = WindowManager.toggleActiveWindowBounds, .ctx = &wm, .require_clarity_afterwards = true });
+    try council.map("normal", &.{ .space, .b, .k }, try ChangeBoundSizeByCb.init(council.arena.allocator(), wm, 0, -20));
+    try council.map("normal", &.{ .space, .b, .j }, try ChangeBoundSizeByCb.init(council.arena.allocator(), wm, 0, 20));
+    try council.map("normal", &.{ .space, .b, .h }, try ChangeBoundSizeByCb.init(council.arena.allocator(), wm, -20, 0));
+    try council.map("normal", &.{ .space, .b, .l }, try ChangeBoundSizeByCb.init(council.arena.allocator(), wm, 20, 0));
+    try council.map("normal", &.{ .space, .b }, .{ .f = WindowManager.toggleActiveWindowBounds, .ctx = wm, .require_clarity_afterwards = true });
 
     const MakeClosestWindowActiveCb = struct {
         direction: WindowManager.WindowRelativeDirection,
@@ -371,67 +371,67 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .left_control, .h }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .left));
-    try council.map("normal", &.{ .left_control, .l }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .right));
-    try council.map("normal", &.{ .left_control, .k }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .top));
-    try council.map("normal", &.{ .left_control, .j }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), &wm, .bottom));
+    try council.map("normal", &.{ .left_control, .h }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), wm, .left));
+    try council.map("normal", &.{ .left_control, .l }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), wm, .right));
+    try council.map("normal", &.{ .left_control, .k }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), wm, .top));
+    try council.map("normal", &.{ .left_control, .j }, try MakeClosestWindowActiveCb.init(council.arena.allocator(), wm, .bottom));
 
     ///////////////////////////// WIP
 
-    try council.map("normal", &.{ .left_control, .left_shift, .p }, .{ .f = WindowManager.saveSession, .ctx = &wm });
-    try council.map("normal", &.{ .left_shift, .left_control, .p }, .{ .f = WindowManager.saveSession, .ctx = &wm });
+    try council.map("normal", &.{ .left_control, .left_shift, .p }, .{ .f = WindowManager.saveSession, .ctx = wm });
+    try council.map("normal", &.{ .left_shift, .left_control, .p }, .{ .f = WindowManager.saveSession, .ctx = wm });
 
-    try council.map("normal", &.{ .left_control, .left_shift, .l }, .{ .f = WindowManager.loadSession, .ctx = &wm });
-    try council.map("normal", &.{ .left_shift, .left_control, .l }, .{ .f = WindowManager.loadSession, .ctx = &wm });
+    try council.map("normal", &.{ .left_control, .left_shift, .l }, .{ .f = WindowManager.loadSession, .ctx = wm });
+    try council.map("normal", &.{ .left_shift, .left_control, .l }, .{ .f = WindowManager.loadSession, .ctx = wm });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Visual Mode
 
-    try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
 
-    try council.map("visual", &.{.escape}, .{ .f = WindowManager.exitVisualMode, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
+    try council.map("visual", &.{.escape}, .{ .f = WindowManager.exitVisualMode, .ctx = wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
 
-    try council.map("visual", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = &wm });
-    try council.map("visual", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = &wm });
-    try council.map("visual", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = &wm });
-    try council.map("visual", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = &wm });
+    try council.map("visual", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = wm });
+    try council.map("visual", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = wm });
+    try council.map("visual", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = wm });
+    try council.map("visual", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = wm });
 
-    try council.map("visual", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = &wm });
-    try council.map("visual", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = &wm });
-    try council.map("visual", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = &wm });
+    try council.map("visual", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = wm });
+    try council.map("visual", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = wm });
+    try council.map("visual", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = wm });
 
-    try council.map("visual", &.{.d}, .{ .f = WindowManager.delete, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
-    try council.map("visual", &.{.c}, .{ .f = WindowManager.delete, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
+    try council.map("visual", &.{.d}, .{ .f = WindowManager.delete, .ctx = wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
+    try council.map("visual", &.{.c}, .{ .f = WindowManager.delete, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
 
-    try council.map("visual", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = &wm });
-    try council.map("visual", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = &wm });
-    try council.map("visual", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = &wm });
+    try council.map("visual", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = wm });
+    try council.map("visual", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = wm });
+    try council.map("visual", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = wm });
 
-    try council.map("visual", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = &wm });
-    try council.map("visual", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = &wm });
-    try council.map("visual", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = &wm });
+    try council.map("visual", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = wm });
+    try council.map("visual", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = wm });
+    try council.map("visual", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = wm });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Insert Mode
 
-    try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode_i, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{.a}, .{ .f = WindowManager.enterInsertMode_a, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{ .left_shift, .i }, .{ .f = WindowManager.enterInsertMode_I, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{ .left_shift, .a }, .{ .f = WindowManager.enterInsertMode_A, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode_i, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.a}, .{ .f = WindowManager.enterInsertMode_a, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .left_shift, .i }, .{ .f = WindowManager.enterInsertMode_I, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .left_shift, .a }, .{ .f = WindowManager.enterInsertMode_A, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
 
-    try council.map("normal", &.{.o}, .{ .f = WindowManager.enterInsertMode_o, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{ .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = &wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{.o}, .{ .f = WindowManager.enterInsertMode_o, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
+    try council.map("normal", &.{ .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
 
-    try council.map("insert", &.{ .left_alt, .o }, .{ .f = WindowManager.enterInsertMode_o, .ctx = &wm });
-    try council.map("insert", &.{ .left_alt, .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = &wm });
+    try council.map("insert", &.{ .left_alt, .o }, .{ .f = WindowManager.enterInsertMode_o, .ctx = wm });
+    try council.map("insert", &.{ .left_alt, .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = wm });
 
-    try council.map("insert", &.{ .escape, .h }, .{ .f = WindowManager.moveCursorLeft, .ctx = &wm });
-    try council.map("insert", &.{ .escape, .j }, .{ .f = WindowManager.moveCursorDown, .ctx = &wm });
-    try council.map("insert", &.{ .escape, .k }, .{ .f = WindowManager.moveCursorUp, .ctx = &wm });
-    try council.map("insert", &.{ .escape, .l }, .{ .f = WindowManager.moveCursorRight, .ctx = &wm });
+    try council.map("insert", &.{ .escape, .h }, .{ .f = WindowManager.moveCursorLeft, .ctx = wm });
+    try council.map("insert", &.{ .escape, .j }, .{ .f = WindowManager.moveCursorDown, .ctx = wm });
+    try council.map("insert", &.{ .escape, .k }, .{ .f = WindowManager.moveCursorUp, .ctx = wm });
+    try council.map("insert", &.{ .escape, .l }, .{ .f = WindowManager.moveCursorRight, .ctx = wm });
 
-    try council.map("insert", &.{.escape}, .{ .f = WindowManager.exitInsertMode, .ctx = &wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
-    try council.map("insert", &.{.backspace}, .{ .f = WindowManager.backspace, .ctx = &wm });
+    try council.map("insert", &.{.escape}, .{ .f = WindowManager.exitInsertMode, .ctx = wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
+    try council.map("insert", &.{.backspace}, .{ .f = WindowManager.backspace, .ctx = wm });
 
-    try council.map("insert", &.{ .left_control, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = &wm });
+    try council.map("insert", &.{ .left_control, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = wm });
 
     const InsertCharsCb = struct {
         chars: []const u8,
@@ -447,7 +447,7 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self, .quick = true };
         }
     };
-    try council.mapInsertCharacters(&.{"insert"}, &wm, InsertCharsCb.init);
+    try council.mapInsertCharacters(&.{"insert"}, wm, InsertCharsCb.init);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
 
@@ -537,9 +537,9 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .bottom));
-    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .right));
-    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .right));
+    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), wm, &mall, &anchor_picker, .bottom));
+    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), wm, &mall, &anchor_picker, .right));
+    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), wm, &mall, &anchor_picker, .right));
 
     /////////////////////////////
 
@@ -672,7 +672,7 @@ pub fn main() anyerror!void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
 
-    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, &wm, &anchor_picker);
+    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, wm, &anchor_picker);
     defer fuzzy_finder.destroy();
 
     try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
@@ -726,13 +726,13 @@ pub fn main() anyerror!void {
     ////////////////////////////////////////////////////////////////////////////////////////////// Connections
 
     const CycleThroughActiveWindowConnectionsCb = struct {
-        direction: WindowManager.PrevOrNext,
+        direction: WindowManager.ConnectionManager.PrevOrNext,
         wm: *WindowManager,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.wm.cycleThroughActiveWindowConnections(self.direction);
+            try self.wm.connman.cycleThroughActiveWindowConnections(self.direction);
         }
-        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, direction: WindowManager.PrevOrNext) !ip.Callback {
+        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, direction: WindowManager.ConnectionManager.PrevOrNext) !ip.Callback {
             const self = try allocator.create(@This());
             self.* = .{ .direction = direction, .wm = wm_ };
             return ip.Callback{
@@ -742,29 +742,29 @@ pub fn main() anyerror!void {
             };
         }
     };
-    try council.map("normal", &.{ .c, .l }, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), &wm, .next));
-    try council.map("cyling_connections", &.{.j}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), &wm, .next));
-    try council.map("cyling_connections", &.{.k}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), &wm, .prev));
+    try council.map("normal", &.{ .c, .l }, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), wm, .next));
+    try council.map("cyling_connections", &.{.j}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), wm, .next));
+    try council.map("cyling_connections", &.{.k}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), wm, .prev));
     try council.map("cyling_connections", &.{.escape}, .{
         .f = WindowManager.exitConnectionCycleMode,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .remove = &.{"cyling_connections"}, .add = &.{"normal"} },
     });
 
     try council.map("normal", &.{ .left_control, .c }, .{
         .f = WindowManager.startPendingConnection,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .remove = &.{"normal"}, .add = &.{"pending_connection"} },
     });
 
     try council.map("pending_connection", &.{.escape}, .{
         .f = WindowManager.cancelPendingConnection,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .remove = &.{"pending_connection"}, .add = &.{"normal"} },
     });
     try council.map("pending_connection", &.{.enter}, .{
         .f = WindowManager.confirmPendingConnection,
-        .ctx = &wm,
+        .ctx = wm,
         .contexts = .{ .remove = &.{"pending_connection"}, .add = &.{"normal"} },
     });
 
@@ -773,7 +773,7 @@ pub fn main() anyerror!void {
         wm: *WindowManager,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.wm.switchPendingConnectionEndWindow(self.direction);
+            self.wm.connman.switchPendingConnectionEndWindow(self.direction);
         }
         pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
             const self = try allocator.create(@This());
@@ -781,38 +781,38 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("pending_connection", &.{ .left_control, .h }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), &wm, .left));
-    try council.map("pending_connection", &.{ .left_control, .l }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), &wm, .right));
-    try council.map("pending_connection", &.{ .left_control, .k }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), &wm, .top));
-    try council.map("pending_connection", &.{ .left_control, .j }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), &wm, .bottom));
+    try council.map("pending_connection", &.{ .left_control, .h }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .left));
+    try council.map("pending_connection", &.{ .left_control, .l }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .right));
+    try council.map("pending_connection", &.{ .left_control, .k }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .top));
+    try council.map("pending_connection", &.{ .left_control, .j }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), wm, .bottom));
 
     const ChangeConnectionAnchorCb = struct {
         const Which = enum { start, end };
         which: Which,
-        anchor: WindowManager.Connection.Anchor,
+        anchor: WindowManager.ConnectionManager.Connection.Anchor,
         wm: *WindowManager,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            if (self.wm.pending_connection == null) return;
+            if (self.wm.connman.pending_connection == null) return;
             switch (self.which) {
-                .start => self.wm.pending_connection.?.start.anchor = self.anchor,
-                .end => self.wm.pending_connection.?.end.anchor = self.anchor,
+                .start => self.wm.connman.pending_connection.?.start.anchor = self.anchor,
+                .end => self.wm.connman.pending_connection.?.end.anchor = self.anchor,
             }
         }
-        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, which: Which, anchor: WindowManager.Connection.Anchor) !ip.Callback {
+        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, which: Which, anchor: WindowManager.ConnectionManager.Connection.Anchor) !ip.Callback {
             const self = try allocator.create(@This());
             self.* = .{ .which = which, .anchor = anchor, .wm = wm_ };
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("pending_connection", &.{ .s, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .start, .W));
-    try council.map("pending_connection", &.{ .s, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .start, .E));
-    try council.map("pending_connection", &.{ .s, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .start, .N));
-    try council.map("pending_connection", &.{ .s, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .start, .S));
-    try council.map("pending_connection", &.{ .e, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .end, .W));
-    try council.map("pending_connection", &.{ .e, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .end, .E));
-    try council.map("pending_connection", &.{ .e, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .end, .N));
-    try council.map("pending_connection", &.{ .e, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), &wm, .end, .S));
+    try council.map("pending_connection", &.{ .s, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .W));
+    try council.map("pending_connection", &.{ .s, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .E));
+    try council.map("pending_connection", &.{ .s, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .N));
+    try council.map("pending_connection", &.{ .s, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .start, .S));
+    try council.map("pending_connection", &.{ .e, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .W));
+    try council.map("pending_connection", &.{ .e, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .E));
+    try council.map("pending_connection", &.{ .e, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .N));
+    try council.map("pending_connection", &.{ .e, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), wm, .end, .S));
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Debugging
 
