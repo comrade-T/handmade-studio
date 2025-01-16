@@ -537,9 +537,9 @@ pub fn main() anyerror!void {
             return ip.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .right));
-    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .left));
-    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .left));
+    try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .bottom));
+    try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .right));
+    try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), &wm, &mall, &anchor_picker, .right));
 
     /////////////////////////////
 
@@ -724,6 +724,32 @@ pub fn main() anyerror!void {
     });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Connections
+
+    const CycleThroughActiveWindowConnectionsCb = struct {
+        direction: WindowManager.PrevOrNext,
+        wm: *WindowManager,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.wm.cycleThroughActiveWindowConnections(self.direction);
+        }
+        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, direction: WindowManager.PrevOrNext) !ip.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .direction = direction, .wm = wm_ };
+            return ip.Callback{
+                .f = @This().f,
+                .ctx = self,
+                .contexts = .{ .remove = &.{"normal"}, .add = &.{"cyling_connections"} },
+            };
+        }
+    };
+    try council.map("normal", &.{ .c, .l }, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), &wm, .next));
+    try council.map("cyling_connections", &.{.j}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), &wm, .next));
+    try council.map("cyling_connections", &.{.k}, try CycleThroughActiveWindowConnectionsCb.init(council.arena.allocator(), &wm, .prev));
+    try council.map("cyling_connections", &.{.escape}, .{
+        .f = WindowManager.exitConnectionCycleMode,
+        .ctx = &wm,
+        .contexts = .{ .remove = &.{"cyling_connections"}, .add = &.{"normal"} },
+    });
 
     try council.map("normal", &.{ .left_control, .c }, .{
         .f = WindowManager.startPendingConnection,
@@ -931,10 +957,11 @@ fn drawCircle(x: f32, y: f32, radius: f32, color: u32) void {
     rl.drawCircleV(.{ .x = x, .y = y }, radius, rl.Color.fromInt(color));
 }
 
-fn drawLine(start_x: f32, start_y: f32, end_x: f32, end_y: f32, color: u32) void {
-    rl.drawLineV(
+fn drawLine(start_x: f32, start_y: f32, end_x: f32, end_y: f32, thickness: f32, color: u32) void {
+    rl.drawLineEx(
         .{ .x = start_x, .y = start_y },
         .{ .x = end_x, .y = end_y },
+        thickness,
         rl.Color.fromInt(color),
     );
 }
