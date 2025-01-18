@@ -137,75 +137,6 @@ pub fn main() anyerror!void {
     var wm = try WindowManager.create(gpa, &lang_hub, &mall);
     defer wm.destroy();
 
-    ///////////////////////////// Testing
-
-    // try wm.spawnWindow(.file, "src/window/fixtures/dummy_3_lines_with_quotes.zig", .{
-    //     .pos = .{ .x = 100, .y = 100 },
-    //     .subscribed_style_sets = &.{0},
-    // }, true);
-
-    // try wm.spawnWindow(.file, "src/window/fixtures/dummy.zig", .{
-    //     .pos = .{ .x = 100, .y = 100 },
-    //     .limit = .{ .start_line = 3, .end_line = 5 },
-    //     .subscribed_style_sets = &.{0},
-    // }, true);
-
-    // ------------------------------------
-
-    // // y offset
-    //
-    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-    //     .pos = .{ .x = 100, .y = 100 },
-    //     .subscribed_style_sets = &.{0},
-    //     .bounds = .{
-    //         .width = 400,
-    //         .height = 300,
-    //         .offset = .{ .x = 0, .y = 0 },
-    //     },
-    // }, true);
-    //
-    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-    //     .pos = .{ .x = 600, .y = 100 },
-    //     .subscribed_style_sets = &.{0},
-    //     .bounds = .{
-    //         .width = 400,
-    //         .height = 300,
-    //         .offset = .{ .x = 0, .y = 100 },
-    //     },
-    // }, false);
-    //
-    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-    //     .pos = .{ .x = 1100, .y = 100 },
-    //     .subscribed_style_sets = &.{0},
-    //     .bounds = .{
-    //         .width = 400,
-    //         .height = 300,
-    //         .offset = .{ .x = 0, .y = 200 },
-    //     },
-    // }, false);
-    //
-    // // x offset
-    //
-    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-    //     .pos = .{ .x = 100, .y = 600 },
-    //     .subscribed_style_sets = &.{0},
-    //     .bounds = .{
-    //         .width = 400,
-    //         .height = 300,
-    //         .offset = .{ .x = 100, .y = 0 },
-    //     },
-    // }, false);
-    //
-    // try wm.spawnWindow(.file, "src/outdated/window/old_window.zig", .{
-    //     .pos = .{ .x = 600, .y = 600 },
-    //     .subscribed_style_sets = &.{0},
-    //     .bounds = .{
-    //         .width = 400,
-    //         .height = 300,
-    //         .offset = .{ .x = 200, .y = 0 },
-    //     },
-    // }, false);
-
     ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
 
     ///////////////////////////// Mapping Council Setup
@@ -218,64 +149,13 @@ pub fn main() anyerror!void {
 
     var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
 
-    try wm.mapKeys(council);
+    ///////////////////////////// Initialize Keymaps
 
-    ///////////////////////////// Normal Mode
+    try wm.mapKeys(council);
 
     try council.setActiveContext("normal");
 
-    try council.map("normal", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = wm });
-    try council.map("normal", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = wm });
-    try council.map("normal", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = wm });
-    try council.map("normal", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = wm });
-
-    try council.map("normal", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = wm });
-    try council.map("normal", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = wm });
-    try council.map("normal", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = wm });
-
-    try council.map("normal", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = wm });
-    try council.map("normal", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = wm });
-    try council.map("normal", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = wm });
-
-    try council.map("normal", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = wm });
-    try council.map("normal", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = wm });
-    try council.map("normal", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = wm });
-
-    try council.map("normal", &.{ .d, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = wm });
-
-    // text opjects
-    try council.map("normal", &.{ .d, .apostrophe }, .{ .f = WindowManager.deleteInSingleQuote, .ctx = wm });
-    try council.map("normal", &.{ .c, .apostrophe }, .{
-        .f = WindowManager.deleteInSingleQuote,
-        .ctx = wm,
-        .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
-        .require_clarity_afterwards = true,
-    });
-
-    try council.map("normal", &.{.d}, .{ .f = nop, .ctx = wm });
-    try council.map("normal", &.{.c}, .{ .f = nop, .ctx = wm });
-
-    try council.map("normal", &.{ .d, .s }, .{ .f = nop2, .ctx = wm });
-    try council.map("normal", &.{ .s, .d }, .{ .f = nop2, .ctx = wm });
-
-    try council.map("normal", &.{ .c, .x }, .{ .f = nop2, .ctx = wm });
-    try council.map("normal", &.{ .x, .c }, .{ .f = nop2, .ctx = wm });
-
-    try council.map("normal", &.{ .d, .semicolon }, .{ .f = WindowManager.deleteInWord, .ctx = wm });
-    try council.map("normal", &.{ .c, .semicolon }, .{
-        .f = WindowManager.deleteInWord,
-        .ctx = wm,
-        .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
-        .require_clarity_afterwards = true,
-    });
-
-    try council.mapMany("normal", &.{ &.{ .d, .s, .semicolon }, &.{ .s, .d, .semicolon } }, .{ .f = WindowManager.deleteInWORD, .ctx = wm });
-    try council.mapMany("normal", &.{ &.{ .c, .x, .semicolon }, &.{ .x, .c, .semicolon } }, .{
-        .f = WindowManager.deleteInWORD,
-        .ctx = wm,
-        .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} },
-        .require_clarity_afterwards = true,
-    });
+    ///////////////////////////// Normal Mode
 
     try council.map("normal", &.{ .left_control, .b }, .{ .f = WindowManager.toggleActiveWindowBorder, .ctx = wm });
 
@@ -385,71 +265,6 @@ pub fn main() anyerror!void {
 
     try council.map("normal", &.{ .left_control, .left_shift, .l }, .{ .f = WindowManager.loadSession, .ctx = wm });
     try council.map("normal", &.{ .left_shift, .left_control, .l }, .{ .f = WindowManager.loadSession, .ctx = wm });
-
-    ////////////////////////////////////////////////////////////////////////////////////////////// Visual Mode
-
-    try council.map("normal", &.{.v}, .{ .f = WindowManager.enterVisualMode, .ctx = wm, .contexts = .{ .add = &.{"visual"}, .remove = &.{"normal"} } });
-
-    try council.map("visual", &.{.escape}, .{ .f = WindowManager.exitVisualMode, .ctx = wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
-
-    try council.map("visual", &.{.j}, .{ .f = WindowManager.moveCursorDown, .ctx = wm });
-    try council.map("visual", &.{.k}, .{ .f = WindowManager.moveCursorUp, .ctx = wm });
-    try council.map("visual", &.{.h}, .{ .f = WindowManager.moveCursorLeft, .ctx = wm });
-    try council.map("visual", &.{.l}, .{ .f = WindowManager.moveCursorRight, .ctx = wm });
-
-    try council.map("visual", &.{.w}, .{ .f = WindowManager.moveCursorForwardWordStart, .ctx = wm });
-    try council.map("visual", &.{.e}, .{ .f = WindowManager.moveCursorForwardWordEnd, .ctx = wm });
-    try council.map("visual", &.{.b}, .{ .f = WindowManager.moveCursorBackwardsWordStart, .ctx = wm });
-
-    try council.map("visual", &.{.d}, .{ .f = WindowManager.delete, .ctx = wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"visual"} } });
-    try council.map("visual", &.{.c}, .{ .f = WindowManager.delete, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"visual"} } });
-
-    try council.map("visual", &.{ .left_shift, .w }, .{ .f = WindowManager.moveCursorForwardBIGWORDStart, .ctx = wm });
-    try council.map("visual", &.{ .left_shift, .e }, .{ .f = WindowManager.moveCursorForwardBIGWORDEnd, .ctx = wm });
-    try council.map("visual", &.{ .left_shift, .b }, .{ .f = WindowManager.moveCursorBackwardsBIGWORDStart, .ctx = wm });
-
-    try council.map("visual", &.{.zero}, .{ .f = WindowManager.moveCursorToFirstNonSpaceCharacterOfLine, .ctx = wm });
-    try council.map("visual", &.{ .left_shift, .zero }, .{ .f = WindowManager.moveCursorToBeginningOfLine, .ctx = wm });
-    try council.map("visual", &.{ .left_shift, .four }, .{ .f = WindowManager.moveCursorToEndOfLine, .ctx = wm });
-
-    ////////////////////////////////////////////////////////////////////////////////////////////// Insert Mode
-
-    try council.map("normal", &.{.i}, .{ .f = WindowManager.enterInsertMode_i, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{.a}, .{ .f = WindowManager.enterInsertMode_a, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{ .left_shift, .i }, .{ .f = WindowManager.enterInsertMode_I, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{ .left_shift, .a }, .{ .f = WindowManager.enterInsertMode_A, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-
-    try council.map("normal", &.{.o}, .{ .f = WindowManager.enterInsertMode_o, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-    try council.map("normal", &.{ .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = wm, .contexts = .{ .add = &.{"insert"}, .remove = &.{"normal"} } });
-
-    try council.map("insert", &.{ .left_alt, .o }, .{ .f = WindowManager.enterInsertMode_o, .ctx = wm });
-    try council.map("insert", &.{ .left_alt, .left_shift, .o }, .{ .f = WindowManager.enterInsertMode_O, .ctx = wm });
-
-    try council.map("insert", &.{ .escape, .h }, .{ .f = WindowManager.moveCursorLeft, .ctx = wm });
-    try council.map("insert", &.{ .escape, .j }, .{ .f = WindowManager.moveCursorDown, .ctx = wm });
-    try council.map("insert", &.{ .escape, .k }, .{ .f = WindowManager.moveCursorUp, .ctx = wm });
-    try council.map("insert", &.{ .escape, .l }, .{ .f = WindowManager.moveCursorRight, .ctx = wm });
-
-    try council.map("insert", &.{.escape}, .{ .f = WindowManager.exitInsertMode, .ctx = wm, .contexts = .{ .add = &.{"normal"}, .remove = &.{"insert"} } });
-    try council.map("insert", &.{.backspace}, .{ .f = WindowManager.backspace, .ctx = wm });
-
-    try council.map("insert", &.{ .left_control, .p }, .{ .f = WindowManager.debugPrintActiveWindowRope, .ctx = wm });
-
-    const InsertCharsCb = struct {
-        chars: []const u8,
-        target: *WindowManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.target.insertChars(self.chars);
-        }
-        fn init(allocator: std.mem.Allocator, ctx: *anyopaque, chars: []const u8) !ip.Callback {
-            const self = try allocator.create(@This());
-            const target = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
-            self.* = .{ .chars = chars, .target = target };
-            return ip.Callback{ .f = @This().f, .ctx = self, .quick = true };
-        }
-    };
-    try council.mapInsertCharacters(&.{"insert"}, wm, InsertCharsCb.init);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
 
@@ -725,52 +540,6 @@ pub fn main() anyerror!void {
         .require_clarity_afterwards = true,
     });
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// Debugging
-
-    // const DebugPrintCb = struct {
-    //     msg: []const u8,
-    //     fn f(ctx: *anyopaque) !void {
-    //         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    //         std.debug.print("{s}\n", .{self.msg});
-    //     }
-    //     pub fn init(allocator: std.mem.Allocator, msg: []const u8) !ip.Callback {
-    //         const self = try allocator.create(@This());
-    //         self.* = .{ .msg = msg };
-    //         return ip.Callback{ .f = @This().f, .ctx = self };
-    //     }
-    // };
-
-    /////////////////////////////
-
-    // const UpNDownDebugPrintCb = struct {
-    //     up_msg: []const u8,
-    //     down_msg: []const u8,
-    //     fn up(ctx: *anyopaque) !void {
-    //         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    //         std.debug.print("{s}\n", .{self.up_msg});
-    //     }
-    //     fn down(ctx: *anyopaque) !void {
-    //         const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    //         std.debug.print("{s}\n", .{self.down_msg});
-    //     }
-    //     pub fn init(allocator: std.mem.Allocator, up_msg: []const u8, down_msg: []const u8) !ip.UpNDownCallback {
-    //         const self = try allocator.create(@This());
-    //         self.* = .{ .up_msg = up_msg, .down_msg = down_msg };
-    //         return ip.UpNDownCallback{
-    //             .up_f = @This().up,
-    //             .down_f = @This().down,
-    //             .up_ctx = self,
-    //             .down_ctx = self,
-    //         };
-    //     }
-    // };
-
-    // try council.mapUpNDown("normal", &.{.z}, try UpNDownDebugPrintCb.init(
-    //     council.arena.allocator(),
-    //     "UpNDownDebugPrintCb: z up",
-    //     "UpNDownDebugPrintCb: z down",
-    // ));
-
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 
     while (!rl.windowShouldClose()) {
@@ -802,20 +571,6 @@ pub fn main() anyerror!void {
             {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
-
-                // { // show borders for testing bounded windows
-                //     for (wm.wmap.keys()) |window| {
-                //         if (window.attr.bounded) {
-                //             rl.drawRectangleV(.{
-                //                 .x = window.attr.pos.x,
-                //                 .y = window.attr.pos.y,
-                //             }, .{
-                //                 .x = window.attr.bounds.width,
-                //                 .y = window.attr.bounds.height,
-                //             }, rl.Color.init(255, 255, 255, 30));
-                //         }
-                //     }
-                // }
 
                 // rendering windows via WindowManager
                 wm.render();
@@ -957,14 +712,4 @@ fn getScreenWidthHeight() struct { f32, f32 } {
         @as(f32, @floatFromInt(rl.getScreenWidth())),
         @as(f32, @floatFromInt(rl.getScreenHeight())),
     };
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-fn nop(_: *anyopaque) !void {
-    std.debug.print("this is NOP\n", .{});
-}
-
-fn nop2(_: *anyopaque) !void {
-    std.debug.print("this is NOP 222\n", .{});
 }

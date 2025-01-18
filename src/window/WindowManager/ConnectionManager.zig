@@ -102,7 +102,7 @@ pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
                 .end => self.connman.pending_connection.?.end.anchor = self.anchor,
             }
         }
-        pub fn init(allocator: std.mem.Allocator, cm_: *ConnectionManager, which: Which, anchor: WindowManager.ConnectionManager.Connection.Anchor) !WM.Callback {
+        pub fn init(allocator: std.mem.Allocator, cm_: *ConnectionManager, which: Which, anchor: Connection.Anchor) !WM.Callback {
             const self = try allocator.create(@This());
             self.* = .{ .which = which, .anchor = anchor, .connman = cm_ };
             return WM.Callback{ .f = @This().f, .ctx = self };

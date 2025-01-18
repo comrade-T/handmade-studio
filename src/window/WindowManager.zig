@@ -25,14 +25,15 @@ const assert = std.debug.assert;
 
 const LangHub = @import("LangSuite").LangHub;
 const RenderMall = @import("RenderMall");
-const WindowSource = @import("WindowSource");
+pub const WindowSource = @import("WindowSource");
 pub const Window = @import("Window");
 
 const ip_ = @import("input_processor");
 pub const MappingCouncil = ip_.MappingCouncil;
 pub const Callback = ip_.Callback;
 
-pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
+const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
+const vim_mappings = @import("WindowManager/vim_mappings.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -64,6 +65,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
 
 pub fn mapKeys(self: *@This(), council: *MappingCouncil) !void {
     try self.connman.mapKeys(council);
+    try vim_mappings.mapKeys(self, council);
 }
 
 pub fn destroy(self: *@This()) void {
@@ -120,208 +122,6 @@ pub fn toggleActiveWindowBounds(ctx: *anyopaque) !void {
 pub fn changeActiveWindowBoundSizeBy(self: *@This(), width_by: f32, height_by: f32) void {
     const active_window = self.active_window orelse return;
     active_window.changeBoundSizeBy(width_by, height_by);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
-
-pub fn deleteRanges(self: *@This(), kind: WindowSource.DeleteRangesKind) !void {
-    const active_window = self.active_window orelse return;
-
-    var handler = self.wmap.get(active_window) orelse return;
-    const result = try handler.source.deleteRanges(self.a, active_window.cursor_manager, kind) orelse return;
-    defer self.a.free(result);
-
-    for (handler.windows.items) |win| try win.processEditResult(result, self.mall);
-}
-
-pub fn insertChars(self: *@This(), chars: []const u8) !void {
-    const active_window = self.active_window orelse return;
-
-    var handler = self.wmap.get(active_window) orelse return;
-    const result = try handler.source.insertChars(self.a, chars, active_window.cursor_manager) orelse return;
-    defer self.a.free(result);
-
-    for (handler.windows.items) |win| try win.processEditResult(result, self.mall);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Inputs
-
-///////////////////////////// Normal Mode
-
-pub fn deleteInSingleQuote(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.deleteRanges(.in_single_quote);
-}
-
-pub fn deleteInWord(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.deleteRanges(.in_word);
-}
-
-pub fn deleteInWORD(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.deleteRanges(.in_WORD);
-}
-
-///////////////////////////// Visual Mode
-
-pub fn enterVisualMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.activateRangeMode();
-}
-
-pub fn exitVisualMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.activatePointMode();
-}
-
-pub fn delete(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.deleteRanges(.range);
-    try exitVisualMode(ctx);
-}
-
-///////////////////////////// Insert Mode
-
-pub fn backspace(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.deleteRanges(.backspace);
-}
-
-pub fn enterInsertMode_i(ctx: *anyopaque) !void {
-    _ = ctx;
-}
-
-pub fn enterInsertMode_I(ctx: *anyopaque) !void {
-    try moveCursorToBeginningOfLine(ctx);
-    try enterInsertMode_i(ctx);
-}
-
-pub fn enterInsertMode_a(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.enterAFTERInsertMode(&window.ws.buf.ropeman);
-}
-
-pub fn enterInsertMode_A(ctx: *anyopaque) !void {
-    try moveCursorToEndOfLine(ctx);
-    try enterInsertMode_a(ctx);
-}
-
-pub fn enterInsertMode_o(ctx: *anyopaque) !void {
-    try moveCursorToEndOfLine(ctx);
-    try enterInsertMode_a(ctx);
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.insertChars("\n");
-}
-
-pub fn enterInsertMode_O(ctx: *anyopaque) !void {
-    try moveCursorToBeginningOfLine(ctx);
-    try enterInsertMode_i(ctx);
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.insertChars("\n");
-    try moveCursorUp(ctx);
-}
-
-pub fn exitInsertMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.ws.buf.ropeman.registerLastPendingToHistory();
-    window.cursor_manager.moveLeft(1, &window.ws.buf.ropeman);
-}
-
-pub fn debugPrintActiveWindowRope(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    try window.ws.buf.ropeman.debugPrint();
-}
-
-///////////////////////////// Movement
-
-// $ 0 ^
-
-pub fn moveCursorToBeginningOfLine(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveToBeginningOfLine(&window.ws.buf.ropeman);
-}
-
-pub fn moveCursorToEndOfLine(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveToEndOfLine(&window.ws.buf.ropeman);
-}
-
-pub fn moveCursorToFirstNonSpaceCharacterOfLine(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveToFirstNonSpaceCharacterOfLine(&window.ws.buf.ropeman);
-}
-
-// hjkl
-
-pub fn moveCursorUp(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveUp(1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorDown(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveDown(1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorLeft(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveLeft(1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorRight(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.moveRight(1, &window.ws.buf.ropeman);
-}
-
-// Vim Word
-
-pub fn moveCursorForwardWordStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.forwardWord(.start, .word, 1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorForwardWordEnd(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.forwardWord(.end, .word, 1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorBackwardsWordStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.backwardsWord(.start, .word, 1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorForwardBIGWORDStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.forwardWord(.start, .BIG_WORD, 1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorForwardBIGWORDEnd(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.forwardWord(.end, .BIG_WORD, 1, &window.ws.buf.ropeman);
-}
-
-pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const window = self.active_window orelse return;
-    window.cursor_manager.backwardsWord(.start, .BIG_WORD, 1, &window.ws.buf.ropeman);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler
