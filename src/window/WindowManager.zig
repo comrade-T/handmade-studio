@@ -25,6 +25,7 @@ const assert = std.debug.assert;
 
 const LangHub = @import("LangSuite").LangHub;
 const RenderMall = @import("RenderMall");
+const AnchorPicker = @import("AnchorPicker");
 pub const WindowSource = @import("WindowSource");
 pub const Window = @import("Window");
 
@@ -38,10 +39,66 @@ const layout_related = @import("WindowManager/layout_related.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn mapKeys(self: *@This(), council: *MappingCouncil) !void {
+pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil) !void {
     try self.connman.mapKeys(council);
     try vim_related.mapKeys(self, council);
     try layout_related.mapKeys(self, council);
+
+    try self.mapSessionRelatedKeymaps(council);
+    try self.mapSpawnBlankWindowKeymaps(ap, council);
+}
+
+const NORMAL = "normal";
+
+fn mapSessionRelatedKeymaps(self: *@This(), council: *MappingCouncil) !void {
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .p }, .{ .f = saveSession, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .p }, .{ .f = saveSession, .ctx = self });
+
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .l }, .{ .f = loadSession, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .l }, .{ .f = loadSession, .ctx = self });
+}
+
+fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *MappingCouncil) !void {
+    const Cb = struct {
+        direction: WindowManager.WindowRelativeDirection,
+        wm: *WindowManager,
+        mall: *const RenderMall,
+        ap: *const AnchorPicker,
+
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
+            if (self.wm.active_window == null) {
+                const x, const y = self.wm.mall.icb.getScreenToWorld2D(
+                    self.mall.camera,
+                    self.ap.target_anchor.x,
+                    self.ap.target_anchor.y,
+                );
+
+                try self.wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true);
+                return;
+            }
+
+            try self.wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction);
+        }
+
+        pub fn init(
+            allocator: std.mem.Allocator,
+            wm_: *WindowManager,
+            mall_: *const RenderMall,
+            ap_: *const AnchorPicker,
+            direction: WindowManager.WindowRelativeDirection,
+        ) !Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .direction = direction, .wm = wm_, .mall = mall_, .ap = ap_ };
+            return Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    const a = c.arena.allocator();
+    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, wm, wm.mall, ap, .bottom));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, wm, wm.mall, ap, .right));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, wm, wm.mall, ap, .right));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
