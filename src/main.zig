@@ -62,29 +62,6 @@ pub fn main() anyerror!void {
     defer _ = gpa__.deinit();
     const gpa = gpa__.allocator();
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// Interfacing w/ Raylib
-
-    const info_callbacks = RenderMall.InfoCallbacks{
-        .getScreenWidthHeight = rlcb.getScreenWidthHeight,
-        .getScreenToWorld2D = rlcb.getScreenToWorld2D,
-        .getWorldToScreen2D = rlcb.getWorldToScreen2D,
-        .getViewFromCamera = rlcb.getViewFromCamera,
-        .cameraTargetsEqual = rlcb.cameraTargetsEqual,
-        .getCameraZoom = rlcb.getCameraZoom,
-    };
-
-    const render_callbacks = RenderMall.RenderCallbacks{
-        .drawCodePoint = rlcb.drawCodePoint,
-        .drawRectangle = rlcb.drawRectangle,
-        .drawRectangleLines = rlcb.drawRectangleLines,
-        .drawCircle = rlcb.drawCircle,
-        .drawLine = rlcb.drawLine,
-        .changeCameraZoom = rlcb.changeCameraZoom,
-        .changeCameraPan = rlcb.changeCameraPan,
-        .beginScissorMode = rlcb.beginScissorMode,
-        .endScissorMode = rlcb.endScissorMode,
-    };
-
     ////////////////////////////////////////////////////////////////////////////////////////////// MappingCouncil
 
     var council = try ip.MappingCouncil.init(gpa);
@@ -116,8 +93,8 @@ pub fn main() anyerror!void {
         gpa,
         &font_store,
         &colorscheme_store,
-        info_callbacks,
-        render_callbacks,
+        rlcb.info_callbacks,
+        rlcb.render_callbacks,
         &smooth_cam.camera,
         &smooth_cam.target_camera,
     );

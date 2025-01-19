@@ -6,6 +6,29 @@ const RenderMall = @import("RenderMall");
 
 pub const FONT_BASE_SIZE = 100;
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const info_callbacks = RenderMall.InfoCallbacks{
+    .getScreenWidthHeight = getScreenWidthHeight,
+    .getScreenToWorld2D = getScreenToWorld2D,
+    .getWorldToScreen2D = getWorldToScreen2D,
+    .getViewFromCamera = getViewFromCamera,
+    .cameraTargetsEqual = cameraTargetsEqual,
+    .getCameraZoom = getCameraZoom,
+};
+
+pub const render_callbacks = RenderMall.RenderCallbacks{
+    .drawCodePoint = drawCodePoint,
+    .drawRectangle = drawRectangle,
+    .drawRectangleLines = drawRectangleLines,
+    .drawCircle = drawCircle,
+    .drawLine = drawLine,
+    .changeCameraZoom = changeCameraZoom,
+    .changeCameraPan = changeCameraPan,
+    .beginScissorMode = beginScissorMode,
+    .endScissorMode = endScissorMode,
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
 
 pub fn drawCodePoint(font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void {
