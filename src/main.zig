@@ -149,11 +149,11 @@ pub fn main() anyerror!void {
 
     var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
 
+    try council.setActiveContext("normal");
+
     ///////////////////////////// Initialize Keymaps
 
     try wm.mapKeys(council);
-
-    try council.setActiveContext("normal");
 
     ///////////////////////////// Normal Mode
 
@@ -275,47 +275,7 @@ pub fn main() anyerror!void {
         .lerp_time = 0.22,
     };
     anchor_picker.setToCenter();
-
-    try council.map("normal", &.{ .left_control, .p }, .{
-        .f = AnchorPicker.show,
-        .ctx = &anchor_picker,
-        .contexts = .{ .add = &.{"anchor_picker"}, .remove = &.{"normal"} },
-        .require_clarity_afterwards = true,
-    });
-    try council.map("anchor_picker", &.{.escape}, .{
-        .f = AnchorPicker.hide,
-        .ctx = &anchor_picker,
-        .contexts = .{ .add = &.{"normal"}, .remove = &.{"anchor_picker"} },
-    });
-
-    const AnchorPickerPercentageCb = struct {
-        x_percent: f32,
-        y_percent: f32,
-        target: *AnchorPicker,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.target.percentage(self.x_percent, self.y_percent);
-        }
-        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x_percent: f32, y_percent: f32) !ip.Callback {
-            const self = try allocator.create(@This());
-            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
-            self.* = .{ .target = target, .x_percent = x_percent, .y_percent = y_percent };
-            return ip.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-
-    try council.map("anchor_picker", &.{ .p, .c }, .{ .f = AnchorPicker.center, .ctx = &anchor_picker });
-    try council.map("anchor_picker", &.{ .p, .w }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 25));
-    try council.map("anchor_picker", &.{ .p, .s }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 75));
-    try council.map("anchor_picker", &.{ .p, .a }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
-    try council.map("anchor_picker", &.{ .p, .d }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
-
-    try council.mapUpNDown("normal", &.{ .z, .c }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = &anchor_picker, .up_ctx = &anchor_picker });
-    try council.map("normal", &.{ .z, .c, .m }, .{ .f = AnchorPicker.center, .ctx = &anchor_picker });
-    try council.map("normal", &.{ .z, .c, .k }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 25));
-    try council.map("normal", &.{ .z, .c, .j }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 50, 75));
-    try council.map("normal", &.{ .z, .c, .h }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 25, 50));
-    try council.map("normal", &.{ .z, .c, .l }, try AnchorPickerPercentageCb.init(council.arena.allocator(), &anchor_picker, 75, 50));
+    try anchor_picker.mapKeys(council);
 
     ///////////////////////////// Spawn Blank Window
 

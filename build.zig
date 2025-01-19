@@ -178,6 +178,7 @@ pub fn build(b: *std.Build) void {
 
     const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
+        .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
 
     const fuzzy_finder = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{

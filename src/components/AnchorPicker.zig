@@ -22,6 +22,50 @@ const RenderMall = @import("RenderMall");
 const RenderCallbacks = RenderMall.RenderCallbacks;
 const InfoCallbacks = RenderMall.InfoCallbacks;
 
+const ip = @import("input_processor");
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const NORMAL = "normal";
+const AP = "anchor_picker";
+
+const NORMAL_TO_AP = ip.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{AP} };
+const AP_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{AP}, .add = &.{NORMAL} };
+
+pub fn mapKeys(ap: *@This(), council: *ip.MappingCouncil) !void {
+    try council.map(NORMAL, &.{ .left_control, .p }, .{ .f = AnchorPicker.show, .ctx = ap, .contexts = NORMAL_TO_AP, .require_clarity_afterwards = true });
+    try council.map(AP, &.{.escape}, .{ .f = AnchorPicker.hide, .ctx = ap, .contexts = AP_TO_NORMAL });
+
+    const PercentageCb = struct {
+        x_percent: f32,
+        y_percent: f32,
+        target: *AnchorPicker,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.percentage(self.x_percent, self.y_percent);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x_percent: f32, y_percent: f32) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .x_percent = x_percent, .y_percent = y_percent };
+            return ip.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try council.map(AP, &.{ .p, .c }, .{ .f = AnchorPicker.center, .ctx = ap });
+    try council.map(AP, &.{ .p, .w }, try PercentageCb.init(council.arena.allocator(), ap, 50, 25));
+    try council.map(AP, &.{ .p, .s }, try PercentageCb.init(council.arena.allocator(), ap, 50, 75));
+    try council.map(AP, &.{ .p, .a }, try PercentageCb.init(council.arena.allocator(), ap, 25, 50));
+    try council.map(AP, &.{ .p, .d }, try PercentageCb.init(council.arena.allocator(), ap, 75, 50));
+
+    try council.mapUpNDown(NORMAL, &.{ .z, .c }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = ap, .up_ctx = ap });
+    try council.map(NORMAL, &.{ .z, .c, .m }, .{ .f = AnchorPicker.center, .ctx = ap });
+    try council.map(NORMAL, &.{ .z, .c, .k }, try PercentageCb.init(council.arena.allocator(), ap, 50, 25));
+    try council.map(NORMAL, &.{ .z, .c, .j }, try PercentageCb.init(council.arena.allocator(), ap, 50, 75));
+    try council.map(NORMAL, &.{ .z, .c, .h }, try PercentageCb.init(council.arena.allocator(), ap, 25, 50));
+    try council.map(NORMAL, &.{ .z, .c, .l }, try PercentageCb.init(council.arena.allocator(), ap, 75, 50));
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 mall: *RenderMall,
