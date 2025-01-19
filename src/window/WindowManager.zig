@@ -33,7 +33,16 @@ pub const MappingCouncil = ip_.MappingCouncil;
 pub const Callback = ip_.Callback;
 
 const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
-const vim_mappings = @import("WindowManager/vim_mappings.zig");
+const vim_related = @import("WindowManager/vim_related.zig");
+const layout_related = @import("WindowManager/layout_related.zig");
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn mapKeys(self: *@This(), council: *MappingCouncil) !void {
+    try self.connman.mapKeys(council);
+    try vim_related.mapKeys(self, council);
+    try layout_related.mapKeys(self, council);
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -63,11 +72,6 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
     return self;
 }
 
-pub fn mapKeys(self: *@This(), council: *MappingCouncil) !void {
-    try self.connman.mapKeys(council);
-    try vim_mappings.mapKeys(self, council);
-}
-
 pub fn destroy(self: *@This()) void {
     self.connman.deinit();
 
@@ -88,40 +92,6 @@ pub fn render(self: *@This()) void {
         window.render(is_active, self.mall);
     }
     self.connman.render();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Positioning
-
-pub fn centerActiveWindowAt(self: *@This(), center_x: f32, center_y: f32) void {
-    const active_window = self.active_window orelse return;
-    active_window.centerAt(center_x, center_y);
-}
-
-pub fn moveActiveWindowBy(self: *@This(), x: f32, y: f32) void {
-    const active_window = self.active_window orelse return;
-    active_window.moveBy(x, y);
-}
-
-pub fn toggleActiveWindowBorder(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const active_window = self.active_window orelse return;
-    active_window.toggleBorder();
-}
-
-pub fn changeActiveWindowPaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
-    const active_window = self.active_window orelse return;
-    active_window.changePaddingBy(x_by, y_by);
-}
-
-pub fn toggleActiveWindowBounds(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const active_window = self.active_window orelse return;
-    active_window.toggleBounds();
-}
-
-pub fn changeActiveWindowBoundSizeBy(self: *@This(), width_by: f32, height_by: f32) void {
-    const active_window = self.active_window orelse return;
-    active_window.changeBoundSizeBy(width_by, height_by);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler
@@ -182,12 +152,6 @@ const WindowSourceHandler = struct {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
-
-pub fn makeClosestWindowActive(self: *@This(), direction: WindowRelativeDirection) !void {
-    const curr = self.active_window orelse return;
-    const may_candidate = self.findClosestWindow(curr, direction);
-    if (may_candidate) |candidate| self.active_window = candidate;
-}
 
 pub fn findClosestWindow(self: *const @This(), curr: *Window, direction: WindowRelativeDirection) ?*Window {
     var x_distance: f32 = std.math.floatMax(f32);
