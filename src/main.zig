@@ -87,6 +87,18 @@ pub fn main() anyerror!void {
         .endScissorMode = endScissorMode,
     };
 
+    ///////////////////////////// MappingCouncil
+
+    var council = try ip.MappingCouncil.init(gpa);
+    defer council.deinit();
+
+    var input_frame = try ip.InputFrame.init(gpa);
+    defer input_frame.deinit();
+
+    var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
+
+    try council.setActiveContext("normal");
+
     ///////////////////////////// Stores
 
     var font_store = try FontStore.init(gpa);
@@ -134,32 +146,29 @@ pub fn main() anyerror!void {
     var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", FONT_BASE_SIZE, null);
     try addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
+    // WindowManager
     var wm = try WindowManager.create(gpa, &lang_hub, &mall);
     defer wm.destroy();
-
-    ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
-
-    ///////////////////////////// Mapping Council Setup
-
-    var council = try ip.MappingCouncil.init(gpa);
-    defer council.deinit();
-
-    var input_frame = try ip.InputFrame.init(gpa);
-    defer input_frame.deinit();
-
-    var input_repeat_manager = InputRepeatManager{ .frame = &input_frame, .council = council };
-
-    try council.setActiveContext("normal");
-
-    ///////////////////////////// Initialize Keymaps
-
     try wm.mapKeys(council);
+
+    // AnchorPicker
+    var anchor_picker = AnchorPicker{
+        .mall = &mall,
+        .radius = 20,
+        .color = @intCast(rl.Color.sky_blue.toInt()),
+        .lerp_time = 0.22,
+    };
+    anchor_picker.setToCenter();
+    try anchor_picker.mapKeys(council);
+
+    // FuzzyFinder
+    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, wm, &anchor_picker);
+    defer fuzzy_finder.destroy();
+    try fuzzy_finder.mapKeys(council);
 
     ///////////////////////////// Normal Mode
 
     try council.map("normal", &.{ .left_control, .b }, .{ .f = WindowManager.toggleActiveWindowBorder, .ctx = wm });
-
-    ///////////////////////////// Layout Related
 
     const CenterAtCb = struct {
         target: *WindowManager,
@@ -266,17 +275,6 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_control, .left_shift, .l }, .{ .f = WindowManager.loadSession, .ctx = wm });
     try council.map("normal", &.{ .left_shift, .left_control, .l }, .{ .f = WindowManager.loadSession, .ctx = wm });
 
-    ////////////////////////////////////////////////////////////////////////////////////////////// AnchorPicker
-
-    var anchor_picker = AnchorPicker{
-        .mall = &mall,
-        .radius = 20,
-        .color = @intCast(rl.Color.sky_blue.toInt()),
-        .lerp_time = 0.22,
-    };
-    anchor_picker.setToCenter();
-    try anchor_picker.mapKeys(council);
-
     ///////////////////////////// Spawn Blank Window
 
     const SpawnBlankWindowCb = struct {
@@ -317,59 +315,6 @@ pub fn main() anyerror!void {
     try council.map("normal", &.{ .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), wm, &mall, &anchor_picker, .bottom));
     try council.map("normal", &.{ .left_control, .left_shift, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), wm, &mall, &anchor_picker, .right));
     try council.map("normal", &.{ .left_shift, .left_control, .n }, try SpawnBlankWindowCb.init(council.arena.allocator(), wm, &mall, &anchor_picker, .right));
-
-    ////////////////////////////////////////////////////////////////////////////////////////////// FuzzyFinder
-
-    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, wm, &anchor_picker);
-    defer fuzzy_finder.destroy();
-
-    try council.mapInsertCharacters(&.{"fuzzy_finder_insert"}, fuzzy_finder, FuzzyFinder.InsertCharsCb.init);
-    try council.map("fuzzy_finder_insert", &.{.backspace}, .{ .f = FuzzyFinder.backspace, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .j }, .{ .f = FuzzyFinder.nextItem, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .k }, .{ .f = FuzzyFinder.prevItem, .ctx = fuzzy_finder });
-    try council.map("fuzzy_finder_insert", &.{.enter}, .{
-        .f = FuzzyFinder.confirmItemSelection,
-        .ctx = fuzzy_finder,
-        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
-    });
-
-    const RelativeSpawnCb = struct {
-        direction: WindowManager.WindowRelativeDirection,
-        target: *FuzzyFinder,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.target.spawnRelativeToActiveWindow(self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
-            const self = try allocator.create(@This());
-            const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
-            self.* = .{ .direction = direction, .target = target };
-            return ip.Callback{
-                .f = @This().f,
-                .ctx = self,
-                .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
-            };
-        }
-    };
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .right));
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .left_shift, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .left));
-    try council.map("fuzzy_finder_insert", &.{ .left_shift, .left_control, .v }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .left));
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .bottom));
-    try council.map("fuzzy_finder_insert", &.{ .left_control, .left_shift, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .top));
-    try council.map("fuzzy_finder_insert", &.{ .left_shift, .left_control, .x }, try RelativeSpawnCb.init(council.arena.allocator(), fuzzy_finder, .top));
-
-    try council.map("fuzzy_finder_insert", &.{.escape}, .{
-        .f = FuzzyFinder.hide,
-        .ctx = fuzzy_finder,
-        .contexts = .{ .add = &.{"normal"}, .remove = &.{"fuzzy_finder_insert"} },
-    });
-
-    try council.map("normal", &.{ .left_control, .f }, .{
-        .f = FuzzyFinder.show,
-        .ctx = fuzzy_finder,
-        .contexts = .{ .add = &.{"fuzzy_finder_insert"}, .remove = &.{"normal"} },
-        .require_clarity_afterwards = true,
-    });
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Game Loop
 

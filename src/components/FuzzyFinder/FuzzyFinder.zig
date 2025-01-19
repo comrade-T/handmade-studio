@@ -36,6 +36,51 @@ const AnchorPicker = @import("AnchorPicker");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const NORMAL = "normal";
+const FI = "fuzzy_finder_insert";
+
+const NORMAL_TO_FI = ip.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{FI} };
+const FI_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{FI}, .add = &.{NORMAL} };
+
+pub fn mapKeys(ff: *@This(), c: *ip.MappingCouncil) !void {
+
+    // mode enter & exit
+    try c.map(FI, &.{.escape}, .{ .f = FuzzyFinder.hide, .ctx = ff, .contexts = FI_TO_NORMAL });
+    try c.map(NORMAL, &.{ .left_control, .f }, .{ .f = FuzzyFinder.show, .ctx = ff, .contexts = NORMAL_TO_FI, .require_clarity_afterwards = true });
+
+    // edit input
+    try c.mapInsertCharacters(&.{FI}, ff, InsertCharsCb.init);
+
+    try c.map(FI, &.{.backspace}, .{ .f = backspace, .ctx = ff });
+    try c.map(FI, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = ff });
+    try c.map(FI, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = ff });
+    try c.map(FI, &.{.enter}, .{ .f = confirmItemSelection, .ctx = ff, .contexts = FI_TO_NORMAL });
+
+    // spawn
+    const RelativeSpawnCb = struct {
+        direction: WindowManager.WindowRelativeDirection,
+        target: *FuzzyFinder,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.target.spawnRelativeToActiveWindow(self.direction);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .direction = direction, .target = target };
+            return ip.Callback{ .f = @This().f, .ctx = self, .contexts = FI_TO_NORMAL };
+        }
+    };
+    try c.map(FI, &.{ .left_control, .v }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .right));
+    try c.map(FI, &.{ .left_control, .left_shift, .v }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .left));
+    try c.map(FI, &.{ .left_shift, .left_control, .v }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .left));
+    try c.map(FI, &.{ .left_control, .x }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .bottom));
+    try c.map(FI, &.{ .left_control, .left_shift, .x }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .top));
+    try c.map(FI, &.{ .left_shift, .left_control, .x }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .top));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const PathList = ArrayList([]const u8);
 const MatchList = ArrayList(Match);
 

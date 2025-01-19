@@ -34,8 +34,8 @@ const AP_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{AP}, .add = &.{NORMAL} }
 
 pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     const a = c.arena.allocator();
-    try c.map(NORMAL, &.{ .left_control, .p }, .{ .f = AnchorPicker.show, .ctx = ap, .contexts = NORMAL_TO_AP, .require_clarity_afterwards = true });
-    try c.map(AP, &.{.escape}, .{ .f = AnchorPicker.hide, .ctx = ap, .contexts = AP_TO_NORMAL });
+    try c.map(NORMAL, &.{ .left_control, .p }, .{ .f = show, .ctx = ap, .contexts = NORMAL_TO_AP, .require_clarity_afterwards = true });
+    try c.map(AP, &.{.escape}, .{ .f = hide, .ctx = ap, .contexts = AP_TO_NORMAL });
 
     ///////////////////////////// anchor position
 
@@ -61,7 +61,7 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(AP, &.{ .p, .a }, try PercentageCb.init(a, ap, 25, 50));
     try c.map(AP, &.{ .p, .d }, try PercentageCb.init(a, ap, 75, 50));
 
-    try c.mapUpNDown(NORMAL, &.{ .z, .c }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = ap, .up_ctx = ap });
+    try c.mapUpNDown(NORMAL, &.{ .z, .c }, .{ .down_f = show, .up_f = hide, .down_ctx = ap, .up_ctx = ap });
     try c.map(NORMAL, &.{ .z, .c, .m }, .{ .f = AnchorPicker.center, .ctx = ap });
     try c.map(NORMAL, &.{ .z, .c, .k }, try PercentageCb.init(a, ap, 50, 25));
     try c.map(NORMAL, &.{ .z, .c, .j }, try PercentageCb.init(a, ap, 50, 75));
@@ -90,7 +90,7 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(AP, &.{ .z, .space, .j }, try ZoomCb.init(a, ap, 0.8, false));
     try c.map(AP, &.{ .z, .space, .k }, try ZoomCb.init(a, ap, 1.25, false));
 
-    try c.mapUpNDown(NORMAL, &.{ .z, .x }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = ap, .up_ctx = ap });
+    try c.mapUpNDown(NORMAL, &.{ .z, .x }, .{ .down_f = show, .up_f = hide, .down_ctx = ap, .up_ctx = ap });
     try c.map(NORMAL, &.{ .z, .x, .j }, try ZoomCb.init(a, ap, 0.8, false));
     try c.map(NORMAL, &.{ .z, .x, .k }, try ZoomCb.init(a, ap, 1.25, false));
     try c.map(NORMAL, &.{ .z, .x, .space, .j }, try ZoomCb.init(a, ap, 0.9, true));
