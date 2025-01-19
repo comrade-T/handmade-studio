@@ -32,9 +32,12 @@ const AP = "anchor_picker";
 const NORMAL_TO_AP = ip.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{AP} };
 const AP_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{AP}, .add = &.{NORMAL} };
 
-pub fn mapKeys(ap: *@This(), council: *ip.MappingCouncil) !void {
-    try council.map(NORMAL, &.{ .left_control, .p }, .{ .f = AnchorPicker.show, .ctx = ap, .contexts = NORMAL_TO_AP, .require_clarity_afterwards = true });
-    try council.map(AP, &.{.escape}, .{ .f = AnchorPicker.hide, .ctx = ap, .contexts = AP_TO_NORMAL });
+pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
+    const a = c.arena.allocator();
+    try c.map(NORMAL, &.{ .left_control, .p }, .{ .f = AnchorPicker.show, .ctx = ap, .contexts = NORMAL_TO_AP, .require_clarity_afterwards = true });
+    try c.map(AP, &.{.escape}, .{ .f = AnchorPicker.hide, .ctx = ap, .contexts = AP_TO_NORMAL });
+
+    ///////////////////////////// anchor position
 
     const PercentageCb = struct {
         x_percent: f32,
@@ -52,18 +55,145 @@ pub fn mapKeys(ap: *@This(), council: *ip.MappingCouncil) !void {
         }
     };
 
-    try council.map(AP, &.{ .p, .c }, .{ .f = AnchorPicker.center, .ctx = ap });
-    try council.map(AP, &.{ .p, .w }, try PercentageCb.init(council.arena.allocator(), ap, 50, 25));
-    try council.map(AP, &.{ .p, .s }, try PercentageCb.init(council.arena.allocator(), ap, 50, 75));
-    try council.map(AP, &.{ .p, .a }, try PercentageCb.init(council.arena.allocator(), ap, 25, 50));
-    try council.map(AP, &.{ .p, .d }, try PercentageCb.init(council.arena.allocator(), ap, 75, 50));
+    try c.map(AP, &.{ .p, .c }, .{ .f = AnchorPicker.center, .ctx = ap });
+    try c.map(AP, &.{ .p, .w }, try PercentageCb.init(a, ap, 50, 25));
+    try c.map(AP, &.{ .p, .s }, try PercentageCb.init(a, ap, 50, 75));
+    try c.map(AP, &.{ .p, .a }, try PercentageCb.init(a, ap, 25, 50));
+    try c.map(AP, &.{ .p, .d }, try PercentageCb.init(a, ap, 75, 50));
 
-    try council.mapUpNDown(NORMAL, &.{ .z, .c }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = ap, .up_ctx = ap });
-    try council.map(NORMAL, &.{ .z, .c, .m }, .{ .f = AnchorPicker.center, .ctx = ap });
-    try council.map(NORMAL, &.{ .z, .c, .k }, try PercentageCb.init(council.arena.allocator(), ap, 50, 25));
-    try council.map(NORMAL, &.{ .z, .c, .j }, try PercentageCb.init(council.arena.allocator(), ap, 50, 75));
-    try council.map(NORMAL, &.{ .z, .c, .h }, try PercentageCb.init(council.arena.allocator(), ap, 25, 50));
-    try council.map(NORMAL, &.{ .z, .c, .l }, try PercentageCb.init(council.arena.allocator(), ap, 75, 50));
+    try c.mapUpNDown(NORMAL, &.{ .z, .c }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = ap, .up_ctx = ap });
+    try c.map(NORMAL, &.{ .z, .c, .m }, .{ .f = AnchorPicker.center, .ctx = ap });
+    try c.map(NORMAL, &.{ .z, .c, .k }, try PercentageCb.init(a, ap, 50, 25));
+    try c.map(NORMAL, &.{ .z, .c, .j }, try PercentageCb.init(a, ap, 50, 75));
+    try c.map(NORMAL, &.{ .z, .c, .h }, try PercentageCb.init(a, ap, 25, 50));
+    try c.map(NORMAL, &.{ .z, .c, .l }, try PercentageCb.init(a, ap, 75, 50));
+
+    ///////////////////////////// zoom
+
+    const ZoomCb = struct {
+        scale_factor: f32,
+        target: *AnchorPicker,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.zoom(self.scale_factor);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, scale_factor: f32, ignore_trigger_delay: bool) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .scale_factor = scale_factor };
+            return ip.Callback{ .f = @This().f, .ctx = self, .ignore_trigger_delay = ignore_trigger_delay };
+        }
+    };
+
+    try c.map(AP, &.{ .z, .j }, try ZoomCb.init(a, ap, 0.9, true));
+    try c.map(AP, &.{ .z, .k }, try ZoomCb.init(a, ap, 1.1, true));
+    try c.map(AP, &.{ .z, .space, .j }, try ZoomCb.init(a, ap, 0.8, false));
+    try c.map(AP, &.{ .z, .space, .k }, try ZoomCb.init(a, ap, 1.25, false));
+
+    try c.mapUpNDown(NORMAL, &.{ .z, .x }, .{ .down_f = AnchorPicker.show, .up_f = AnchorPicker.hide, .down_ctx = ap, .up_ctx = ap });
+    try c.map(NORMAL, &.{ .z, .x, .j }, try ZoomCb.init(a, ap, 0.8, false));
+    try c.map(NORMAL, &.{ .z, .x, .k }, try ZoomCb.init(a, ap, 1.25, false));
+    try c.map(NORMAL, &.{ .z, .x, .space, .j }, try ZoomCb.init(a, ap, 0.9, true));
+    try c.map(NORMAL, &.{ .z, .x, .space, .k }, try ZoomCb.init(a, ap, 1.1, true));
+
+    ///////////////////////////// pan
+
+    const PanCb = struct {
+        x_by: f32,
+        y_by: f32,
+        target: *AnchorPicker,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.target.pan(self.x_by, self.y_by);
+        }
+        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, x_by: f32, y_by: f32, ignore_trigger_delay: bool) !ip.Callback {
+            const self = try allocator.create(@This());
+            const target = @as(*AnchorPicker, @ptrCast(@alignCast(ctx)));
+            self.* = .{ .target = target, .x_by = x_by, .y_by = y_by };
+            return ip.Callback{
+                .f = @This().f,
+                .ctx = self,
+                .always_trigger_on_down = true,
+                .ignore_trigger_delay = ignore_trigger_delay,
+            };
+        }
+    };
+
+    try c.map(NORMAL, &.{ .z, .k }, try PanCb.init(a, ap, 0, -100, false));
+    try c.map(NORMAL, &.{ .z, .j }, try PanCb.init(a, ap, 0, 100, false));
+    try c.map(NORMAL, &.{ .z, .h }, try PanCb.init(a, ap, -100, 0, false));
+    try c.map(NORMAL, &.{ .z, .l }, try PanCb.init(a, ap, 100, 0, false));
+    try c.map(NORMAL, &.{ .z, .k, .h }, try PanCb.init(a, ap, -100, -100, false));
+    try c.map(NORMAL, &.{ .z, .k, .l }, try PanCb.init(a, ap, 100, -100, false));
+    try c.map(NORMAL, &.{ .z, .j, .h }, try PanCb.init(a, ap, -100, 100, false));
+    try c.map(NORMAL, &.{ .z, .j, .l }, try PanCb.init(a, ap, 100, 100, false));
+    try c.map(NORMAL, &.{ .z, .h, .k }, try PanCb.init(a, ap, -100, -100, false));
+    try c.map(NORMAL, &.{ .z, .h, .j }, try PanCb.init(a, ap, -100, 100, false));
+    try c.map(NORMAL, &.{ .z, .l, .k }, try PanCb.init(a, ap, 100, -100, false));
+    try c.map(NORMAL, &.{ .z, .l, .j }, try PanCb.init(a, ap, 100, 100, false));
+
+    try c.map(NORMAL, &.{ .z, .space, .k }, try PanCb.init(a, ap, 0, -100, true));
+    try c.map(NORMAL, &.{ .z, .space, .j }, try PanCb.init(a, ap, 0, 100, true));
+    try c.map(NORMAL, &.{ .z, .space, .h }, try PanCb.init(a, ap, -100, 0, true));
+    try c.map(NORMAL, &.{ .z, .space, .l }, try PanCb.init(a, ap, 100, 0, true));
+    try c.map(NORMAL, &.{ .z, .k, .space, .h }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(NORMAL, &.{ .z, .k, .space, .l }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(NORMAL, &.{ .z, .j, .space, .h }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(NORMAL, &.{ .z, .j, .space, .l }, try PanCb.init(a, ap, 100, 100, true));
+    try c.map(NORMAL, &.{ .z, .h, .space, .k }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(NORMAL, &.{ .z, .h, .space, .j }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(NORMAL, &.{ .z, .l, .space, .k }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(NORMAL, &.{ .z, .l, .space, .j }, try PanCb.init(a, ap, 100, 100, true));
+
+    try c.map(AP, &.{.w}, try PanCb.init(a, ap, 0, -100, true));
+    try c.map(AP, &.{.s}, try PanCb.init(a, ap, 0, 100, true));
+    try c.map(AP, &.{.a}, try PanCb.init(a, ap, -100, 0, true));
+    try c.map(AP, &.{.d}, try PanCb.init(a, ap, 100, 0, true));
+    try c.map(AP, &.{ .w, .a }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(AP, &.{ .s, .a }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(AP, &.{ .a, .w }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(AP, &.{ .a, .s }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(AP, &.{ .w, .d }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(AP, &.{ .s, .d }, try PanCb.init(a, ap, 100, 100, true));
+    try c.map(AP, &.{ .d, .w }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(AP, &.{ .d, .s }, try PanCb.init(a, ap, 100, 100, true));
+    try c.map(AP, &.{ .space, .w }, try PanCb.init(a, ap, 0, -100, false));
+    try c.map(AP, &.{ .space, .s }, try PanCb.init(a, ap, 0, 100, false));
+    try c.map(AP, &.{ .space, .a }, try PanCb.init(a, ap, -100, 0, false));
+    try c.map(AP, &.{ .space, .d }, try PanCb.init(a, ap, 100, 0, false));
+    try c.map(AP, &.{ .space, .w, .a }, try PanCb.init(a, ap, -100, -100, false));
+    try c.map(AP, &.{ .space, .s, .a }, try PanCb.init(a, ap, -100, 100, false));
+    try c.map(AP, &.{ .space, .a, .w }, try PanCb.init(a, ap, -100, -100, false));
+    try c.map(AP, &.{ .space, .a, .s }, try PanCb.init(a, ap, -100, 100, false));
+    try c.map(AP, &.{ .space, .w, .d }, try PanCb.init(a, ap, 100, -100, false));
+    try c.map(AP, &.{ .space, .s, .d }, try PanCb.init(a, ap, 100, 100, false));
+    try c.map(AP, &.{ .space, .d, .w }, try PanCb.init(a, ap, 100, -100, false));
+    try c.map(AP, &.{ .space, .d, .s }, try PanCb.init(a, ap, 100, 100, false));
+
+    try c.map(AP, &.{ .m, .w }, try PanCb.init(a, ap, 0, -100, true));
+    try c.map(AP, &.{ .m, .s }, try PanCb.init(a, ap, 0, 100, true));
+    try c.map(AP, &.{ .m, .a }, try PanCb.init(a, ap, -100, 0, true));
+    try c.map(AP, &.{ .m, .d }, try PanCb.init(a, ap, 100, 0, true));
+    try c.map(AP, &.{ .m, .w, .a }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(AP, &.{ .m, .s, .a }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(AP, &.{ .m, .a, .w }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(AP, &.{ .m, .a, .s }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(AP, &.{ .m, .w, .d }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(AP, &.{ .m, .s, .d }, try PanCb.init(a, ap, 100, 100, true));
+    try c.map(AP, &.{ .m, .d, .w }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(AP, &.{ .m, .d, .s }, try PanCb.init(a, ap, 100, 100, true));
+    try c.map(AP, &.{ .m, .space, .w }, try PanCb.init(a, ap, 0, -100, false));
+    try c.map(AP, &.{ .m, .space, .s }, try PanCb.init(a, ap, 0, 100, false));
+    try c.map(AP, &.{ .m, .space, .a }, try PanCb.init(a, ap, -100, 0, false));
+    try c.map(AP, &.{ .m, .space, .d }, try PanCb.init(a, ap, 100, 0, false));
+    try c.map(AP, &.{ .m, .space, .w, .a }, try PanCb.init(a, ap, -100, -100, false));
+    try c.map(AP, &.{ .m, .space, .s, .a }, try PanCb.init(a, ap, -100, 100, false));
+    try c.map(AP, &.{ .m, .space, .a, .w }, try PanCb.init(a, ap, -100, -100, false));
+    try c.map(AP, &.{ .m, .space, .a, .s }, try PanCb.init(a, ap, -100, 100, false));
+    try c.map(AP, &.{ .m, .space, .w, .d }, try PanCb.init(a, ap, 100, -100, false));
+    try c.map(AP, &.{ .m, .space, .s, .d }, try PanCb.init(a, ap, 100, 100, false));
+    try c.map(AP, &.{ .m, .space, .d, .w }, try PanCb.init(a, ap, 100, -100, false));
+    try c.map(AP, &.{ .m, .space, .d, .s }, try PanCb.init(a, ap, 100, 100, false));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
