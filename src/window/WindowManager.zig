@@ -37,7 +37,7 @@ const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
 pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil) !void {
     try self.connman.mapKeys(council);
@@ -101,7 +101,7 @@ fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *Mapping
     try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, wm, wm.mall, ap, .right));
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// WindowManager
 
 a: Allocator,
 
@@ -129,6 +129,14 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
     return self;
 }
 
+pub fn render(self: *@This()) void {
+    for (self.wmap.keys()) |window| {
+        const is_active = if (self.active_window) |active_window| active_window == window else false;
+        window.render(is_active, self.mall);
+    }
+    self.connman.render();
+}
+
 pub fn destroy(self: *@This()) void {
     self.connman.deinit();
 
@@ -139,16 +147,6 @@ pub fn destroy(self: *@This()) void {
     self.wmap.deinit(self.a);
 
     self.a.destroy(self);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Render
-
-pub fn render(self: *@This()) void {
-    for (self.wmap.keys()) |window| {
-        const is_active = if (self.active_window) |active_window| active_window == window else false;
-        window.render(is_active, self.mall);
-    }
-    self.connman.render();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler
@@ -210,14 +208,20 @@ const WindowSourceHandler = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
 
-pub fn findClosestWindow(self: *const @This(), curr: *Window, direction: WindowRelativeDirection) ?*Window {
-    var x_distance: f32 = std.math.floatMax(f32);
-    var y_distance: f32 = std.math.floatMax(f32);
-    var may_candidate: ?*Window = null;
-    var candidate_status: enum { none, intersect, loose } = .none;
+pub fn findClosestWindow(self: *const @This(), curr: *const Window, direction: WindowRelativeDirection) ?*Window {
+    const ccx, const ccy = getWidowCenterCoordinates(curr);
+
+    var inter_xd: f32 = std.math.floatMax(f32);
+    var inter_yd: f32 = std.math.floatMax(f32);
+    var inter_candidate: ?*Window = null;
+
+    var loose_xd: f32 = std.math.floatMax(f32);
+    var loose_yd: f32 = std.math.floatMax(f32);
+    var loose_candidate: ?*Window = null;
 
     for (self.wmap.keys()) |window| {
         if (window == curr) continue;
+
         switch (direction) {
             .right, .left => {
                 const cond = if (direction == .right)
@@ -225,21 +229,25 @@ pub fn findClosestWindow(self: *const @This(), curr: *Window, direction: WindowR
                 else
                     window.attr.pos.x < curr.attr.pos.x;
 
-                if (window.verticalIntersect(curr)) candidate_status = .intersect;
-
                 if (cond) {
-                    if (window.verticalIntersect(curr) or may_candidate == null) {
-                        const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
-                        if (dx < x_distance) {
-                            may_candidate = window;
-                            x_distance = dx;
-                            if (candidate_status != .intersect) candidate_status = .loose;
-                            continue;
+                    if (window.verticalIntersect(curr)) {
+                        const xd = @abs(window.attr.pos.x - curr.attr.pos.x);
+                        if (xd < inter_xd) {
+                            inter_candidate = window;
+                            inter_xd = xd;
                         }
                     }
-                    if (candidate_status == .loose) handleLooseCandidate(window, curr, &x_distance, &y_distance, &may_candidate);
+
+                    if (inter_candidate != null) continue;
+
+                    const xd, const yd = calculateCenterDistaceBetweenWindows(window, ccx, ccy);
+                    if (totalDistanceIsSmaller(xd, yd, loose_xd, loose_yd)) {
+                        loose_xd, loose_yd = .{ xd, yd };
+                        loose_candidate = window;
+                    }
                 }
             },
+
             .bottom, .top => {
                 const cond = if (direction == .bottom)
                     window.attr.pos.y > curr.attr.pos.y
@@ -247,33 +255,46 @@ pub fn findClosestWindow(self: *const @This(), curr: *Window, direction: WindowR
                     window.attr.pos.y < curr.attr.pos.y;
 
                 if (cond) {
-                    if (window.horizontalIntersect(curr) or may_candidate == null) {
-                        const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
-                        if (dy < y_distance) {
-                            may_candidate = window;
-                            y_distance = dy;
-                            if (candidate_status != .intersect) candidate_status = .loose;
-                            continue;
+                    if (window.horizontalIntersect(curr)) {
+                        const yd = @abs(window.attr.pos.y - curr.attr.pos.y);
+                        if (yd < inter_yd) {
+                            inter_candidate = window;
+                            inter_yd = yd;
                         }
                     }
-                    if (candidate_status == .loose) handleLooseCandidate(window, curr, &x_distance, &y_distance, &may_candidate);
+
+                    if (inter_candidate != null) continue;
+
+                    const xd, const yd = calculateCenterDistaceBetweenWindows(window, ccx, ccy);
+                    if (totalDistanceIsSmaller(xd, yd, loose_xd, loose_yd)) {
+                        loose_xd, loose_yd = .{ xd, yd };
+                        loose_candidate = window;
+                    }
                 }
             },
         }
     }
 
-    return may_candidate;
+    return if (inter_candidate != null) inter_candidate else loose_candidate;
 }
 
-fn handleLooseCandidate(window: *Window, curr: *Window, x_distance: *f32, y_distance: *f32, may_candidate: *?*Window) void {
-    const dx = @abs(window.attr.pos.x - curr.attr.pos.x);
-    const dy = @abs(window.attr.pos.y - curr.attr.pos.y);
+fn getWidowCenterCoordinates(win: *const Window) struct { f32, f32 } {
+    return .{
+        win.getX() + win.getWidth() / 2,
+        win.getY() + win.getHeight() / 2,
+    };
+}
 
-    if ((dx + dy) < (x_distance.* + y_distance.*)) {
-        may_candidate.* = window;
-        x_distance.* = dx;
-        y_distance.* = dy;
-    }
+fn calculateCenterDistaceBetweenWindows(this: *const Window, other_cx: f32, other_cy: f32) struct { f32, f32 } {
+    const tcx, const tcy = getWidowCenterCoordinates(this);
+    return .{
+        @abs(tcx - other_cx),
+        @abs(tcy - other_cy),
+    };
+}
+
+fn totalDistanceIsSmaller(xd: f32, yd: f32, cxd: f32, cyd: f32) bool {
+    return (xd + yd) < (cxd + cyd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Spawn
