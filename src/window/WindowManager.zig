@@ -209,106 +209,77 @@ const WindowSourceHandler = struct {
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
 
 pub fn findClosestWindow(self: *const @This(), curr: *const Window, direction: WindowRelativeDirection) ?*Window {
-    const ccx, const ccy = getWidowCenterCoordinates(curr);
+    var min_distance: f32 = std.math.floatMax(f32);
+    var may_candidate: ?*Window = null;
 
-    var inter_xd: f32 = std.math.floatMax(f32);
-    var inter_yd: f32 = std.math.floatMax(f32);
-    var inter_cxd: f32 = std.math.floatMax(f32);
-    var inter_cyd: f32 = std.math.floatMax(f32);
-    var inter_candidate: ?*Window = null;
-
-    var loose_cxd: f32 = std.math.floatMax(f32);
-    var loose_cyd: f32 = std.math.floatMax(f32);
-    var loose_candidate: ?*Window = null;
-
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    // TODO: calculate sub axis
 
     for (self.wmap.keys()) |window| {
         if (window == curr) continue;
-        const cxd, const cyd = calculateCenterDistaceBetweenWindows(window, ccx, ccy);
 
-        switch (direction) {
-            .right, .left => {
-                const cond = if (direction == .right)
-                    window.attr.pos.x > curr.attr.pos.x
-                else
-                    window.attr.pos.x < curr.attr.pos.x;
+        const edge = findEdge(direction, window, curr);
 
-                // TODO: find the right corner to calculate upon depends on the direction
-                // ---> using the center point all the time is not good
-                // ~~~~~ but there are lots of additional logic going on when it comes to anchor picking
+        const cond = switch (direction) {
+            .left => window.getX() < curr.getX(),
+            .right => window.getX() > curr.getX(),
+            .top => window.getY() < curr.getY(),
+            .bottom => window.getY() > curr.getY(),
+        };
+        if (!cond) continue;
 
-                if (cond) {
-                    if (window.verticalIntersect(curr)) {
-                        const xd = @abs(window.attr.pos.x - curr.attr.pos.x);
-                        if (xd < inter_xd) {
-                            const yd = @abs(window.attr.pos.y - curr.attr.pos.y);
-                            inter_xd, inter_yd = .{ xd, yd };
-                            inter_cxd, inter_cyd = .{ cxd, cyd };
-                            inter_candidate = window;
-                        }
-                    }
+        const d = calculateMainAxisDistance(direction, window, curr, edge);
+        if (d >= min_distance) continue;
 
-                    if (totalDistanceIsSmaller(cxd, cyd, loose_cxd, loose_cyd)) {
-                        loose_cxd, loose_cyd = .{ cxd, cyd };
-                        loose_candidate = window;
-                    }
-                }
-            },
-
-            .bottom, .top => {
-                const cond = if (direction == .bottom)
-                    window.attr.pos.y > curr.attr.pos.y
-                else
-                    window.attr.pos.y < curr.attr.pos.y;
-
-                if (cond) {
-                    if (window.horizontalIntersect(curr)) {
-                        const yd = @abs(window.attr.pos.y - curr.attr.pos.y);
-                        if (yd < inter_yd) {
-                            const xd = @abs(window.attr.pos.x - curr.attr.pos.x);
-                            inter_xd, inter_yd = .{ xd, yd };
-                            inter_cxd, inter_cyd = .{ cxd, cyd };
-                            inter_candidate = window;
-                        }
-                    }
-
-                    if (totalDistanceIsSmaller(cxd, cyd, loose_cxd, loose_cyd)) {
-                        loose_cxd, loose_cyd = .{ cxd, cyd };
-                        loose_candidate = window;
-                    }
-                }
-            },
-        }
+        min_distance = d;
+        may_candidate = window;
     }
 
-    const ic = inter_candidate orelse return loose_candidate;
-    const lc = loose_candidate orelse return ic;
+    return may_candidate;
+}
+
+const WindowEdge = enum { left, right, top, bottom };
+fn findEdge(direction: WindowRelativeDirection, to: *const Window, from: *const Window) WindowEdge {
+    return switch (direction) {
+        .left => if (to.horizontalIntersect(from)) .left else .right,
+        .right => if (to.horizontalIntersect(from)) .right else .left,
+        .top => if (to.verticalIntersect(from)) .top else .bottom,
+        .bottom => if (to.verticalIntersect(from)) .bottom else .top,
+    };
+}
+
+fn calculateMainAxisDistance(direction: WindowRelativeDirection, to: *const Window, from: *const Window, edge: WindowEdge) f32 {
+    const to_left = to.getX();
+    const to_right = to_left + to.getWidth();
+    const to_top = to.getY();
+    const to_bottom = to_top + to.getHeight();
+
+    const from_left = from.getX();
+    const from_right = from_left + from.getWidth();
+    const from_top = from.getY();
+    const from_bottom = from_top + from.getHeight();
 
     return switch (direction) {
-        .right, .left => if (inter_cyd < loose_cyd) ic else lc,
-        .top, .bottom => if (inter_cxd < loose_cxd) ic else lc,
+        .left => switch (edge) {
+            .left => @abs(to_left - from_left),
+            .right => @abs(to_right - from_left),
+            else => unreachable,
+        },
+        .right => switch (edge) {
+            .left => @abs(to_left - from_right),
+            .right => @abs(to_right - from_right),
+            else => unreachable,
+        },
+        .top => switch (edge) {
+            .top => @abs(to_top - from_top),
+            .bottom => @abs(to_bottom - from_top),
+            else => unreachable,
+        },
+        .bottom => switch (edge) {
+            .top => @abs(to_top - from_bottom),
+            .bottom => @abs(to_bottom - from_bottom),
+            else => unreachable,
+        },
     };
-}
-
-fn getWidowCenterCoordinates(win: *const Window) struct { f32, f32 } {
-    return .{
-        win.getX() + win.getWidth() / 2,
-        win.getY() + win.getHeight() / 2,
-    };
-}
-
-fn calculateCenterDistaceBetweenWindows(this: *const Window, other_cx: f32, other_cy: f32) struct { f32, f32 } {
-    const tcx, const tcy = getWidowCenterCoordinates(this);
-    return .{
-        @abs(tcx - other_cx),
-        @abs(tcy - other_cy),
-    };
-}
-
-fn totalDistanceIsSmaller(xd: f32, yd: f32, cxd: f32, cyd: f32) bool {
-    return (xd + yd) < (cxd + cyd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Spawn
