@@ -209,32 +209,43 @@ const WindowSourceHandler = struct {
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
 
 pub fn findClosestWindow(self: *const @This(), curr: *const Window, direction: WindowRelativeDirection) ?*Window {
-    var min_distance: f32 = std.math.floatMax(f32);
-    var may_candidate: ?*Window = null;
+    var distance: f32 = std.math.floatMax(f32);
+    var candidate: ?*Window = null;
 
-    // TODO: calculate sub axis
+    const curr_edge_stat = getWindowEdgeStat(curr);
 
-    for (self.wmap.keys()) |window| {
-        if (window == curr) continue;
-
-        const edge = findEdge(direction, window, curr);
+    for (self.wmap.keys()) |win| {
+        if (win == curr) continue;
 
         const cond = switch (direction) {
-            .left => window.getX() < curr.getX(),
-            .right => window.getX() > curr.getX(),
-            .top => window.getY() < curr.getY(),
-            .bottom => window.getY() > curr.getY(),
+            .left => win.getX() < curr.getX(),
+            .right => win.getX() > curr.getX(),
+            .top => win.getY() < curr.getY(),
+            .bottom => win.getY() > curr.getY(),
         };
         if (!cond) continue;
 
-        const d = calculateMainAxisDistance(direction, window, curr, edge);
-        if (d >= min_distance) continue;
+        const edge = findEdge(direction, win, curr);
+        const d = calculateTotalDistance(direction, getWindowEdgeStat(win), curr_edge_stat, edge);
+        if (d >= distance) continue;
 
-        min_distance = d;
-        may_candidate = window;
+        distance = d;
+        candidate = win;
     }
 
-    return may_candidate;
+    return candidate;
+}
+
+const WindowEdgeStat = struct { left: f32, right: f32, mid_x: f32, top: f32, bottom: f32, mid_y: f32 };
+fn getWindowEdgeStat(win: *const Window) WindowEdgeStat {
+    return WindowEdgeStat{
+        .left = win.getX(),
+        .right = win.getX() + win.getWidth(),
+        .mid_x = win.getX() + win.getWidth() / 2,
+        .top = win.getY(),
+        .bottom = win.getY() + win.getHeight(),
+        .mid_y = win.getY() + win.getHeight() / 2,
+    };
 }
 
 const WindowEdge = enum { left, right, top, bottom };
@@ -247,38 +258,41 @@ fn findEdge(direction: WindowRelativeDirection, to: *const Window, from: *const 
     };
 }
 
-fn calculateMainAxisDistance(direction: WindowRelativeDirection, to: *const Window, from: *const Window, edge: WindowEdge) f32 {
-    const to_left = to.getX();
-    const to_right = to_left + to.getWidth();
-    const to_top = to.getY();
-    const to_bottom = to_top + to.getHeight();
+fn calculateTotalDistance(direction: WindowRelativeDirection, to: WindowEdgeStat, from: WindowEdgeStat, edge: WindowEdge) f32 {
+    const md = calculateMainAxisDistance(direction, to, from, edge);
+    const sd = calculateSubAxisDistance(direction, to, from);
+    return md + sd;
+}
 
-    const from_left = from.getX();
-    const from_right = from_left + from.getWidth();
-    const from_top = from.getY();
-    const from_bottom = from_top + from.getHeight();
-
+fn calculateMainAxisDistance(direction: WindowRelativeDirection, to: WindowEdgeStat, from: WindowEdgeStat, edge: WindowEdge) f32 {
     return switch (direction) {
         .left => switch (edge) {
-            .left => @abs(to_left - from_left),
-            .right => @abs(to_right - from_left),
+            .left => @abs(to.left - from.left),
+            .right => @abs(to.right - from.left),
             else => unreachable,
         },
         .right => switch (edge) {
-            .left => @abs(to_left - from_right),
-            .right => @abs(to_right - from_right),
+            .left => @abs(to.left - from.right),
+            .right => @abs(to.right - from.right),
             else => unreachable,
         },
         .top => switch (edge) {
-            .top => @abs(to_top - from_top),
-            .bottom => @abs(to_bottom - from_top),
+            .top => @abs(to.top - from.top),
+            .bottom => @abs(to.bottom - from.top),
             else => unreachable,
         },
         .bottom => switch (edge) {
-            .top => @abs(to_top - from_bottom),
-            .bottom => @abs(to_bottom - from_bottom),
+            .top => @abs(to.top - from.bottom),
+            .bottom => @abs(to.bottom - from.bottom),
             else => unreachable,
         },
+    };
+}
+
+fn calculateSubAxisDistance(direction: WindowRelativeDirection, to: WindowEdgeStat, from: WindowEdgeStat) f32 {
+    return switch (direction) {
+        .left, .right => @abs(to.mid_y - from.mid_y),
+        .top, .bottom => @abs(to.mid_x - from.mid_x),
     };
 }
 
