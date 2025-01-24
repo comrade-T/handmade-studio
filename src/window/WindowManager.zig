@@ -524,7 +524,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
     const session = Session{
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
-        .connections = self.connman.connections.items,
+        .connections = self.connman.connections.keys(),
     };
 
     const str = try std.json.stringifyAlloc(arena.allocator(), session, .{
