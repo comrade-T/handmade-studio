@@ -42,24 +42,12 @@ pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
 
     ///////////////////////////// cycling connections
 
-    const CycleCb = struct {
-        direction: PrevOrNext,
-        connman: *ConnectionManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.connman.cycleThroughActiveWindowConnections(self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, cm_: *ConnectionManager, direction: PrevOrNext) !WM.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .direction = direction, .connman = cm_ };
-            return WM.Callback{ .f = @This().f, .ctx = self, .contexts = NORMAL_TO_CYCLING };
-        }
-    };
-
-    try council.map(NORMAL, &.{ .c, .l }, try CycleCb.init(council.arena.allocator(), connman, .next));
-    try council.map(CYCLING, &.{.j}, try CycleCb.init(council.arena.allocator(), connman, .next));
-    try council.map(CYCLING, &.{.k}, try CycleCb.init(council.arena.allocator(), connman, .prev));
-    try council.map(CYCLING, &.{.escape}, .{ .f = exitConnectionCycleMode, .ctx = connman, .contexts = CYCLING_TO_NORMAL });
+    try council.map(NORMAL, &.{ .c, .l }, .{ .f = enterCycleMode, .ctx = connman, .contexts = NORMAL_TO_CYCLING });
+    try council.map(CYCLING, &.{.escape}, .{ .f = exitCycleMode, .ctx = connman, .contexts = CYCLING_TO_NORMAL });
+    try council.map(CYCLING, &.{.j}, .{ .f = cycleToNextDownConnection, .ctx = connman });
+    try council.map(CYCLING, &.{.k}, .{ .f = cycleToNextUpConnection, .ctx = connman });
+    try council.map(CYCLING, &.{.h}, .{ .f = cycleToLeftMirroredConnection, .ctx = connman });
+    try council.map(CYCLING, &.{.l}, .{ .f = cycleToRightMirroredConnection, .ctx = connman });
 
     ///////////////////////////// pending connection
 
@@ -120,12 +108,19 @@ pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
+a: Allocator,
 wm: *const WindowManager,
 
 connections: ConnectionPtrList = ConnectionPtrList{},
 tracker_map: TrackerMap = TrackerMap{},
 pending_connection: ?Connection = null,
-selected_query: ?SelectedConnectionQuery = null,
+
+cycle_map: CycleMap = CycleMap{},
+cycle_index: usize = 0,
+
+pub fn init(a: Allocator) ConnectionManager {
+    return ConnectionManager{ .a = a };
+}
 
 pub fn deinit(self: *@This()) void {
     for (self.tracker_map.values()) |*tracker| {
@@ -136,22 +131,18 @@ pub fn deinit(self: *@This()) void {
 
     for (self.connections.items) |conn| self.wm.a.destroy(conn);
     self.connections.deinit(self.wm.a);
+
+    self.cycle_map.deinit(self.a);
 }
 
 pub fn render(self: *const @This()) void {
-    var selected_connection: ?*Connection = null;
-    if (self.selected_query) |query| thickness: {
-        const active_window = self.wm.active_window orelse break :thickness;
-        const tracker = self.tracker_map.getPtr(active_window.id) orelse break :thickness;
-        const source = switch (query.kind) {
-            .start => tracker.incoming,
-            .end => tracker.outgoing,
-        };
-        selected_connection = source.items[query.index];
-    }
+    const selconn = if (self.cycle_map.values().len > 0) blk: {
+        assert(self.cycle_index < self.cycle_map.values().len);
+        break :blk self.cycle_map.keys()[self.cycle_index];
+    } else null;
 
     for (self.connections.items) |conn| {
-        if (selected_connection) |selected| {
+        if (selconn) |selected| {
             if (conn == selected) {
                 conn.render(self.wm, Connection.SELECTED_THICKNESS);
                 continue;
@@ -183,6 +174,16 @@ pub const Connection = struct {
 
     const NORMAL_THICKNESS = 1;
     const SELECTED_THICKNESS = 5;
+
+    fn calculateAngle(self: *const @This(), win_id: i128, wm: *const WindowManager) f32 {
+        const start_point, const end_point = if (win_id == self.start.win_id) .{ self.start, self.end } else .{ self.end, self.start };
+        const start_x, const start_y = start_point.getPosition(wm) catch return 0;
+        const end_x, const end_y = end_point.getPosition(wm) catch return 0;
+
+        const deltaX = end_x - start_x;
+        const deltaY = end_y - start_y;
+        return std.math.atan2(deltaX, deltaY) * 180 / std.math.pi;
+    }
 
     fn render(self: *const @This(), wm: *const WindowManager, thickness: f32) void {
         const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
@@ -317,80 +318,125 @@ const SelectedConnectionQuery = struct {
 };
 const PrevOrNext = enum { prev, next };
 
-fn cycleThroughActiveWindowConnections(self: *@This(), direction: PrevOrNext) !void {
-    const active_window = self.wm.active_window orelse return;
-    const tracker = self.tracker_map.getPtr(active_window.id) orelse return;
+///////////////////////////// cycling methods
 
-    if (tracker.incoming.items.len == 0 and tracker.outgoing.items.len == 0) return;
+fn cycleToNextDownConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const curr_angle = self.getCurrentAngle() orelse return;
+    const may_prev_angle = self.getPrevAngle();
+    const may_next_angle = self.getNextAngle();
 
-    if (self.selected_query) |*query| {
-        switch (direction) {
-            .prev => {
-                switch (query.kind) {
-                    .start => {
-                        assert(tracker.incoming.items.len > 0);
-                        if (query.index > 0) {
-                            query.index -= 1;
-                            return;
-                        }
-                        if (tracker.outgoing.items.len > 0) {
-                            query.kind = .end;
-                            query.index = tracker.outgoing.items.len - 1;
-                        }
-                        query.index = tracker.incoming.items.len - 1;
-                        return;
-                    },
-                    .end => {
-                        assert(tracker.outgoing.items.len > 0);
-                        if (query.index > 0) {
-                            query.index -= 1;
-                            return;
-                        }
-                        if (tracker.incoming.items.len > 0) {
-                            query.kind = .end;
-                            query.index = tracker.incoming.items.len - 1;
-                        }
-                        query.index = tracker.outgoing.items.len - 1;
-                        return;
-                    },
-                }
-            },
-            .next => {
-                switch (query.kind) {
-                    .start => {
-                        assert(tracker.incoming.items.len > 0);
-                        if (query.index + 1 < tracker.incoming.items.len) {
-                            query.index += 1;
-                            return;
-                        }
-                        if (tracker.outgoing.items.len > 0) query.kind = .end;
-                        query.index = 0;
-                        return;
-                    },
-                    .end => {
-                        assert(tracker.outgoing.items.len > 0);
-                        if (query.index + 1 < tracker.outgoing.items.len) {
-                            query.index += 1;
-                            return;
-                        }
-                        if (tracker.incoming.items.len > 0) query.kind = .start;
-                        query.index = 0;
-                        return;
-                    },
-                }
-            },
+    if (curr_angle < 0) {
+        if (may_prev_angle) |prev_angle| {
+            if (prev_angle >= 0) return;
+            self.cycle_index -= 1;
+        } else return;
+    } else {
+        if (may_next_angle) |next_angle| {
+            if (next_angle < 0) return;
+            self.cycle_index += 1;
+        }
+    }
+}
+
+fn cycleToNextUpConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const curr_angle = self.getCurrentAngle() orelse return;
+    const may_prev_angle = self.getPrevAngle();
+    const may_next_angle = self.getNextAngle();
+
+    if (curr_angle < 0) {
+        if (may_next_angle) |next_angle| {
+            if (next_angle >= 0) return;
+            self.cycle_index += 1;
+        } else return;
+    } else {
+        if (may_prev_angle) |prev_angle| {
+            if (prev_angle < 0) return;
+            self.cycle_index -= 1;
+        }
+    }
+}
+
+fn getPrevAngle(self: *@This()) ?f32 {
+    if (self.cycle_index == 0) return null;
+    return self.cycle_map.values()[self.cycle_index - 1];
+}
+
+fn getNextAngle(self: *@This()) ?f32 {
+    if (self.cycle_index + 1 >= self.cycle_map.values().len) return null;
+    return self.cycle_map.values()[self.cycle_index + 1];
+}
+
+fn getCurrentAngle(self: *@This()) ?f32 {
+    if (self.cycle_index >= self.cycle_map.values().len) return null;
+    return self.cycle_map.values()[self.cycle_index];
+}
+
+fn cycleToLeftMirroredConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const angle = self.getCurrentAngle() orelse return;
+    if (angle > 0) self.cycleToMirrorredConnection();
+}
+
+fn cycleToRightMirroredConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const angle = self.getCurrentAngle() orelse return;
+    if (angle < 0) self.cycleToMirrorredConnection();
+}
+
+fn cycleToMirrorredConnection(self: *@This()) void {
+    if (self.cycle_map.values().len < 2) return;
+    const mirrored_angle = self.cycle_map.values()[self.cycle_index] * -1;
+
+    var new_cycle_index: usize = 0;
+    var min_distance: f32 = std.math.floatMax(f32);
+    for (self.cycle_map.values(), 0..) |angle, i| {
+        if (self.cycle_index == i) continue;
+
+        if ((angle >= 0 and mirrored_angle >= 0) or (angle < 0 and mirrored_angle < 0)) {
+            const d = @abs(angle - mirrored_angle);
+            if (d < min_distance) {
+                min_distance = d;
+                new_cycle_index = i;
+            }
         }
     }
 
-    assert(self.selected_query == null);
-    assert(tracker.incoming.items.len > 0 or tracker.outgoing.items.len > 0);
-    self.selected_query = .{
-        .index = 0,
-        .kind = if (tracker.incoming.items.len > 0) .start else .end,
-    };
+    self.cycle_index = new_cycle_index;
 }
 
-fn exitConnectionCycleMode(ctx: *anyopaque) !void {
+///////////////////////////// enter / exit cycling
+
+fn enterCycleMode(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.selected_query = null;
+    try self.updateCycleMap();
+    self.cycle_index = 0;
+}
+
+fn exitCycleMode(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cycle_map.clearRetainingCapacity();
+}
+
+const CycleMap = std.AutoArrayHashMapUnmanaged(*Connection, f32);
+fn updateCycleMap(self: *@This()) !void {
+    const win = self.wm.active_window orelse return;
+    const tracker = self.tracker_map.getPtr(win.id) orelse return;
+    if (tracker.incoming.items.len == 0 and tracker.outgoing.items.len == 0) return;
+
+    self.cycle_map.deinit(self.a);
+    self.cycle_map = std.AutoArrayHashMapUnmanaged(*Connection, f32){};
+
+    for (tracker.incoming.items) |c| try self.cycle_map.put(self.a, c, c.calculateAngle(win.id, self.wm));
+    for (tracker.outgoing.items) |c| try self.cycle_map.put(self.a, c, c.calculateAngle(win.id, self.wm));
+
+    const SortContext = struct {
+        angles: []const f32,
+        pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+            return ctx.angles[a_index] > ctx.angles[b_index];
+        }
+    };
+
+    self.cycle_map.sort(SortContext{ .angles = self.cycle_map.values() });
 }

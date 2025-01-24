@@ -124,7 +124,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
-        .connman = ConnectionManager{ .wm = self },
+        .connman = ConnectionManager{ .wm = self, .a = a },
     };
     return self;
 }

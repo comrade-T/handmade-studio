@@ -54,7 +54,7 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// Camera2D
 
-    var smooth_cam = Smooth2DCamera{ .damp_target = false, .damp_zoom = false };
+    var smooth_cam = Smooth2DCamera{ .damp_target = true, .damp_zoom = true };
 
     ///////////////////////////// GPA
 

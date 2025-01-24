@@ -56,6 +56,7 @@ id: ID = UNSET_WIN_ID,
 
 pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const RenderMall) !*Window {
     var self = try a.create(@This());
+
     self.* = .{
         .a = a,
         .ws = ws,
@@ -440,7 +441,7 @@ const Attributes = struct {
     const Position = struct {
         x: f32 = 0,
         y: f32 = 0,
-        lerp_time: f32 = 1,
+        lerp_time: f32 = 0.2,
 
         fn update(self: *@This(), target: Position) void {
             self.x = RenderMall.lerp(self.x, target.x, self.lerp_time);
