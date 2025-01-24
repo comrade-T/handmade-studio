@@ -48,6 +48,8 @@ pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
     try council.map(CYCLING, &.{.k}, .{ .f = cycleToNextUpConnection, .ctx = connman });
     try council.map(CYCLING, &.{.h}, .{ .f = cycleToLeftMirroredConnection, .ctx = connman });
     try council.map(CYCLING, &.{.l}, .{ .f = cycleToRightMirroredConnection, .ctx = connman });
+    try council.map(CYCLING, &.{.n}, .{ .f = cycleToNextConnection, .ctx = connman });
+    try council.map(CYCLING, &.{.p}, .{ .f = cycleToPreviousConnection, .ctx = connman });
 
     ///////////////////////////// pending connection
 
@@ -319,6 +321,16 @@ const SelectedConnectionQuery = struct {
 const PrevOrNext = enum { prev, next };
 
 ///////////////////////////// cycling methods
+
+fn cycleToNextConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.getNextAngle()) |_| self.cycle_index += 1;
+}
+
+fn cycleToPreviousConnection(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.getPrevAngle()) |_| self.cycle_index -= 1;
+}
 
 fn cycleToNextDownConnection(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
