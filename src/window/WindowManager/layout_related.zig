@@ -164,6 +164,6 @@ pub fn changeActiveWindowBoundSizeBy(wm: *WindowManager, width_by: f32, height_b
 
 pub fn makeClosestWindowActive(wm: *WindowManager, direction: WindowManager.WindowRelativeDirection) !void {
     const curr = wm.active_window orelse return;
-    const may_candidate = wm.findClosestWindow(curr, direction);
+    _, const may_candidate = wm.findClosestWindowToDirection(curr, direction);
     if (may_candidate) |candidate| wm.active_window = candidate;
 }

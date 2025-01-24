@@ -46,6 +46,8 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
 
     try self.mapSessionRelatedKeymaps(council);
     try self.mapSpawnBlankWindowKeymaps(ap, council);
+
+    try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = removeActiveWindow, .ctx = self });
 }
 
 const NORMAL = "normal";
@@ -157,21 +159,21 @@ const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandle
 const WindowSourceHandlerList = std.ArrayListUnmanaged(*WindowSourceHandler);
 const WindowSourceHandler = struct {
     source: *WindowSource,
-    windows: WindowList,
+    windows: WindowMap,
 
-    const WindowList = std.ArrayListUnmanaged(*Window);
+    const WindowMap = std.AutoArrayHashMapUnmanaged(*Window, void);
 
     fn create(wm: *WindowManager, from: WindowSource.InitFrom, source: []const u8, lang_hub: *LangHub) !*WindowSourceHandler {
         const self = try wm.a.create(@This());
         self.* = WindowSourceHandler{
             .source = try WindowSource.create(wm.a, from, source, lang_hub),
-            .windows = WindowList{},
+            .windows = WindowMap{},
         };
         return self;
     }
 
     fn destroy(self: *@This(), a: Allocator) void {
-        for (self.windows.items) |window| window.destroy();
+        for (self.windows.keys()) |window| window.destroy();
         self.windows.deinit(a);
         self.source.destroy();
         a.destroy(self);
@@ -179,7 +181,7 @@ const WindowSourceHandler = struct {
 
     fn spawnWindow(self: *@This(), wm: *WindowManager, opts: Window.SpawnOptions) !*Window {
         const window = try Window.create(wm.a, self.source, opts, wm.mall);
-        try self.windows.append(wm.a, window);
+        try self.windows.put(window.a, window, {});
 
         set_win_id: { // set id for window
             if (opts.id) |id| {
@@ -204,11 +206,17 @@ const WindowSourceHandler = struct {
 
         return window;
     }
+
+    fn removeWindow(self: *@This(), wm: *WindowManager, win: *Window) void {
+        _ = self.windows.swapRemove(win);
+        _ = wm.wmap.swapRemove(win);
+        win.destroy();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
 
-pub fn findClosestWindow(self: *const @This(), curr: *const Window, direction: WindowRelativeDirection) ?*Window {
+pub fn findClosestWindowToDirection(self: *const @This(), curr: *const Window, direction: WindowRelativeDirection) struct { f32, ?*Window } {
     var distance: f32 = std.math.floatMax(f32);
     var candidate: ?*Window = null;
 
@@ -233,7 +241,7 @@ pub fn findClosestWindow(self: *const @This(), curr: *const Window, direction: W
         candidate = win;
     }
 
-    return candidate;
+    return .{ distance, candidate };
 }
 
 const WindowEdgeStat = struct { left: f32, right: f32, mid_x: f32, top: f32, bottom: f32, mid_y: f32 };
@@ -296,7 +304,7 @@ fn calculateSubAxisDistance(direction: WindowRelativeDirection, to: WindowEdgeSt
     };
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Spawn
+////////////////////////////////////////////////////////////////////////////////////////////// Spawn Window
 
 pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !void {
     const window = try handler.spawnWindow(self, opts);
@@ -345,6 +353,40 @@ test spawnWindow {
         try eq(1, wm.wmap.values().len);
         try eq(0, wm.fmap.values().len);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Close Window
+
+pub fn removeActiveWindow(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_window = self.active_window orelse return;
+    var handler = self.wmap.get(active_window) orelse return;
+    const new_active_window = self.findClosestWindow(active_window);
+    self.connman.removeAllConnectionsOfWindow(active_window);
+    handler.removeWindow(self, active_window);
+    self.active_window = new_active_window;
+}
+
+fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
+    var distance: f32 = std.math.floatMax(f32);
+    var candidate: ?*Window = null;
+
+    const top_d, const top_c = self.findClosestWindowToDirection(from, .top);
+    const bottom_d, const bottom_c = self.findClosestWindowToDirection(from, .bottom);
+    const left_d, const left_c = self.findClosestWindowToDirection(from, .left);
+    const right_d, const right_c = self.findClosestWindowToDirection(from, .right);
+
+    const distances = [4]f32{ top_d, bottom_d, left_d, right_d };
+    const candidates = [4]?*Window{ top_c, bottom_c, left_c, right_c };
+
+    for (distances, 0..) |d, i| {
+        if (d < distance) {
+            distance = d;
+            candidate = candidates[i];
+        }
+    }
+
+    return candidate;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
@@ -503,7 +545,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
             .contents = contents,
         });
 
-        for (handler.windows.items) |window| {
+        for (handler.windows.keys()) |window| {
             try window_to_id_map.put(window, id);
         }
     }

@@ -226,7 +226,7 @@ pub const Connection = struct {
 fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRelativeDirection) void {
     if (self.pending_connection) |*pc| {
         const initial_end = self.tracker_map.get(pc.end.win_id) orelse return;
-        const may_candidate = self.wm.findClosestWindow(initial_end.win, direction);
+        _, const may_candidate = self.wm.findClosestWindowToDirection(initial_end.win, direction);
         if (may_candidate) |candidate| {
             pc.end.win_id = candidate.id;
             const start = self.tracker_map.get(pc.start.win_id) orelse return;
@@ -314,6 +314,14 @@ pub fn notifyTrackers(self: *@This(), conn: Connection) !void {
     try end_tracker.incoming.put(self.wm.a, c, {});
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Remove all connections of a window
+
+pub fn removeAllConnectionsOfWindow(self: *@This(), win: *WindowManager.Window) void {
+    var tracker = self.tracker_map.getPtr(win.id) orelse return;
+    for (tracker.incoming.keys()) |conn| self.removeConnection(conn);
+    for (tracker.outgoing.keys()) |conn| self.removeConnection(conn);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Select Connections
 
 const SelectedConnectionQuery = struct {
@@ -327,7 +335,10 @@ const PrevOrNext = enum { prev, next };
 fn removeSelectedConnection(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const conn = self.getSelectedConnection() orelse return;
+    self.removeConnection(conn);
+}
 
+fn removeConnection(self: *@This(), conn: *Connection) void {
     var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
     var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
 

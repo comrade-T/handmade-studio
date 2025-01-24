@@ -169,7 +169,7 @@ pub fn deleteRanges(wm: *WindowManager, kind: WindowSource.DeleteRangesKind) !vo
     const result = try handler.source.deleteRanges(wm.a, active_window.cursor_manager, kind) orelse return;
     defer wm.a.free(result);
 
-    for (handler.windows.items) |win| try win.processEditResult(result, wm.mall);
+    for (handler.windows.keys()) |win| try win.processEditResult(result, wm.mall);
 }
 
 pub fn insertChars(wm: *WindowManager, chars: []const u8) !void {
@@ -179,7 +179,7 @@ pub fn insertChars(wm: *WindowManager, chars: []const u8) !void {
     const result = try handler.source.insertChars(wm.a, chars, active_window.cursor_manager) orelse return;
     defer wm.a.free(result);
 
-    for (handler.windows.items) |win| try win.processEditResult(result, wm.mall);
+    for (handler.windows.keys()) |win| try win.processEditResult(result, wm.mall);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Inputs
