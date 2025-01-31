@@ -181,8 +181,8 @@ pub const Connection = struct {
 
     fn calculateAngle(self: *const @This(), win_id: i128, wm: *const WindowManager) f32 {
         const start_point, const end_point = if (win_id == self.start.win_id) .{ self.start, self.end } else .{ self.end, self.start };
-        const start_x, const start_y = start_point.getPosition(wm) catch return 0;
-        const end_x, const end_y = end_point.getPosition(wm) catch return 0;
+        const start_x, const start_y = (start_point.getPosition(wm) catch return 0) orelse return 0;
+        const end_x, const end_y = (end_point.getPosition(wm) catch return 0) orelse return 0;
 
         const deltaX = end_x - start_x;
         const deltaY = end_y - start_y;
@@ -190,14 +190,14 @@ pub const Connection = struct {
     }
 
     fn render(self: *const @This(), wm: *const WindowManager, thickness: f32) void {
-        const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
-        const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
+        const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
+        const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, CONNECTION_COLOR);
     }
 
     fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {
-        const start_x, const start_y = self.start.getPosition(wm) catch return assert(false);
-        const end_x, const end_y = self.end.getPosition(wm) catch return assert(false);
+        const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
+        const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
         wm.mall.rcb.drawCircle(start_x, start_y, 10, CONNECTION_START_POINT_COLOR);
         wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
     }
@@ -206,9 +206,10 @@ pub const Connection = struct {
         win_id: i128,
         anchor: Anchor = .E,
 
-        fn getPosition(self: *const @This(), wm: *const WindowManager) error{TrackerNotFound}!struct { f32, f32 } {
+        fn getPosition(self: *const @This(), wm: *const WindowManager) error{TrackerNotFound}!?struct { f32, f32 } {
             const tracker = wm.connman.tracker_map.get(self.win_id) orelse return error.TrackerNotFound;
             const win = tracker.win;
+            if (win.closed) return null;
             switch (self.anchor) {
                 .N => return .{ win.attr.pos.x + win.getWidth() / 2, win.attr.pos.y },
                 .E => return .{ win.attr.pos.x + win.getWidth(), win.attr.pos.y + win.getHeight() / 2 },
@@ -318,6 +319,7 @@ pub fn notifyTrackers(self: *@This(), conn: Connection) !void {
 
 pub fn removeAllConnectionsOfWindow(self: *@This(), win: *WindowManager.Window) void {
     var tracker = self.tracker_map.getPtr(win.id) orelse return;
+    defer assert(self.tracker_map.swapRemove(win.id));
     for (tracker.incoming.keys()) |conn| self.removeConnection(conn);
     for (tracker.outgoing.keys()) |conn| self.removeConnection(conn);
 }

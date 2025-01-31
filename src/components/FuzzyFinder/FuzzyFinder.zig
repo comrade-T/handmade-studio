@@ -172,7 +172,7 @@ pub fn confirmItemSelection(ctx: *anyopaque) !void {
     try self.wm.spawnWindow(.file, path, .{
         .pos = .{ .x = x, .y = y },
         .subscribed_style_sets = &.{0},
-    }, true);
+    }, true, true);
 
     self.visible = false;
 }

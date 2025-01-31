@@ -34,6 +34,7 @@ pub const MappingCouncil = ip_.MappingCouncil;
 pub const Callback = ip_.Callback;
 
 const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
+const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 
@@ -47,7 +48,10 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try self.mapSessionRelatedKeymaps(council);
     try self.mapSpawnBlankWindowKeymaps(ap, council);
 
-    try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = removeActiveWindow, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = closeActiveWindow, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .z }, .{ .f = undo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .z }, .{ .f = redo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .z }, .{ .f = redo, .ctx = self });
 }
 
 const NORMAL = "normal";
@@ -77,7 +81,7 @@ fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *Mapping
                     self.ap.target_anchor.y,
                 );
 
-                try self.wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true);
+                try self.wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true, true);
                 return;
             }
 
@@ -112,13 +116,14 @@ mall: *RenderMall,
 
 active_window: ?*Window = null,
 
-handlers: WindowSourceHandlerList = WindowSourceHandlerList{},
+handlers: WindowSourceHandlerMap = WindowSourceHandlerMap{},
 last_win_id: i128 = Window.UNSET_WIN_ID,
 
 fmap: FilePathToHandlerMap = FilePathToHandlerMap{},
 wmap: WindowToHandlerMap = WindowToHandlerMap{},
 
 connman: ConnectionManager,
+hm: HistoryManager,
 
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
     const self = try a.create(@This());
@@ -127,6 +132,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .lang_hub = lang_hub,
         .mall = style_store,
         .connman = ConnectionManager{ .wm = self, .a = a },
+        .hm = HistoryManager{ .a = a, .capacity = 100 },
     };
     return self;
 }
@@ -134,7 +140,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
 pub fn render(self: *@This()) void {
     for (self.wmap.keys()) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
-        window.render(is_active, self.mall);
+        if (!window.closed) window.render(is_active, self.mall);
     }
     self.connman.render();
 }
@@ -142,12 +148,13 @@ pub fn render(self: *@This()) void {
 pub fn destroy(self: *@This()) void {
     self.connman.deinit();
 
-    for (self.handlers.items) |handler| handler.destroy(self.a);
+    for (self.handlers.keys()) |handler| handler.destroy(self.a);
     self.handlers.deinit(self.a);
 
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
 
+    self.hm.deinit();
     self.a.destroy(self);
 }
 
@@ -156,7 +163,7 @@ pub fn destroy(self: *@This()) void {
 const WindowToHandlerMap = std.AutoArrayHashMapUnmanaged(*Window, *WindowSourceHandler);
 const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandler);
 
-const WindowSourceHandlerList = std.ArrayListUnmanaged(*WindowSourceHandler);
+const WindowSourceHandlerMap = std.AutoArrayHashMapUnmanaged(*WindowSourceHandler, void);
 const WindowSourceHandler = struct {
     source: *WindowSource,
     windows: WindowMap,
@@ -207,10 +214,27 @@ const WindowSourceHandler = struct {
         return window;
     }
 
-    fn removeWindow(self: *@This(), wm: *WindowManager, win: *Window) void {
-        _ = self.windows.swapRemove(win);
-        _ = wm.wmap.swapRemove(win);
+    fn cleanUp(self: *@This(), win: *Window, wm: *WindowManager) void {
+        wm.connman.removeAllConnectionsOfWindow(win);
+
+        const removed_from_windows = self.windows.swapRemove(win);
+        assert(removed_from_windows);
+
+        const removed_from_wmap = wm.wmap.swapRemove(win);
+        assert(removed_from_wmap);
+
         win.destroy();
+
+        if (self.windows.values().len == 0) {
+            if (self.source.from == .file) {
+                const removed_from_fmap = wm.fmap.swapRemove(self.source.path);
+                assert(removed_from_fmap);
+            }
+
+            const removed_from_handlers = wm.handlers.swapRemove(self);
+            assert(removed_from_handlers);
+            self.destroy(wm.a);
+        }
     }
 };
 
@@ -224,6 +248,7 @@ pub fn findClosestWindowToDirection(self: *const @This(), curr: *const Window, d
 
     for (self.wmap.keys()) |win| {
         if (win == curr) continue;
+        if (win.closed) continue;
 
         const cond = switch (direction) {
             .left => win.getX() < curr.getX(),
@@ -312,23 +337,32 @@ pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opt
     if (make_active or self.active_window == null) self.active_window = window;
 }
 
-pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const u8, opts: Window.SpawnOptions, make_active: bool) !void {
+pub fn spawnWindow(
+    self: *@This(),
+    from: WindowSource.InitFrom,
+    source: []const u8,
+    opts: Window.SpawnOptions,
+    make_active: bool,
+    add_to_history: bool,
+) !void {
 
     // if file path exists in fmap
     if (from == .file) {
         if (self.fmap.get(source)) |handler| {
             const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
+            if (add_to_history) try self.addWindowToSpawnHistory(window);
             if (make_active or self.active_window == null) self.active_window = window;
             return;
         }
     }
 
     // spawn from scratch
-    try self.handlers.append(self.a, try WindowSourceHandler.create(self, from, source, self.lang_hub));
-    var handler = self.handlers.getLast();
+    var handler = try WindowSourceHandler.create(self, from, source, self.lang_hub);
+    try self.handlers.put(self.a, handler, {});
 
     const window = try handler.spawnWindow(self, opts);
+    if (add_to_history) try self.addWindowToSpawnHistory(window);
     try self.wmap.put(self.a, window, handler);
 
     if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
@@ -336,35 +370,63 @@ pub fn spawnWindow(self: *@This(), from: WindowSource.InitFrom, source: []const 
     if (make_active or self.active_window == null) self.active_window = window;
 }
 
-test spawnWindow {
-    var lang_hub = try LangHub.init(testing_allocator);
-    defer lang_hub.deinit();
+////////////////////////////////////////////////////////////////////////////////////////////// History
 
-    const style_store = try RenderMall.createStyleStoreForTesting(testing_allocator);
-    defer RenderMall.freeTestStyleStore(testing_allocator, style_store);
+fn addWindowToSpawnHistory(self: *@This(), win: *Window) !void {
+    self.cleanUpWindowsAfterAppendingToHistory(
+        self.a,
+        try self.hm.addSpawnEvent(self.a, win),
+    );
+}
 
-    {
-        var wm = try WindowManager.init(testing_allocator, &lang_hub, style_store);
-        defer wm.deinit();
+fn addWindowToCloseHistory(self: *@This(), win: *Window) !void {
+    self.cleanUpWindowsAfterAppendingToHistory(
+        self.a,
+        try self.hm.addCloseEvent(self.a, win),
+    );
+}
 
-        // spawn .string Window
-        try wm.spawnWindow(.string, "hello world", .{});
-        try eq(1, wm.handlers.items.len);
-        try eq(1, wm.wmap.values().len);
-        try eq(0, wm.fmap.values().len);
+pub fn cleanUpWindowsAfterAppendingToHistory(self: *@This(), a: Allocator, windows_to_clean_up: []*Window) void {
+    defer a.free(windows_to_clean_up);
+    for (windows_to_clean_up) |win| {
+        if (!win.closed) continue;
+        var handler = self.wmap.get(win) orelse continue;
+        handler.cleanUp(win, self);
+    }
+}
+
+pub fn undo(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.hm.undo()) |event| {
+        switch (event) {
+            .spawn => |win| try self.closeWindow(win, false),
+            .close => |win| self.openWindowAndMakeActive(win),
+            .toggle_border => |win| win.toggleBorder(),
+            .change_padding => |info| info.win.changePaddingBy(-info.x_by, -info.y_by),
+            .move => |info| info.win.moveBy(-info.x_by, -info.y_by),
+        }
+    }
+}
+
+pub fn redo(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.hm.redo()) |event| {
+        switch (event) {
+            .spawn => |win| self.openWindowAndMakeActive(win),
+            .close => |win| try self.closeWindow(win, false),
+            .toggle_border => |win| win.toggleBorder(),
+            .change_padding => |info| info.win.changePaddingBy(info.x_by, info.y_by),
+            .move => |info| info.win.moveBy(info.x_by, info.y_by),
+        }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Close Window
 
-pub fn removeActiveWindow(ctx: *anyopaque) !void {
+pub fn closeActiveWindow(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const active_window = self.active_window orelse return;
-    var handler = self.wmap.get(active_window) orelse return;
-    const new_active_window = self.findClosestWindow(active_window);
-    self.connman.removeAllConnectionsOfWindow(active_window);
-    handler.removeWindow(self, active_window);
-    self.active_window = new_active_window;
+    try self.closeWindow(active_window, true);
 }
 
 fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
@@ -389,6 +451,18 @@ fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
     return candidate;
 }
 
+fn closeWindow(self: *@This(), win: *Window, add_to_history: bool) !void {
+    const new_active_window = self.findClosestWindow(win);
+    win.close();
+    if (add_to_history) try self.addWindowToCloseHistory(win);
+    self.active_window = new_active_window;
+}
+
+fn openWindowAndMakeActive(self: *@This(), win: *Window) void {
+    win.open();
+    self.active_window = win;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
 
 pub const WindowRelativeDirection = enum { left, right, top, bottom };
@@ -402,7 +476,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 ) !void {
     const prev = self.active_window orelse return;
 
-    try self.spawnWindow(from, source, opts, true);
+    try self.spawnWindow(from, source, opts, true, true);
     const new = self.active_window orelse unreachable;
 
     var new_x: f32 = new.attr.target_pos.x;
@@ -497,13 +571,13 @@ pub fn loadSession(ctx: *anyopaque) !void {
 
     for (parsed.value.string_sources) |str_source| {
         const handler = try WindowSourceHandler.create(self, .string, str_source.contents, self.lang_hub);
-        try self.handlers.append(self.a, handler);
+        try self.handlers.put(self.a, handler, {});
         try strid_to_handler_map.put(str_source.id, handler);
     }
 
     for (parsed.value.windows) |state| {
         switch (state.source) {
-            .file => |path| try self.spawnWindow(.file, path, state.opts, true),
+            .file => |path| try self.spawnWindow(.file, path, state.opts, true, false),
             .string => |string_id| {
                 const handler = strid_to_handler_map.get(string_id) orelse continue;
                 try self.spawnWindowFromHandler(handler, state.opts, true);
@@ -529,7 +603,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
     ///////////////////////////// handle string sources
 
     var last_id: i128 = std.math.maxInt(i128);
-    for (self.handlers.items) |handler| {
+    for (self.handlers.keys()) |handler| {
         if (handler.source.from == .file) continue;
 
         var id = std.time.nanoTimestamp();

@@ -51,6 +51,7 @@ cached: WindowCache = undefined,
 defaults: Defaults,
 subscribed_style_sets: SubscribedStyleSets,
 cursor_manager: *CursorManager,
+closed: bool = false,
 
 id: ID = UNSET_WIN_ID,
 
@@ -95,6 +96,14 @@ pub fn destroy(self: *@This()) void {
     self.subscribed_style_sets.deinit(self.a);
     self.cursor_manager.destroy();
     self.a.destroy(self);
+}
+
+pub fn open(self: *@This()) void {
+    self.closed = false;
+}
+
+pub fn close(self: *@This()) void {
+    self.closed = true;
 }
 
 // pub fn subscribeToStyleSet(self: *@This(), styleset_id: u16) !void {
@@ -183,6 +192,7 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
 
     ///////////////////////////// Sanity Checks
 
+    assert(!self.closed);
     assert(!(self.attr.limit != null and self.attr.bounded));
 
     ///////////////////////////// Animation Updates
@@ -424,7 +434,7 @@ pub const SpawnOptions = struct {
     id: ?ID = null,
 };
 
-const Attributes = struct {
+pub const Attributes = struct {
     culling: bool = true,
 
     pos: Position,

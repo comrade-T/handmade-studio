@@ -49,7 +49,7 @@ pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
         y: f32,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            moveActiveWindowBy(self.wm, self.x, self.y);
+            try moveActiveWindowBy(self.wm, self.x, self.y);
         }
         pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, x: f32, y: f32) !WindowManager.Callback {
             const self = try allocator.create(@This());
@@ -69,7 +69,7 @@ pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
         y_by: f32,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            changeActiveWindowPaddingBy(self.wm, self.x_by, self.y_by);
+            try changeActiveWindowPaddingBy(self.wm, self.x_by, self.y_by);
         }
         pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, x_by: f32, y_by: f32) !WindowManager.Callback {
             const self = try allocator.create(@This());
@@ -133,20 +133,32 @@ pub fn centerActiveWindowAt(wm: *WindowManager, center_x: f32, center_y: f32) vo
     active_window.centerAt(center_x, center_y);
 }
 
-pub fn moveActiveWindowBy(wm: *WindowManager, x: f32, y: f32) void {
+pub fn moveActiveWindowBy(wm: *WindowManager, x_by: f32, y_by: f32) !void {
     const active_window = wm.active_window orelse return;
-    active_window.moveBy(x, y);
+    active_window.moveBy(x_by, y_by);
+    wm.cleanUpWindowsAfterAppendingToHistory(
+        wm.a,
+        try wm.hm.addMoveEvent(wm.a, active_window, x_by, y_by),
+    );
 }
 
 pub fn toggleActiveWindowBorder(ctx: *anyopaque) !void {
     const wm = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
     const active_window = wm.active_window orelse return;
     active_window.toggleBorder();
+    wm.cleanUpWindowsAfterAppendingToHistory(
+        wm.a,
+        try wm.hm.addToggleBorderEvent(wm.a, active_window),
+    );
 }
 
-pub fn changeActiveWindowPaddingBy(wm: *WindowManager, x_by: f32, y_by: f32) void {
+pub fn changeActiveWindowPaddingBy(wm: *WindowManager, x_by: f32, y_by: f32) !void {
     const active_window = wm.active_window orelse return;
     active_window.changePaddingBy(x_by, y_by);
+    wm.cleanUpWindowsAfterAppendingToHistory(
+        wm.a,
+        try wm.hm.addChangePaddingEvent(wm.a, active_window, x_by, y_by),
+    );
 }
 
 pub fn toggleActiveWindowBounds(ctx: *anyopaque) !void {
