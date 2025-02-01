@@ -66,6 +66,29 @@ pub fn batchUndo(self: *@This()) struct { i64, i64 } {
     return .{ self.index, target_index };
 }
 
+pub fn batchRedo(self: *@This()) struct { i64, i64 } {
+    if (self.events.len == 0) return .{ -1, -1 };
+    if (self.index + 1 >= self.events.len) return .{ -1, -1 };
+
+    self.index += 1;
+    const index_tag = @tagName(self.events.get(@intCast(self.index)));
+
+    var target_index: i64 = @intCast(self.events.len - 1);
+    var i: i64 = self.index + 1;
+    while (i < self.events.len) {
+        defer i += 1;
+        assert(i < self.events.len);
+        const tag = @tagName(self.events.get(@intCast(i)));
+        if (!std.mem.eql(u8, tag, index_tag)) {
+            target_index = i;
+            break;
+        }
+    }
+
+    defer self.index = target_index;
+    return .{ self.index, target_index };
+}
+
 pub fn undo(self: *@This()) ?Event {
     if (self.index <= -1 or self.events.len == 0) return null;
     defer {

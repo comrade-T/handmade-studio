@@ -55,6 +55,13 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
 
     try council.map(NORMAL, &.{ .left_control, .left_alt, .z }, .{ .f = batchUndo, .ctx = self });
     try council.map(NORMAL, &.{ .left_alt, .left_control, .z }, .{ .f = batchUndo, .ctx = self });
+
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
 }
 
 const NORMAL = "normal";
@@ -430,14 +437,29 @@ pub fn batchUndo(ctx: *anyopaque) !void {
 
 pub fn redo(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    if (self.hm.redo()) |event| {
-        switch (event) {
-            .spawn => |win| self.openWindowAndMakeActive(win),
-            .close => |win| try self.closeWindow(win, false),
-            .toggle_border => |win| win.toggleBorder(),
-            .change_padding => |info| info.win.changePaddingBy(info.x_by, info.y_by),
-            .move => |info| info.win.moveBy(info.x_by, info.y_by),
-        }
+    if (self.hm.redo()) |event| try self.handleRedoEvent(event);
+}
+
+fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
+    switch (event) {
+        .spawn => |win| self.openWindowAndMakeActive(win),
+        .close => |win| try self.closeWindow(win, false),
+        .toggle_border => |win| win.toggleBorder(),
+        .change_padding => |info| info.win.changePaddingBy(info.x_by, info.y_by),
+        .move => |info| info.win.moveBy(info.x_by, info.y_by),
+    }
+}
+
+pub fn batchRedo(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const curr, const target = self.hm.batchRedo();
+
+    var i: i64 = curr;
+    while (i <= target and i >= 0) {
+        defer i += 1;
+        assert(i < self.hm.events.len);
+        const event = self.hm.events.get(@intCast(i));
+        try self.handleRedoEvent(event);
     }
 }
 
