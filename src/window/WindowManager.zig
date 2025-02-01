@@ -52,6 +52,9 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try council.map(NORMAL, &.{ .left_control, .z }, .{ .f = undo, .ctx = self });
     try council.map(NORMAL, &.{ .left_control, .left_shift, .z }, .{ .f = redo, .ctx = self });
     try council.map(NORMAL, &.{ .left_shift, .left_control, .z }, .{ .f = redo, .ctx = self });
+
+    try council.map(NORMAL, &.{ .left_control, .left_alt, .z }, .{ .f = batchUndo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_control, .z }, .{ .f = batchUndo, .ctx = self });
 }
 
 const NORMAL = "normal";
@@ -395,16 +398,33 @@ pub fn cleanUpWindowsAfterAppendingToHistory(self: *@This(), a: Allocator, windo
     }
 }
 
+/////////////////////////////
+
 pub fn undo(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    if (self.hm.undo()) |event| {
-        switch (event) {
-            .spawn => |win| try self.closeWindow(win, false),
-            .close => |win| self.openWindowAndMakeActive(win),
-            .toggle_border => |win| win.toggleBorder(),
-            .change_padding => |info| info.win.changePaddingBy(-info.x_by, -info.y_by),
-            .move => |info| info.win.moveBy(-info.x_by, -info.y_by),
-        }
+    if (self.hm.undo()) |event| try self.handleUndoEvent(event);
+}
+
+fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
+    switch (event) {
+        .spawn => |win| try self.closeWindow(win, false),
+        .close => |win| self.openWindowAndMakeActive(win),
+        .toggle_border => |win| win.toggleBorder(),
+        .change_padding => |info| info.win.changePaddingBy(-info.x_by, -info.y_by),
+        .move => |info| info.win.moveBy(-info.x_by, -info.y_by),
+    }
+}
+
+pub fn batchUndo(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const curr, const target = self.hm.batchUndo();
+
+    var i: i64 = curr;
+    while (i > target and i >= 0) {
+        defer i -= 1;
+        assert(i >= 0);
+        const event = self.hm.events.get(@intCast(i));
+        try self.handleUndoEvent(event);
     }
 }
 

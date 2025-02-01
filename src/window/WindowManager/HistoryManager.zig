@@ -45,13 +45,33 @@ pub fn deinit(self: *@This()) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+pub fn batchUndo(self: *@This()) struct { i64, i64 } {
+    if (self.index == -1 or self.events.len == 0) return .{ -1, -1 };
+
+    const index_tag = @tagName(self.events.get(@intCast(self.index)));
+
+    var target_index: i64 = -1;
+    var i: i64 = self.index - 1;
+    while (i > -1) {
+        defer i -= 1;
+        assert(i >= -1);
+        const tag = @tagName(self.events.get(@intCast(i)));
+        if (!std.mem.eql(u8, tag, index_tag)) {
+            target_index = i;
+            break;
+        }
+    }
+
+    defer self.index = target_index;
+    return .{ self.index, target_index };
+}
+
 pub fn undo(self: *@This()) ?Event {
-    if (self.index == -1 or self.events.len == 0) return null;
+    if (self.index <= -1 or self.events.len == 0) return null;
     defer {
         self.index -= 1;
         assert(self.index >= -1);
     }
-    assert(self.index >= 0);
     return self.events.get(@intCast(self.index));
 }
 
@@ -162,37 +182,6 @@ fn removeEventFromWindowMapAndUpdateTheCleanUpList(
         return;
     }
     count.* -= 1;
-}
-
-fn batchEventsTogether(may_latest_ev: ?Event, new_ev: Event) ?Event {
-    const latest_ev = may_latest_ev orelse return null;
-    return switch (new_ev) {
-        .spawn => |_| null,
-        .close => |_| null,
-        .toggle_border => |_| null,
-        .change_padding => |new| switch (latest_ev) {
-            else => null,
-            .change_padding => |latest| blk: {
-                if (latest.win != new.win) break :blk null;
-                break :blk Event{ .change_padding = .{
-                    .win = latest.win,
-                    .x_by = latest.x_by + new.x_by,
-                    .y_by = latest.y_by + new.y_by,
-                } };
-            },
-        },
-        .move => |new| switch (latest_ev) {
-            else => null,
-            .move => |latest| blk: {
-                if (latest.win != new.win) break :blk null;
-                break :blk Event{ .move = .{
-                    .win = latest.win,
-                    .x_by = latest.x_by + new.x_by,
-                    .y_by = latest.y_by + new.y_by,
-                } };
-            },
-        },
-    };
 }
 
 fn getWindowFromEvent(ev: Event) ?*Window {
