@@ -148,6 +148,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
     }, zig_build_test_step);
 
+    const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{}, zig_build_test_step);
+
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "LangSuite", .module = langsuite.module },
@@ -155,14 +157,13 @@ pub fn build(b: *std.Build) void {
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "CursorManager", .module = cursor_manager.module },
         .{ .name = "input_processor", .module = input_processor.module },
+        .{ .name = "QuadTree", .module = quad_tree.module },
     }, zig_build_test_step);
 
     const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
-
-    const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{}, zig_build_test_step);
 
     const window_manager = addTestableModule(&bops, "src/window/WindowManager.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },

@@ -37,6 +37,7 @@ const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
+const QuadTree = @import("QuadTree").QuadTree;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -135,7 +136,12 @@ wmap: WindowToHandlerMap = WindowToHandlerMap{},
 connman: ConnectionManager,
 hm: HistoryManager,
 
+qtree: *QuadTree(Window),
+quadded_windows: std.ArrayList(*Window),
+
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
+    const QUADTREE_WIDTH = 2_000_000;
+
     const self = try a.create(@This());
     self.* = WindowManager{
         .a = a,
@@ -143,15 +149,34 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .mall = style_store,
         .connman = ConnectionManager{ .wm = self },
         .hm = HistoryManager{ .a = a, .capacity = 255 },
+
+        .qtree = try QuadTree(Window).create(a, .{
+            .x = -QUADTREE_WIDTH / 2,
+            .y = -QUADTREE_WIDTH / 2,
+            .width = QUADTREE_WIDTH,
+            .height = QUADTREE_WIDTH,
+        }, 0),
+        .quadded_windows = std.ArrayList(*Window).init(a),
     };
     return self;
 }
 
-pub fn render(self: *@This()) void {
-    for (self.wmap.keys()) |window| {
+pub fn render(self: *@This()) !void {
+    const view = self.mall.icb.getViewFromCamera(self.mall.camera);
+    try self.qtree.query(.{
+        .x = view.start.x,
+        .y = view.start.y,
+        .width = view.end.x - view.start.x,
+        .height = view.end.y - view.start.y,
+    }, &self.quadded_windows);
+    defer self.quadded_windows.clearRetainingCapacity();
+
+    for (self.quadded_windows.items) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
-        if (!window.closed) window.render(is_active, self.mall);
+        if (!window.closed) window.render(is_active, self.mall, null);
     }
+
+    // std.debug.print("#wins: {d} | quadded: {d}\n", .{ self.wmap.keys().len, self.quadded_windows.items.len });
     self.connman.render();
 }
 
@@ -165,6 +190,10 @@ pub fn destroy(self: *@This()) void {
     self.wmap.deinit(self.a);
 
     self.hm.deinit();
+
+    self.qtree.destroy(self.a);
+    self.quadded_windows.deinit();
+
     self.a.destroy(self);
 }
 
@@ -200,6 +229,8 @@ const WindowSourceHandler = struct {
         const window = try Window.create(wm.a, self.source, opts, wm.mall);
         try self.windows.put(window.a, window, {});
 
+        try wm.qtree.insert(wm.a, window, window.getRect());
+
         set_win_id: { // set id for window
             if (opts.id) |id| {
                 window.setID(id);
@@ -232,6 +263,9 @@ const WindowSourceHandler = struct {
 
         const removed_from_wmap = wm.wmap.swapRemove(win);
         assert(removed_from_wmap);
+
+        const qtree_remove_result = wm.qtree.remove(wm.a, win, win.getRect());
+        assert(qtree_remove_result.removed);
 
         win.destroy();
 

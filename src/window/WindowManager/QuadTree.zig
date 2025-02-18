@@ -15,7 +15,6 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WindowManager = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -25,7 +24,7 @@ const assert = std.debug.assert;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Rect = struct {
+pub const Rect = struct {
     x: f32,
     y: f32,
     width: f32,
@@ -42,6 +41,15 @@ const Rect = struct {
             other.y > self.y + self.height or
             other.y + other.height < self.y);
     }
+
+    fn print(self: Rect) void {
+        std.debug.print("Rect --> x: {d} | y: {d} | w: {d} | h: {d}\n", .{
+            .x = self.x,
+            .y = self.y,
+            .width = self.width,
+            .height = self.height,
+        });
+    }
 };
 
 const QUADTREE_MAX_DEPTH = 16;
@@ -49,7 +57,7 @@ const QUADTREE_MAX_DEPTH = 16;
 pub fn QuadTree(comptime T: type) type {
     return struct {
         const Self = @This();
-        const ItemMap = std.AutoHashMapUnmanaged(*const T, void);
+        const ItemMap = std.AutoHashMapUnmanaged(*T, void);
 
         depth: u8,
         rect: Rect,
@@ -75,7 +83,7 @@ pub fn QuadTree(comptime T: type) type {
             if (self.sw) |sw| sw.destroy(a);
         }
 
-        pub fn insert(self: *@This(), a: Allocator, item: *const T, item_rect: Rect) !void {
+        pub fn insert(self: *@This(), a: Allocator, item: *T, item_rect: Rect) !void {
             const new_depth = self.depth + 1;
             if (new_depth < QUADTREE_MAX_DEPTH) {
                 const ne_rect, const nw_rect, const se_rect, const sw_rect = self.getQuadrons();
@@ -95,7 +103,7 @@ pub fn QuadTree(comptime T: type) type {
                     return;
                 }
                 if (sw_rect.contains(item_rect)) {
-                    if (self.sw == null) self.se = try Self.create(a, sw_rect, new_depth);
+                    if (self.sw == null) self.sw = try Self.create(a, sw_rect, new_depth);
                     try self.sw.?.insert(a, item, item_rect);
                     return;
                 }
@@ -109,7 +117,7 @@ pub fn QuadTree(comptime T: type) type {
             is_now_empty: bool,
         };
 
-        pub fn remove(self: *@This(), a: Allocator, item: *const T, item_rect: Rect) RemoveResult {
+        pub fn remove(self: *@This(), a: Allocator, item: *T, item_rect: Rect) RemoveResult {
             var remove_result: RemoveResult = .{ .removed = false, .is_now_empty = false };
 
             blk: {
@@ -159,7 +167,7 @@ pub fn QuadTree(comptime T: type) type {
             };
         }
 
-        pub fn query(self: *@This(), query_rect: Rect, result: *std.ArrayList(*const T)) !void {
+        pub fn query(self: *@This(), query_rect: Rect, result: *ArrayList(*T)) !void {
             if (!self.rect.overlaps(query_rect)) return;
 
             var iter = self.item_map.iterator();
@@ -198,8 +206,8 @@ test "QuadTree.insert()" {
     try eq(0, tree.item_map.count());
 
     {
-        const item: *const u8 = &69;
-        try tree.insert(a, item, .{ .x = 10, .y = 10, .width = 10, .height = 10 });
+        var item: u8 = 69;
+        try tree.insert(a, &item, .{ .x = 10, .y = 10, .width = 10, .height = 10 });
 
         try eq(0, tree.depth);
         try eq(0, tree.item_map.count());
@@ -223,7 +231,7 @@ test "QuadTree.insert()" {
         try eq(null, d1_nw.ne);
         try eq(null, d1_nw.se);
         try eq(null, d1_nw.sw);
-        try eq(true, d1_nw.item_map.contains(item));
+        try eq(true, d1_nw.item_map.contains(&item));
     }
 }
 
@@ -233,10 +241,10 @@ test "QuadTree.remove()" {
     defer tree.destroy(a);
 
     {
-        const item: *const u8 = &69;
-        try tree.insert(a, item, .{ .x = 10, .y = 10, .width = 10, .height = 10 });
+        var item: u8 = 69;
+        try tree.insert(a, &item, .{ .x = 10, .y = 10, .width = 10, .height = 10 });
 
-        const remove_result = tree.remove(a, item, .{ .x = 10, .y = 10, .width = 10, .height = 10 });
+        const remove_result = tree.remove(a, &item, .{ .x = 10, .y = 10, .width = 10, .height = 10 });
         try eq(QuadTree(u8).RemoveResult{ .removed = true, .is_now_empty = true }, remove_result);
 
         try eq(null, tree.nw);
@@ -251,15 +259,15 @@ test "QuadTree.query()" {
     var tree = try QuadTree(u8).create(a, .{ .x = 0, .y = 0, .width = 100, .height = 100 }, 0);
     defer tree.destroy(a);
 
-    const item_1: *const u8 = &69;
+    var item_1: u8 = 69;
     const item_1_rect = Rect{ .x = 10, .y = 10, .width = 10, .height = 10 };
     // 1 item
     {
-        try tree.insert(a, item_1, item_1_rect);
+        try tree.insert(a, &item_1, item_1_rect);
 
         // not match
         {
-            var list = ArrayList(*const u8).init(testing_allocator);
+            var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = -100, .y = -100, .width = 5, .height = 5 }, &list);
@@ -268,32 +276,32 @@ test "QuadTree.query()" {
 
         // matches
         {
-            var list = ArrayList(*const u8).init(testing_allocator);
+            var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list);
             try eq(1, list.items.len);
-            try eq(item_1, list.items[0]);
+            try eq(&item_1, list.items[0]);
         }
         {
-            var list = ArrayList(*const u8).init(testing_allocator);
+            var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = 0, .y = 0, .width = 20, .height = 20 }, &list);
             try eq(1, list.items.len);
-            try eq(item_1, list.items[0]);
+            try eq(&item_1, list.items[0]);
         }
     }
 
-    const item_2: *const u8 = &69;
+    var item_2: u8 = 222;
     const item_2_rect = Rect{ .x = 80, .y = 80, .width = 10, .height = 10 };
     // 2 items
     {
-        try tree.insert(a, item_2, item_2_rect);
+        try tree.insert(a, &item_2, item_2_rect);
 
         // not match
         {
-            var list = ArrayList(*const u8).init(testing_allocator);
+            var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = 200, .y = 200, .width = 5, .height = 5 }, &list);
@@ -302,27 +310,27 @@ test "QuadTree.query()" {
 
         // matches
         { // only 1st match
-            var list = ArrayList(*const u8).init(testing_allocator);
+            var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list);
             try eq(1, list.items.len);
-            try eq(item_1, list.items[0]);
+            try eq(&item_1, list.items[0]);
         }
         { // both matches
-            var list = ArrayList(*const u8).init(testing_allocator);
+            var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &list);
             try eq(2, list.items.len);
-            try eq(item_1, list.items[0]);
-            try eq(item_2, list.items[1]);
+            try eq(&item_1, list.items[0]);
+            try eq(&item_2, list.items[1]);
         }
     }
 
     ///////////////////////////// remove test
 
-    const remove_1_result = tree.remove(a, item_1, item_1_rect);
+    const remove_1_result = tree.remove(a, &item_1, item_1_rect);
     try eq(QuadTree(u8).RemoveResult{ .removed = true, .is_now_empty = true }, remove_1_result); // `is_now_empty` is `true` cuz the root itself doesn't contain items (but its child does).
 
     try eq(null, tree.nw);
@@ -331,26 +339,53 @@ test "QuadTree.query()" {
     try eq(false, tree.se == null);
 
     { // "only 1st match" before no longer match
-        var list = ArrayList(*const u8).init(testing_allocator);
+        var list = ArrayList(*u8).init(testing_allocator);
         defer list.deinit();
 
         try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list);
         try eq(0, list.items.len);
     }
     { // only match 2 now
-        var list = ArrayList(*const u8).init(testing_allocator);
+        var list = ArrayList(*u8).init(testing_allocator);
         defer list.deinit();
 
         try tree.query(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &list);
         try eq(1, list.items.len);
-        try eq(item_2, list.items[0]);
+        try eq(&item_2, list.items[0]);
     }
 
     // 2nd removal
-    const remove_2_result = tree.remove(a, item_2, item_2_rect);
+    const remove_2_result = tree.remove(a, &item_2, item_2_rect);
     try eq(QuadTree(u8).RemoveResult{ .removed = true, .is_now_empty = true }, remove_2_result);
     try eq(null, tree.nw);
     try eq(null, tree.ne);
     try eq(null, tree.sw);
     try eq(null, tree.se);
+}
+
+test "QuadTree.query - pt. 2" {
+    const a = testing_allocator;
+    const QUADTREE_WIDTH = 2_000_000;
+    var tree = try QuadTree(u8).create(a, .{
+        .x = -QUADTREE_WIDTH / 2,
+        .y = -QUADTREE_WIDTH / 2,
+        .width = QUADTREE_WIDTH,
+        .height = QUADTREE_WIDTH,
+    }, 0);
+    defer tree.destroy(a);
+
+    var item_1: u8 = 111;
+    const item_1_rect = Rect{ .x = 1700, .y = -120, .width = 456, .height = 80 };
+    {
+        try tree.insert(a, &item_1, item_1_rect);
+
+        // not match
+        {
+            var list = ArrayList(*u8).init(testing_allocator);
+            defer list.deinit();
+
+            try tree.query(.{ .x = 0, .y = 0, .width = 1920, .height = 1080 }, &list);
+            try eq(0, list.items.len);
+        }
+    }
 }

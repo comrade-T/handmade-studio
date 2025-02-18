@@ -174,7 +174,7 @@ pub fn main() anyerror!void {
                 defer rl.endMode2D();
 
                 // rendering windows via WindowManager
-                wm.render();
+                try wm.render();
             }
         }
     }

@@ -34,6 +34,7 @@ pub const RenderMall = @import("RenderMall");
 pub const FontStore = RenderMall.FontStore;
 pub const ColorschemeStore = RenderMall.ColorschemeStore;
 const ScreenView = RenderMall.ScreenView;
+const Rect = @import("QuadTree").Rect;
 
 const CursorManager = @import("CursorManager");
 const WindowCache = @import("Window/WindowCache.zig");
@@ -181,9 +182,18 @@ pub fn getHeight(self: *const @This()) f32 {
     return self.getContentHeight() + self.attr.padding.top + self.attr.padding.bottom;
 }
 
+pub fn getRect(self: *const @This()) Rect {
+    return .{
+        .x = self.getX(),
+        .y = self.getY(),
+        .width = self.getWidth(),
+        .height = self.getHeight(),
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
+pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?RenderMall.ScreenView) void {
 
     ///////////////////////////// Profiling
 
@@ -208,7 +218,7 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
 
     ///////////////////////////// Culling & Render
 
-    const view = mall.icb.getViewFromCamera(mall.camera);
+    const view = may_view orelse mall.icb.getViewFromCamera(mall.camera);
     const target_view = mall.icb.getViewFromCamera(mall.target_camera);
 
     if (mall.camera_just_moved) {
@@ -252,9 +262,9 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall) void {
         }
     }
 
-    if (renderer.shiftViewBy()) |shift_by| {
-        mall.rcb.changeCameraPan(mall.target_camera, shift_by[0], shift_by[1]);
-    }
+    // if (renderer.shiftViewBy()) |shift_by| {
+    //     mall.rcb.changeCameraPan(mall.target_camera, shift_by[0], shift_by[1]);
+    // }
     if (self.cursor_manager.just_moved and mall.icb.cameraTargetsEqual(mall.camera, mall.target_camera)) {
         self.cursor_manager.setJustMovedToFalse();
     }
