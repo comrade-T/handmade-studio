@@ -672,6 +672,7 @@ pub fn saveSession(ctx: *anyopaque) !void {
     defer window_state_list.deinit();
 
     for (self.wmap.keys()) |window| {
+        if (window.closed) continue;
         const string_id: ?i128 = window_to_id_map.get(window) orelse null;
         const data = try window.produceWritableState(string_id);
         try window_state_list.append(data);
