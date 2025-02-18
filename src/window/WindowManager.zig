@@ -142,7 +142,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .lang_hub = lang_hub,
         .mall = style_store,
         .connman = ConnectionManager{ .wm = self },
-        .hm = HistoryManager{ .a = a, .capacity = 5 },
+        .hm = HistoryManager{ .a = a, .capacity = 255 },
     };
     return self;
 }

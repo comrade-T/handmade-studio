@@ -162,6 +162,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
     }, zig_build_test_step);
 
+    const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{}, zig_build_test_step);
+
     const window_manager = addTestableModule(&bops, "src/window/WindowManager.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "LangSuite", .module = langsuite.module },
@@ -170,6 +172,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "Window", .module = window.module },
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
+        .{ .name = "QuadTree", .module = quad_tree.module },
     }, zig_build_test_step);
 
     ///////////////////////////// Fuzzy Finder
