@@ -112,7 +112,6 @@ pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
-a: Allocator,
 wm: *const WindowManager,
 
 connections: ConnectionPtrMap = ConnectionPtrMap{},
@@ -122,21 +121,16 @@ pending_connection: ?Connection = null,
 cycle_map: CycleMap = CycleMap{},
 cycle_index: usize = 0,
 
-pub fn init(a: Allocator) ConnectionManager {
-    return ConnectionManager{ .a = a };
-}
-
 pub fn deinit(self: *@This()) void {
     for (self.tracker_map.values()) |*tracker| {
-        tracker.incoming.deinit(self.wm.a);
-        tracker.outgoing.deinit(self.wm.a);
+        tracker.deinit(self.wm.a);
     }
     self.tracker_map.deinit(self.wm.a);
 
     for (self.connections.keys()) |conn| self.wm.a.destroy(conn);
     self.connections.deinit(self.wm.a);
 
-    self.cycle_map.deinit(self.a);
+    self.cycle_map.deinit(self.wm.a);
 }
 
 pub fn render(self: *const @This()) void {
@@ -297,6 +291,11 @@ const WindowConnectionsTracker = struct {
     win: *WM.Window,
     incoming: ConnectionPtrMap = ConnectionPtrMap{},
     outgoing: ConnectionPtrMap = ConnectionPtrMap{},
+
+    fn deinit(self: *@This(), a: Allocator) void {
+        self.incoming.deinit(a);
+        self.outgoing.deinit(a);
+    }
 };
 
 pub fn registerWindow(self: *@This(), window: *WM.Window) !void {
@@ -319,7 +318,10 @@ pub fn notifyTrackers(self: *@This(), conn: Connection) !void {
 
 pub fn removeAllConnectionsOfWindow(self: *@This(), win: *WindowManager.Window) void {
     var tracker = self.tracker_map.getPtr(win.id) orelse return;
-    defer assert(self.tracker_map.swapRemove(win.id));
+    defer {
+        tracker.deinit(self.wm.a);
+        assert(self.tracker_map.swapRemove(win.id));
+    }
     for (tracker.incoming.keys()) |conn| self.removeConnection(conn);
     for (tracker.outgoing.keys()) |conn| self.removeConnection(conn);
 }
@@ -350,7 +352,7 @@ fn removeConnection(self: *@This(), conn: *Connection) void {
     _ = self.cycle_map.orderedRemove(conn);
     self.cycle_index -|= 1;
 
-    self.a.destroy(conn);
+    self.wm.a.destroy(conn);
 }
 
 fn getSelectedConnection(self: *@This()) ?*Connection {
@@ -475,11 +477,11 @@ fn updateCycleMap(self: *@This()) !void {
     const tracker = self.tracker_map.getPtr(win.id) orelse return;
     if (tracker.incoming.keys().len == 0 and tracker.outgoing.keys().len == 0) return;
 
-    self.cycle_map.deinit(self.a);
+    self.cycle_map.deinit(self.wm.a);
     self.cycle_map = std.AutoArrayHashMapUnmanaged(*Connection, f32){};
 
-    for (tracker.incoming.keys()) |c| try self.cycle_map.put(self.a, c, c.calculateAngle(win.id, self.wm));
-    for (tracker.outgoing.keys()) |c| try self.cycle_map.put(self.a, c, c.calculateAngle(win.id, self.wm));
+    for (tracker.incoming.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win.id, self.wm));
+    for (tracker.outgoing.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win.id, self.wm));
 
     const SortContext = struct {
         angles: []const f32,

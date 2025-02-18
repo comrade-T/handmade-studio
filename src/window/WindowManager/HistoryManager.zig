@@ -155,7 +155,7 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
 
     ///////////////////////////// if reached max capacity, remove first history in the list
 
-    if (self.events.len + 1 > self.capacity) {
+    if (self.events.len + 1 >= self.capacity) {
         overcap = true;
         const ev = self.events.get(0);
 
@@ -192,10 +192,10 @@ fn removeEventFromWindowMapAndUpdateTheCleanUpList(
     list: *std.ArrayListUnmanaged(*Window),
     ev: Event,
 ) !void {
-    const win = getWindowFromEvent(ev) orelse return;
+    const win = getWindowFromEvent(ev) orelse unreachable;
     assert(self.wmap.contains(win));
 
-    const count = self.wmap.getPtr(win) orelse return;
+    const count = self.wmap.getPtr(win) orelse unreachable;
     assert(count.* > 0);
 
     if (count.* == 1) {
