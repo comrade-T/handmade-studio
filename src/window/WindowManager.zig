@@ -37,7 +37,7 @@ const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
-const QuadTree = @import("QuadTree").QuadTree;
+const QuadTree = @import("QuadTree").QuadTree(Window);
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -136,7 +136,8 @@ wmap: WindowToHandlerMap = WindowToHandlerMap{},
 connman: ConnectionManager,
 hm: HistoryManager,
 
-qtree: *QuadTree(Window),
+qtree: *QuadTree,
+updating_windows_map: Window.UpdatingWindowsMap = .{},
 quadded_windows: std.ArrayList(*Window),
 
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
@@ -150,7 +151,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .connman = ConnectionManager{ .wm = self },
         .hm = HistoryManager{ .a = a, .capacity = 255 },
 
-        .qtree = try QuadTree(Window).create(a, .{
+        .qtree = try QuadTree.create(a, .{
             .x = -QUADTREE_WIDTH / 2,
             .y = -QUADTREE_WIDTH / 2,
             .width = QUADTREE_WIDTH,
@@ -159,6 +160,17 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .quadded_windows = std.ArrayList(*Window).init(a),
     };
     return self;
+}
+
+pub fn updateAndRender(self: *@This()) !void {
+    const windows_to_be_updated = self.updating_windows_map.keys();
+    var i: usize = windows_to_be_updated.len;
+    while (i > 0) {
+        i -= 1;
+        try windows_to_be_updated[i].update(self.a, self.qtree, &self.updating_windows_map);
+    }
+
+    try self.render();
 }
 
 pub fn render(self: *@This()) !void {
@@ -176,14 +188,18 @@ pub fn render(self: *@This()) !void {
         if (!window.closed) window.render(is_active, self.mall, null);
     }
 
-    // std.debug.print("#wins: {d} | quadded: {d}\n", .{ self.wmap.keys().len, self.quadded_windows.items.len });
+    std.debug.print("#wins: {d} | quadded: {d} | #items in tree: {d}\n", .{
+        self.wmap.keys().len,
+        self.quadded_windows.items.len,
+        self.qtree.getNumberOfItems(),
+    });
     self.connman.render();
 }
 
 pub fn destroy(self: *@This()) void {
     self.connman.deinit();
 
-    for (self.handlers.keys()) |handler| handler.destroy(self.a);
+    for (self.handlers.keys()) |handler| handler.destroy(self);
     self.handlers.deinit(self.a);
 
     self.fmap.deinit(self.a);
@@ -218,18 +234,16 @@ const WindowSourceHandler = struct {
         return self;
     }
 
-    fn destroy(self: *@This(), a: Allocator) void {
-        for (self.windows.keys()) |window| window.destroy();
-        self.windows.deinit(a);
+    fn destroy(self: *@This(), wm: *WindowManager) void {
+        for (self.windows.keys()) |window| window.destroy(wm.a, wm.qtree);
+        self.windows.deinit(wm.a);
         self.source.destroy();
-        a.destroy(self);
+        wm.a.destroy(self);
     }
 
     fn spawnWindow(self: *@This(), wm: *WindowManager, opts: Window.SpawnOptions) !*Window {
-        const window = try Window.create(wm.a, self.source, opts, wm.mall);
+        const window = try Window.create(wm.a, wm.qtree, self.source, opts, wm.mall);
         try self.windows.put(window.a, window, {});
-
-        try wm.qtree.insert(wm.a, window, window.getRect());
 
         set_win_id: { // set id for window
             if (opts.id) |id| {
@@ -264,10 +278,7 @@ const WindowSourceHandler = struct {
         const removed_from_wmap = wm.wmap.swapRemove(win);
         assert(removed_from_wmap);
 
-        const qtree_remove_result = wm.qtree.remove(wm.a, win, win.getRect());
-        assert(qtree_remove_result.removed);
-
-        win.destroy();
+        win.destroy(wm.a, wm.qtree);
 
         if (self.windows.values().len == 0) {
             if (self.source.from == .file) {
@@ -277,7 +288,7 @@ const WindowSourceHandler = struct {
 
             const removed_from_handlers = wm.handlers.swapRemove(self);
             assert(removed_from_handlers);
-            self.destroy(wm.a);
+            self.destroy(wm);
         }
     }
 };
@@ -389,6 +400,7 @@ pub fn spawnWindow(
     make_active: bool,
     add_to_history: bool,
 ) !void {
+    defer std.debug.print("spawnWindow() -> #items in tree: {d}\n", .{self.qtree.getNumberOfItems()});
 
     // if file path exists in fmap
     if (from == .file) {
@@ -451,8 +463,8 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .spawn => |win| try self.closeWindow(win, false),
         .close => |win| self.openWindowAndMakeActive(win),
         .toggle_border => |win| win.toggleBorder(),
-        .change_padding => |info| info.win.changePaddingBy(-info.x_by, -info.y_by),
-        .move => |info| info.win.moveBy(-info.x_by, -info.y_by),
+        .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, -info.x_by, -info.y_by),
+        .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
     }
 }
 
@@ -479,8 +491,8 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .spawn => |win| self.openWindowAndMakeActive(win),
         .close => |win| try self.closeWindow(win, false),
         .toggle_border => |win| win.toggleBorder(),
-        .change_padding => |info| info.win.changePaddingBy(info.x_by, info.y_by),
-        .move => |info| info.win.moveBy(info.x_by, info.y_by),
+        .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, info.x_by, info.y_by),
+        .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
     }
 }
 
@@ -575,30 +587,30 @@ pub fn spawnNewWindowRelativeToActiveWindow(
             new_y = prev.attr.pos.y - new.cached.height;
         },
     }
-    new.setPosition(new_x, new_y);
+    try new.setPositionInstantly(self.a, self.qtree, new_x, new_y);
 
     for (self.wmap.keys()) |window| {
         if (window == prev or window == new) continue;
         switch (direction) {
             .right => {
                 if (window.attr.pos.x > prev.attr.pos.x and window.verticalIntersect(prev)) {
-                    window.moveBy(new.cached.width, 0);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, new.cached.width, 0);
                 }
             },
             .left => {
                 if (window.attr.pos.x < prev.attr.pos.x and
                     window.verticalIntersect(prev))
-                    window.moveBy(-new.cached.width, 0);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, -new.cached.width, 0);
             },
             .bottom => {
                 if (window.attr.pos.y > prev.attr.pos.y and
                     window.horizontalIntersect(prev))
-                    window.moveBy(0, new.cached.height);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, new.cached.height);
             },
             .top => {
                 if (window.attr.pos.y < prev.attr.pos.y and
                     window.horizontalIntersect(prev))
-                    window.moveBy(0, -new.cached.height);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, -new.cached.height);
             },
         }
     }

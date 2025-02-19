@@ -342,25 +342,25 @@ const InputWindow = struct {
         const source = try WindowSource.create(a, .string, "", null);
         return InputWindow{
             .source = source,
-            .window = try Window.create(a, source, no_culling_opts, mall),
+            .window = try Window.create(a, null, source, no_culling_opts, mall),
         };
     }
 
     fn deinit(self: *@This()) void {
         self.source.destroy();
-        self.window.destroy();
+        self.window.destroy(null, null);
     }
 
     fn insertChars(self: *@This(), a: Allocator, chars: []const u8, mall: *const RenderMall) !void {
         const results = try self.source.insertChars(a, chars, self.window.cursor_manager) orelse return;
         defer a.free(results);
-        try self.window.processEditResult(results, mall);
+        try self.window.processEditResult(null, null, results, mall);
     }
 
     fn backspace(self: *@This(), a: Allocator, mall: *const RenderMall) !void {
         const result = try self.source.deleteRanges(a, self.window.cursor_manager, .backspace) orelse return;
         defer a.free(result);
-        try self.window.processEditResult(result, mall);
+        try self.window.processEditResult(null, null, result, mall);
     }
 };
 

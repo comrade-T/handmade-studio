@@ -34,7 +34,10 @@ pub const RenderMall = @import("RenderMall");
 pub const FontStore = RenderMall.FontStore;
 pub const ColorschemeStore = RenderMall.ColorschemeStore;
 const ScreenView = RenderMall.ScreenView;
-const Rect = @import("QuadTree").Rect;
+
+const _qtree = @import("QuadTree");
+const QuadTree = _qtree.QuadTree(Window);
+const Rect = _qtree.Rect;
 
 const CursorManager = @import("CursorManager");
 const WindowCache = @import("Window/WindowCache.zig");
@@ -56,7 +59,13 @@ closed: bool = false,
 
 id: ID = UNSET_WIN_ID,
 
-pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const RenderMall) !*Window {
+pub fn create(
+    a: Allocator,
+    may_qtree: ?*QuadTree,
+    ws: *WindowSource,
+    opts: SpawnOptions,
+    mall: *const RenderMall,
+) !*Window {
     var self = try a.create(@This());
 
     self.* = .{
@@ -89,10 +98,13 @@ pub fn create(a: Allocator, ws: *WindowSource, opts: SpawnOptions, mall: *const 
         self.cursor_manager.setLimit(limit.start_line, limit.end_line);
     }
 
+    if (may_qtree) |qtree| try qtree.insert(a, self, self.getRect());
+
     return self;
 }
 
-pub fn destroy(self: *@This()) void {
+pub fn destroy(self: *@This(), a: ?Allocator, may_qtree: ?*QuadTree) void {
+    if (may_qtree) |qtree| assert(qtree.remove(a.?, self, self.getRect()).removed);
     self.cached.deinit(self.a);
     self.subscribed_style_sets.deinit(self.a);
     self.cursor_manager.destroy();
@@ -117,19 +129,45 @@ pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
     const x = center_x - (self.cached.width / 2);
     const y = center_y - (self.cached.height / 2);
     self.attr.pos = .{ .x = x, .y = y };
+    // TODO: actually use this method
 }
 
-// TODO: I'm pretty sure I have to interact with the QuadTree right here.
-// cuz I have to update right after caching too, not just after moving windows etc..
+pub fn moveBy(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *UpdatingWindowsMap, x: f32, y: f32) !void {
+    self.removeFromQuadTree(a, qtree);
 
-pub fn moveBy(self: *@This(), x: f32, y: f32) void {
     self.attr.target_pos.x += x;
     self.attr.target_pos.y += y;
+    try umap.put(a, self, {});
+
+    try self.insertToQuadTree(a, qtree);
 }
 
-pub fn setPosition(self: *@This(), x: f32, y: f32) void {
+pub fn setPositionInstantly(self: *@This(), a: Allocator, qtree: *QuadTree, x: f32, y: f32) !void {
+    std.debug.print("setPositionInstantly() b4 -> #items in tree: {d}\n", .{qtree.getNumberOfItems()});
+    self.getRect().print();
+
+    defer {
+        std.debug.print("setPositionInstantly() after -> #items in tree: {d}\n", .{qtree.getNumberOfItems()});
+        self.getRect().print();
+    }
+
+    self.removeFromQuadTree(a, qtree);
+
+    self.attr.pos.x = x;
+    self.attr.pos.y = y;
     self.attr.target_pos.x = x;
     self.attr.target_pos.y = y;
+
+    try self.insertToQuadTree(a, qtree);
+}
+
+pub fn setTargetPosition(self: *@This(), a: Allocator, qtree: *QuadTree, x: f32, y: f32) !void {
+    self.removeFromQuadTree(a, qtree);
+
+    self.attr.target_pos.x = x;
+    self.attr.target_pos.y = y;
+
+    try self.insertToQuadTree(a, qtree);
 }
 
 pub fn setID(self: *@This(), id: ID) void {
@@ -150,11 +188,15 @@ pub fn toggleBounds(self: *@This()) void {
     self.attr.bounded = !self.attr.bounded;
 }
 
-pub fn changePaddingBy(self: *@This(), x_by: f32, y_by: f32) void {
+pub fn changePaddingBy(self: *@This(), a: Allocator, qtree: *QuadTree, x_by: f32, y_by: f32) !void {
+    self.removeFromQuadTree(a, qtree);
+
     self.attr.padding.left += x_by;
     self.attr.padding.right += x_by;
     self.attr.padding.top += y_by;
     self.attr.padding.bottom += y_by;
+
+    try self.insertToQuadTree(a, qtree);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Getters
@@ -194,6 +236,30 @@ pub fn getRect(self: *const @This()) Rect {
     };
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Update
+
+pub const UpdatingWindowsMap = std.AutoArrayHashMapUnmanaged(*Window, void);
+
+pub fn update(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *UpdatingWindowsMap) !void {
+    if (self.attr.pos.equals(self.attr.target_pos)) {
+        assert(umap.swapRemove(self));
+        return;
+    }
+
+    self.removeFromQuadTree(a, qtree);
+    self.attr.pos.update(self.attr.target_pos);
+    try self.insertToQuadTree(a, qtree);
+}
+
+fn removeFromQuadTree(self: *@This(), a: Allocator, qtree: *QuadTree) void {
+    const qtree_remove_result = qtree.remove(a, self, self.getRect());
+    assert(qtree_remove_result.removed);
+}
+
+fn insertToQuadTree(self: *@This(), a: Allocator, qtree: *QuadTree) !void {
+    try qtree.insert(a, self, self.getRect());
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?RenderMall.ScreenView) void {
@@ -207,10 +273,6 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?Ren
 
     assert(!self.closed);
     assert(!(self.attr.limit != null and self.attr.bounded));
-
-    ///////////////////////////// Animation Updates
-
-    self.attr.pos.update(self.attr.target_pos);
 
     ///////////////////////////// Temporary Setup
 
@@ -275,7 +337,15 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?Ren
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
-pub fn processEditResult(self: *@This(), replace_infos: []const WindowSource.ReplaceInfo, mall: *const RenderMall) !void {
+pub fn processEditResult(
+    self: *@This(),
+    a: ?Allocator,
+    may_qtree: ?*QuadTree,
+    replace_infos: []const WindowSource.ReplaceInfo,
+    mall: *const RenderMall,
+) !void {
+    if (may_qtree) |qtree| self.removeFromQuadTree(a.?, qtree);
+
     const default_font = mall.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
     for (replace_infos) |ri| {
@@ -287,6 +357,8 @@ pub fn processEditResult(self: *@This(), replace_infos: []const WindowSource.Rep
             self.cursor_manager.setLimit(self.attr.limit.?.start_line, self.attr.limit.?.end_line);
         }
     }
+
+    if (may_qtree) |qtree| try self.insertToQuadTree(a.?, qtree);
 }
 
 fn getUpdatedLimits(curr_: ?CursorManager.Limit, ri: WindowSource.ReplaceInfo) ?CursorManager.Limit {
@@ -466,6 +538,12 @@ pub const Attributes = struct {
         x: f32 = 0,
         y: f32 = 0,
         lerp_time: f32 = 0.2,
+
+        const epsilon = 0.01;
+
+        fn equals(self: @This(), other: @This()) bool {
+            return @abs(self.x - other.x) < epsilon and @abs(self.y - other.y) < epsilon;
+        }
 
         fn update(self: *@This(), target: Position) void {
             self.x = RenderMall.lerp(self.x, target.x, self.lerp_time);

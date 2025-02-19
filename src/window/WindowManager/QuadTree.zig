@@ -30,19 +30,19 @@ pub const Rect = struct {
     width: f32,
     height: f32,
 
-    fn contains(self: Rect, other: Rect) bool {
+    pub fn contains(self: Rect, other: Rect) bool {
         return other.x >= self.x and other.x + other.width <= self.x + self.width and
             other.y >= self.y and other.y + other.height <= self.y + self.height;
     }
 
-    fn overlaps(self: Rect, other: Rect) bool {
+    pub fn overlaps(self: Rect, other: Rect) bool {
         return !(other.x > self.x + self.width or
             other.x + other.width < self.x or
             other.y > self.y + self.height or
             other.y + other.height < self.y);
     }
 
-    fn print(self: Rect) void {
+    pub fn print(self: Rect) void {
         std.debug.print("Rect --> x: {d} | y: {d} | w: {d} | h: {d}\n", .{
             .x = self.x,
             .y = self.y,
@@ -140,6 +140,14 @@ pub fn QuadTree(comptime T: type) type {
             if (self.nw) |nw| try nw.query(query_rect, result);
             if (self.se) |se| try se.query(query_rect, result);
             if (self.sw) |sw| try sw.query(query_rect, result);
+        }
+
+        pub fn getNumberOfItems(self: *@This()) usize {
+            var result: usize = self.item_map.count();
+            for ([_]*?*Self{ &self.ne, &self.nw, &self.se, &self.sw }) |field_ptr| {
+                if (field_ptr.*) |field| result += field.getNumberOfItems();
+            }
+            return result;
         }
 
         fn getQuadrons(self: *const @This()) [4]Rect {

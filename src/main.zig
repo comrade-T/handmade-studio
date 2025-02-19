@@ -173,8 +173,8 @@ pub fn main() anyerror!void {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
-                // rendering windows via WindowManager
-                try wm.render();
+                // update windows & render them via WindowManager
+                try wm.updateAndRender();
             }
         }
     }
