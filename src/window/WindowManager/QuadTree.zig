@@ -111,20 +111,22 @@ pub fn QuadTree(comptime T: type) type {
             } else {
                 const quads = self.getQuadrons();
                 for ([_]*?*Self{ &self.ne, &self.nw, &self.se, &self.sw }, 0..) |field_ptr, i| {
-                    if (field_ptr.*) |field| if (quads[i].contains(item_rect)) {
-                        remove_result = field.remove(a, item, item_rect);
-                        if (remove_result.is_now_empty) {
-                            field.destroy(a);
-                            field_ptr.* = null;
+                    if (field_ptr.*) |field| {
+                        if (quads[i].contains(item_rect)) {
+                            remove_result = field.remove(a, item, item_rect);
+                            if (remove_result.is_now_empty) {
+                                field.destroy(a);
+                                field_ptr.* = null;
+                            }
+                            break;
                         }
-                        break;
-                    };
+                    }
                 }
             }
 
             return RemoveResult{
                 .removed = remove_result.removed,
-                .is_now_empty = self.item_map.count() == 0,
+                .is_now_empty = self.isEmpty(),
             };
         }
 
@@ -144,10 +146,20 @@ pub fn QuadTree(comptime T: type) type {
 
         pub fn getNumberOfItems(self: *@This()) usize {
             var result: usize = self.item_map.count();
-            for ([_]*?*Self{ &self.ne, &self.nw, &self.se, &self.sw }) |field_ptr| {
-                if (field_ptr.*) |field| result += field.getNumberOfItems();
-            }
+            for ([_]*?*Self{ &self.ne, &self.nw, &self.se, &self.sw }) |field_ptr|
+                if (field_ptr.*) |field| {
+                    const sub_result = field.getNumberOfItems();
+                    result += sub_result;
+                };
             return result;
+        }
+
+        fn isEmpty(self: *const @This()) bool {
+            return self.item_map.count() == 0 and
+                self.ne == null and
+                self.nw == null and
+                self.se == null and
+                self.sw == null;
         }
 
         fn getQuadrons(self: *const @This()) [4]Rect {
@@ -221,6 +233,35 @@ test "QuadTree.remove()" {
         try eq(null, tree.se);
         try eq(null, tree.sw);
     }
+}
+
+test "QuadTree.remove() - pt. 2" {
+    const a = testing_allocator;
+    const QUADTREE_WIDTH = 2_000_000;
+    var tree = try QuadTree(u8).create(a, .{
+        .x = -QUADTREE_WIDTH / 2,
+        .y = -QUADTREE_WIDTH / 2,
+        .width = QUADTREE_WIDTH,
+        .height = QUADTREE_WIDTH,
+    }, 0);
+    defer tree.destroy(a);
+
+    var item_1: u8 = 111;
+    const item_1_rect = Rect{ .x = 960, .y = 540, .width = 0, .height = 40 };
+    try tree.insert(a, &item_1, item_1_rect);
+    try eq(1, tree.getNumberOfItems());
+
+    var item_2: u8 = 222;
+    const item_2_rect_A = Rect{ .x = 0, .y = 0, .width = 0, .height = 40 };
+    try tree.insert(a, &item_2, item_2_rect_A);
+    try eq(2, tree.getNumberOfItems());
+
+    try eq(true, tree.remove(a, &item_2, item_2_rect_A).removed);
+    try eq(1, tree.getNumberOfItems());
+
+    const item_2_rect_B = Rect{ .x = 960, .y = 580, .width = 0, .height = 40 };
+    try tree.insert(a, &item_2, item_2_rect_B);
+    try eq(2, tree.getNumberOfItems());
 }
 
 test "QuadTree.query()" {
@@ -300,7 +341,7 @@ test "QuadTree.query()" {
     ///////////////////////////// remove test
 
     const remove_1_result = tree.remove(a, &item_1, item_1_rect);
-    try eq(QuadTree(u8).RemoveResult{ .removed = true, .is_now_empty = true }, remove_1_result); // `is_now_empty` is `true` cuz the root itself doesn't contain items (but its child does).
+    try eq(QuadTree(u8).RemoveResult{ .removed = true, .is_now_empty = false }, remove_1_result);
 
     try eq(null, tree.nw);
     try eq(null, tree.ne);

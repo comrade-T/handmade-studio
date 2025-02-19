@@ -188,11 +188,11 @@ pub fn render(self: *@This()) !void {
         if (!window.closed) window.render(is_active, self.mall, null);
     }
 
-    std.debug.print("#wins: {d} | quadded: {d} | #items in tree: {d}\n", .{
-        self.wmap.keys().len,
-        self.quadded_windows.items.len,
-        self.qtree.getNumberOfItems(),
-    });
+    // std.debug.print("#wins: {d} | quadded: {d} | #items in tree: {d}\n", .{
+    //     self.wmap.keys().len,
+    //     self.quadded_windows.items.len,
+    //     self.qtree.getNumberOfItems(),
+    // });
     self.connman.render();
 }
 
@@ -209,6 +209,7 @@ pub fn destroy(self: *@This()) void {
 
     self.qtree.destroy(self.a);
     self.quadded_windows.deinit();
+    self.updating_windows_map.deinit(self.a);
 
     self.a.destroy(self);
 }
@@ -400,7 +401,6 @@ pub fn spawnWindow(
     make_active: bool,
     add_to_history: bool,
 ) !void {
-    defer std.debug.print("spawnWindow() -> #items in tree: {d}\n", .{self.qtree.getNumberOfItems()});
 
     // if file path exists in fmap
     if (from == .file) {

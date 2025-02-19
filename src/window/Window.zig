@@ -143,14 +143,6 @@ pub fn moveBy(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *UpdatingWin
 }
 
 pub fn setPositionInstantly(self: *@This(), a: Allocator, qtree: *QuadTree, x: f32, y: f32) !void {
-    std.debug.print("setPositionInstantly() b4 -> #items in tree: {d}\n", .{qtree.getNumberOfItems()});
-    self.getRect().print();
-
-    defer {
-        std.debug.print("setPositionInstantly() after -> #items in tree: {d}\n", .{qtree.getNumberOfItems()});
-        self.getRect().print();
-    }
-
     self.removeFromQuadTree(a, qtree);
 
     self.attr.pos.x = x;
