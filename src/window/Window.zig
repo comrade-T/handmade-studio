@@ -119,6 +119,9 @@ pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
     self.attr.pos = .{ .x = x, .y = y };
 }
 
+// TODO: I'm pretty sure I have to interact with the QuadTree right here.
+// cuz I have to update right after caching too, not just after moving windows etc..
+
 pub fn moveBy(self: *@This(), x: f32, y: f32) void {
     self.attr.target_pos.x += x;
     self.attr.target_pos.y += y;

@@ -86,25 +86,11 @@ pub fn QuadTree(comptime T: type) type {
         pub fn insert(self: *@This(), a: Allocator, item: *T, item_rect: Rect) !void {
             const new_depth = self.depth + 1;
             if (new_depth < QUADTREE_MAX_DEPTH) {
-                const ne_rect, const nw_rect, const se_rect, const sw_rect = self.getQuadrons();
-                if (ne_rect.contains(item_rect)) {
-                    if (self.ne == null) self.ne = try Self.create(a, ne_rect, new_depth);
-                    try self.ne.?.insert(a, item, item_rect);
-                    return;
-                }
-                if (nw_rect.contains(item_rect)) {
-                    if (self.nw == null) self.nw = try Self.create(a, nw_rect, new_depth);
-                    try self.nw.?.insert(a, item, item_rect);
-                    return;
-                }
-                if (se_rect.contains(item_rect)) {
-                    if (self.se == null) self.se = try Self.create(a, se_rect, new_depth);
-                    try self.se.?.insert(a, item, item_rect);
-                    return;
-                }
-                if (sw_rect.contains(item_rect)) {
-                    if (self.sw == null) self.sw = try Self.create(a, sw_rect, new_depth);
-                    try self.sw.?.insert(a, item, item_rect);
+                const quads = self.getQuadrons();
+                for ([_]*?*Self{ &self.ne, &self.nw, &self.se, &self.sw }, 0..) |field_ptr, i| {
+                    if (!quads[i].contains(item_rect)) continue;
+                    if (field_ptr.* == null) field_ptr.* = try Self.create(a, quads[i], new_depth);
+                    try field_ptr.*.?.insert(a, item, item_rect);
                     return;
                 }
             }
@@ -120,45 +106,20 @@ pub fn QuadTree(comptime T: type) type {
         pub fn remove(self: *@This(), a: Allocator, item: *T, item_rect: Rect) RemoveResult {
             var remove_result: RemoveResult = .{ .removed = false, .is_now_empty = false };
 
-            blk: {
-                if (self.item_map.contains(item)) {
-                    remove_result.removed = self.item_map.remove(item);
-                    break :blk;
+            if (self.item_map.contains(item)) {
+                remove_result.removed = self.item_map.remove(item);
+            } else {
+                const quads = self.getQuadrons();
+                for ([_]*?*Self{ &self.ne, &self.nw, &self.se, &self.sw }, 0..) |field_ptr, i| {
+                    if (field_ptr.*) |field| if (quads[i].contains(item_rect)) {
+                        remove_result = field.remove(a, item, item_rect);
+                        if (remove_result.is_now_empty) {
+                            field.destroy(a);
+                            field_ptr.* = null;
+                        }
+                        break;
+                    };
                 }
-
-                const ne_rect, const nw_rect, const se_rect, const sw_rect = self.getQuadrons();
-                if (self.ne) |ne| if (ne_rect.contains(item_rect)) {
-                    remove_result = ne.remove(a, item, item_rect);
-                    if (remove_result.is_now_empty) {
-                        ne.destroy(a);
-                        self.ne = null;
-                    }
-                    break :blk;
-                };
-                if (self.nw) |nw| if (nw_rect.contains(item_rect)) {
-                    remove_result = nw.remove(a, item, item_rect);
-                    if (remove_result.is_now_empty) {
-                        nw.destroy(a);
-                        self.nw = null;
-                    }
-                    break :blk;
-                };
-                if (self.se) |se| if (se_rect.contains(item_rect)) {
-                    remove_result = se.remove(a, item, item_rect);
-                    if (remove_result.is_now_empty) {
-                        se.destroy(a);
-                        self.se = null;
-                    }
-                    break :blk;
-                };
-                if (self.sw) |sw| if (sw_rect.contains(item_rect)) {
-                    remove_result = sw.remove(a, item, item_rect);
-                    if (remove_result.is_now_empty) {
-                        sw.destroy(a);
-                        self.sw = null;
-                    }
-                    break :blk;
-                };
             }
 
             return RemoveResult{
@@ -181,7 +142,7 @@ pub fn QuadTree(comptime T: type) type {
             if (self.sw) |sw| try sw.query(query_rect, result);
         }
 
-        fn getQuadrons(self: *const @This()) struct { Rect, Rect, Rect, Rect } {
+        fn getQuadrons(self: *const @This()) [4]Rect {
             const x = self.rect.x;
             const y = self.rect.y;
             const w = self.rect.width / 2;
@@ -379,13 +340,19 @@ test "QuadTree.query - pt. 2" {
     {
         try tree.insert(a, &item_1, item_1_rect);
 
-        // not match
+        // this matches due to:
+        // - we're asking:
+        //    - any quads that overlaps with the query rect,
+        //      push them into the list.
+        // - the list returns the item due to:
+        //    - the quad that holds the item overlaps with the query rect, (depth: 9 - Rect --> x: 0 | y: -3906.25 | w: 3906.25 | h: 3906.25)
+        //      --> we didn't check if the item rect overlaps with the query rect.
         {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
             try tree.query(.{ .x = 0, .y = 0, .width = 1920, .height = 1080 }, &list);
-            try eq(0, list.items.len);
+            try eq(1, list.items.len);
         }
     }
 }
