@@ -130,18 +130,26 @@ pub fn QuadTree(comptime T: type) type {
             };
         }
 
-        pub fn query(self: *@This(), query_rect: Rect, result: *ArrayList(*T)) !void {
+        pub fn query(
+            self: *@This(),
+            query_rect: Rect,
+            result: *ArrayList(*T),
+            may_check_cb: ?*const fn (query_rect: Rect, obj: *const T) bool,
+        ) !void {
             if (!self.rect.overlaps(query_rect)) return;
 
             var iter = self.item_map.iterator();
             while (iter.next()) |entry| {
+                if (may_check_cb) |check_cb| {
+                    if (!check_cb(query_rect, entry.key_ptr.*)) continue;
+                }
                 try result.append(entry.key_ptr.*);
             }
 
-            if (self.ne) |ne| try ne.query(query_rect, result);
-            if (self.nw) |nw| try nw.query(query_rect, result);
-            if (self.se) |se| try se.query(query_rect, result);
-            if (self.sw) |sw| try sw.query(query_rect, result);
+            if (self.ne) |ne| try ne.query(query_rect, result, may_check_cb);
+            if (self.nw) |nw| try nw.query(query_rect, result, may_check_cb);
+            if (self.se) |se| try se.query(query_rect, result, may_check_cb);
+            if (self.sw) |sw| try sw.query(query_rect, result, may_check_cb);
         }
 
         pub fn getNumberOfItems(self: *@This()) usize {
@@ -280,7 +288,7 @@ test "QuadTree.query()" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = -100, .y = -100, .width = 5, .height = 5 }, &list);
+            try tree.query(.{ .x = -100, .y = -100, .width = 5, .height = 5 }, &list, null);
             try eq(0, list.items.len);
         }
 
@@ -289,7 +297,7 @@ test "QuadTree.query()" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list);
+            try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list, null);
             try eq(1, list.items.len);
             try eq(&item_1, list.items[0]);
         }
@@ -297,7 +305,7 @@ test "QuadTree.query()" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = 0, .y = 0, .width = 20, .height = 20 }, &list);
+            try tree.query(.{ .x = 0, .y = 0, .width = 20, .height = 20 }, &list, null);
             try eq(1, list.items.len);
             try eq(&item_1, list.items[0]);
         }
@@ -314,7 +322,7 @@ test "QuadTree.query()" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = 200, .y = 200, .width = 5, .height = 5 }, &list);
+            try tree.query(.{ .x = 200, .y = 200, .width = 5, .height = 5 }, &list, null);
             try eq(0, list.items.len);
         }
 
@@ -323,7 +331,7 @@ test "QuadTree.query()" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list);
+            try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list, null);
             try eq(1, list.items.len);
             try eq(&item_1, list.items[0]);
         }
@@ -331,7 +339,7 @@ test "QuadTree.query()" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &list);
+            try tree.query(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &list, null);
             try eq(2, list.items.len);
             try eq(&item_1, list.items[0]);
             try eq(&item_2, list.items[1]);
@@ -352,14 +360,14 @@ test "QuadTree.query()" {
         var list = ArrayList(*u8).init(testing_allocator);
         defer list.deinit();
 
-        try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list);
+        try tree.query(.{ .x = 0, .y = 0, .width = 5, .height = 5 }, &list, null);
         try eq(0, list.items.len);
     }
     { // only match 2 now
         var list = ArrayList(*u8).init(testing_allocator);
         defer list.deinit();
 
-        try tree.query(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &list);
+        try tree.query(.{ .x = 0, .y = 0, .width = 100, .height = 100 }, &list, null);
         try eq(1, list.items.len);
         try eq(&item_2, list.items[0]);
     }
@@ -400,7 +408,7 @@ test "QuadTree.query - pt. 2" {
             var list = ArrayList(*u8).init(testing_allocator);
             defer list.deinit();
 
-            try tree.query(.{ .x = 0, .y = 0, .width = 1920, .height = 1080 }, &list);
+            try tree.query(.{ .x = 0, .y = 0, .width = 1920, .height = 1080 }, &list, null);
             try eq(1, list.items.len);
         }
     }

@@ -37,7 +37,9 @@ const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
-const QuadTree = @import("QuadTree").QuadTree(Window);
+const _qtree = @import("QuadTree");
+const QuadTree = _qtree.QuadTree(Window);
+const Rect = _qtree.Rect;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -138,7 +140,7 @@ hm: HistoryManager,
 
 qtree: *QuadTree,
 updating_windows_map: Window.UpdatingWindowsMap = .{},
-quadded_windows: std.ArrayList(*Window),
+visible_windows: WindowList,
 
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
@@ -157,7 +159,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
             .width = QUADTREE_WIDTH,
             .height = QUADTREE_WIDTH,
         }, 0),
-        .quadded_windows = std.ArrayList(*Window).init(a),
+        .visible_windows = std.ArrayList(*Window).init(a),
     };
     return self;
 }
@@ -174,23 +176,17 @@ pub fn updateAndRender(self: *@This()) !void {
 }
 
 pub fn render(self: *@This()) !void {
-    const view = self.mall.icb.getViewFromCamera(self.mall.camera);
-    try self.qtree.query(.{
-        .x = view.start.x,
-        .y = view.start.y,
-        .width = view.end.x - view.start.x,
-        .height = view.end.y - view.start.y,
-    }, &self.quadded_windows);
-    defer self.quadded_windows.clearRetainingCapacity();
+    try self.getAllVisibleWindowsOnScreen(&self.visible_windows);
+    defer self.visible_windows.clearRetainingCapacity();
 
-    for (self.quadded_windows.items) |window| {
+    for (self.visible_windows.items) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
-        if (!window.closed) window.render(is_active, self.mall, null);
+        window.render(is_active, self.mall, null);
     }
 
-    // std.debug.print("#wins: {d} | quadded: {d} | #items in tree: {d}\n", .{
+    // std.debug.print("#wins: {d} | visible on screen: {d} | #windows in tree: {d}\n", .{
     //     self.wmap.keys().len,
-    //     self.quadded_windows.items.len,
+    //     self.visible_windows.items.len,
     //     self.qtree.getNumberOfItems(),
     // });
     self.connman.render();
@@ -208,7 +204,7 @@ pub fn destroy(self: *@This()) void {
     self.hm.deinit();
 
     self.qtree.destroy(self.a);
-    self.quadded_windows.deinit();
+    self.visible_windows.deinit();
     self.updating_windows_map.deinit(self.a);
 
     self.a.destroy(self);
@@ -293,6 +289,25 @@ const WindowSourceHandler = struct {
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////// Get all windows on screen
+
+pub const WindowList = std.ArrayList(*Window);
+
+fn checkIfWindowVisibleOnScreen(query_rect: Rect, win: *const Window) bool {
+    return !win.closed and query_rect.overlaps(win.getRect());
+}
+
+pub fn getAllVisibleWindowsOnScreen(self: *const @This(), list: *WindowList) !void {
+    const view = self.mall.icb.getViewFromCamera(self.mall.camera);
+    const view_rect = Rect{
+        .x = view.start.x,
+        .y = view.start.y,
+        .width = view.end.x - view.start.x,
+        .height = view.end.y - view.start.y,
+    };
+    try self.qtree.query(view_rect, list, checkIfWindowVisibleOnScreen);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
 
