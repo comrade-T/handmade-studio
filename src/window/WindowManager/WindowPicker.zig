@@ -60,13 +60,14 @@ fn renderTargetLabels(self: *const @This(), screen_rect: Rect, windows: []*Windo
 fn renderLabel(wm: *const WindowManager, screen_rect: Rect, x: f32, y: f32) void {
     _ = screen_rect;
 
-    const font = wm.mall.font_store.getDefaultFont() orelse unreachable;
+    const DEFAULT_FONT = wm.mall.font_store.getDefaultFont() orelse unreachable;
+    // const DEFAULT_GLYPH = DEFAULT_FONT.glyph_map.get('?') orelse unreachable;
 
     const CODE_POINT = '?';
     const FONT_SIZE = 60;
     const COLOR = 0x22d3d6ff;
 
-    wm.mall.rcb.drawCodePoint(font, CODE_POINT, x, y, FONT_SIZE, COLOR);
+    wm.mall.rcb.drawCodePoint(DEFAULT_FONT, CODE_POINT, x, y, FONT_SIZE, COLOR);
 
     // TODO: render a circle background
 

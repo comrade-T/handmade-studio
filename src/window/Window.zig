@@ -421,18 +421,6 @@ pub fn getStyleFromStore(T: type, win: *const Window, r: Window.WindowSource.Lin
     return null;
 }
 
-pub fn calculateGlyphWidth(
-    font: *const FontStore.Font,
-    font_size: f32,
-    code_point: u21,
-    default_glyph: FontStore.Font.GlyphData,
-) f32 {
-    const glyph = font.glyph_map.get(code_point) orelse default_glyph;
-    const scale_factor: f32 = font_size / font.base_size;
-    const width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
-    return width * scale_factor;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Insertsect
 
 pub fn horizontalIntersect(self: *const Window, other: *const Window) bool {

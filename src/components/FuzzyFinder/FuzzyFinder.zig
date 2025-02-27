@@ -249,7 +249,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
                 }
             }
 
-            const char_width = Window.calculateGlyphWidth(font, font_size, cp.code, default_glyph);
+            const char_width = RenderMall.calculateGlyphWidth(font, font_size, cp.code, default_glyph);
             defer x += char_width;
 
             render_callbacks.drawCodePoint(font, cp.code, x, y, font_size, color);

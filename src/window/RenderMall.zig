@@ -101,6 +101,20 @@ pub fn addColorschemeStyle(self: *@This(), key: StyleKey, colorscheme_index: u16
     try self.colorschemes.put(self.a, key, @intCast(colorscheme_index));
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Get Info
+
+pub fn calculateGlyphWidth(
+    font: *const FontStore.Font,
+    font_size: f32,
+    code_point: u21,
+    default_glyph: FontStore.Font.GlyphData,
+) f32 {
+    const glyph = font.glyph_map.get(code_point) orelse default_glyph;
+    const scale_factor: f32 = font_size / font.base_size;
+    const width = if (glyph.advanceX != 0) glyph.advanceX else glyph.width + glyph.offsetX;
+    return width * scale_factor;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn getFont(self: *const @This(), key: StyleKey) ?*const FontStore.Font {

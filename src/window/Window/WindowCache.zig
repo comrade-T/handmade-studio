@@ -78,7 +78,7 @@ fn calculateLineInfo(
         manageBaseLineInformation(font, font_size, &max_font_size, &min_base_line, &max_base_line);
 
         // calculate width & height
-        const glyph_width = Window.calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
+        const glyph_width = RenderMall.calculateGlyphWidth(font, font_size, r.code_point, default_glyph);
         line_width += glyph_width;
         line_height = @max(line_height, font_size);
     }

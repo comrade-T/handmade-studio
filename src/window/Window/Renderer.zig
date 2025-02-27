@@ -339,7 +339,7 @@ fn getActiveAnchorCoordinates(self: *@This()) !struct { f32, f32, f32, f32 } {
                 const font = Window.getStyleFromStore(*const FontStore.Font, self.win, r, self.mall, RenderMall.getFont) orelse self.default_font;
                 const font_size = Window.getStyleFromStore(f32, self.win, r, self.mall, RenderMall.getFontSize) orelse self.win.defaults.font_size;
 
-                const char_width = Window.calculateGlyphWidth(font, font_size, r.code_point, self.default_glyph);
+                const char_width = RenderMall.calculateGlyphWidth(font, font_size, r.code_point, self.default_glyph);
                 end_x += char_width;
 
                 if (anchor.col == colnr) break;
@@ -456,7 +456,7 @@ fn renderCharacter(self: *@This(), r: WindowSource.LineIterator.Result, colorsch
     const font = Window.getStyleFromStore(*const FontStore.Font, self.win, r, self.mall, RenderMall.getFont) orelse self.default_font;
     const font_size = Window.getStyleFromStore(f32, self.win, r, self.mall, RenderMall.getFontSize) orelse self.win.defaults.font_size;
 
-    const char_width = Window.calculateGlyphWidth(font, font_size, r.code_point, self.default_glyph);
+    const char_width = RenderMall.calculateGlyphWidth(font, font_size, r.code_point, self.default_glyph);
     defer self.char_x += char_width;
 
     // cursor relocation related
@@ -587,7 +587,7 @@ fn renderCursorOnEmptyLine(self: *@This()) bool {
         const anchor = cursor.activeAnchor(self.win.cursor_manager);
         if (anchor.line != self.linenr) continue;
 
-        const char_width = Window.calculateGlyphWidth(self.default_font, self.win.defaults.font_size, ' ', self.default_glyph);
+        const char_width = RenderMall.calculateGlyphWidth(self.default_font, self.win.defaults.font_size, ' ', self.default_glyph);
 
         // cursor relocation related
         self.updateMainCursorHorizontalVisibilityReport(self.char_x + char_width, char_width);
