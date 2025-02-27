@@ -24,7 +24,7 @@ const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
 const LangHub = @import("LangSuite").LangHub;
-const RenderMall = @import("RenderMall");
+pub const RenderMall = @import("RenderMall");
 const AnchorPicker = @import("AnchorPicker");
 pub const WindowSource = @import("WindowSource");
 pub const Window = @import("Window");

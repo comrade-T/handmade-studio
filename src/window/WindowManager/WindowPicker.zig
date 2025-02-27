@@ -23,6 +23,7 @@ const WindowManager = @import("../WindowManager.zig");
 const Window = WindowManager.Window;
 const Rect = WindowManager.Rect;
 const WindowList = WindowManager.WindowList;
+const RenderMall = WindowManager.RenderMall;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -61,22 +62,26 @@ fn renderLabel(wm: *const WindowManager, screen_rect: Rect, x: f32, y: f32) void
     _ = screen_rect;
 
     const DEFAULT_FONT = wm.mall.font_store.getDefaultFont() orelse unreachable;
-    // const DEFAULT_GLYPH = DEFAULT_FONT.glyph_map.get('?') orelse unreachable;
+    const DEFAULT_GLYPH = DEFAULT_FONT.glyph_map.get('?') orelse unreachable;
 
-    const CODE_POINT = '?';
+    const CODE_POINT = 'x';
     const FONT_SIZE = 60;
-    const COLOR = 0x22d3d6ff;
+    const TEXT_COLOR = 0x0f81d9ff;
 
-    wm.mall.rcb.drawCodePoint(DEFAULT_FONT, CODE_POINT, x, y, FONT_SIZE, COLOR);
+    ///////////////////////////// draw circle background
 
-    // TODO: render a circle background
+    const CIRCLE_COLOR = 0xffffffff;
+    const CIRCLE_PADDING = 0;
+    const CIRCLE_RADIUS = FONT_SIZE / 2 + CIRCLE_PADDING;
+    wm.mall.rcb.drawCircle(x, y, CIRCLE_RADIUS, CIRCLE_COLOR);
 
-    // ACTUAL TODOS:
-    // 1. calculate the size of the text
-    // 2. calculate the background circle size base on that text
-    // 3. render the circle
-    // 4. render the text w/ rcb.drawCodePoint()
+    ///////////////////////////// draw label text
 
+    const char_width = RenderMall.calculateGlyphWidth(DEFAULT_FONT, FONT_SIZE, CODE_POINT, DEFAULT_GLYPH);
+    const char_height = FONT_SIZE;
+    const char_x = x - char_width / 2;
+    const char_y = y - char_height / 2;
+    wm.mall.rcb.drawCodePoint(DEFAULT_FONT, CODE_POINT, char_x, char_y, FONT_SIZE, TEXT_COLOR);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// TODOS after finishing renderLabel()
