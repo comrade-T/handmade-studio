@@ -35,11 +35,12 @@ pub const Callback = ip_.Callback;
 
 const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
+const WindowPicker = @import("WindowManager/WindowPicker.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
-const Rect = _qtree.Rect;
+pub const Rect = _qtree.Rect;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -51,20 +52,10 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try self.mapSessionRelatedKeymaps(council);
     try self.mapSpawnBlankWindowKeymaps(ap, council);
 
+    try self.mapUndoRedoKeymaps(council);
     try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = closeActiveWindow, .ctx = self });
-    try council.map(NORMAL, &.{ .left_control, .z }, .{ .f = undo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .z }, .{ .f = redo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .z }, .{ .f = redo, .ctx = self });
 
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .z }, .{ .f = batchUndo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .z }, .{ .f = batchUndo, .ctx = self });
-
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .eight }, .{ .f = WindowPicker.toggle, .ctx = &self.window_picker });
 }
 
 const NORMAL = "normal";
@@ -120,6 +111,22 @@ fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *Mapping
     try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, wm, wm.mall, ap, .right));
 }
 
+fn mapUndoRedoKeymaps(self: *@This(), council: *MappingCouncil) !void {
+    try council.map(NORMAL, &.{ .left_control, .z }, .{ .f = undo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .z }, .{ .f = redo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .z }, .{ .f = redo, .ctx = self });
+
+    try council.map(NORMAL, &.{ .left_control, .left_alt, .z }, .{ .f = batchUndo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_control, .z }, .{ .f = batchUndo, .ctx = self });
+
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowManager
 
 a: Allocator,
@@ -142,6 +149,8 @@ qtree: *QuadTree,
 updating_windows_map: Window.UpdatingWindowsMap = .{},
 visible_windows: WindowList,
 
+window_picker: WindowPicker,
+
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
 
@@ -160,6 +169,8 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
             .height = QUADTREE_WIDTH,
         }, 0),
         .visible_windows = std.ArrayList(*Window).init(a),
+
+        .window_picker = WindowPicker{ .wm = self },
     };
     return self;
 }
@@ -176,7 +187,9 @@ pub fn updateAndRender(self: *@This()) !void {
 }
 
 pub fn render(self: *@This()) !void {
-    try self.getAllVisibleWindowsOnScreen(&self.visible_windows);
+    const screen_rect = self.getScreenRect();
+
+    try self.getAllVisibleWindowsOnScreen(screen_rect, &self.visible_windows);
     defer self.visible_windows.clearRetainingCapacity();
 
     for (self.visible_windows.items) |window| {
@@ -190,6 +203,8 @@ pub fn render(self: *@This()) !void {
     //     self.qtree.getNumberOfItems(),
     // });
     self.connman.render();
+
+    self.window_picker.render(screen_rect);
 }
 
 pub fn destroy(self: *@This()) void {
@@ -290,23 +305,26 @@ const WindowSourceHandler = struct {
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Get all windows on screen
+////////////////////////////////////////////////////////////////////////////////////////////// Get Info
 
 pub const WindowList = std.ArrayList(*Window);
 
-fn checkIfWindowVisibleOnScreen(query_rect: Rect, win: *const Window) bool {
-    return !win.closed and query_rect.overlaps(win.getRect());
-}
-
-pub fn getAllVisibleWindowsOnScreen(self: *const @This(), list: *WindowList) !void {
+pub fn getScreenRect(self: *const @This()) Rect {
     const view = self.mall.icb.getViewFromCamera(self.mall.camera);
-    const view_rect = Rect{
+    return Rect{
         .x = view.start.x,
         .y = view.start.y,
         .width = view.end.x - view.start.x,
         .height = view.end.y - view.start.y,
     };
-    try self.qtree.query(view_rect, list, checkIfWindowVisibleOnScreen);
+}
+
+pub fn getAllVisibleWindowsOnScreen(self: *const @This(), screen_rect: Rect, list: *WindowList) !void {
+    try self.qtree.query(screen_rect, list, isWindowOnScreen);
+}
+
+fn isWindowOnScreen(query_rect: Rect, win: *const Window) bool {
+    return !win.closed and query_rect.overlaps(win.getRect());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
