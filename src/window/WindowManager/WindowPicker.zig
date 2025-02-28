@@ -27,21 +27,80 @@ const RenderMall = WindowManager.RenderMall;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-wm: *const WindowManager,
-active: bool = false,
+const NORMAL = "normal";
 
-pub fn toggle(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.active = !self.active;
+pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
+    const a = c.arena.allocator();
+    const wp = &wm.window_picker;
+
+    try c.mapUpNDown(NORMAL, &.{.space}, .{ .down_f = show, .up_f = hide, .down_ctx = wp, .up_ctx = wp });
+
+    /////////////////////////////
+
+    const MoveToCb = struct {
+        wm: *WindowManager,
+        index: usize,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            self.wm.window_picker.moveTo(self.index);
+        }
+        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, index: usize) !WindowManager.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .wm = wm_, .index = index };
+            return WindowManager.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try c.map(NORMAL, &.{ .space, .y }, try MoveToCb.init(a, wm, 0));
+    try c.map(NORMAL, &.{ .space, .u }, try MoveToCb.init(a, wm, 1));
+    try c.map(NORMAL, &.{ .space, .i }, try MoveToCb.init(a, wm, 2));
+    try c.map(NORMAL, &.{ .space, .o }, try MoveToCb.init(a, wm, 3));
+    try c.map(NORMAL, &.{ .space, .p }, try MoveToCb.init(a, wm, 4));
+
+    try c.map(NORMAL, &.{ .space, .h }, try MoveToCb.init(a, wm, 5));
+    try c.map(NORMAL, &.{ .space, .j }, try MoveToCb.init(a, wm, 6));
+    try c.map(NORMAL, &.{ .space, .k }, try MoveToCb.init(a, wm, 7));
+    try c.map(NORMAL, &.{ .space, .l }, try MoveToCb.init(a, wm, 8));
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+wm: *WindowManager,
+active: bool = false,
 
 pub fn render(self: *const @This(), screen_rect: Rect) void {
     if (!self.active) return;
     self.renderTargetLabels(screen_rect, self.wm.visible_windows.items);
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn show(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.active = true;
+}
+
+fn hide(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.active = false;
+}
+
+fn moveTo(self: *@This(), index: usize) void {
+    if (index >= self.wm.visible_windows.items.len or
+        index >= RIGHT_HAND_CODEPOINTS.len) return;
+
+    const window = self.wm.visible_windows.items[index];
+    self.wm.setActiveWindow(window);
+
+    // center the view to that newly active_window
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 fn renderTargetLabels(self: *const @This(), screen_rect: Rect, windows: []*Window) void {
-    for (windows) |win| {
+    for (windows, 0..) |win, i| {
+        if (win == self.wm.active_window) continue;
+        const code_point = if (i < RIGHT_HAND_CODEPOINTS.len) RIGHT_HAND_CODEPOINTS[i] else break;
+
         const r = win.getRect();
         const visible_x = @max(r.x, screen_rect.x);
         const visible_y = @max(r.y, screen_rect.y);
@@ -53,18 +112,17 @@ fn renderTargetLabels(self: *const @This(), screen_rect: Rect, windows: []*Windo
         if (visible_width > 0 and visible_height > 0) {
             const visible_center_x = visible_x + visible_width / 2;
             const visible_center_y = visible_y + visible_height / 2;
-            renderLabel(self.wm, screen_rect, visible_center_x, visible_center_y);
+            renderLabel(self.wm, screen_rect, code_point, visible_center_x, visible_center_y);
         }
     }
 }
 
-fn renderLabel(wm: *const WindowManager, screen_rect: Rect, x: f32, y: f32) void {
+fn renderLabel(wm: *const WindowManager, screen_rect: Rect, code_point: u21, x: f32, y: f32) void {
     _ = screen_rect;
 
     const DEFAULT_FONT = wm.mall.font_store.getDefaultFont() orelse unreachable;
     const DEFAULT_GLYPH = DEFAULT_FONT.glyph_map.get('?') orelse unreachable;
 
-    const CODE_POINT = 'x';
     const FONT_SIZE = 60;
     const TEXT_COLOR = 0x0f81d9ff;
 
@@ -77,12 +135,26 @@ fn renderLabel(wm: *const WindowManager, screen_rect: Rect, x: f32, y: f32) void
 
     ///////////////////////////// draw label text
 
-    const char_width = RenderMall.calculateGlyphWidth(DEFAULT_FONT, FONT_SIZE, CODE_POINT, DEFAULT_GLYPH);
+    const char_width = RenderMall.calculateGlyphWidth(DEFAULT_FONT, FONT_SIZE, code_point, DEFAULT_GLYPH);
     const char_height = FONT_SIZE;
     const char_x = x - char_width / 2;
     const char_y = y - char_height / 2;
-    wm.mall.rcb.drawCodePoint(DEFAULT_FONT, CODE_POINT, char_x, char_y, FONT_SIZE, TEXT_COLOR);
+    wm.mall.rcb.drawCodePoint(DEFAULT_FONT, code_point, char_x, char_y, FONT_SIZE, TEXT_COLOR);
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// WHAT NEXT?
+
+// where do I get the code points from?
+// - have 2 arrays, one for left hand, one for right hand.
+
+const LEFT_HAND_CODEPOINTS = [_]u21{ 'q', 'w', 'e', 'r', 't', 'a', 's', 'd', 'f', 'g', 'z', 'x', 'c', 'v', 'b' };
+const RIGHT_HAND_CODEPOINTS = [_]u21{ 'y', 'u', 'i', 'o', 'p', 'h', 'j', 'k', 'l', ';', 'n', 'm', ',', '.', '/' };
+
+// how do I map those?
+// - hard code to this callback: `switchToWindowWithLabel('code_point')`
+// -> have a map HashMap(u21, *Window)
+//
+// - if it's in the map, move to it, otherwise do nothing
 
 ////////////////////////////////////////////////////////////////////////////////////////////// TODOS after finishing renderLabel()
 

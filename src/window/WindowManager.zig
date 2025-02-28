@@ -55,7 +55,7 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try self.mapUndoRedoKeymaps(council);
     try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = closeActiveWindow, .ctx = self });
 
-    try council.map(NORMAL, &.{ .left_control, .eight }, .{ .f = WindowPicker.toggle, .ctx = &self.window_picker });
+    try WindowPicker.mapKeys(self, council);
 }
 
 const NORMAL = "normal";
@@ -189,8 +189,11 @@ pub fn updateAndRender(self: *@This()) !void {
 pub fn render(self: *@This()) !void {
     const screen_rect = self.getScreenRect();
 
+    // NOTE: put a `defer` statement here and `WindowPicker.moveTo()` won't work
+    // due to keyboard events get resolved before `render()` is called.
+    self.visible_windows.clearRetainingCapacity();
+
     try self.getAllVisibleWindowsOnScreen(screen_rect, &self.visible_windows);
-    defer self.visible_windows.clearRetainingCapacity();
 
     for (self.visible_windows.items) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
@@ -223,6 +226,10 @@ pub fn destroy(self: *@This()) void {
     self.updating_windows_map.deinit(self.a);
 
     self.a.destroy(self);
+}
+
+pub fn setActiveWindow(self: *@This(), win: ?*Window) void {
+    self.active_window = win;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler
@@ -423,7 +430,7 @@ fn calculateSubAxisDistance(direction: WindowRelativeDirection, to: WindowEdgeSt
 pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !void {
     const window = try handler.spawnWindow(self, opts);
     try self.wmap.put(self.a, window, handler);
-    if (make_active or self.active_window == null) self.active_window = window;
+    if (make_active or self.active_window == null) self.setActiveWindow(window);
 }
 
 pub fn spawnWindow(
@@ -441,7 +448,7 @@ pub fn spawnWindow(
             const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
             if (add_to_history) try self.addWindowToSpawnHistory(window);
-            if (make_active or self.active_window == null) self.active_window = window;
+            if (make_active or self.active_window == null) self.setActiveWindow(window);
             return;
         }
     }
@@ -456,7 +463,7 @@ pub fn spawnWindow(
 
     if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
 
-    if (make_active or self.active_window == null) self.active_window = window;
+    if (make_active or self.active_window == null) self.setActiveWindow(window);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// History
@@ -576,12 +583,12 @@ fn closeWindow(self: *@This(), win: *Window, add_to_history: bool) !void {
     const new_active_window = self.findClosestWindow(win);
     win.close();
     if (add_to_history) try self.addWindowToCloseHistory(win);
-    self.active_window = new_active_window;
+    self.setActiveWindow(new_active_window);
 }
 
 fn openWindowAndMakeActive(self: *@This(), win: *Window) void {
     win.open();
-    self.active_window = win;
+    self.setActiveWindow(win);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout

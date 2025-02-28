@@ -221,8 +221,8 @@ pub const MappingCouncil = struct {
     }
 
     pub fn mapInsertCharacters(self: *@This(), mapping_contexts: []const []const u8, ctx: *anyopaque, cb_maker: CallbackMaker) !void {
-        for (0..pairs.len) |i| {
-            const keys, const chars = pairs[i];
+        for (0..INSERT_CHAR_PAIRS.len) |i| {
+            const keys, const chars = INSERT_CHAR_PAIRS[i];
             for (mapping_contexts) |mc| try self.map(mc, keys, try cb_maker(self.arena.allocator(), ctx, chars));
         }
     }
@@ -1813,7 +1813,7 @@ pub const Key = enum(KeyEnumType) {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const Pair = struct { []const Key, []const u8 };
-const pairs = [_]Pair{
+const INSERT_CHAR_PAIRS = [_]Pair{
     .{ &.{.a}, "a" },             .{ &.{ .left_shift, .a }, "A" },             .{ &.{ .right_shift, .a }, "A" },
     .{ &.{.b}, "b" },             .{ &.{ .left_shift, .b }, "B" },             .{ &.{ .right_shift, .b }, "B" },
     .{ &.{.c}, "c" },             .{ &.{ .left_shift, .c }, "C" },             .{ &.{ .right_shift, .c }, "C" },
