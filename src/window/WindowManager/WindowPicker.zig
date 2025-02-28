@@ -60,6 +60,13 @@ pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .space, .j }, try MoveToCb.init(a, wm, 6));
     try c.map(NORMAL, &.{ .space, .k }, try MoveToCb.init(a, wm, 7));
     try c.map(NORMAL, &.{ .space, .l }, try MoveToCb.init(a, wm, 8));
+    try c.map(NORMAL, &.{ .space, .semicolon }, try MoveToCb.init(a, wm, 9));
+
+    try c.map(NORMAL, &.{ .space, .n }, try MoveToCb.init(a, wm, 10));
+    try c.map(NORMAL, &.{ .space, .m }, try MoveToCb.init(a, wm, 11));
+    try c.map(NORMAL, &.{ .space, .comma }, try MoveToCb.init(a, wm, 12));
+    try c.map(NORMAL, &.{ .space, .period }, try MoveToCb.init(a, wm, 13));
+    try c.map(NORMAL, &.{ .space, .slash }, try MoveToCb.init(a, wm, 14));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -91,7 +98,9 @@ fn moveTo(self: *@This(), index: usize) void {
     const window = self.wm.visible_windows.items[index];
     self.wm.setActiveWindow(window);
 
-    // center the view to that newly active_window
+    /////////////////////////////
+
+    window.centerCameraAt(self.wm.mall);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -142,19 +151,14 @@ fn renderLabel(wm: *const WindowManager, screen_rect: Rect, code_point: u21, x: 
     wm.mall.rcb.drawCodePoint(DEFAULT_FONT, code_point, char_x, char_y, FONT_SIZE, TEXT_COLOR);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// WHAT NEXT?
-
-// where do I get the code points from?
-// - have 2 arrays, one for left hand, one for right hand.
+////////////////////////////////////////////////////////////////////////////////////////////// WIP
 
 const LEFT_HAND_CODEPOINTS = [_]u21{ 'q', 'w', 'e', 'r', 't', 'a', 's', 'd', 'f', 'g', 'z', 'x', 'c', 'v', 'b' };
-const RIGHT_HAND_CODEPOINTS = [_]u21{ 'y', 'u', 'i', 'o', 'p', 'h', 'j', 'k', 'l', ';', 'n', 'm', ',', '.', '/' };
-
-// how do I map those?
-// - hard code to this callback: `switchToWindowWithLabel('code_point')`
-// -> have a map HashMap(u21, *Window)
-//
-// - if it's in the map, move to it, otherwise do nothing
+const RIGHT_HAND_CODEPOINTS = [_]u21{
+    'y', 'u', 'i', 'o', 'p',
+    'h', 'j', 'k', 'l', ';',
+    'n', 'm', ',', '.', '/',
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////// TODOS after finishing renderLabel()
 

@@ -25,6 +25,8 @@ pub const render_callbacks = RenderMall.RenderCallbacks{
     .drawLine = drawLine,
     .changeCameraZoom = changeCameraZoom,
     .changeCameraPan = changeCameraPan,
+    .setCameraPosition = setCameraPosition,
+    .centerCameraAt = centerCameraAt,
     .beginScissorMode = beginScissorMode,
     .endScissorMode = endScissorMode,
 };
@@ -87,6 +89,18 @@ pub fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {
     const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
     target_camera.*.target.x += x_by;
     target_camera.*.target.y += y_by;
+}
+
+pub fn setCameraPosition(target_camera_: *anyopaque, x: f32, y: f32) void {
+    const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
+    target_camera.*.target.x = x;
+    target_camera.*.target.y = y;
+}
+
+pub fn centerCameraAt(target_camera_: *anyopaque, x: f32, y: f32) void {
+    const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
+    target_camera.*.target.x = x - @as(f32, @floatFromInt(rl.getScreenWidth())) / 2;
+    target_camera.*.target.y = y - @as(f32, @floatFromInt(rl.getScreenHeight())) / 2;
 }
 
 pub fn beginScissorMode(x: f32, y: f32, width: f32, height: f32) void {

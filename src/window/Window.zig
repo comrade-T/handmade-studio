@@ -123,13 +123,18 @@ pub fn close(self: *@This()) void {
 //     try self.subscribed_style_sets.append(self.a, styleset_id);
 // }
 
+pub fn centerCameraAt(self: *const @This(), mall: *const RenderMall) void {
+    const center_x = self.getX() + self.getWidth() / 2;
+    const center_y = self.getY() + self.getHeight() / 2;
+    mall.rcb.centerCameraAt(mall.target_camera, center_x, center_y);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Setters
 
-pub fn centerAt(self: *@This(), center_x: f32, center_y: f32) void {
+pub fn centerAt(self: *@This(), a: Allocator, qtree: *QuadTree, center_x: f32, center_y: f32) !void {
     const x = center_x - (self.cached.width / 2);
     const y = center_y - (self.cached.height / 2);
-    self.attr.pos = .{ .x = x, .y = y };
-    // TODO: actually use this method
+    try self.setTargetPosition(a, qtree, x, y);
 }
 
 pub fn moveBy(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *UpdatingWindowsMap, x: f32, y: f32) !void {
