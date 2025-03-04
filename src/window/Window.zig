@@ -123,10 +123,17 @@ pub fn close(self: *@This()) void {
 //     try self.subscribed_style_sets.append(self.a, styleset_id);
 // }
 
-pub fn centerCameraAt(self: *const @This(), mall: *const RenderMall) void {
-    const center_x = self.getX() + self.getWidth() / 2;
-    const center_y = self.getY() + self.getHeight() / 2;
-    mall.rcb.centerCameraAt(mall.target_camera, center_x, center_y);
+pub fn centerCameraAt(self: *const @This(), screen_rect: Rect, mall: *const RenderMall) void {
+    const win_center_x = self.getX() + self.getWidth() / 2;
+    const win_center_y = self.getY() + self.getHeight() / 2;
+
+    const screen_center_x = screen_rect.x + screen_rect.width / 2;
+    const screen_center_y = screen_rect.y + screen_rect.height / 2;
+
+    const x_by = win_center_x - screen_center_x;
+    const y_by = win_center_y - screen_center_y;
+
+    mall.rcb.changeCameraPan(mall.target_camera, x_by, y_by);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Setters

@@ -52,6 +52,8 @@ pub fn main() anyerror!void {
     rl.setTargetFPS(60);
     rl.setExitKey(rl.KeyboardKey.key_null);
 
+    var draw_fps = false;
+
     ///////////////////////////// Camera2D
 
     var smooth_cam = Smooth2DCamera{ .damp_target = true, .damp_zoom = true };
@@ -66,6 +68,8 @@ pub fn main() anyerror!void {
 
     var council = try ip.MappingCouncil.init(gpa);
     defer council.deinit();
+
+    try council.map("normal", &.{.f1}, .{ .f = toggleBool, .ctx = &draw_fps });
 
     var input_frame = try ip.InputFrame.init(gpa);
     defer input_frame.deinit();
@@ -158,8 +162,8 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
         {
-            rl.drawFPS(10, 10);
             rl.clearBackground(rl.Color.blank);
+            if (draw_fps) rl.drawFPS(10, 10);
 
             {
                 // AnchorPicker
@@ -178,4 +182,11 @@ pub fn main() anyerror!void {
             }
         }
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn toggleBool(ctx: *anyopaque) !void {
+    const ptr = @as(*bool, @ptrCast(@alignCast(ctx)));
+    ptr.* = !ptr.*;
 }

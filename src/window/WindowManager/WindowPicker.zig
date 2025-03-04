@@ -33,7 +33,7 @@ pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
     const a = c.arena.allocator();
     const wp = &wm.window_picker;
 
-    try c.mapUpNDown(NORMAL, &.{.space}, .{ .down_f = show, .up_f = hide, .down_ctx = wp, .up_ctx = wp });
+    try c.mapUpNDown(NORMAL, &.{ .space, .f }, .{ .down_f = show, .up_f = hide, .down_ctx = wp, .up_ctx = wp });
 
     /////////////////////////////
 
@@ -50,23 +50,23 @@ pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
             return WindowManager.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.map(NORMAL, &.{ .space, .y }, try MoveToCb.init(a, wm, 0));
-    try c.map(NORMAL, &.{ .space, .u }, try MoveToCb.init(a, wm, 1));
-    try c.map(NORMAL, &.{ .space, .i }, try MoveToCb.init(a, wm, 2));
-    try c.map(NORMAL, &.{ .space, .o }, try MoveToCb.init(a, wm, 3));
-    try c.map(NORMAL, &.{ .space, .p }, try MoveToCb.init(a, wm, 4));
+    try c.map(NORMAL, &.{ .space, .f, .y }, try MoveToCb.init(a, wm, 0));
+    try c.map(NORMAL, &.{ .space, .f, .u }, try MoveToCb.init(a, wm, 1));
+    try c.map(NORMAL, &.{ .space, .f, .i }, try MoveToCb.init(a, wm, 2));
+    try c.map(NORMAL, &.{ .space, .f, .o }, try MoveToCb.init(a, wm, 3));
+    try c.map(NORMAL, &.{ .space, .f, .p }, try MoveToCb.init(a, wm, 4));
 
-    try c.map(NORMAL, &.{ .space, .h }, try MoveToCb.init(a, wm, 5));
-    try c.map(NORMAL, &.{ .space, .j }, try MoveToCb.init(a, wm, 6));
-    try c.map(NORMAL, &.{ .space, .k }, try MoveToCb.init(a, wm, 7));
-    try c.map(NORMAL, &.{ .space, .l }, try MoveToCb.init(a, wm, 8));
-    try c.map(NORMAL, &.{ .space, .semicolon }, try MoveToCb.init(a, wm, 9));
+    try c.map(NORMAL, &.{ .space, .f, .h }, try MoveToCb.init(a, wm, 5));
+    try c.map(NORMAL, &.{ .space, .f, .j }, try MoveToCb.init(a, wm, 6));
+    try c.map(NORMAL, &.{ .space, .f, .k }, try MoveToCb.init(a, wm, 7));
+    try c.map(NORMAL, &.{ .space, .f, .l }, try MoveToCb.init(a, wm, 8));
+    try c.map(NORMAL, &.{ .space, .f, .semicolon }, try MoveToCb.init(a, wm, 9));
 
-    try c.map(NORMAL, &.{ .space, .n }, try MoveToCb.init(a, wm, 10));
-    try c.map(NORMAL, &.{ .space, .m }, try MoveToCb.init(a, wm, 11));
-    try c.map(NORMAL, &.{ .space, .comma }, try MoveToCb.init(a, wm, 12));
-    try c.map(NORMAL, &.{ .space, .period }, try MoveToCb.init(a, wm, 13));
-    try c.map(NORMAL, &.{ .space, .slash }, try MoveToCb.init(a, wm, 14));
+    try c.map(NORMAL, &.{ .space, .f, .n }, try MoveToCb.init(a, wm, 10));
+    try c.map(NORMAL, &.{ .space, .f, .m }, try MoveToCb.init(a, wm, 11));
+    try c.map(NORMAL, &.{ .space, .f, .comma }, try MoveToCb.init(a, wm, 12));
+    try c.map(NORMAL, &.{ .space, .f, .period }, try MoveToCb.init(a, wm, 13));
+    try c.map(NORMAL, &.{ .space, .f, .slash }, try MoveToCb.init(a, wm, 14));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -100,7 +100,7 @@ fn moveTo(self: *@This(), index: usize) void {
 
     /////////////////////////////
 
-    window.centerCameraAt(self.wm.mall);
+    window.centerCameraAt(self.wm.getScreenRect(), self.wm.mall);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
