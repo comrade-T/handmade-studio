@@ -283,6 +283,31 @@ pub const MappingCouncil = struct {
         try down_map.put(keys_hash, callback);
     }
 
+    pub fn unmapEntireContext(self: *@This(), context_id: []const u8) bool {
+        var removed_any = false;
+        if (self.downs.get(context_id)) |m| {
+            m.deinit();
+            self.a.destroy(m);
+            removed_any = true;
+        }
+        if (self.ups.get(context_id)) |m| {
+            m.deinit();
+            self.a.destroy(m);
+            removed_any = true;
+        }
+        if (self.ups_n_downs.get(context_id)) |m| {
+            m.deinit();
+            self.a.destroy(m);
+            removed_any = true;
+        }
+        if (self.pending_ups_n_downs.get(context_id)) |m| {
+            m.deinit();
+            self.a.destroy(m);
+            removed_any = true;
+        }
+        return removed_any;
+    }
+
     pub fn triggerIgnoresDelay(self: *const @This(), trigger: u128, frame: *InputFrame) bool {
         const keys = self.active_contexts.keys();
         var i: usize = keys.len;
