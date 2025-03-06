@@ -30,7 +30,7 @@ const MappingCouncil = ip.MappingCouncil;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
-mall: *const RenderMall,
+mall: *RenderMall,
 council: *MappingCouncil,
 
 inputs: InputMap = .{},
@@ -38,7 +38,7 @@ inputs: InputMap = .{},
 pub fn addInput(self: *@This(), name: []const u8, callback: Input.Callback) !bool {
     if (self.inputs.contains(name)) return false;
 
-    const input = try Input.create(self.a, self.mall, name, self.council, callback);
+    const input = try Input.create(self.a, self.mall, name, callback, self.council);
     try self.inputs.put(self.a, name, input);
     return true;
 }
@@ -52,7 +52,7 @@ pub fn render(self: *@This()) void {
 
 pub fn removeInput(self: *@This(), name: []const u8) bool {
     const input = self.inputs.get(name) orelse return false;
-    input.destroy(self.a, name, self.council);
+    input.destroy(name, self.council);
     return self.inputs.swapRemove(name);
 }
 
@@ -72,8 +72,9 @@ pub fn hideInput(self: *@This(), name: []const u8) !bool {
 
 pub fn deinit(self: *@This()) void {
     for (self.inputs.keys(), 0..) |context_id, i| {
-        self.inputs.values()[i].destroy(self.a, context_id, self.council);
+        self.inputs.values()[i].destroy(context_id, self.council);
     }
+    self.inputs.deinit(self.a);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Input
@@ -81,6 +82,7 @@ pub fn deinit(self: *@This()) void {
 const InputMap = std.StringArrayHashMapUnmanaged(*Input);
 
 const Input = struct {
+    a: Allocator,
     mall: *const RenderMall,
     source: *WindowSource,
     win: *Window,
@@ -98,6 +100,7 @@ const Input = struct {
         const screen_rect = mall.getScreenRect();
 
         self.* = Input{
+            .a = a,
             .mall = mall,
             .source = source,
             .win = try Window.create(a, null, source, .{
@@ -111,14 +114,14 @@ const Input = struct {
             .callback = callback,
         };
 
-        self.mapKeys(context_id, council);
+        try self.mapKeys(context_id, council);
         return self;
     }
 
-    fn insertChars(self: *@This(), a: Allocator, chars: []const u8, mall: *const RenderMall) !void {
-        const results = try self.source.insertChars(a, chars, self.window.cursor_manager) orelse return;
-        defer a.free(results);
-        try self.window.processEditResult(null, null, results, mall);
+    fn insertChars(self: *@This(), chars: []const u8, mall: *const RenderMall) !void {
+        const results = try self.source.insertChars(self.a, chars, self.win.cursor_manager) orelse return;
+        defer self.a.free(results);
+        try self.win.processEditResult(null, null, results, mall);
     }
 
     fn mapKeys(input: *@This(), cid: []const u8, c: *MappingCouncil) !void {
@@ -130,7 +133,7 @@ const Input = struct {
         target: *Input,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.target.insertChars(self.chars);
+            try self.target.insertChars(self.chars, self.target.mall);
         }
         pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, chars: []const u8) !ip.Callback {
             const self = try allocator.create(@This());
@@ -140,11 +143,11 @@ const Input = struct {
         }
     };
 
-    fn destroy(self: *@This(), a: Allocator, context_id: []const u8, c: *MappingCouncil) void {
+    fn destroy(self: *@This(), context_id: []const u8, c: *MappingCouncil) void {
         self.source.destroy();
         self.win.destroy(null, null);
         assert(c.unmapEntireContext(context_id));
-        a.destroy(self);
+        self.a.destroy(self);
     }
 };
 

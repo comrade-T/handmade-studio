@@ -286,21 +286,25 @@ pub const MappingCouncil = struct {
     pub fn unmapEntireContext(self: *@This(), context_id: []const u8) bool {
         var removed_any = false;
         if (self.downs.get(context_id)) |m| {
+            assert(self.downs.remove(context_id));
             m.deinit();
             self.a.destroy(m);
             removed_any = true;
         }
         if (self.ups.get(context_id)) |m| {
+            assert(self.ups.remove(context_id));
             m.deinit();
             self.a.destroy(m);
             removed_any = true;
         }
         if (self.ups_n_downs.get(context_id)) |m| {
+            assert(self.ups_n_downs.remove(context_id));
             m.deinit();
             self.a.destroy(m);
             removed_any = true;
         }
         if (self.pending_ups_n_downs.get(context_id)) |m| {
+            assert(self.pending_ups_n_downs.remove(context_id));
             m.deinit();
             self.a.destroy(m);
             removed_any = true;

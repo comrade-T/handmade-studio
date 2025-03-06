@@ -151,6 +151,13 @@ pub fn main() anyerror!void {
     var doi = DepartmentOfInputs{ .a = gpa, .council = council, .mall = &mall };
     defer doi.deinit();
 
+    _ = try doi.addInput("TESTING", .{
+        .f = testPrint,
+        .ctx = &mall,
+    });
+
+    _ = try doi.showInput("TESTING");
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -185,6 +192,9 @@ pub fn main() anyerror!void {
 
                 // FuzzyFinder
                 fuzzy_finder.render();
+
+                // DepartmentOfInputs
+                doi.render();
             }
         }
     }
@@ -195,4 +205,8 @@ pub fn main() anyerror!void {
 fn toggleBool(ctx: *anyopaque) !void {
     const ptr = @as(*bool, @ptrCast(@alignCast(ctx)));
     ptr.* = !ptr.*;
+}
+
+fn testPrint(_: *anyopaque, str: []const u8) !void {
+    std.debug.print("{s}\n", .{str});
 }
