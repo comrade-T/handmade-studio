@@ -25,6 +25,7 @@ const assert = std.debug.assert;
 
 const LangHub = @import("LangSuite").LangHub;
 pub const RenderMall = @import("RenderMall");
+pub const Rect = RenderMall.Rect;
 const AnchorPicker = @import("AnchorPicker");
 pub const WindowSource = @import("WindowSource");
 pub const Window = @import("Window");
@@ -40,7 +41,6 @@ const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
-pub const Rect = _qtree.Rect;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -187,7 +187,7 @@ pub fn updateAndRender(self: *@This()) !void {
 }
 
 pub fn render(self: *@This()) !void {
-    const screen_rect = self.getScreenRect();
+    const screen_rect = self.mall.getScreenRect();
 
     // NOTE: put a `defer` statement here and `WindowPicker.moveTo()` won't work
     // due to keyboard events get resolved before `render()` is called.
@@ -315,16 +315,6 @@ const WindowSourceHandler = struct {
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Info
 
 pub const WindowList = std.ArrayList(*Window);
-
-pub fn getScreenRect(self: *const @This()) Rect {
-    const view = self.mall.icb.getViewFromCamera(self.mall.camera);
-    return Rect{
-        .x = view.start.x,
-        .y = view.start.y,
-        .width = view.end.x - view.start.x,
-        .height = view.end.y - view.start.y,
-    };
-}
 
 pub fn getAllVisibleWindowsOnScreen(self: *const @This(), screen_rect: Rect, list: *WindowList) !void {
     try self.qtree.query(screen_rect, list, isWindowOnScreen);

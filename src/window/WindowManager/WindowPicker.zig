@@ -100,7 +100,7 @@ fn moveTo(self: *@This(), index: usize) void {
 
     /////////////////////////////
 
-    window.centerCameraAt(self.wm.getScreenRect(), self.wm.mall);
+    window.centerCameraAt(self.wm.mall.getScreenRect(), self.wm.mall);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

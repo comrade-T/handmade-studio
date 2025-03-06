@@ -148,7 +148,9 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
     }, zig_build_test_step);
 
-    const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{}, zig_build_test_step);
+    const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{
+        .{ .name = "RenderMall", .module = render_mall.module },
+    }, zig_build_test_step);
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },

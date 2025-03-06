@@ -254,3 +254,43 @@ pub fn viewEquals(a_: ScreenView, b_: ScreenView) bool {
 pub fn lerp(from: f32, to: f32, time: f32) f32 {
     return from + time * (to - from);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const Rect = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+
+    pub fn contains(self: Rect, other: Rect) bool {
+        return other.x >= self.x and other.x + other.width <= self.x + self.width and
+            other.y >= self.y and other.y + other.height <= self.y + self.height;
+    }
+
+    pub fn overlaps(self: Rect, other: Rect) bool {
+        return !(other.x > self.x + self.width or
+            other.x + other.width < self.x or
+            other.y > self.y + self.height or
+            other.y + other.height < self.y);
+    }
+
+    pub fn print(self: Rect) void {
+        std.debug.print("Rect --> x: {d} | y: {d} | w: {d} | h: {d}\n", .{
+            .x = self.x,
+            .y = self.y,
+            .width = self.width,
+            .height = self.height,
+        });
+    }
+};
+
+pub fn getScreenRect(self: *const @This()) Rect {
+    const view = self.icb.getViewFromCamera(self.camera);
+    return Rect{
+        .x = view.start.x,
+        .y = view.start.y,
+        .width = view.end.x - view.start.x,
+        .height = view.end.y - view.start.y,
+    };
+}

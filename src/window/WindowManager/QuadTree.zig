@@ -21,36 +21,9 @@ const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const assert = std.debug.assert;
+const Rect = @import("RenderMall").Rect;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const Rect = struct {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-
-    pub fn contains(self: Rect, other: Rect) bool {
-        return other.x >= self.x and other.x + other.width <= self.x + self.width and
-            other.y >= self.y and other.y + other.height <= self.y + self.height;
-    }
-
-    pub fn overlaps(self: Rect, other: Rect) bool {
-        return !(other.x > self.x + self.width or
-            other.x + other.width < self.x or
-            other.y > self.y + self.height or
-            other.y + other.height < self.y);
-    }
-
-    pub fn print(self: Rect) void {
-        std.debug.print("Rect --> x: {d} | y: {d} | w: {d} | h: {d}\n", .{
-            .x = self.x,
-            .y = self.y,
-            .width = self.width,
-            .height = self.height,
-        });
-    }
-};
 
 const QUADTREE_MAX_DEPTH = 16;
 

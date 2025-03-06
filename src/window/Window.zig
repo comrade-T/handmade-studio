@@ -37,7 +37,7 @@ const ScreenView = RenderMall.ScreenView;
 
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
-const Rect = _qtree.Rect;
+const Rect = RenderMall.Rect;
 
 const CursorManager = @import("CursorManager");
 const WindowCache = @import("Window/WindowCache.zig");
@@ -103,8 +103,8 @@ pub fn create(
     return self;
 }
 
-pub fn destroy(self: *@This(), a: ?Allocator, may_qtree: ?*QuadTree) void {
-    if (may_qtree) |qtree| assert(qtree.remove(a.?, self, self.getRect()).removed);
+pub fn destroy(self: *@This(), may_qtree_a: ?Allocator, may_qtree: ?*QuadTree) void {
+    if (may_qtree) |qtree| assert(qtree.remove(may_qtree_a.?, self, self.getRect()).removed);
     self.cached.deinit(self.a);
     self.subscribed_style_sets.deinit(self.a);
     self.cursor_manager.destroy();
