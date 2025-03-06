@@ -178,6 +178,12 @@ pub fn build(b: *std.Build) void {
         .{ .name = "QuadTree", .module = quad_tree.module },
     }, zig_build_test_step);
 
+    const department_of_inputs = addTestableModule(&bops, "src/components/DepartmentOfInputs.zig", &.{
+        .{ .name = "RenderMall", .module = render_mall.module },
+        .{ .name = "WindowSource", .module = window_source.module },
+        .{ .name = "Window", .module = window.module },
+    }, zig_build_test_step);
+
     ///////////////////////////// Fuzzy Finder
 
     const text_box = addTestableModule(&bops, "src/components/TextBox.zig", &.{
@@ -218,9 +224,12 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("ColorschemeStore", colorscheme_store.module);
         exe.root_module.addImport("RenderMall", render_mall.module);
         exe.root_module.addImport("WindowManager", window_manager.module);
+
         exe.root_module.addImport("FuzzyFinder", fuzzy_finder.module);
 
         exe.root_module.addImport("AnchorPicker", anchor_picker.module);
+
+        exe.root_module.addImport("DepartmentOfInputs", department_of_inputs.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));

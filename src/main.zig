@@ -166,19 +166,19 @@ pub fn main() anyerror!void {
             if (draw_fps) rl.drawFPS(10, 10);
 
             {
-                // AnchorPicker
-                anchor_picker.render();
-
-                // FuzzyFinder
-                fuzzy_finder.render();
-            }
-
-            {
                 rl.beginMode2D(smooth_cam.camera);
                 defer rl.endMode2D();
 
                 // update windows & render them via WindowManager
                 try wm.updateAndRender();
+            }
+
+            {
+                // AnchorPicker
+                anchor_picker.render();
+
+                // FuzzyFinder
+                fuzzy_finder.render();
             }
         }
     }
