@@ -35,10 +35,10 @@ council: *MappingCouncil,
 
 inputs: InputMap = .{},
 
-pub fn addInput(self: *@This(), name: []const u8, callback: Input.Callback) !bool {
+pub fn addInput(self: *@This(), name: []const u8, callbacks: Input.Callbacks) !bool {
     if (self.inputs.contains(name)) return false;
 
-    const input = try Input.create(self.a, self.mall, name, callback, self.council);
+    const input = try Input.create(self.a, self.mall, name, callbacks, self.council);
     try self.inputs.put(self.a, name, input);
     return true;
 }
@@ -86,14 +86,20 @@ const Input = struct {
     mall: *const RenderMall,
     source: *WindowSource,
     win: *Window,
-    callback: Callback,
+    callbacks: Callbacks,
 
     const Callback = struct {
         f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!void,
         ctx: *anyopaque,
     };
 
-    fn create(a: Allocator, mall: *const RenderMall, context_id: []const u8, callback: Callback, council: *MappingCouncil) !*@This() {
+    const Callbacks = struct {
+        onUpdate: ?Callback = null,
+        onConfirm: ?Callback = null,
+        onCancel: ?Callback = null,
+    };
+
+    fn create(a: Allocator, mall: *const RenderMall, context_id: []const u8, callbacks: Callbacks, council: *MappingCouncil) !*@This() {
         const self = try a.create(@This());
         const source = try WindowSource.create(a, .string, "", null);
 
@@ -111,21 +117,43 @@ const Input = struct {
                 .bordered = true,
                 .padding = .{ .bottom = 10, .left = 10, .top = 10, .right = 10 },
             }, mall),
-            .callback = callback,
+            .callbacks = callbacks,
         };
 
         try self.mapKeys(context_id, council);
         return self;
     }
 
+    fn mapKeys(input: *@This(), cid: []const u8, c: *MappingCouncil) !void {
+        try c.mapInsertCharacters(&.{cid}, input, InsertCharsCb.init);
+        try c.map(cid, &.{.backspace}, .{ .f = backspace, .ctx = input });
+    }
+
+    fn triggerCallback(self: *@This(), kind: enum { update, confirm, cancel }) !void {
+        const field = switch (kind) {
+            .update => self.callbacks.onUpdate,
+            .confirm => self.callbacks.onConfirm,
+            .cancel => self.callbacks.onCancel,
+        };
+        const cb = field orelse return;
+        const contents = try self.source.buf.ropeman.toString(self.a, .lf);
+        defer self.a.free(contents);
+        try cb.f(cb.ctx, contents);
+    }
+
     fn insertChars(self: *@This(), chars: []const u8, mall: *const RenderMall) !void {
         const results = try self.source.insertChars(self.a, chars, self.win.cursor_manager) orelse return;
         defer self.a.free(results);
         try self.win.processEditResult(null, null, results, mall);
+        try self.triggerCallback(.update);
     }
 
-    fn mapKeys(input: *@This(), cid: []const u8, c: *MappingCouncil) !void {
-        try c.mapInsertCharacters(&.{cid}, input, InsertCharsCb.init);
+    fn backspace(ctx: *anyopaque) !void {
+        const self = @as(*Input, @ptrCast(@alignCast(ctx)));
+        const result = try self.source.deleteRanges(self.a, self.win.cursor_manager, .backspace) orelse return;
+        defer self.a.free(result);
+        try self.win.processEditResult(null, null, result, self.mall);
+        try self.triggerCallback(.update);
     }
 
     const InsertCharsCb = struct {

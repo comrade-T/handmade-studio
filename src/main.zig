@@ -152,8 +152,10 @@ pub fn main() anyerror!void {
     defer doi.deinit();
 
     _ = try doi.addInput("TESTING", .{
-        .f = testPrint,
-        .ctx = &mall,
+        .onUpdate = .{
+            .f = testPrint,
+            .ctx = &mall,
+        },
     });
 
     _ = try doi.showInput("TESTING");
