@@ -33,6 +33,7 @@ const ip = @import("input_processor");
 const code_point = @import("code_point");
 const WindowManager = @import("WindowManager");
 const AnchorPicker = @import("AnchorPicker");
+const DepartmentOfInputs = @import("DepartmentOfInputs");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -48,13 +49,8 @@ pub fn mapKeys(ff: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(FI, &.{.escape}, .{ .f = FuzzyFinder.hide, .ctx = ff, .contexts = FI_TO_NORMAL });
     try c.map(NORMAL, &.{ .left_control, .f }, .{ .f = FuzzyFinder.show, .ctx = ff, .contexts = NORMAL_TO_FI, .require_clarity_afterwards = true });
 
-    // edit input
-    try c.mapInsertCharacters(&.{FI}, ff, InsertCharsCb.init);
-
-    try c.map(FI, &.{.backspace}, .{ .f = backspace, .ctx = ff });
     try c.map(FI, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = ff });
     try c.map(FI, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = ff });
-    try c.map(FI, &.{.enter}, .{ .f = confirmItemSelection, .ctx = ff, .contexts = FI_TO_NORMAL });
 
     // spawn
     const RelativeSpawnCb = struct {
@@ -102,6 +98,9 @@ visible: bool = false,
 limit: u16 = 100,
 selection_index: u16 = 0,
 
+x: f32 = 100,
+y: f32 = 100,
+
 path_arena: ArenaAllocator,
 match_arena: ArenaAllocator,
 path_list: PathList,
@@ -111,9 +110,12 @@ wm: *WindowManager,
 ap: *AnchorPicker,
 
 mall: *RenderMall,
-input: InputWindow,
+doi: *DepartmentOfInputs,
+needle: []const u8 = "",
 
-pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *RenderMall, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
+const INPUT_NAME = "fuzzy_finder"; // TODO: not hard code this
+
+pub fn create(a: Allocator, doi: *DepartmentOfInputs, mall: *RenderMall, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -127,14 +129,21 @@ pub fn create(a: Allocator, opts: Window.SpawnOptions, mall: *RenderMall, wm: *W
         .ap = ap,
 
         .mall = mall,
-        .input = try InputWindow.init(a, opts, mall),
+        .doi = doi,
     };
+
     try self.updateFilePaths();
+
+    assert(try doi.addInput(INPUT_NAME, .{
+        .onUpdate = .{ .ctx = self, .f = update },
+        .onConfirm = .{ .ctx = self, .f = confirm },
+    }));
+
     return self;
 }
 
 pub fn destroy(self: *@This()) void {
-    self.input.deinit();
+    assert(self.doi.removeInput(INPUT_NAME));
 
     self.path_list.deinit();
     self.path_arena.deinit();
@@ -148,32 +157,16 @@ pub fn destroy(self: *@This()) void {
 pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
     try self.updateFilePaths();
-    try self.updateResults();
+    try update(self, self.needle);
+    assert(try self.doi.showInput(INPUT_NAME));
     self.visible = true;
 }
 
 pub fn hide(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.visible = false;
-}
-
-pub fn confirmItemSelection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    assert(self.selection_index <= self.match_list.items.len -| 1);
-    const match = self.match_list.items[self.selection_index];
-    const path = self.path_list.items[match.path_index];
-
-    const x, const y = self.mall.icb.getScreenToWorld2D(
-        self.mall.camera,
-        self.ap.target_anchor.x,
-        self.ap.target_anchor.y,
-    );
-
-    try self.wm.spawnWindow(.file, path, .{
-        .pos = .{ .x = x, .y = y },
-        .subscribed_style_sets = &.{0},
-    }, true, true);
-
+    assert(try self.doi.hideInput(INPUT_NAME));
+    try self.doi.council.removeActiveContext(FI);
+    try self.doi.council.addActiveContext(NORMAL);
     self.visible = false;
 }
 
@@ -186,7 +179,7 @@ pub fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.Wind
         .subscribed_style_sets = &.{0},
     }, direction);
 
-    self.visible = false;
+    try hide(self);
 }
 
 pub fn nextItem(ctx: *anyopaque) !void {
@@ -207,7 +200,6 @@ fn keepSelectionIndexInBound(self: *@This()) void {
 
 pub fn render(self: *const @This()) void {
     if (!self.visible) return;
-    self.input.window.render(true, self.mall, null);
     self.renderResults(self.mall.rcb);
 }
 
@@ -219,9 +211,9 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
     const normal_color = 0xffffffff;
     const match_color = 0xf78c6cff;
 
-    const start_x = self.input.window.attr.pos.x;
+    const start_x = self.x;
     const y_distance_from_input = 100;
-    const start_y = self.input.window.attr.pos.y + y_distance_from_input;
+    const start_y = self.y + y_distance_from_input;
 
     var x: f32 = start_x;
     var y: f32 = start_y;
@@ -266,15 +258,18 @@ fn updateFilePaths(self: *@This()) !void {
     try appendFileNamesRelativeToCwd(&self.path_arena, ".", &self.path_list, true);
 }
 
-fn updateResults(self: *@This()) !void {
+fn update(ctx: *anyopaque, needle: []const u8) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     defer self.keepSelectionIndexInBound();
+
+    if (self.needle.len > 0) {
+        self.a.free(self.needle);
+        self.needle = try self.a.dupe(u8, needle);
+    }
 
     self.match_arena.deinit();
     self.match_arena = ArenaAllocator.init(self.a);
     self.match_list.clearRetainingCapacity();
-
-    const needle = try self.input.source.buf.ropeman.toString(self.a, .lf);
-    defer self.a.free(needle);
 
     // fuzzig will crash if needle is an empty string
     if (needle.len == 0) {
@@ -302,67 +297,25 @@ fn updateResults(self: *@This()) !void {
     std.mem.sort(Match, self.match_list.items, {}, Match.moreThan);
 }
 
-fn insertChars(self: *@This(), chars: []const u8) !void {
-    try self.input.insertChars(self.a, chars, self.mall);
-    try self.updateResults();
-}
-
-pub fn backspace(ctx: *anyopaque) !void {
+fn confirm(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.input.backspace(self.a, self.mall);
-    try self.updateResults();
+    assert(self.selection_index <= self.match_list.items.len -| 1);
+    const match = self.match_list.items[self.selection_index];
+    const path = self.path_list.items[match.path_index];
+
+    const x, const y = self.mall.icb.getScreenToWorld2D(
+        self.mall.camera,
+        self.ap.target_anchor.x,
+        self.ap.target_anchor.y,
+    );
+
+    try self.wm.spawnWindow(.file, path, .{
+        .pos = .{ .x = x, .y = y },
+        .subscribed_style_sets = &.{0},
+    }, true, true);
+
+    try hide(self);
 }
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-pub const InsertCharsCb = struct {
-    chars: []const u8,
-    target: *FuzzyFinder,
-    fn f(ctx: *anyopaque) !void {
-        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-        try self.target.insertChars(self.chars);
-    }
-    pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, chars: []const u8) !ip.Callback {
-        const self = try allocator.create(@This());
-        const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
-        self.* = .{ .chars = chars, .target = target };
-        return ip.Callback{ .f = @This().f, .ctx = self, .quick = true };
-    }
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const InputWindow = struct {
-    source: *WindowSource,
-    window: *Window,
-
-    fn init(a: Allocator, opts: Window.SpawnOptions, mall: *const RenderMall) !InputWindow {
-        var no_culling_opts = opts;
-        no_culling_opts.culling = false;
-        const source = try WindowSource.create(a, .string, "", null);
-        return InputWindow{
-            .source = source,
-            .window = try Window.create(a, null, source, no_culling_opts, mall),
-        };
-    }
-
-    fn deinit(self: *@This()) void {
-        self.source.destroy();
-        self.window.destroy(null, null);
-    }
-
-    fn insertChars(self: *@This(), a: Allocator, chars: []const u8, mall: *const RenderMall) !void {
-        const results = try self.source.insertChars(a, chars, self.window.cursor_manager) orelse return;
-        defer a.free(results);
-        try self.window.processEditResult(null, null, results, mall);
-    }
-
-    fn backspace(self: *@This(), a: Allocator, mall: *const RenderMall) !void {
-        const result = try self.source.deleteRanges(a, self.window.cursor_manager, .backspace) orelse return;
-        defer a.free(result);
-        try self.window.processEditResult(null, null, result, mall);
-    }
-};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

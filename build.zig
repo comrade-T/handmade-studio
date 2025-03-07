@@ -204,6 +204,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "WindowManager", .module = window_manager.module },
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
+        .{ .name = "DepartmentOfInputs", .module = department_of_inputs.module },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables

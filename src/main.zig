@@ -141,24 +141,22 @@ pub fn main() anyerror!void {
     defer wm.destroy();
     try wm.mapKeys(&anchor_picker, council);
 
-    // FuzzyFinder
-    var fuzzy_finder = try FuzzyFinder.create(gpa, .{ .pos = .{ .x = 100, .y = 100 } }, &mall, wm, &anchor_picker);
-    defer fuzzy_finder.destroy();
-    try fuzzy_finder.mapKeys(council);
-
     ///////////////////////////// Experimental
 
     var doi = DepartmentOfInputs{ .a = gpa, .council = council, .mall = &mall };
     defer doi.deinit();
 
     _ = try doi.addInput("TESTING", .{
-        .onUpdate = .{
-            .f = testPrint,
-            .ctx = &mall,
-        },
+        .onUpdate = .{ .f = testPrint, .ctx = &mall },
+        .onConfirm = .{ .f = printConfirm, .ctx = &mall },
     });
 
-    _ = try doi.showInput("TESTING");
+    // _ = try doi.showInput("TESTING");
+
+    // FuzzyFinder
+    var fuzzy_finder = try FuzzyFinder.create(gpa, &doi, &mall, wm, &anchor_picker);
+    defer fuzzy_finder.destroy();
+    try fuzzy_finder.mapKeys(council);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -211,4 +209,8 @@ fn toggleBool(ctx: *anyopaque) !void {
 
 fn testPrint(_: *anyopaque, str: []const u8) !void {
     std.debug.print("{s}\n", .{str});
+}
+
+fn printConfirm(_: *anyopaque, _: []const u8) !void {
+    std.debug.print("CONFIRMED!\n", .{});
 }

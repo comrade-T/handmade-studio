@@ -121,12 +121,15 @@ const Input = struct {
         };
 
         try self.mapKeys(context_id, council);
+        self.win.close();
         return self;
     }
 
     fn mapKeys(input: *@This(), cid: []const u8, c: *MappingCouncil) !void {
         try c.mapInsertCharacters(&.{cid}, input, InsertCharsCb.init);
         try c.map(cid, &.{.backspace}, .{ .f = backspace, .ctx = input });
+        try c.map(cid, &.{.enter}, .{ .f = confirm, .ctx = input });
+        try c.map(cid, &.{.escape}, .{ .f = cancel, .ctx = input });
     }
 
     fn triggerCallback(self: *@This(), kind: enum { update, confirm, cancel }) !void {
@@ -154,6 +157,16 @@ const Input = struct {
         defer self.a.free(result);
         try self.win.processEditResult(null, null, result, self.mall);
         try self.triggerCallback(.update);
+    }
+
+    fn confirm(ctx: *anyopaque) !void {
+        const self = @as(*Input, @ptrCast(@alignCast(ctx)));
+        try self.triggerCallback(.confirm);
+    }
+
+    fn cancel(ctx: *anyopaque) !void {
+        const self = @as(*Input, @ptrCast(@alignCast(ctx)));
+        try self.triggerCallback(.cancel);
     }
 
     const InsertCharsCb = struct {
