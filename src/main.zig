@@ -146,15 +146,8 @@ pub fn main() anyerror!void {
     var doi = DepartmentOfInputs{ .a = gpa, .council = council, .mall = &mall };
     defer doi.deinit();
 
-    _ = try doi.addInput("TESTING", .{
-        .onUpdate = .{ .f = testPrint, .ctx = &mall },
-        .onConfirm = .{ .f = printConfirm, .ctx = &mall },
-    });
-
-    // _ = try doi.showInput("TESTING");
-
     // FuzzyFinder
-    var fuzzy_finder = try FuzzyFinder.create(gpa, &doi, &mall, wm, &anchor_picker);
+    var fuzzy_finder = try FuzzyFinder.create(gpa, &doi, wm, &anchor_picker);
     defer fuzzy_finder.destroy();
     try fuzzy_finder.mapKeys(council);
 
@@ -205,12 +198,4 @@ pub fn main() anyerror!void {
 fn toggleBool(ctx: *anyopaque) !void {
     const ptr = @as(*bool, @ptrCast(@alignCast(ctx)));
     ptr.* = !ptr.*;
-}
-
-fn testPrint(_: *anyopaque, str: []const u8) !void {
-    std.debug.print("{s}\n", .{str});
-}
-
-fn printConfirm(_: *anyopaque, _: []const u8) !void {
-    std.debug.print("CONFIRMED!\n", .{});
 }

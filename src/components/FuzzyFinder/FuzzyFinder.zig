@@ -26,8 +26,6 @@ const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const assert = std.debug.assert;
 
-const WindowSource = @import("WindowSource");
-const Window = @import("Window");
 const RenderMall = @import("RenderMall");
 const ip = @import("input_processor");
 const code_point = @import("code_point");
@@ -109,13 +107,12 @@ match_list: MatchList,
 wm: *WindowManager,
 ap: *AnchorPicker,
 
-mall: *RenderMall,
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
-const INPUT_NAME = "fuzzy_finder"; // TODO: not hard code this
+const INPUT_NAME = "fuzzy_finder";
 
-pub fn create(a: Allocator, doi: *DepartmentOfInputs, mall: *RenderMall, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
+pub fn create(a: Allocator, doi: *DepartmentOfInputs, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -128,16 +125,21 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, mall: *RenderMall, wm: *Wi
         .wm = wm,
         .ap = ap,
 
-        .mall = mall,
         .doi = doi,
     };
 
     try self.updateFilePaths();
 
-    assert(try doi.addInput(INPUT_NAME, .{
-        .onUpdate = .{ .ctx = self, .f = update },
-        .onConfirm = .{ .ctx = self, .f = confirm },
-    }));
+    assert(try doi.addInput(
+        INPUT_NAME,
+        .{
+            .pos = .{ .x = self.x, .y = self.y },
+        },
+        .{
+            .onUpdate = .{ .ctx = self, .f = update },
+            .onConfirm = .{ .ctx = self, .f = confirm },
+        },
+    ));
 
     return self;
 }
@@ -200,11 +202,11 @@ fn keepSelectionIndexInBound(self: *@This()) void {
 
 pub fn render(self: *const @This()) void {
     if (!self.visible) return;
-    self.renderResults(self.mall.rcb);
+    self.renderResults(self.doi.mall.rcb);
 }
 
 fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallbacks) void {
-    const font = self.mall.font_store.getDefaultFont() orelse unreachable;
+    const font = self.doi.mall.font_store.getDefaultFont() orelse unreachable;
     const font_size = 30;
     const default_glyph = font.glyph_map.get('?') orelse unreachable;
 
@@ -303,8 +305,8 @@ fn confirm(ctx: *anyopaque, _: []const u8) !void {
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];
 
-    const x, const y = self.mall.icb.getScreenToWorld2D(
-        self.mall.camera,
+    const x, const y = self.doi.mall.icb.getScreenToWorld2D(
+        self.doi.mall.camera,
         self.ap.target_anchor.x,
         self.ap.target_anchor.y,
     );

@@ -35,10 +35,10 @@ council: *MappingCouncil,
 
 inputs: InputMap = .{},
 
-pub fn addInput(self: *@This(), name: []const u8, callbacks: Input.Callbacks) !bool {
+pub fn addInput(self: *@This(), name: []const u8, win_opts: Window.SpawnOptions, callbacks: Input.Callbacks) !bool {
     if (self.inputs.contains(name)) return false;
 
-    const input = try Input.create(self.a, self.mall, name, callbacks, self.council);
+    const input = try Input.create(self.a, win_opts, self, name, callbacks);
     try self.inputs.put(self.a, name, input);
     return true;
 }
@@ -46,7 +46,7 @@ pub fn addInput(self: *@This(), name: []const u8, callbacks: Input.Callbacks) !b
 pub fn render(self: *@This()) void {
     for (self.inputs.values()) |input| {
         if (input.win.closed) continue;
-        input.win.render(false, self.mall, null);
+        input.win.render(true, self.mall, null);
     }
 }
 
@@ -99,28 +99,19 @@ const Input = struct {
         onCancel: ?Callback = null,
     };
 
-    fn create(a: Allocator, mall: *const RenderMall, context_id: []const u8, callbacks: Callbacks, council: *MappingCouncil) !*@This() {
+    fn create(a: Allocator, win_opts: Window.SpawnOptions, doi: *const DepartmentOfInputs, context_id: []const u8, callbacks: Callbacks) !*@This() {
         const self = try a.create(@This());
         const source = try WindowSource.create(a, .string, "", null);
 
-        const screen_rect = mall.getScreenRect();
-
         self.* = Input{
             .a = a,
-            .mall = mall,
+            .mall = doi.mall,
             .source = source,
-            .win = try Window.create(a, null, source, .{
-                .pos = .{
-                    .x = screen_rect.x + screen_rect.width / 2,
-                    .y = screen_rect.y + screen_rect.height / 2,
-                },
-                .bordered = true,
-                .padding = .{ .bottom = 10, .left = 10, .top = 10, .right = 10 },
-            }, mall),
+            .win = try Window.create(a, null, source, win_opts, doi.mall),
             .callbacks = callbacks,
         };
 
-        try self.mapKeys(context_id, council);
+        try self.mapKeys(context_id, doi.council);
         self.win.close();
         return self;
     }
