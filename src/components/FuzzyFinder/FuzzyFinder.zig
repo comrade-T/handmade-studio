@@ -109,13 +109,14 @@ ap: *AnchorPicker,
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
+kind: utils.AppendFileNamesRequest.Kind = .files,
+
 const INPUT_NAME = "fuzzy_finder";
 
 pub fn create(a: Allocator, doi: *DepartmentOfInputs, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
-
         .path_arena = ArenaAllocator.init(a),
         .match_arena = ArenaAllocator.init(a),
         .path_list = try PathList.initCapacity(a, 128),
@@ -123,11 +124,8 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, wm: *WindowManager, ap: *A
 
         .wm = wm,
         .ap = ap,
-
         .doi = doi,
     };
-
-    try self.updateFilePaths();
 
     assert(try doi.addInput(
         INPUT_NAME,
@@ -257,7 +255,12 @@ fn updateFilePaths(self: *@This()) !void {
     self.path_arena.deinit();
     self.path_arena = ArenaAllocator.init(self.a);
     self.path_list.clearRetainingCapacity();
-    try utils.appendFileNamesRelativeToCwd(&self.path_arena, ".", &self.path_list, true);
+    try utils.appendFileNamesRelativeToCwd(.{
+        .arena = &self.path_arena,
+        .sub_path = ".",
+        .list = &self.path_list,
+        .kind = self.kind,
+    });
 }
 
 fn cacheNeedle(self: *@This(), needle: []const u8) !void {

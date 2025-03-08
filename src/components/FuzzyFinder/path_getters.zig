@@ -52,30 +52,53 @@ fn getGitIgnorePatternsOfCWD(a: Allocator) !ArrayList([]const u8) {
     return patterns_list;
 }
 
-pub fn appendFileNamesRelativeToCwd(arena: *ArenaAllocator, sub_path: []const u8, list: *ArrayList([]const u8), recursive: bool) !void {
-    const patterns = try getGitIgnorePatternsOfCWD(arena.allocator());
+pub const AppendFileNamesRequest = struct {
+    arena: *ArenaAllocator,
+    sub_path: []const u8,
+    list: *ArrayList([]const u8),
+    recursive: bool = true,
+    kind: Kind,
 
-    var dir = try std.fs.cwd().openDir(sub_path, .{ .iterate = true });
+    pub const Kind = enum { files, directories };
+};
+
+pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
+    const patterns = try getGitIgnorePatternsOfCWD(req.arena.allocator());
+
+    var dir = try std.fs.cwd().openDir(req.sub_path, .{ .iterate = true });
     defer dir.close();
     errdefer dir.close();
 
     var iter = dir.iterate();
     iter_loop: while (try iter.next()) |entry| {
         const short_path = if (entry.kind == .directory)
-            try std.fmt.allocPrint(arena.allocator(), "{s}/", .{entry.name})
+            try std.fmt.allocPrint(req.arena.allocator(), "{s}/", .{entry.name})
         else
-            try std.fmt.allocPrint(arena.allocator(), "{s}", .{entry.name});
+            try std.fmt.allocPrint(req.arena.allocator(), "{s}", .{entry.name});
 
-        const relative_path = if (std.mem.eql(u8, sub_path, "."))
+        const relative_path = if (std.mem.eql(u8, req.sub_path, "."))
             short_path
         else
-            try std.fmt.allocPrint(arena.allocator(), "{s}{s}", .{ sub_path, short_path });
+            try std.fmt.allocPrint(req.arena.allocator(), "{s}{s}", .{ req.sub_path, short_path });
 
         for (patterns.items) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
         if (relative_path.len == 0) continue;
 
-        if (entry.kind == .file) try list.append(relative_path);
-        if (recursive and entry.kind == .directory) try appendFileNamesRelativeToCwd(arena, relative_path, list, true);
+        if ((req.kind == .files and entry.kind == .file) or
+            (req.kind == .directories and entry.kind == .directory))
+        {
+            try req.list.append(relative_path);
+        }
+
+        if (req.recursive and entry.kind == .directory) {
+            try appendFileNamesRelativeToCwd(.{
+                .arena = req.arena,
+                .sub_path = relative_path,
+                .list = req.list,
+                .recursive = true,
+                .kind = req.kind,
+            });
+        }
     }
 }
 
@@ -180,7 +203,11 @@ test "get file names and fuzzy find over them" {
     {
         var paths = ArrayList([]const u8).init(arena.allocator());
         defer paths.deinit();
-        try appendFileNamesRelativeToCwd(&arena, ".", &paths, true);
+        try appendFileNamesRelativeToCwd(.{
+            .arena = &arena,
+            .sub_path = ".",
+            .list = &paths,
+        });
 
         var match_score_list = std.AutoArrayHashMap(i32, []const u8).init(testing_allocator);
         defer match_score_list.deinit();
