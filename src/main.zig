@@ -32,7 +32,7 @@ const RenderMall = @import("RenderMall");
 const LangSuite = @import("LangSuite");
 const WindowManager = @import("WindowManager");
 
-const FuzzyFinder = @import("FuzzyFinder");
+const fuzzy_finders = @import("fuzzy_finders");
 const AnchorPicker = @import("AnchorPicker");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 
@@ -147,9 +147,8 @@ pub fn main() anyerror!void {
     defer doi.deinit();
 
     // FuzzyFinder
-    var fuzzy_finder = try FuzzyFinder.create(gpa, &doi, wm, &anchor_picker);
-    defer fuzzy_finder.destroy();
-    try fuzzy_finder.mapKeys(council);
+    var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, wm, &anchor_picker, &doi);
+    defer fuzzy_file_opener.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -184,7 +183,7 @@ pub fn main() anyerror!void {
                 anchor_picker.render();
 
                 // FuzzyFinder
-                fuzzy_finder.render();
+                fuzzy_file_opener.finder.render();
 
                 // DepartmentOfInputs
                 doi.render();

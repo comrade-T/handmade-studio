@@ -27,74 +27,16 @@ const assert = std.debug.assert;
 const RenderMall = @import("RenderMall");
 const ip = @import("input_processor");
 const code_point = @import("code_point");
-const WindowManager = @import("WindowManager");
-const AnchorPicker = @import("AnchorPicker");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const utils = @import("path_getters.zig");
 
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const NORMAL = "normal";
-const FI = "fuzzy_finder_insert";
-
-const NORMAL_TO_FI = ip.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{FI} };
-const FI_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{FI}, .add = &.{NORMAL} };
-
-pub fn mapKeys(ff: *@This(), c: *ip.MappingCouncil) !void {
-
-    // mode enter & exit
-    try c.map(FI, &.{.escape}, .{ .f = FuzzyFinder.hide, .ctx = ff, .contexts = FI_TO_NORMAL });
-    try c.map(NORMAL, &.{ .left_control, .f }, .{ .f = FuzzyFinder.show, .ctx = ff, .contexts = NORMAL_TO_FI, .require_clarity_afterwards = true });
-
-    try c.map(FI, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = ff });
-    try c.map(FI, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = ff });
-
-    // spawn
-    const RelativeSpawnCb = struct {
-        direction: WindowManager.WindowRelativeDirection,
-        target: *FuzzyFinder,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            try self.target.spawnRelativeToActiveWindow(self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
-            const self = try allocator.create(@This());
-            const target = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
-            self.* = .{ .direction = direction, .target = target };
-            return ip.Callback{ .f = @This().f, .ctx = self, .contexts = FI_TO_NORMAL };
-        }
-    };
-    try c.map(FI, &.{ .left_control, .v }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .right));
-    try c.map(FI, &.{ .left_control, .left_shift, .v }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .left));
-    try c.map(FI, &.{ .left_shift, .left_control, .v }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .left));
-    try c.map(FI, &.{ .left_control, .x }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .bottom));
-    try c.map(FI, &.{ .left_control, .left_shift, .x }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .top));
-    try c.map(FI, &.{ .left_shift, .left_control, .x }, try RelativeSpawnCb.init(c.arena.allocator(), ff, .top));
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const PathList = ArrayList([]const u8);
-const MatchList = ArrayList(Match);
-
-const Match = struct {
-    score: i32,
-    matches: []const usize,
-    path_index: usize,
-
-    pub fn moreThan(_: void, a: Match, b: Match) bool {
-        return a.score > b.score;
-    }
-};
-
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Public
 
 a: Allocator,
 visible: bool = false,
 
 limit: u16 = 100,
 selection_index: u16 = 0,
-
 x: f32 = 100,
 y: f32 = 100,
 
@@ -103,17 +45,22 @@ match_arena: ArenaAllocator,
 path_list: PathList,
 match_list: MatchList,
 
-wm: *WindowManager,
-ap: *AnchorPicker,
-
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
 kind: utils.AppendFileNamesRequest.Kind = .files,
+input_name: []const u8,
 
-const INPUT_NAME = "fuzzy_finder";
+callbacks: Callbacks,
 
-pub fn create(a: Allocator, doi: *DepartmentOfInputs, wm: *WindowManager, ap: *AnchorPicker) !*FuzzyFinder {
+pub fn mapKeys(self: *@This()) !void {
+    const c = self.doi.council;
+    try c.map(self.input_name, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = self });
+    try c.map(self.input_name, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = self });
+    try c.map(self.input_name, &.{.escape}, .{ .f = hide, .ctx = self });
+}
+
+pub fn create(a: Allocator, doi: *DepartmentOfInputs, input_name: []const u8, callbacks: Callbacks) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -121,14 +68,13 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, wm: *WindowManager, ap: *A
         .match_arena = ArenaAllocator.init(a),
         .path_list = try PathList.initCapacity(a, 128),
         .match_list = MatchList.init(a),
-
-        .wm = wm,
-        .ap = ap,
         .doi = doi,
+        .callbacks = callbacks,
+        .input_name = input_name,
     };
 
     assert(try doi.addInput(
-        INPUT_NAME,
+        self.input_name,
         .{
             .pos = .{ .x = self.x, .y = self.y },
         },
@@ -138,11 +84,13 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, wm: *WindowManager, ap: *A
         },
     ));
 
+    try self.mapKeys();
+
     return self;
 }
 
 pub fn destroy(self: *@This()) void {
-    assert(self.doi.removeInput(INPUT_NAME));
+    assert(self.doi.removeInput(self.input_name));
     if (self.needle.len > 0) self.a.free(self.needle);
 
     self.path_list.deinit();
@@ -158,28 +106,15 @@ pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
     try self.updateFilePaths();
     try update(self, self.needle);
-    assert(try self.doi.showInput(INPUT_NAME));
+    assert(try self.doi.showInput(self.input_name));
     self.visible = true;
 }
 
 pub fn hide(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    assert(try self.doi.hideInput(INPUT_NAME));
-    try self.doi.council.removeActiveContext(FI);
-    try self.doi.council.addActiveContext(NORMAL);
+    assert(try self.doi.hideInput(self.input_name));
+    if (self.callbacks.onHide) |onHide| try onHide.f(onHide.ctx, self.needle);
     self.visible = false;
-}
-
-pub fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) !void {
-    assert(self.selection_index <= self.match_list.items.len -| 1);
-    const match = self.match_list.items[self.selection_index];
-    const path = self.path_list.items[match.path_index];
-
-    try self.wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
-        .subscribed_style_sets = &.{0},
-    }, direction);
-
-    try hide(self);
 }
 
 pub fn nextItem(ctx: *anyopaque) !void {
@@ -192,11 +127,14 @@ pub fn prevItem(ctx: *anyopaque) !void {
     self.selection_index -|= 1;
 }
 
-fn keepSelectionIndexInBound(self: *@This()) void {
-    self.selection_index = @min(self.match_list.items.len -| 1, self.selection_index);
+pub fn getSelectedPath(self: *@This()) []const u8 {
+    assert(self.selection_index <= self.match_list.items.len -| 1);
+    const match = self.match_list.items[self.selection_index];
+    const path = self.path_list.items[match.path_index];
+    return path;
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Render
 
 pub fn render(self: *const @This()) void {
     if (!self.visible) return;
@@ -249,31 +187,17 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Internal
 
-fn updateFilePaths(self: *@This()) !void {
-    self.path_arena.deinit();
-    self.path_arena = ArenaAllocator.init(self.a);
-    self.path_list.clearRetainingCapacity();
-    try utils.appendFileNamesRelativeToCwd(.{
-        .arena = &self.path_arena,
-        .sub_path = ".",
-        .list = &self.path_list,
-        .kind = self.kind,
-    });
-}
-
-fn cacheNeedle(self: *@This(), needle: []const u8) !void {
-    const duped_needle = try self.a.dupe(u8, needle);
-    if (self.needle.len > 0) self.a.free(self.needle);
-    self.needle = duped_needle;
-}
-
-fn update(ctx: *anyopaque, needle: []const u8) !void {
+fn update(ctx: *anyopaque, new_needle: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    defer self.keepSelectionIndexInBound();
+    try self.updateInternal(new_needle);
+    if (self.callbacks.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, self.needle);
+}
 
-    try self.cacheNeedle(needle);
+fn updateInternal(self: *@This(), new_needle: []const u8) !void {
+    defer self.keepSelectionIndexInBound();
+    try self.cacheNeedle(new_needle);
 
     self.match_arena.deinit();
     self.match_arena = ArenaAllocator.init(self.a);
@@ -307,23 +231,61 @@ fn update(ctx: *anyopaque, needle: []const u8) !void {
 
 fn confirm(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    assert(self.selection_index <= self.match_list.items.len -| 1);
-    const match = self.match_list.items[self.selection_index];
-    const path = self.path_list.items[match.path_index];
-
-    const x, const y = self.doi.mall.icb.getScreenToWorld2D(
-        self.doi.mall.camera,
-        self.ap.target_anchor.x,
-        self.ap.target_anchor.y,
-    );
-
-    try self.wm.spawnWindow(.file, path, .{
-        .pos = .{ .x = x, .y = y },
-        .subscribed_style_sets = &.{0},
-    }, true, true);
-
+    if (self.callbacks.onConfirm) |onConfirm| try onConfirm.f(onConfirm.ctx, self.needle);
     try hide(self);
 }
+
+fn updateFilePaths(self: *@This()) !void {
+    self.path_arena.deinit();
+    self.path_arena = ArenaAllocator.init(self.a);
+    self.path_list.clearRetainingCapacity();
+    try utils.appendFileNamesRelativeToCwd(.{
+        .arena = &self.path_arena,
+        .sub_path = ".",
+        .list = &self.path_list,
+        .kind = self.kind,
+    });
+}
+
+fn cacheNeedle(self: *@This(), needle: []const u8) !void {
+    const duped_needle = try self.a.dupe(u8, needle);
+    if (self.needle.len > 0) self.a.free(self.needle);
+    self.needle = duped_needle;
+}
+
+fn keepSelectionIndexInBound(self: *@This()) void {
+    self.selection_index = @min(self.match_list.items.len -| 1, self.selection_index);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Types
+
+const PathList = ArrayList([]const u8);
+const MatchList = ArrayList(Match);
+
+const Match = struct {
+    score: i32,
+    matches: []const usize,
+    path_index: usize,
+
+    pub fn moreThan(_: void, a: Match, b: Match) bool {
+        return a.score > b.score;
+    }
+};
+
+/////////////////////////////
+
+const Callbacks = struct {
+    onUpdate: ?Callback = null,
+    onConfirm: ?Callback = null,
+    onCancel: ?Callback = null,
+    onHide: ?Callback = null,
+    onShow: ?Callback = null,
+};
+
+const Callback = struct {
+    f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!void,
+    ctx: *anyopaque,
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

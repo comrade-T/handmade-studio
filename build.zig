@@ -195,7 +195,7 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = text_box;
 
-    const fuzzy_finder = addTestableModule(&bops, "src/components/FuzzyFinder/FuzzyFinder.zig", &.{
+    const fuzzy_finders = addTestableModule(&bops, "src/components/FuzzyFinder/fuzzy_finders.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
         .{ .name = "WindowSource", .module = window_source.module },
         .{ .name = "Window", .module = window.module },
@@ -227,7 +227,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("RenderMall", render_mall.module);
         exe.root_module.addImport("WindowManager", window_manager.module);
 
-        exe.root_module.addImport("FuzzyFinder", fuzzy_finder.module);
+        exe.root_module.addImport("fuzzy_finders", fuzzy_finders.module);
 
         exe.root_module.addImport("AnchorPicker", anchor_picker.module);
 
