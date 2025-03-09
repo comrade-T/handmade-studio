@@ -35,13 +35,14 @@ a: Allocator,
 finder: *FuzzyFinder,
 new_file_origin: []const u8 = "",
 
-pub fn mapKeys(ffo: *@This(), c: *ip.MappingCouncil) !void {
+pub fn mapKeys(ffc: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .left_control, .s }, .{
         .f = FuzzyFinder.show,
-        .ctx = ffo.finder,
+        .ctx = ffc.finder,
         .contexts = .{ .remove = &.{NORMAL}, .add = &.{FFC} },
         .require_clarity_afterwards = true,
     });
+    try c.map(FFC, &.{ .left_alt, .c }, .{ .f = forceConfirm, .ctx = ffc });
 }
 
 pub fn create(a: Allocator, doi: *DepartmentOfInputs) !*FuzzyFileCreator {
@@ -78,8 +79,13 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     }
 
     try createFile(self.new_file_origin, input_contents);
-    std.debug.print("created '{s}' successfully\n", .{input_contents});
     return true;
+}
+
+fn forceConfirm(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try createFile("", self.finder.needle);
+    try FuzzyFinder.hide(self.finder);
 }
 
 fn onHide(ctx: *anyopaque, _: []const u8) !void {
@@ -109,13 +115,16 @@ fn createFile(origin_: []const u8, new_file_path: []const u8) !void {
 
     while (split.next()) |part| {
         if (split.peek() == null) {
+            if (part.len == 0) break;
             var file = try dir.createFile(part, .{});
             defer file.close();
             break;
         }
-        try dir.makeDir(part);
+        dir.makeDir(part) catch {};
         const new_dir = try dir.openDir(part, .{});
         dir.close();
         dir = new_dir;
     }
+
+    std.debug.print("created '{s}' successfully\n", .{new_file_path});
 }
