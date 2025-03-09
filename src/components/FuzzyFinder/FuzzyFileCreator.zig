@@ -33,6 +33,7 @@ const FFC = "FuzzyFileCreator";
 
 a: Allocator,
 finder: *FuzzyFinder,
+new_file_origin: []const u8 = "",
 
 pub fn mapKeys(ffo: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .left_control, .s }, .{
@@ -59,6 +60,10 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs) !*FuzzyFileCreator {
 }
 
 pub fn destroy(self: *@This()) void {
+    if (self.new_file_origin.len > 0) {
+        self.a.free(self.new_file_origin);
+        self.new_file_origin = "";
+    }
     self.finder.destroy();
     self.a.destroy(self);
 }
@@ -70,16 +75,44 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
 
     if (self.finder.getSelectedPath()) |dir_path| {
         assert(try self.finder.doi.replaceInputContent(FFC, dir_path));
+        self.new_file_origin = try self.a.dupe(u8, dir_path);
         return false;
     }
 
-    std.debug.print("should create new file with path: '{s}'\n", .{input_contents});
-
-    return false;
+    assert(self.new_file_origin.len > 0);
+    try createFile(self.new_file_origin, input_contents);
+    std.debug.print("created '{s}' successfully\n", .{input_contents});
+    return true;
 }
 
 fn onHide(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.new_file_origin.len > 0) {
+        self.a.free(self.new_file_origin);
+        self.new_file_origin = "";
+    }
     try self.finder.doi.council.removeActiveContext(FFC);
     try self.finder.doi.council.addActiveContext(NORMAL);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn createFile(origin: []const u8, new_file_path: []const u8) !void {
+    const new_part = new_file_path[origin.len..];
+    var split = std.mem.split(u8, new_part, "/");
+
+    var dir = try std.fs.cwd().openDir(origin, .{});
+    defer dir.close();
+
+    while (split.next()) |part| {
+        if (split.peek() == null) {
+            var file = try dir.createFile(part, .{});
+            defer file.close();
+            break;
+        }
+        try dir.makeDir(part);
+        const new_dir = try dir.openDir(part, .{});
+        dir.close();
+        dir = new_dir;
+    }
 }
