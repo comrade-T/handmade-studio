@@ -60,10 +60,7 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs) !*FuzzyFileCreator {
 }
 
 pub fn destroy(self: *@This()) void {
-    if (self.new_file_origin.len > 0) {
-        self.a.free(self.new_file_origin);
-        self.new_file_origin = "";
-    }
+    self.cleanUpNewFileOrigin();
     self.finder.destroy();
     self.a.destroy(self);
 }
@@ -74,12 +71,12 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
     if (self.finder.getSelectedPath()) |dir_path| {
+        self.cleanUpNewFileOrigin();
         assert(try self.finder.doi.replaceInputContent(FFC, dir_path));
         self.new_file_origin = try self.a.dupe(u8, dir_path);
         return false;
     }
 
-    assert(self.new_file_origin.len > 0);
     try createFile(self.new_file_origin, input_contents);
     std.debug.print("created '{s}' successfully\n", .{input_contents});
     return true;
@@ -87,12 +84,16 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
 
 fn onHide(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.cleanUpNewFileOrigin();
+    try self.finder.doi.council.removeActiveContext(FFC);
+    try self.finder.doi.council.addActiveContext(NORMAL);
+}
+
+fn cleanUpNewFileOrigin(self: *@This()) void {
     if (self.new_file_origin.len > 0) {
         self.a.free(self.new_file_origin);
         self.new_file_origin = "";
     }
-    try self.finder.doi.council.removeActiveContext(FFC);
-    try self.finder.doi.council.addActiveContext(NORMAL);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

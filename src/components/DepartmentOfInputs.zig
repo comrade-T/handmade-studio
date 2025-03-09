@@ -74,18 +74,23 @@ pub fn replaceInputContent(self: *@This(), input_name: []const u8, new_content: 
     const input = self.inputs.get(input_name) orelse return false;
 
     {
-        const last_linenr = input.source.buf.ropeman.getNumOfLines() - 1;
-        const del_points = try input.source.buf.ropeman.deleteRanges(self.a, &.{.{
-            .start = .{ .line = 0, .col = 0 },
-            .end = .{
-                .line = last_linenr,
-                .col = input.source.buf.ropeman.getNumOfCharsInLine(last_linenr),
-            },
-        }});
-        self.a.free(del_points);
+        // make selection
+        input.win.cursor_manager.moveUp(std.math.maxInt(usize), &input.source.buf.ropeman);
+        input.win.cursor_manager.moveToBeginningOfLine(&input.source.buf.ropeman);
+        input.win.cursor_manager.activateRangeMode();
+        input.win.cursor_manager.moveDown(std.math.maxInt(usize), &input.source.buf.ropeman);
+        input.win.cursor_manager.moveToEndOfLine(&input.source.buf.ropeman);
 
-        const insert_points = try input.source.buf.ropeman.insertChars(self.a, new_content, &.{.{ .line = 0, .col = 0 }});
-        self.a.free(insert_points);
+        const del_result = try input.source.deleteRanges(self.a, input.win.cursor_manager, .range);
+        if (del_result == null) return false;
+        defer self.a.free(del_result.?);
+
+        input.win.cursor_manager.activatePointMode();
+
+        const insert_result = try input.source.insertChars(self.a, new_content, input.win.cursor_manager);
+        if (insert_result == null) return false;
+        defer self.a.free(insert_result.?);
+        try input.win.processEditResult(null, null, insert_result.?, self.mall);
 
         input.win.cursor_manager.mainCursor().setActiveAnchor(input.win.cursor_manager, 0, 0);
         input.win.cursor_manager.moveToEndOfLine(&input.source.buf.ropeman);
