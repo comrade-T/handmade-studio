@@ -70,6 +70,31 @@ pub fn hideInput(self: *@This(), name: []const u8) !bool {
     return true;
 }
 
+pub fn replaceInputContent(self: *@This(), input_name: []const u8, new_content: []const u8) !bool {
+    const input = self.inputs.get(input_name) orelse return false;
+
+    {
+        const last_linenr = input.source.buf.ropeman.getNumOfLines() - 1;
+        const del_points = try input.source.buf.ropeman.deleteRanges(self.a, &.{.{
+            .start = .{ .line = 0, .col = 0 },
+            .end = .{
+                .line = last_linenr,
+                .col = input.source.buf.ropeman.getNumOfCharsInLine(last_linenr),
+            },
+        }});
+        self.a.free(del_points);
+
+        const insert_points = try input.source.buf.ropeman.insertChars(self.a, new_content, &.{.{ .line = 0, .col = 0 }});
+        self.a.free(insert_points);
+
+        input.win.cursor_manager.mainCursor().setActiveAnchor(input.win.cursor_manager, 0, 0);
+        input.win.cursor_manager.moveToEndOfLine(&input.source.buf.ropeman);
+        input.win.cursor_manager.enterAFTERInsertMode(&input.source.buf.ropeman);
+    }
+
+    return true;
+}
+
 pub fn deinit(self: *@This()) void {
     for (self.inputs.keys(), 0..) |context_id, i| {
         self.inputs.values()[i].destroy(context_id, self.council);

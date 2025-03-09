@@ -103,7 +103,7 @@ pub fn destroy(self: *@This()) void {
 
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const path = self.finder.getSelectedPath();
+    const path = self.finder.getSelectedPath() orelse return true;
 
     const x, const y = self.finder.doi.mall.icb.getScreenToWorld2D(
         self.finder.doi.mall.camera,
@@ -128,7 +128,7 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) !void {
-    const path = self.finder.getSelectedPath();
+    const path = self.finder.getSelectedPath() orelse return;
     try self.wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
         .subscribed_style_sets = &.{0},
     }, direction);

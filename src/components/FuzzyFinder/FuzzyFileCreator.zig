@@ -65,11 +65,15 @@ pub fn destroy(self: *@This()) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
+fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const path = self.finder.getSelectedPath();
 
-    std.debug.print("path: {s}\n", .{path});
+    if (self.finder.getSelectedPath()) |dir_path| {
+        assert(try self.finder.doi.replaceInputContent(FFC, dir_path));
+        return false;
+    }
+
+    std.debug.print("should create new file with path: '{s}'\n", .{input_contents});
 
     return false;
 }

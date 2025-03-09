@@ -124,7 +124,8 @@ pub fn prevItem(ctx: *anyopaque) !void {
     self.selection_index -|= 1;
 }
 
-pub fn getSelectedPath(self: *@This()) []const u8 {
+pub fn getSelectedPath(self: *@This()) ?[]const u8 {
+    if (self.match_list.items.len == 0) return null;
     assert(self.selection_index <= self.match_list.items.len -| 1);
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];
