@@ -48,19 +48,17 @@ match_list: MatchList,
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
-kind: utils.AppendFileNamesRequest.Kind = .files,
-input_name: []const u8,
-
-callbacks: Callbacks,
+opts: FuzzyFinderCreateOptions,
 
 pub fn mapKeys(self: *@This()) !void {
     const c = self.doi.council;
-    try c.map(self.input_name, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = self });
-    try c.map(self.input_name, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = self });
-    try c.map(self.input_name, &.{.escape}, .{ .f = hide, .ctx = self });
+    const ctx_id = self.opts.input_name;
+    try c.map(ctx_id, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = self });
+    try c.map(ctx_id, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = self });
+    try c.map(ctx_id, &.{.escape}, .{ .f = hide, .ctx = self });
 }
 
-pub fn create(a: Allocator, doi: *DepartmentOfInputs, input_name: []const u8, callbacks: Callbacks) !*FuzzyFinder {
+pub fn create(a: Allocator, doi: *DepartmentOfInputs, opts: FuzzyFinderCreateOptions) !*FuzzyFinder {
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
@@ -69,12 +67,11 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, input_name: []const u8, ca
         .path_list = try PathList.initCapacity(a, 128),
         .match_list = MatchList.init(a),
         .doi = doi,
-        .callbacks = callbacks,
-        .input_name = input_name,
+        .opts = opts,
     };
 
     assert(try doi.addInput(
-        self.input_name,
+        self.opts.input_name,
         .{
             .pos = .{ .x = self.x, .y = self.y },
         },
@@ -90,7 +87,7 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, input_name: []const u8, ca
 }
 
 pub fn destroy(self: *@This()) void {
-    assert(self.doi.removeInput(self.input_name));
+    assert(self.doi.removeInput(self.opts.input_name));
     if (self.needle.len > 0) self.a.free(self.needle);
 
     self.path_list.deinit();
@@ -106,14 +103,14 @@ pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
     try self.updateFilePaths();
     try update(self, self.needle);
-    assert(try self.doi.showInput(self.input_name));
+    assert(try self.doi.showInput(self.opts.input_name));
     self.visible = true;
 }
 
 pub fn hide(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    assert(try self.doi.hideInput(self.input_name));
-    if (self.callbacks.onHide) |onHide| try onHide.f(onHide.ctx, self.needle);
+    assert(try self.doi.hideInput(self.opts.input_name));
+    if (self.opts.onHide) |onHide| try onHide.f(onHide.ctx, self.needle);
     self.visible = false;
 }
 
@@ -192,7 +189,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
 fn update(ctx: *anyopaque, new_needle: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.updateInternal(new_needle);
-    if (self.callbacks.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, self.needle);
+    if (self.opts.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, self.needle);
 }
 
 fn updateInternal(self: *@This(), new_needle: []const u8) !void {
@@ -231,8 +228,11 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
 
 fn confirm(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    if (self.callbacks.onConfirm) |onConfirm| try onConfirm.f(onConfirm.ctx, self.needle);
-    try hide(self);
+    if (self.opts.onConfirm) |onConfirm| {
+        if (try onConfirm.f(onConfirm.ctx, self.needle)) {
+            try hide(self);
+        }
+    }
 }
 
 fn updateFilePaths(self: *@This()) !void {
@@ -243,7 +243,7 @@ fn updateFilePaths(self: *@This()) !void {
         .arena = &self.path_arena,
         .sub_path = ".",
         .list = &self.path_list,
-        .kind = self.kind,
+        .kind = self.opts.kind,
     });
 }
 
@@ -274,9 +274,12 @@ const Match = struct {
 
 /////////////////////////////
 
-const Callbacks = struct {
+const FuzzyFinderCreateOptions = struct {
+    input_name: []const u8,
+    kind: utils.AppendFileNamesRequest.Kind,
+
     onUpdate: ?Callback = null,
-    onConfirm: ?Callback = null,
+    onConfirm: ?BoolCallback = null,
     onCancel: ?Callback = null,
     onHide: ?Callback = null,
     onShow: ?Callback = null,
@@ -284,6 +287,11 @@ const Callbacks = struct {
 
 const Callback = struct {
     f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!void,
+    ctx: *anyopaque,
+};
+
+const BoolCallback = struct {
+    f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!bool,
     ctx: *anyopaque,
 };
 

@@ -150,6 +150,9 @@ pub fn main() anyerror!void {
     var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, wm, &anchor_picker, &doi);
     defer fuzzy_file_opener.destroy();
 
+    var fuzzy_file_creator = try fuzzy_finders.FuzzyFileCreator.create(gpa, &doi);
+    defer fuzzy_file_creator.destroy();
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -182,11 +185,12 @@ pub fn main() anyerror!void {
                 // AnchorPicker
                 anchor_picker.render();
 
-                // FuzzyFinder
-                fuzzy_file_opener.finder.render();
-
                 // DepartmentOfInputs
                 doi.render();
+
+                // fuzzy_finders
+                fuzzy_file_opener.finder.render();
+                fuzzy_file_creator.finder.render();
             }
         }
     }

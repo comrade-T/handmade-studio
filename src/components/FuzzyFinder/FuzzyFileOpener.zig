@@ -30,10 +30,11 @@ const AnchorPicker = @import("AnchorPicker");
 
 const NORMAL = "normal";
 const FFO = "FuzzyFileOpener";
-const INPUT_NAME = "FuzzyFileOpener_input";
 
 const NORMAL_TO_FFO = ip.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{FFO} };
 const FFO_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{FFO}, .add = &.{NORMAL} };
+
+// TODO: add session opening methods & mappings
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -82,7 +83,9 @@ pub fn create(a: Allocator, wm: *WindowManager, ap: *AnchorPicker, doi: *Departm
         .a = a,
         .wm = wm,
         .ap = ap,
-        .finder = try FuzzyFinder.create(a, doi, INPUT_NAME, .{
+        .finder = try FuzzyFinder.create(a, doi, .{
+            .input_name = FFO,
+            .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
         }),
@@ -92,14 +95,13 @@ pub fn create(a: Allocator, wm: *WindowManager, ap: *AnchorPicker, doi: *Departm
 }
 
 pub fn destroy(self: *@This()) void {
-    assert(self.finder.doi.council.unmapEntireContext(FFO));
     self.finder.destroy();
     self.a.destroy(self);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn onConfirm(ctx: *anyopaque, _: []const u8) !void {
+fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const path = self.finder.getSelectedPath();
 
@@ -113,6 +115,8 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !void {
         .pos = .{ .x = x, .y = y },
         .subscribed_style_sets = &.{0},
     }, true, true);
+
+    return true;
 }
 
 fn onHide(ctx: *anyopaque, _: []const u8) !void {
