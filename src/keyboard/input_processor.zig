@@ -93,6 +93,10 @@ pub const MappingCouncil = struct {
     active_contexts: *ActiveContexts,
     require_clarity_afterwards: bool = false,
 
+    /// if this field value is `true`,
+    /// `produceFinalTrigger()` will only look at the latest added context.
+    lastest_context_only: bool = false,
+
     nop_callback: Callback,
 
     const ActiveContexts = std.StringArrayHashMap(bool);
@@ -425,8 +429,31 @@ pub const MappingCouncil = struct {
         _ = self.active_contexts.orderedRemove(context_id);
     }
 
+    pub fn restrictTriggersToLatestContextOnly(self: *@This()) void {
+        self.lastest_context_only = true;
+    }
+
+    pub fn removeTriggerRestrictions(self: *@This()) void {
+        self.lastest_context_only = false;
+    }
+
     pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) ?u128 {
-        for (self.active_contexts.keys()) |context_id| {
+        const active_contexts = self.active_contexts.keys();
+        if (active_contexts.len == 0) return null;
+
+        if (self.lastest_context_only) {
+            const latest_context = active_contexts[active_contexts.len - 1];
+            if (self.produceFinalTriggerComponent(latest_context, frame)) |trigger| {
+
+                // enforcing `InputFrame.force_emitting_down` behavior
+                if (frame.force_emitting_down) frame.latest_event_type = .down;
+
+                return trigger;
+            }
+            return null;
+        }
+
+        for (active_contexts) |context_id| {
             if (self.produceFinalTriggerComponent(context_id, frame)) |trigger| {
 
                 // enforcing `InputFrame.force_emitting_down` behavior
