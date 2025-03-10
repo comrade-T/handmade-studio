@@ -150,11 +150,11 @@ pub fn main() anyerror!void {
     var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, wm, &anchor_picker, &doi);
     defer fuzzy_file_opener.destroy();
 
-    var fuzzy_file_creator = try fuzzy_finders.FuzzyFileCreator.create(gpa, &doi);
-    defer fuzzy_file_creator.destroy();
-
     var fuzzy_session_opener = try fuzzy_finders.FuzzySessionOpener.create(gpa, wm, &doi);
     defer fuzzy_session_opener.destroy();
+
+    var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, wm, &doi);
+    defer fuzzy_session_savior.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -193,8 +193,8 @@ pub fn main() anyerror!void {
 
                 // fuzzy_finders
                 fuzzy_file_opener.finder.render();
-                fuzzy_file_creator.finder.render();
                 fuzzy_session_opener.finder.render();
+                fuzzy_session_savior.ffc.finder.render();
             }
         }
     }

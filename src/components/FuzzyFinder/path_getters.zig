@@ -53,7 +53,7 @@ pub fn getGitIgnorePatternsOfCWD(a: Allocator) ![][]const u8 {
 }
 
 pub const AppendFileNamesRequest = struct {
-    pub const Kind = enum { files, directories };
+    pub const Kind = enum { files, directories, both };
 
     arena: *ArenaAllocator,
     sub_path: []const u8,
@@ -89,7 +89,8 @@ pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
         if (relative_path.len == 0) continue;
 
         if ((req.kind == .files and entry.kind == .file) or
-            (req.kind == .directories and entry.kind == .directory))
+            (req.kind == .directories and entry.kind == .directory) or
+            (req.kind == .both))
         {
             try req.list.append(relative_path);
         }

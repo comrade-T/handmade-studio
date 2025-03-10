@@ -23,37 +23,45 @@ const Allocator = std.mem.Allocator;
 const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
+const Kind = @import("path_getters.zig").AppendFileNamesRequest.Kind;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const NORMAL = "normal";
-const FFC = "FuzzyFileCreator";
-
-//////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
 finder: *FuzzyFinder,
 new_file_origin: []const u8 = "",
+opts: Opts,
+
+const Opts = struct {
+    name: []const u8,
+    kind: Kind,
+    file_callback: ?FuzzyFinder.Callback = null,
+
+    custom_ignore_patterns: ?[]const []const u8 = null,
+    ignore_ignore_patterns: ?[]const []const u8 = null,
+    custom_match_patterns: ?[]const []const u8 = null,
+};
 
 pub fn mapKeys(ffc: *@This(), c: *ip.MappingCouncil) !void {
-    try c.map(NORMAL, &.{ .left_control, .s }, .{
-        .f = FuzzyFinder.show,
-        .ctx = ffc.finder,
-        .contexts = .{ .remove = &.{NORMAL}, .add = &.{FFC} },
-        .require_clarity_afterwards = true,
-    });
-    try c.map(FFC, &.{ .left_alt, .c }, .{ .f = forceConfirm, .ctx = ffc });
+    try c.map(ffc.opts.name, &.{ .left_alt, .c }, .{ .f = forceConfirm, .ctx = ffc });
 }
 
-pub fn create(a: Allocator, doi: *DepartmentOfInputs) !*FuzzyFileCreator {
+pub fn create(a: Allocator, opts: Opts, doi: *DepartmentOfInputs) !*FuzzyFileCreator {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
+        .opts = opts,
         .finder = try FuzzyFinder.create(a, doi, .{
-            .input_name = FFC,
-            .kind = .directories,
+            .input_name = opts.name,
+            .kind = opts.kind,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
+
+            .custom_ignore_patterns = opts.custom_ignore_patterns,
+            .ignore_ignore_patterns = opts.ignore_ignore_patterns,
+            .custom_match_patterns = opts.custom_match_patterns,
         }),
     };
     try self.mapKeys(doi.council);
@@ -71,27 +79,41 @@ pub fn destroy(self: *@This()) void {
 fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
-    if (self.finder.getSelectedPath()) |dir_path| {
+    if (self.finder.getSelectedPath()) |path| {
+        if (try self.executeFileCallback(path)) return true;
+
+        assert(try self.finder.doi.replaceInputContent(self.opts.name, path));
         self.cleanUpNewFileOrigin();
-        assert(try self.finder.doi.replaceInputContent(FFC, dir_path));
-        self.new_file_origin = try self.a.dupe(u8, dir_path);
+        self.new_file_origin = try self.a.dupe(u8, path);
         return false;
     }
 
     try createFile(self.new_file_origin, input_contents);
+    _ = try self.executeFileCallback(input_contents);
     return true;
 }
 
 fn forceConfirm(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try createFile("", self.finder.needle);
+    _ = try self.executeFileCallback(self.finder.needle);
     try FuzzyFinder.hide(self.finder);
+}
+
+fn executeFileCallback(self: *@This(), path: []const u8) !bool {
+    if (isFile(path)) {
+        if (self.opts.file_callback) |cb| {
+            try cb.f(cb.ctx, path);
+            return true;
+        }
+    }
+    return false;
 }
 
 fn onHide(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.cleanUpNewFileOrigin();
-    try self.finder.doi.council.removeActiveContext(FFC);
+    try self.finder.doi.council.removeActiveContext(self.opts.name);
     try self.finder.doi.council.addActiveContext(NORMAL);
 }
 
@@ -103,6 +125,13 @@ fn cleanUpNewFileOrigin(self: *@This()) void {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+fn isFile(path: []const u8) bool {
+    const file = std.fs.cwd().openFile(path, .{}) catch return false;
+    defer file.close();
+    const stat = file.stat() catch return false;
+    return stat.kind == .file;
+}
 
 fn createFile(origin_: []const u8, new_file_path: []const u8) !void {
     const origin = if (origin_.len > 0) origin_ else ".";

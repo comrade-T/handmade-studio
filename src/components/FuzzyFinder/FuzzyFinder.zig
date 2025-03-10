@@ -313,7 +313,7 @@ const FuzzyFinderCreateOptions = struct {
     custom_match_patterns: ?[]const []const u8 = null,
 };
 
-const Callback = struct {
+pub const Callback = struct {
     f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!void,
     ctx: *anyopaque,
 };
