@@ -266,7 +266,10 @@ fn updateFilePaths(self: *@This()) !void {
         .sub_path = ".",
         .list = &self.path_list,
         .kind = self.opts.kind,
-        .ignore_patterns = final_ignore_list.items,
+        .ignore_patterns = if (self.opts.ignore_ignore_patterns != null)
+            final_ignore_list.items
+        else
+            git_ignore_patterns,
         .match_patterns = self.opts.custom_match_patterns,
     });
 }
