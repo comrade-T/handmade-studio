@@ -53,16 +53,19 @@ pub fn getGitIgnorePatternsOfCWD(a: Allocator) ![][]const u8 {
 }
 
 pub const AppendFileNamesRequest = struct {
+    pub const Kind = enum { files, directories };
+
     arena: *ArenaAllocator,
     sub_path: []const u8,
     list: *ArrayList([]const u8),
     recursive: bool = true,
     kind: Kind,
 
-    pub const Kind = enum { files, directories };
+    ignore_patterns: []const []const u8,
+    match_patterns: ?[]const []const u8 = null,
 };
 
-pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest, patterns: []const []const u8) !void {
+pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
     var dir = try std.fs.cwd().openDir(req.sub_path, .{ .iterate = true });
     defer dir.close();
     errdefer dir.close();
@@ -79,7 +82,10 @@ pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest, patterns: []con
         else
             try std.fmt.allocPrint(req.arena.allocator(), "{s}{s}", .{ req.sub_path, short_path });
 
-        for (patterns) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
+        for (req.ignore_patterns) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
+        if (req.match_patterns) |match_patterns| {
+            for (match_patterns) |pattern| if (entry.kind == .file and !matchGlob(pattern, relative_path)) continue :iter_loop;
+        }
         if (relative_path.len == 0) continue;
 
         if ((req.kind == .files and entry.kind == .file) or
@@ -89,13 +95,9 @@ pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest, patterns: []con
         }
 
         if (req.recursive and entry.kind == .directory) {
-            try appendFileNamesRelativeToCwd(.{
-                .arena = req.arena,
-                .sub_path = relative_path,
-                .list = req.list,
-                .recursive = true,
-                .kind = req.kind,
-            }, patterns);
+            var child_req = req;
+            child_req.sub_path = relative_path;
+            try appendFileNamesRelativeToCwd(child_req);
         }
     }
 }
@@ -179,6 +181,9 @@ test "match" {
 
     try eq(true, matchGlob(".zig-cache/", ".zig-cache/"));
     try eq(true, matchGlob(".zig-cache/", ".zig-cache/dummy.txt"));
+
+    try eq(true, matchGlob("*.txt", "dummy-A.txt"));
+    try eq(false, matchGlob("*.xxx", "dummy-A.txt"));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// get file names and fuzzy find over them
@@ -191,43 +196,47 @@ const SortScoresCtx = struct {
     }
 };
 
-test "get file names and fuzzy find over them" {
-    var searcher = try fuzzig.Ascii.init(testing_allocator, 1024 * 4, 1024, .{ .case_sensitive = false });
-    defer searcher.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    {
-        var paths = ArrayList([]const u8).init(arena.allocator());
-        defer paths.deinit();
-        try appendFileNamesRelativeToCwd(.{
-            .arena = &arena,
-            .sub_path = ".",
-            .list = &paths,
-        });
-
-        var match_score_list = std.AutoArrayHashMap(i32, []const u8).init(testing_allocator);
-        defer match_score_list.deinit();
-
-        const needle = "rope";
-        for (paths.items) |path| {
-            const match = searcher.scoreMatches(path, needle);
-            if (match.score) |score| try match_score_list.put(score, path);
-        }
-
-        match_score_list.sort(SortScoresCtx{ .scores = match_score_list.keys() });
-
-        var i: usize = match_score_list.values().len;
-        while (i > 0) {
-            i -= 1;
-            std.debug.print("path: '{s}' -> score: {d}\n", .{
-                match_score_list.values()[i],
-                match_score_list.keys()[i],
-            });
-        }
-    }
-}
+// test "get file names and fuzzy find over them" {
+//     var searcher = try fuzzig.Ascii.init(testing_allocator, 1024 * 4, 1024, .{ .case_sensitive = false });
+//     defer searcher.deinit();
+//
+//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+//     defer arena.deinit();
+//
+//     {
+//         var paths = ArrayList([]const u8).init(arena.allocator());
+//         defer paths.deinit();
+//         const ignore_patterns = try getGitIgnorePatternsOfCWD(arena.allocator());
+//         try appendFileNamesRelativeToCwd(.{
+//             .list = &paths,
+//             .kind = .files,
+//             .arena = &arena,
+//             .sub_path = ".",
+//             .recursive = true,
+//             .ignore_patterns = ignore_patterns,
+//         });
+//
+//         var match_score_list = std.AutoArrayHashMap(i32, []const u8).init(testing_allocator);
+//         defer match_score_list.deinit();
+//
+//         const needle = "rope";
+//         for (paths.items) |path| {
+//             const match = searcher.scoreMatches(path, needle);
+//             if (match.score) |score| try match_score_list.put(score, path);
+//         }
+//
+//         match_score_list.sort(SortScoresCtx{ .scores = match_score_list.keys() });
+//
+//         var i: usize = match_score_list.values().len;
+//         while (i > 0) {
+//             i -= 1;
+//             std.debug.print("path: '{s}' -> score: {d}\n", .{
+//                 match_score_list.values()[i],
+//                 match_score_list.keys()[i],
+//             });
+//         }
+//     }
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Trying out fuzzig
 

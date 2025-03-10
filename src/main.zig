@@ -153,6 +153,9 @@ pub fn main() anyerror!void {
     var fuzzy_file_creator = try fuzzy_finders.FuzzyFileCreator.create(gpa, &doi);
     defer fuzzy_file_creator.destroy();
 
+    var fuzzy_session_opener = try fuzzy_finders.FuzzySessionOpener.create(gpa, wm, &doi);
+    defer fuzzy_session_opener.destroy();
+
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
     while (!rl.windowShouldClose()) {
@@ -191,6 +194,7 @@ pub fn main() anyerror!void {
                 // fuzzy_finders
                 fuzzy_file_opener.finder.render();
                 fuzzy_file_creator.finder.render();
+                fuzzy_session_opener.finder.render();
             }
         }
     }

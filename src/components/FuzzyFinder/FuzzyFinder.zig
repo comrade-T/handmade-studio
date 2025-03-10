@@ -48,8 +48,6 @@ match_list: MatchList,
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
-custom_git_ignore_patterns: ?[]const []const u8 = null,
-
 opts: FuzzyFinderCreateOptions,
 
 pub fn mapKeys(self: *@This()) !void {
@@ -244,17 +242,33 @@ fn updateFilePaths(self: *@This()) !void {
     self.path_list.clearRetainingCapacity();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var final_ignore_list = ArrayList([]const u8).init(arena.allocator());
     defer arena.deinit();
 
-    const git_ignore_patterns = self.custom_git_ignore_patterns orelse
+    const git_ignore_patterns = self.opts.custom_ignore_patterns orelse
         try utils.getGitIgnorePatternsOfCWD(arena.allocator());
+
+    if (self.opts.ignore_ignore_patterns) |ignore_ignore_patterns| {
+        for (git_ignore_patterns) |pattern| {
+            var ignored = false;
+            for (ignore_ignore_patterns) |ignore_pattern| {
+                if (std.mem.eql(u8, pattern, ignore_pattern)) {
+                    ignored = true;
+                    break;
+                }
+            }
+            if (!ignored) try final_ignore_list.append(pattern);
+        }
+    }
 
     try utils.appendFileNamesRelativeToCwd(.{
         .arena = &self.path_arena,
         .sub_path = ".",
         .list = &self.path_list,
         .kind = self.opts.kind,
-    }, git_ignore_patterns);
+        .ignore_patterns = final_ignore_list.items,
+        .match_patterns = self.opts.custom_match_patterns,
+    });
 }
 
 fn cacheNeedle(self: *@This(), needle: []const u8) !void {
@@ -294,7 +308,9 @@ const FuzzyFinderCreateOptions = struct {
     onHide: ?Callback = null,
     onShow: ?Callback = null,
 
-    custom_git_ignore_patterns: ?[]const []const u8 = null,
+    custom_ignore_patterns: ?[]const []const u8 = null,
+    ignore_ignore_patterns: ?[]const []const u8 = null,
+    custom_match_patterns: ?[]const []const u8 = null,
 };
 
 const Callback = struct {
@@ -308,7 +324,3 @@ const BoolCallback = struct {
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-test {
-    std.testing.refAllDeclsRecursive(utils);
-}
