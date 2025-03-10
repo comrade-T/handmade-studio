@@ -26,7 +26,7 @@ const fuzzig = @import("fuzzig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn getGitIgnorePatternsOfCWD(a: Allocator) !ArrayList([]const u8) {
+pub fn getGitIgnorePatternsOfCWD(a: Allocator) ![][]const u8 {
     var cwd_dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
     defer cwd_dir.close();
     errdefer cwd_dir.close();
@@ -49,7 +49,7 @@ fn getGitIgnorePatternsOfCWD(a: Allocator) !ArrayList([]const u8) {
 
     var iter = std.mem.split(u8, buf, "\n");
     while (iter.next()) |pattern| try patterns_list.append(pattern);
-    return patterns_list;
+    return try patterns_list.toOwnedSlice();
 }
 
 pub const AppendFileNamesRequest = struct {
@@ -62,9 +62,7 @@ pub const AppendFileNamesRequest = struct {
     pub const Kind = enum { files, directories };
 };
 
-pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
-    const patterns = try getGitIgnorePatternsOfCWD(req.arena.allocator());
-
+pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest, patterns: []const []const u8) !void {
     var dir = try std.fs.cwd().openDir(req.sub_path, .{ .iterate = true });
     defer dir.close();
     errdefer dir.close();
@@ -81,7 +79,7 @@ pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
         else
             try std.fmt.allocPrint(req.arena.allocator(), "{s}{s}", .{ req.sub_path, short_path });
 
-        for (patterns.items) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
+        for (patterns) |pattern| if (matchGlob(pattern, relative_path)) continue :iter_loop;
         if (relative_path.len == 0) continue;
 
         if ((req.kind == .files and entry.kind == .file) or
@@ -97,7 +95,7 @@ pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
                 .list = req.list,
                 .recursive = true,
                 .kind = req.kind,
-            });
+            }, patterns);
         }
     }
 }

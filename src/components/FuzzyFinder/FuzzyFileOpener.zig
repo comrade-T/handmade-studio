@@ -30,13 +30,7 @@ const AnchorPicker = @import("AnchorPicker");
 
 const NORMAL = "normal";
 const FFO = "FuzzyFileOpener";
-
-const NORMAL_TO_FFO = ip.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{FFO} };
 const FFO_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{FFO}, .add = &.{NORMAL} };
-
-// TODO: add session opening methods & mappings
-
-//////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
 finder: *FuzzyFinder,

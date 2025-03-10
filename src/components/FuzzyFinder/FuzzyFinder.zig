@@ -48,6 +48,8 @@ match_list: MatchList,
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
+custom_git_ignore_patterns: ?[]const []const u8 = null,
+
 opts: FuzzyFinderCreateOptions,
 
 pub fn mapKeys(self: *@This()) !void {
@@ -240,12 +242,19 @@ fn updateFilePaths(self: *@This()) !void {
     self.path_arena.deinit();
     self.path_arena = ArenaAllocator.init(self.a);
     self.path_list.clearRetainingCapacity();
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const git_ignore_patterns = self.custom_git_ignore_patterns orelse
+        try utils.getGitIgnorePatternsOfCWD(arena.allocator());
+
     try utils.appendFileNamesRelativeToCwd(.{
         .arena = &self.path_arena,
         .sub_path = ".",
         .list = &self.path_list,
         .kind = self.opts.kind,
-    });
+    }, git_ignore_patterns);
 }
 
 fn cacheNeedle(self: *@This(), needle: []const u8) !void {
@@ -284,6 +293,8 @@ const FuzzyFinderCreateOptions = struct {
     onCancel: ?Callback = null,
     onHide: ?Callback = null,
     onShow: ?Callback = null,
+
+    custom_git_ignore_patterns: ?[]const []const u8 = null,
 };
 
 const Callback = struct {
