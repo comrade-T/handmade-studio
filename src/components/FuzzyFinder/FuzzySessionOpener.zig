@@ -71,9 +71,7 @@ pub fn destroy(self: *@This()) void {
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const path = self.finder.getSelectedPath() orelse return true;
-
-    std.debug.print("le path; '{s}'\n", .{path});
-
+    try self.wm.loadSession(path);
     return true;
 }
 

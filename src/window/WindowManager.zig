@@ -49,7 +49,6 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try vim_related.mapKeys(self, council);
     try layout_related.mapKeys(self, council);
 
-    try self.mapSessionRelatedKeymaps(council);
     try self.mapSpawnBlankWindowKeymaps(ap, council);
 
     try self.mapUndoRedoKeymaps(council);
@@ -59,14 +58,6 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
 }
 
 const NORMAL = "normal";
-
-fn mapSessionRelatedKeymaps(self: *@This(), council: *MappingCouncil) !void {
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .p }, .{ .f = saveSession, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .p }, .{ .f = saveSession, .ctx = self });
-
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .l }, .{ .f = loadSession, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .l }, .{ .f = loadSession, .ctx = self });
-}
 
 fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *MappingCouncil) !void {
     const Cb = struct {
@@ -648,8 +639,6 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
 
-const session_file_path = ".handmade_studio/session.json";
-
 const StringSource = struct {
     id: i128,
     contents: []const u8,
@@ -661,13 +650,11 @@ const Session = struct {
     windows: []const Window.WritableWindowState,
 };
 
-pub fn loadSession(ctx: *anyopaque) !void {
+pub fn loadSession(self: *@This(), session_path: []const u8) !void {
 
     ///////////////////////////// read file & parse
 
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-
-    const file = std.fs.cwd().openFile(session_file_path, .{ .mode = .read_only }) catch |err| {
+    const file = std.fs.cwd().openFile(session_path, .{ .mode = .read_only }) catch |err| {
         std.debug.print("catched err: {any} --> returning.\n", .{err});
         return;
     };
@@ -706,9 +693,7 @@ pub fn loadSession(ctx: *anyopaque) !void {
     for (parsed.value.connections) |conn| try self.connman.notifyTrackers(conn.*);
 }
 
-pub fn saveSession(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-
+pub fn saveSession(self: *@This(), path: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -766,12 +751,12 @@ pub fn saveSession(ctx: *anyopaque) !void {
         .whitespace = .indent_4,
     });
 
-    try writeToFile(str);
+    try writeToFile(str, path);
     std.debug.print("session written to file successfully\n", .{});
 }
 
-fn writeToFile(str: []const u8) !void {
-    var file = try std.fs.cwd().createFile(session_file_path, .{});
+fn writeToFile(str: []const u8, path: []const u8) !void {
+    var file = try std.fs.cwd().createFile(path, .{});
     defer file.close();
     try file.writeAll(str);
 }
