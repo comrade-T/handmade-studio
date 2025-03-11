@@ -35,7 +35,9 @@ const WindowManager = @import("WindowManager");
 const fuzzy_finders = @import("fuzzy_finders");
 const AnchorPicker = @import("AnchorPicker");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
+
 const ConfirmationPrompt = @import("ConfirmationPrompt");
+const NotificationLine = @import("NotificationLine");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Main //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -137,13 +139,7 @@ pub fn main() anyerror!void {
     anchor_picker.setToCenter();
     try anchor_picker.mapKeys(council);
 
-    // WindowManager
-    var wm = try WindowManager.create(gpa, &lang_hub, &mall);
-    defer wm.destroy();
-    try wm.mapKeys(&anchor_picker, council);
-
-    ///////////////////////////// Experimental
-
+    // DepartmentOfInputs
     var doi = DepartmentOfInputs{ .a = gpa, .council = council, .mall = &mall };
     defer doi.deinit();
 
@@ -152,14 +148,23 @@ pub fn main() anyerror!void {
     try confirmation_prompt.mapKeys();
     defer confirmation_prompt.deinit();
 
+    // NotificationLine
+    var notification_line = NotificationLine{ .a = gpa, .mall = &mall };
+    defer notification_line.deinit();
+
+    // WindowManager
+    var wm = try WindowManager.create(gpa, &lang_hub, &mall, &notification_line);
+    defer wm.destroy();
+    try wm.mapKeys(&anchor_picker, council);
+
     // FuzzyFinder
-    var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, wm, &anchor_picker, &doi, &confirmation_prompt);
+    var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, wm, &anchor_picker, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_file_opener.destroy();
 
-    var fuzzy_session_opener = try fuzzy_finders.FuzzySessionOpener.create(gpa, wm, &doi, &confirmation_prompt);
+    var fuzzy_session_opener = try fuzzy_finders.FuzzySessionOpener.create(gpa, wm, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_session_opener.destroy();
 
-    var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, wm, &doi, &confirmation_prompt);
+    var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, wm, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_session_savior.destroy();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
@@ -201,6 +206,9 @@ pub fn main() anyerror!void {
                 fuzzy_file_opener.finder.render();
                 fuzzy_session_opener.finder.render();
                 fuzzy_session_savior.ffc.finder.render();
+
+                // NotificationLine
+                notification_line.render();
 
                 // ConfirmationPrompt
                 confirmation_prompt.render();

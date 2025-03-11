@@ -67,6 +67,6 @@ pub fn render(self: *@This()) void {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn freeMessage(self: *@This()) void {
-    if (self.message.len == null) return;
-    self.a.free(self.message);
+    if (self.message == null) return;
+    self.a.free(self.message.?);
 }

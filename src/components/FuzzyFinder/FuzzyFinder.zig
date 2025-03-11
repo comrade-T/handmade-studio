@@ -30,6 +30,7 @@ const code_point = @import("code_point");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const utils = @import("path_getters.zig");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
+const NotificationLine = @import("NotificationLine");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Public
 
@@ -147,11 +148,19 @@ fn deleteSelectedItemWithConfirmationPrompt(ctx: *anyopaque) !void {
 fn deleteSelectedItem(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const path = self.getSelectedPath() orelse return;
+
+    const duped_path = try self.a.dupe(u8, path);
+    defer self.a.free(duped_path);
+
     try std.fs.cwd().deleteTree(path);
 
     try self.updateFilePaths();
     try update(self, self.needle);
     self.keepSelectionIndexInBound();
+
+    const msg = try std.fmt.allocPrint(self.a, "'{s}' has been deleted", .{duped_path});
+    defer self.a.free(msg);
+    try self.opts.nl.setMessage(msg);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -325,6 +334,8 @@ const Match = struct {
 
 const FuzzyFinderCreateOptions = struct {
     cp: *ConfirmationPrompt,
+    nl: *NotificationLine,
+
     input_name: []const u8,
     kind: utils.AppendFileNamesRequest.Kind,
 

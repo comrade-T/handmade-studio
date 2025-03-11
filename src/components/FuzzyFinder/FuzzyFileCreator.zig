@@ -25,6 +25,7 @@ const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const Kind = @import("path_getters.zig").AppendFileNamesRequest.Kind;
 const ConfirmationPrompt = @import("ConfirmationPrompt");
+const NotificationLine = @import("NotificationLine");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -49,13 +50,15 @@ pub fn mapKeys(ffc: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(ffc.opts.name, &.{ .left_alt, .c }, .{ .f = forceConfirm, .ctx = ffc });
 }
 
-pub fn create(a: Allocator, opts: Opts, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt) !*FuzzyFileCreator {
+pub fn create(a: Allocator, opts: Opts, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt, nl: *NotificationLine) !*FuzzyFileCreator {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
         .opts = opts,
         .finder = try FuzzyFinder.create(a, doi, .{
             .cp = cp,
+            .nl = nl,
+
             .input_name = opts.name,
             .kind = opts.kind,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
@@ -90,14 +93,14 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
         return false;
     }
 
-    try createFile(self.new_file_origin, input_contents);
+    try self.createFile(self.new_file_origin, input_contents);
     _ = try self.executeFileCallback(input_contents);
     return true;
 }
 
 fn forceConfirm(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try createFile("", self.finder.needle);
+    try self.createFile("", self.finder.needle);
     _ = try self.executeFileCallback(self.finder.needle);
     try FuzzyFinder.hide(self.finder);
 }
@@ -135,7 +138,7 @@ fn isFile(path: []const u8) bool {
     return stat.kind == .file;
 }
 
-fn createFile(origin_: []const u8, new_file_path: []const u8) !void {
+fn createFile(self: *@This(), origin_: []const u8, new_file_path: []const u8) !void {
     const origin = if (origin_.len > 0) origin_ else ".";
 
     const new_part = if (origin_.len > 0) new_file_path[origin.len..] else new_file_path;
@@ -157,5 +160,7 @@ fn createFile(origin_: []const u8, new_file_path: []const u8) !void {
         dir = new_dir;
     }
 
-    std.debug.print("created '{s}' successfully\n", .{new_file_path});
+    const msg = try std.fmt.allocPrint(self.a, "File '{s}' created successfully", .{new_file_path});
+    defer self.a.free(msg);
+    try self.finder.opts.nl.setMessage(msg);
 }

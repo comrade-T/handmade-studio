@@ -26,6 +26,7 @@ const FuzzyFinder = @import("FuzzyFinder.zig");
 const WindowManager = @import("WindowManager");
 const AnchorPicker = @import("AnchorPicker");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
+const NotificationLine = @import("NotificationLine");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -72,7 +73,14 @@ pub fn mapKeys(ffo: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(FFO, &.{ .left_shift, .left_control, .x }, try RelativeSpawnCb.init(a, ffo, .top));
 }
 
-pub fn create(a: Allocator, wm: *WindowManager, ap: *AnchorPicker, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt) !*FuzzyFileOpener {
+pub fn create(
+    a: Allocator,
+    wm: *WindowManager,
+    ap: *AnchorPicker,
+    doi: *DepartmentOfInputs,
+    cp: *ConfirmationPrompt,
+    nl: *NotificationLine,
+) !*FuzzyFileOpener {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -80,6 +88,7 @@ pub fn create(a: Allocator, wm: *WindowManager, ap: *AnchorPicker, doi: *Departm
         .ap = ap,
         .finder = try FuzzyFinder.create(a, doi, .{
             .cp = cp,
+            .nl = nl,
             .input_name = FFO,
             .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },

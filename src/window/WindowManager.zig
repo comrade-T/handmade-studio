@@ -41,6 +41,7 @@ const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
+const NotificationLine = @import("NotificationLine");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -124,6 +125,7 @@ a: Allocator,
 
 lang_hub: *LangHub,
 mall: *RenderMall,
+nl: *NotificationLine,
 
 active_window: ?*Window = null,
 
@@ -142,7 +144,7 @@ visible_windows: WindowList,
 
 window_picker: WindowPicker,
 
-pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
+pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *NotificationLine) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
 
     const self = try a.create(@This());
@@ -150,6 +152,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
+        .nl = nl,
         .connman = ConnectionManager{ .wm = self },
         .hm = HistoryManager{ .a = a, .capacity = 255 },
 
@@ -752,7 +755,10 @@ pub fn saveSession(self: *@This(), path: []const u8) !void {
     });
 
     try writeToFile(str, path);
-    std.debug.print("session written to file successfully\n", .{});
+
+    const msg = try std.fmt.allocPrint(self.a, "Session written to file '{s}' successfully", .{path});
+    defer self.a.free(msg);
+    try self.nl.setMessage(msg);
 }
 
 fn writeToFile(str: []const u8, path: []const u8) !void {

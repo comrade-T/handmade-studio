@@ -26,6 +26,7 @@ const FuzzyFinder = @import("FuzzyFinder.zig");
 const FuzzyFileCreator = @import("FuzzyFileCreator.zig");
 const WindowManager = @import("WindowManager");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
+const NotificationLine = @import("NotificationLine");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -47,7 +48,7 @@ pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .left_shift, .left_control, .s }, cb);
 }
 
-pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt) !*FuzzySessionSavior {
+pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt, nl: *NotificationLine) !*FuzzySessionSavior {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
@@ -58,7 +59,7 @@ pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs, cp: *C
             .file_callback = .{ .f = postConfirmCallback, .ctx = self },
             .ignore_ignore_patterns = &.{".handmade_studio/"},
             .custom_match_patterns = &.{"*.json"},
-        }, doi, cp),
+        }, doi, cp, nl),
     };
     try self.mapKeys(doi.council);
     return self;
