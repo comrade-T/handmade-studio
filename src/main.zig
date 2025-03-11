@@ -45,8 +45,11 @@ const screen_width = 1920;
 const screen_height = 1080;
 
 pub fn main() anyerror!void {
+    const startup_ztracy_zone = ztracy.ZoneNC(@src(), "START UP", 0x00AAFF);
 
     ///////////////////////////// Window Initialization
+
+    const rl_initwindow_zone = ztracy.ZoneNC(@src(), "raylib initWindow()", 0xAABBFF);
 
     rl.setConfigFlags(.{ .window_transparent = false, .vsync_hint = true, .msaa_4x_hint = true });
 
@@ -55,6 +58,8 @@ pub fn main() anyerror!void {
 
     rl.setTargetFPS(60);
     rl.setExitKey(rl.KeyboardKey.key_null);
+
+    rl_initwindow_zone.End();
 
     var draw_fps = false;
 
@@ -166,6 +171,8 @@ pub fn main() anyerror!void {
 
     var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, wm, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_session_savior.destroy();
+
+    startup_ztracy_zone.End();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
