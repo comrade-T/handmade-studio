@@ -37,14 +37,15 @@ last_trigger_timestamp: i64 = 0,
 trigger_delay: i64 = 150,
 repeat_rate: i64 = 1000 / 62,
 
-pub fn updateInputState(self: *@This()) !void {
+pub fn updateInputState(self: *@This()) !bool {
     try self.updateKeyUps();
     try self.updateKeyDowns();
-    try self.executeTriggerIfExists();
+    const executed = try self.executeTriggerIfExists();
     try self.council.flushUpNDown(self.frame);
+    return executed;
 }
 
-fn executeTriggerIfExists(self: *@This()) !void {
+fn executeTriggerIfExists(self: *@This()) !bool {
     if (self.council.produceFinalTrigger(self.frame)) |trigger| {
         const current_time = std.time.milliTimestamp();
         defer self.last_trigger = trigger;
@@ -57,35 +58,38 @@ fn executeTriggerIfExists(self: *@This()) !void {
 
         if (self.council.triggerIgnoresDelay(trigger, self.frame)) {
             try self.council.execute(trigger, self.frame);
-            return;
+            return true;
         }
 
         trigger: {
             if (self.reached_repeat_rate) {
-                if (current_time - self.last_trigger_timestamp < self.repeat_rate) return;
+                if (current_time - self.last_trigger_timestamp < self.repeat_rate) return false;
                 self.last_trigger_timestamp = current_time;
                 break :trigger;
             }
 
             if (self.reached_trigger_delay) {
-                if (current_time - self.last_trigger_timestamp < self.trigger_delay) return;
+                if (current_time - self.last_trigger_timestamp < self.trigger_delay) return false;
                 self.reached_repeat_rate = true;
                 self.last_trigger_timestamp = current_time;
                 break :trigger;
             }
 
-            if (current_time - self.last_trigger_timestamp < self.trigger_delay) return;
+            if (current_time - self.last_trigger_timestamp < self.trigger_delay) return false;
             self.reached_trigger_delay = true;
             self.last_trigger_timestamp = current_time;
 
             try self.council.execute(trigger, self.frame);
-            return;
+            return true;
         }
     }
 
     if (self.council.produceFinalTrigger(self.frame)) |trigger| {
         try self.council.execute(trigger, self.frame);
+        return true;
     }
+
+    return false;
 }
 
 fn updateKeyUps(self: *@This()) !void {

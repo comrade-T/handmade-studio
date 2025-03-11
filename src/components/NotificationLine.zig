@@ -29,19 +29,23 @@ const ip = @import("input_processor");
 a: Allocator,
 mall: *const RenderMall,
 
+latest_change: i64 = 0,
 y_offset: f32 = 0,
 font_size: f32 = 30,
 text_color: u32 = 0xffffffff,
 visible: bool = false,
 message: ?[]const u8 = null,
 
+const MINIMUM_DISPLAY_TIME = 200;
+
 pub fn deinit(self: *@This()) void {
-    self.freeMessage();
+    self.clear();
 }
 
 pub fn setMessage(self: *@This(), msg: []const u8) !void {
-    self.freeMessage();
+    self.clear();
     self.message = try self.a.dupe(u8, msg);
+    self.latest_change = std.time.milliTimestamp();
 }
 
 pub fn render(self: *@This()) void {
@@ -64,9 +68,18 @@ pub fn render(self: *@This()) void {
     }
 }
 
+pub fn clearIfDurationMet(self: *@This()) void {
+    if (self.isReadyToBeCleared()) self.clear();
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn freeMessage(self: *@This()) void {
+fn clear(self: *@This()) void {
     if (self.message == null) return;
     self.a.free(self.message.?);
+    self.message = null;
+}
+
+fn isReadyToBeCleared(self: *const @This()) bool {
+    return std.time.milliTimestamp() - self.latest_change > MINIMUM_DISPLAY_TIME;
 }

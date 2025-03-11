@@ -174,7 +174,8 @@ pub fn main() anyerror!void {
         ///////////////////////////// Update
 
         // Inputs
-        try input_repeat_manager.updateInputState();
+        const executed_a_mapping = try input_repeat_manager.updateInputState();
+        if (executed_a_mapping) notification_line.clearIfDurationMet();
 
         // Smooth Camera
         smooth_cam.updateOnNewFrame();
