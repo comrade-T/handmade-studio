@@ -234,6 +234,14 @@ pub const ScreenView = struct {
     end: struct { x: f32 = 0, y: f32 = 0 },
 };
 
+pub fn getAbsoluteScreenView(self: *const @This()) ScreenView {
+    const screen_width, const screen_height = self.icb.getScreenWidthHeight();
+    return ScreenView{
+        .start = .{ .x = 0, .y = 0 },
+        .end = .{ .x = screen_width, .y = screen_height },
+    };
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn viewEquals(a_: ScreenView, b_: ScreenView) bool {

@@ -75,6 +75,7 @@ pub fn create(
             .culling = opts.culling,
 
             .pos = opts.pos,
+            .absolute = opts.absolute,
             .target_pos = opts.pos,
 
             .bordered = opts.bordered,
@@ -287,8 +288,15 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?Ren
 
     ///////////////////////////// Culling & Render
 
-    const view = may_view orelse mall.icb.getViewFromCamera(mall.camera);
-    const target_view = mall.icb.getViewFromCamera(mall.target_camera);
+    const view = if (self.attr.absolute)
+        mall.getAbsoluteScreenView()
+    else
+        may_view orelse mall.icb.getViewFromCamera(mall.camera);
+
+    const target_view = if (self.attr.absolute)
+        mall.getAbsoluteScreenView()
+    else
+        mall.icb.getViewFromCamera(mall.target_camera);
 
     if (mall.camera_just_moved) {
         mall.camera_just_moved = false;
@@ -507,6 +515,8 @@ pub const SpawnOptions = struct {
 
     bordered: bool = false,
 
+    absolute: bool = false,
+
     subscribed_style_sets: ?[]const u16 = null,
 
     id: ?ID = null,
@@ -516,6 +526,7 @@ pub const Attributes = struct {
     culling: bool = true,
 
     pos: Position,
+    absolute: bool = false,
     target_pos: Position = .{},
 
     bounded: bool,

@@ -76,6 +76,7 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, opts: FuzzyFinderCreateOpt
     assert(try doi.addInput(
         self.opts.input_name,
         .{
+            .absolute = true,
             .pos = .{ .x = self.x, .y = self.y },
         },
         .{
