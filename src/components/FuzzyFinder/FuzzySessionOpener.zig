@@ -24,6 +24,7 @@ const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const WindowManager = @import("WindowManager");
+const ConfirmationPrompt = @import("ConfirmationPrompt");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -43,12 +44,13 @@ pub fn mapKeys(fso: *@This(), c: *ip.MappingCouncil) !void {
     });
 }
 
-pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs) !*FuzzySessionOpener {
+pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt) !*FuzzySessionOpener {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
         .wm = wm,
         .finder = try FuzzyFinder.create(a, doi, .{
+            .cp = cp,
             .input_name = FSO,
             .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },

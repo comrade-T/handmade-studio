@@ -29,6 +29,7 @@ const ip = @import("input_processor");
 const code_point = @import("code_point");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const utils = @import("path_getters.zig");
+const ConfirmationPrompt = @import("ConfirmationPrompt");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Public
 
@@ -55,6 +56,7 @@ pub fn mapKeys(self: *@This()) !void {
     const ctx_id = self.opts.input_name;
     try c.map(ctx_id, &.{ .left_control, .j }, .{ .f = nextItem, .ctx = self });
     try c.map(ctx_id, &.{ .left_control, .k }, .{ .f = prevItem, .ctx = self });
+    try c.map(ctx_id, &.{ .left_alt, .d }, .{ .f = deleteSelectedItemWithConfirmationPrompt, .ctx = self });
     try c.map(ctx_id, &.{.escape}, .{ .f = hide, .ctx = self });
 }
 
@@ -130,6 +132,26 @@ pub fn getSelectedPath(self: *@This()) ?[]const u8 {
     const match = self.match_list.items[self.selection_index];
     const path = self.path_list.items[match.path_index];
     return path;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn deleteSelectedItemWithConfirmationPrompt(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const path = self.getSelectedPath() orelse return;
+    const msg = try std.fmt.allocPrint(self.a, "Are you sure you want to delete '{s}'? (y / n)", .{path});
+    defer self.a.free(msg);
+    try self.opts.cp.show(msg, .{ .onConfirm = .{ .f = deleteSelectedItem, .ctx = self } });
+}
+
+fn deleteSelectedItem(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const path = self.getSelectedPath() orelse return;
+    try std.fs.cwd().deleteTree(path);
+
+    try self.updateFilePaths();
+    try update(self, self.needle);
+    self.keepSelectionIndexInBound();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -302,6 +324,7 @@ const Match = struct {
 /////////////////////////////
 
 const FuzzyFinderCreateOptions = struct {
+    cp: *ConfirmationPrompt,
     input_name: []const u8,
     kind: utils.AppendFileNamesRequest.Kind,
 

@@ -24,6 +24,7 @@ const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const Kind = @import("path_getters.zig").AppendFileNamesRequest.Kind;
+const ConfirmationPrompt = @import("ConfirmationPrompt");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -48,12 +49,13 @@ pub fn mapKeys(ffc: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(ffc.opts.name, &.{ .left_alt, .c }, .{ .f = forceConfirm, .ctx = ffc });
 }
 
-pub fn create(a: Allocator, opts: Opts, doi: *DepartmentOfInputs) !*FuzzyFileCreator {
+pub fn create(a: Allocator, opts: Opts, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt) !*FuzzyFileCreator {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
         .opts = opts,
         .finder = try FuzzyFinder.create(a, doi, .{
+            .cp = cp,
             .input_name = opts.name,
             .kind = opts.kind,
             .onConfirm = .{ .f = onConfirm, .ctx = self },

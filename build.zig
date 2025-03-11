@@ -195,6 +195,12 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     _ = text_box;
 
+    const confirmation_prompt = addTestableModule(&bops, "src/components/ConfirmationPrompt.zig", &.{
+        .{ .name = "input_processor", .module = input_processor.module },
+        .{ .name = "RenderMall", .module = render_mall.module },
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
+
     const fuzzy_finders = addTestableModule(&bops, "src/components/FuzzyFinder/fuzzy_finders.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
         .{ .name = "WindowSource", .module = window_source.module },
@@ -205,6 +211,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "WindowManager", .module = window_manager.module },
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
         .{ .name = "DepartmentOfInputs", .module = department_of_inputs.module },
+        .{ .name = "ConfirmationPrompt", .module = confirmation_prompt.module },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables
@@ -232,6 +239,8 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("AnchorPicker", anchor_picker.module);
 
         exe.root_module.addImport("DepartmentOfInputs", department_of_inputs.module);
+
+        exe.root_module.addImport("ConfirmationPrompt", confirmation_prompt.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));
