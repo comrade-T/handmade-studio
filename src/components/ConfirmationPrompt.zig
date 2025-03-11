@@ -79,7 +79,7 @@ pub fn render(self: *@This()) void {
 
     const screen_rect = self.mall.getScreenRect();
 
-    var x: f32 = screen_rect.x;
+    var x: f32 = 0;
     const y: f32 = screen_rect.height - self.font_size - self.y_offset;
 
     var cp_iter = code_point.Iterator{ .bytes = message };
