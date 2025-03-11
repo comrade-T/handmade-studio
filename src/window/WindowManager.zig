@@ -55,6 +55,13 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try self.mapUndoRedoKeymaps(council);
     try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = closeActiveWindow, .ctx = self });
 
+    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .q }, .{ .f = closeAllWindows, .ctx = self });
+    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .q }, .{ .f = closeAllWindows, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .q }, .{ .f = closeAllWindows, .ctx = self });
+    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .q }, .{ .f = closeAllWindows, .ctx = self });
+    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
+
     try WindowPicker.mapKeys(self, council);
 }
 
@@ -154,7 +161,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *N
         .mall = style_store,
         .nl = nl,
         .connman = ConnectionManager{ .wm = self },
-        .hm = HistoryManager{ .a = a, .capacity = 255 },
+        .hm = HistoryManager{ .a = a, .capacity = 1024 },
 
         .qtree = try QuadTree.create(a, .{
             .x = -QUADTREE_WIDTH / 2,
@@ -539,6 +546,17 @@ pub fn closeActiveWindow(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const active_window = self.active_window orelse return;
     try self.closeWindow(active_window, true);
+}
+
+pub fn closeAllWindows(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const windows = self.wmap.keys();
+
+    var i: usize = windows.len;
+    while (i > 0) {
+        i -= 1;
+        try self.closeWindow(windows[i], true);
+    }
 }
 
 fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
