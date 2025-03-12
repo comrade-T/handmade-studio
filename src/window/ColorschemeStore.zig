@@ -84,12 +84,13 @@ pub fn initializeNightflyColorscheme(self: *@This()) !void {
     try map.put(self.a, "type", @intFromEnum(Nightfly.emerald));
     try map.put(self.a, "type.builtin", @intFromEnum(Nightfly.emerald));
 
-    try map.put(self.a, "function", @intFromEnum(Nightfly.blue));
-    try map.put(self.a, "function.builtin", @intFromEnum(Nightfly.blue));
     try map.put(self.a, "field", @intFromEnum(Nightfly.lavender));
     try map.put(self.a, "string", @intFromEnum(Nightfly.peach));
     try map.put(self.a, "comment", @intFromEnum(Nightfly.grey_blue));
+
+    try map.put(self.a, "constant", @intFromEnum(Nightfly.turquoise));
     try map.put(self.a, "constant.builtin", @intFromEnum(Nightfly.green));
+
     try map.put(self.a, "parameter", @intFromEnum(Nightfly.orchid));
 
     try map.put(self.a, "include", @intFromEnum(Nightfly.red));
@@ -100,6 +101,10 @@ pub fn initializeNightflyColorscheme(self: *@This()) !void {
     try map.put(self.a, "variable", @intFromEnum(Nightfly.white));
     try map.put(self.a, "punctuation.bracket", @intFromEnum(Nightfly.white));
     try map.put(self.a, "punctuation.delimiter", @intFromEnum(Nightfly.white));
+
+    try map.put(self.a, "function", @intFromEnum(Nightfly.blue));
+    try map.put(self.a, "function.builtin", @intFromEnum(Nightfly.blue));
+    try map.put(self.a, "function.call", @intFromEnum(Nightfly.blue));
 
     try self.map.put(self.a, "Nightfly", map);
 }

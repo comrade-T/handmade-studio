@@ -64,8 +64,7 @@ pub fn init(a: Allocator, query: *const ts.Query) !*QueryFilter {
                 if (name.len == 0) continue;
 
                 if (name[name.len - 1] == '?') {
-                    const cap_id, const predicate = try Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]);
-                    if (predicate == .unsupported) continue;
+                    const cap_id, const predicate = Predicate.create(self.arena.allocator(), query, name, steps[start .. i + 1]) catch continue;
                     if (predicates_map.getPtr(cap_id)) |list| try list.append(predicate) else {
                         var list = ArrayList(Predicate).init(self.arena.allocator());
                         try list.append(predicate);
@@ -112,7 +111,7 @@ const Predicate = union(enum) {
         if (eql(u8, name, "not-match?")) return MatchPredicate.create(a, query, steps, .not_match);
         if (eql(u8, name, "starts-with?")) return StartsWithPredicate.create(query, steps);
         if (eql(u8, name, "ends-with?")) return EndsWithPredicate.create(query, steps);
-        return error.Unsupported;
+        return UnsupportedPredicate.create(steps);
     }
 
     fn eval(self: *const Predicate, source: []const u8) bool {
@@ -284,6 +283,13 @@ const Predicate = union(enum) {
         fn eval(self: *const EndsWithPredicate, source: []const u8) bool {
             if (source.len < self.target.len) return false;
             return eql(u8, source[source.len - self.target.len ..], self.target);
+        }
+    };
+
+    const UnsupportedPredicate = struct {
+        fn create(steps: []const PredicateStep) CreationError!CreationResult {
+            if (steps.len < 2) return error.InvalidAmountOfSteps;
+            return .{ steps[1].value_id, Predicate.unsupported };
         }
     };
 };

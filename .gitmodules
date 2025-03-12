@@ -1,12 +1,12 @@
 [submodule "submodules/tree-sitter-zig"]
 	path = submodules/tree-sitter-zig
-	url = https://github.com/maxxnino/tree-sitter-zig.git
+	url = https://github.com/tree-sitter-grammars/tree-sitter-zig.git
 [submodule "submodules/tree-sitter"]
 	path = submodules/tree-sitter
 	url = https://github.com/tree-sitter/tree-sitter.git
 [submodule "submodules/regex"]
 	path = submodules/regex
-	url = https://github.com/tiehuis/zig-regex
+	url = https://github.com/tiehuis/zig-regex.git
 [submodule "submodules/ztracy"]
 	path = submodules/ztracy
-	url = https://github.com/comrade-T/ztracy
+	url = https://github.com/comrade-T/ztracy.git

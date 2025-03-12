@@ -116,21 +116,21 @@ pub fn main() anyerror!void {
     // adding custom rules
     try mall.addFontSizeStyle(.{
         .query_id = 0,
-        .capture_id = 5, // @type
+        .capture_id = 2, // @type
         .styleset_id = 0,
     }, 50);
 
-    try mall.addFontSizeStyle(.{
-        .query_id = 0,
-        .capture_id = 6, // @function
-        .styleset_id = 0,
-    }, 60);
+    // try mall.addFontSizeStyle(.{
+    //     .query_id = 0,
+    //     .capture_id = 6, // @function
+    //     .styleset_id = 0,
+    // }, 60);
 
-    try mall.addFontSizeStyle(.{
-        .query_id = 0,
-        .capture_id = 0, // @comment
-        .styleset_id = 0,
-    }, 80);
+    // try mall.addFontSizeStyle(.{
+    //     .query_id = 0,
+    //     .capture_id = 0, // @comment
+    //     .styleset_id = 0,
+    // }, 80);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// High Level Components
 
