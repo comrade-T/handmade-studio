@@ -411,16 +411,26 @@ fn isOutOfView(self: *@This(), view: ScreenView) bool {
 
 pub fn getCharColor(self: *@This(), r: WindowSource.LineIterator.Result, colorscheme: *const ColorschemeStore.Colorscheme) u32 {
     var color = self.defaults.color;
-    var i: usize = r.ids.len;
-    while (i > 0) {
-        i -= 1;
-        const ids = r.ids[i];
-        const group_name = self.ws.ls.?.queries.values()[ids.query_id].query.getCaptureNameForId(ids.capture_id);
+
+    for (r.ids) |id| {
+        const group_name = self.ws.ls.?.queries.values()[id.query_id].query.getCaptureNameForId(id.capture_id);
         if (colorscheme.get(group_name)) |c| {
             color = c;
             break;
         }
     }
+
+    // var i: usize = r.ids.len;
+    // while (i > 0) {
+    //     i -= 1;
+    //     const id = r.ids[i];
+    //     const group_name = self.ws.ls.?.queries.values()[id.query_id].query.getCaptureNameForId(id.capture_id);
+    //     if (colorscheme.get(group_name)) |c| {
+    //         color = c;
+    //         break;
+    //     }
+    // }
+
     return color;
 }
 

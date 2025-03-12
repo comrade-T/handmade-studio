@@ -114,11 +114,14 @@ pub fn main() anyerror!void {
     defer mall.deinit();
 
     // adding custom rules
-    try mall.addFontSizeStyle(.{
-        .query_id = 0,
-        .capture_id = 2, // @type
-        .styleset_id = 0,
-    }, 50);
+
+    // TODO: add #priority directive to QueryFilter
+
+    // try mall.addFontSizeStyle(.{
+    //     .query_id = 0,
+    //     .capture_id = 2, // @type
+    //     .styleset_id = 0,
+    // }, 50);
 
     // try mall.addFontSizeStyle(.{
     //     .query_id = 0,
