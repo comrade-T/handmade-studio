@@ -31,6 +31,7 @@ a: Allocator,
 lang_choice: SupportedLanguages,
 language: *const ts.Language,
 highlight_queries: QueryMap,
+entity_queries: QueryMap,
 
 pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
     const self = try a.create(@This());
@@ -42,18 +43,24 @@ pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
         .lang_choice = lang_choice,
         .language = language,
         .highlight_queries = QueryMap.init(a),
+        .entity_queries = QueryMap.init(a),
     };
     return self;
 }
 
 pub fn destroy(self: *@This()) void {
-    for (self.highlight_queries.values()) |sq| {
-        sq.filter.deinit();
-        sq.query.destroy();
-        self.a.free(sq.patterns);
-        self.a.destroy(sq);
+    for ([_]*QueryMap{
+        &self.highlight_queries,
+        &self.entity_queries,
+    }) |map| {
+        for (map.values()) |sq| {
+            sq.filter.deinit();
+            sq.query.destroy();
+            self.a.free(sq.patterns);
+            self.a.destroy(sq);
+        }
+        map.deinit();
     }
-    self.highlight_queries.deinit();
     self.a.destroy(self);
 }
 
@@ -61,10 +68,10 @@ pub fn addDefaultHighlightQuery(self: *@This()) !void {
     const patterns = switch (self.lang_choice) {
         .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
     };
-    try self.addQuery(DEFAULT_QUERY_ID, patterns);
+    try self.addQuery(&self.highlight_queries, DEFAULT_QUERY_ID, patterns);
 }
 
-pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
+pub fn addQuery(self: *@This(), map: *QueryMap, id: []const u8, patterns: []const u8) !void {
     const zone = ztracy.ZoneNC(@src(), "Language.addQuery", 0x00AAFF);
     defer zone.End();
 
@@ -75,7 +82,7 @@ pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
         .patterns = try self.a.dupe(u8, patterns),
         .filter = try QueryFilter.init(self.a, query),
     };
-    try self.highlight_queries.put(id, sq);
+    try map.put(id, sq);
 }
 
 pub fn createParser(self: *@This()) !*ts.Parser {
@@ -119,8 +126,8 @@ pub const LangHub = struct {
 
 pub const DEFAULT_QUERY_ID = "DEFAULT";
 
-pub const QueryMap = std.StringArrayHashMap(*StoredQuery);
-pub const StoredQuery = struct {
+const QueryMap = std.StringArrayHashMap(*StoredQuery);
+const StoredQuery = struct {
     query: *ts.Query,
     patterns: []const u8,
     filter: *QueryFilter,
