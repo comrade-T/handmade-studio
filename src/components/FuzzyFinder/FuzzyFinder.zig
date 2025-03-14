@@ -136,6 +136,13 @@ pub fn getSelectedPath(self: *@This()) ?[]const u8 {
     return path;
 }
 
+pub fn getSelectedIndex(self: *@This()) ?usize {
+    if (self.match_list.items.len == 0) return null;
+    assert(self.selection_index <= self.match_list.items.len -| 1);
+    const match = self.match_list.items[self.selection_index];
+    return match.entry_index;
+}
+
 pub fn addEntry(self: *@This(), entry: []const u8) !void {
     const duped_entry = try self.entry_arena.allocator().dupe(u8, entry);
     try self.entry_list.append(duped_entry);

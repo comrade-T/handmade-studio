@@ -24,6 +24,7 @@ const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const WindowManager = @import("WindowManager");
+const Buffer = @import("Buffer");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +34,7 @@ const FEP = "FuzzyEntityPicker";
 a: Allocator,
 finder: *FuzzyFinder,
 wm: *WindowManager,
+capture_list: Buffer.EntityInfoList,
 
 pub fn mapKeys(fep: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .space, .e }, .{
@@ -55,6 +57,7 @@ pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs) !*Fuzz
             .onHide = .{ .f = onHide, .ctx = self },
             .updateEntries = .{ .f = updateEntries, .ctx = self },
         }),
+        .capture_list = Buffer.EntityInfoList.init(a),
     };
     try self.mapKeys(doi.council);
     return self;
@@ -62,6 +65,7 @@ pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs) !*Fuzz
 
 pub fn destroy(self: *@This()) void {
     self.finder.destroy();
+    self.capture_list.deinit();
     self.a.destroy(self);
 }
 
@@ -69,9 +73,11 @@ pub fn destroy(self: *@This()) void {
 
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const entry = self.finder.getSelectedPath() orelse return true;
+    const index = self.finder.getSelectedIndex() orelse return true;
 
-    std.debug.print("selected entry: '{s}'\n", .{entry});
+    std.debug.print("selected index: '{d}'\n", .{index});
+
+    // TODO: do something with `self.capture_list.items[index]`
 
     return true;
 }
@@ -86,13 +92,13 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 
 fn updateEntries(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.capture_list.clearRetainingCapacity();
 
     const win = self.wm.active_window orelse return;
     const buf = win.ws.buf;
-    const captured_list = try buf.captureEntitiesToArrayList(self.a);
-    defer captured_list.deinit();
+    try buf.captureEntitiesToArrayList(&self.capture_list);
 
-    for (captured_list.items) |capture| {
+    for (self.capture_list.items) |capture| {
         var txt_buf: [256]u8 = undefined;
         const contents = buf.ropeman.getRange(
             .{ .line = capture.start_line, .col = capture.start_col },

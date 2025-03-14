@@ -62,19 +62,18 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Query Entities
 
-const EntityInfo = struct {
+pub const EntityInfo = struct {
     start_line: u32,
     start_col: u32,
     end_line: u32,
     end_col: u32,
 };
 
-const EntityInfoList = std.ArrayList(EntityInfo);
+pub const EntityInfoList = std.ArrayList(EntityInfo);
 
-pub fn captureEntitiesToArrayList(self: *@This(), a: Allocator) !EntityInfoList {
-    var list = EntityInfoList.init(a);
-    const tree = self.tstree orelse return list;
-    const ls = self.langsuite orelse return list;
+pub fn captureEntitiesToArrayList(self: *@This(), list: *EntityInfoList) !void {
+    const tree = self.tstree orelse return;
+    const ls = self.langsuite orelse return;
 
     for (ls.entity_queries.values()) |sq| {
         var cursor = try LangSuite.ts.Query.Cursor.create();
@@ -94,8 +93,6 @@ pub fn captureEntitiesToArrayList(self: *@This(), a: Allocator) !EntityInfoList 
             }
         }
     }
-
-    return list;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// initiateTreeSitter

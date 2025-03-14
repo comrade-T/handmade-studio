@@ -219,6 +219,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "DepartmentOfInputs", .module = department_of_inputs.module },
         .{ .name = "ConfirmationPrompt", .module = confirmation_prompt.module },
         .{ .name = "NotificationLine", .module = notification_line.module },
+        .{ .name = "Buffer", .module = buffer.module },
     }, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables
