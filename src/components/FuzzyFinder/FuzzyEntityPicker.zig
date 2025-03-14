@@ -79,7 +79,10 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     assert(index < self.entity_list.items.len);
     const entity = self.entity_list.items[index];
 
-    win.setLimit(entity.contents.start_line, entity.contents.end_line);
+    try win.setLimit(self.wm.a, self.wm.qtree, .{
+        .start_line = entity.contents.start_line,
+        .end_line = entity.contents.end_line,
+    });
 
     return true;
 }

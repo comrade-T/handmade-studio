@@ -91,13 +91,11 @@ pub fn create(
     if (opts.subscribed_style_sets) |slice| try self.subscribed_style_sets.appendSlice(self.a, slice);
     if (opts.id) |id| self.id = id;
 
-    // this must be called last
     self.cached = try WindowCache.init(self.a, self, mall);
 
-    if (opts.limit) |limit| {
-        self.attr.limit = limit;
-        self.cursor_manager.setLimit(limit.start_line, limit.end_line);
-    }
+    ///////////////////////////// must call AFTER cache
+
+    if (opts.limit) |limit| try self.setLimitNoQuadTree(limit);
 
     if (may_qtree) |qtree| try qtree.insert(a, self, self.getRect());
 
@@ -137,8 +135,15 @@ pub fn centerCameraAt(self: *const @This(), screen_rect: Rect, mall: *const Rend
     mall.rcb.changeCameraPan(mall.target_camera, x_by, y_by);
 }
 
-pub fn setLimit(self: *@This(), start_line: u32, end_line: u32) void {
-    self.attr.limit = .{ .start_line = start_line, .end_line = end_line };
+pub fn setLimit(self: *@This(), a: Allocator, qtree: *QuadTree, may_limit: ?CursorManager.Limit) !void {
+    self.removeFromQuadTree(a, qtree);
+    try self.setLimitNoQuadTree(may_limit);
+    try self.insertToQuadTree(a, qtree);
+}
+
+fn setLimitNoQuadTree(self: *@This(), may_limit: ?CursorManager.Limit) !void {
+    self.attr.limit = may_limit;
+    if (may_limit) |limit| self.cursor_manager.setLimit(limit.start_line, limit.end_line);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Setters
@@ -219,11 +224,31 @@ pub fn getY(self: *const @This()) f32 {
 }
 
 pub fn getContentWidth(self: *const @This()) f32 {
-    return self.cached.width;
+    return self.getLimitedWidth() orelse self.cached.width;
+}
+
+fn getLimitedWidth(self: *const @This()) ?f32 {
+    const limit = self.attr.limit orelse return null;
+    var result: f32 = 0;
+    for (limit.start_line..limit.end_line + 1) |i| {
+        const line_info = self.cached.line_info.items[i];
+        result = @max(line_info.width, result);
+    }
+    return result;
 }
 
 pub fn getContentHeight(self: *const @This()) f32 {
-    return self.cached.height;
+    return self.getLimitedHeight() orelse self.cached.height;
+}
+
+fn getLimitedHeight(self: *const @This()) ?f32 {
+    const limit = self.attr.limit orelse return null;
+    var result: f32 = 0;
+    for (limit.start_line..limit.end_line + 1) |i| {
+        const line_info = self.cached.line_info.items[i];
+        result += line_info.height;
+    }
+    return result;
 }
 
 pub fn getWidth(self: *const @This()) f32 {
@@ -369,8 +394,8 @@ pub fn processEditResult(
 
         // limit related
         if (self.attr.limit) |limit| {
-            self.attr.limit = Window.getUpdatedLimits(limit, ri);
-            self.cursor_manager.setLimit(self.attr.limit.?.start_line, self.attr.limit.?.end_line);
+            assert(a != null and may_qtree != null);
+            try self.setLimit(a.?, may_qtree.?, Window.getUpdatedLimits(limit, ri));
         }
     }
 
