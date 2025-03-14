@@ -105,7 +105,7 @@ pub fn destroy(self: *@This()) void {
 
 pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
-    try self.updateFilePaths();
+    try self.updateEntries();
     try update(self, self.needle);
     assert(try self.doi.showInput(self.opts.input_name));
     self.visible = true;
@@ -155,7 +155,7 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
     try std.fs.cwd().deleteTree(path);
 
-    try self.updateFilePaths();
+    try self.updateEntries();
     try update(self, self.needle);
     self.keepSelectionIndexInBound();
 
@@ -268,6 +268,14 @@ fn confirm(ctx: *anyopaque, _: []const u8) !void {
     }
 }
 
+fn updateEntries(self: *@This()) !void {
+    if (self.opts.updateEntries) |cb| {
+        try cb.f(cb.ctx, self.needle);
+        return;
+    }
+    try self.updateFilePaths();
+}
+
 fn updateFilePaths(self: *@This()) !void {
     self.entry_arena.deinit();
     self.entry_arena = ArenaAllocator.init(self.a);
@@ -345,6 +353,8 @@ const FuzzyFinderCreateOptions = struct {
     onCancel: ?Callback = null,
     onHide: ?Callback = null,
     onShow: ?Callback = null,
+
+    updateEntries: ?Callback = null,
 
     custom_ignore_patterns: ?[]const []const u8 = null,
     ignore_ignore_patterns: ?[]const []const u8 = null,
