@@ -86,11 +86,19 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 
 fn updateEntries(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const a = self.finder.entry_arena.allocator();
 
-    const entries: []const []const u8 = &.{ "one", "two", "three" };
-    for (entries) |entry| {
-        const duped_entry = try a.dupe(u8, entry);
-        try self.finder.entry_list.append(duped_entry);
+    const win = self.wm.active_window orelse return;
+    const buf = win.ws.buf;
+    const captured_list = try buf.captureEntitiesToArrayList(self.a);
+    defer captured_list.deinit();
+
+    for (captured_list.items) |capture| {
+        var txt_buf: [256]u8 = undefined;
+        const contents = buf.ropeman.getRange(
+            .{ .line = capture.start_line, .col = capture.start_col },
+            .{ .line = capture.end_line, .col = capture.end_col },
+            &txt_buf,
+        );
+        try self.finder.addEntry(contents);
     }
 }

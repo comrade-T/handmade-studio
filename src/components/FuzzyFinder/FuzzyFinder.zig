@@ -136,6 +136,11 @@ pub fn getSelectedPath(self: *@This()) ?[]const u8 {
     return path;
 }
 
+pub fn addEntry(self: *@This(), entry: []const u8) !void {
+    const duped_entry = try self.entry_arena.allocator().dupe(u8, entry);
+    try self.entry_list.append(duped_entry);
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn deleteSelectedItemWithConfirmationPrompt(ctx: *anyopaque) !void {

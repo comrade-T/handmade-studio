@@ -69,6 +69,15 @@ pub fn addDefaultHighlightQuery(self: *@This()) !void {
     try self.addQuery(&self.highlight_queries, DEFAULT_QUERY_ID, patterns);
 }
 
+pub fn addExperimentalEntityQuery(self: *@This()) !void {
+    const patterns = switch (self.lang_choice) {
+        .zig =>
+        \\ (function_declaration
+        \\   name: (identifier) @function)
+    };
+    try self.addQuery(&self.entity_queries, DEFAULT_QUERY_ID, patterns);
+}
+
 pub fn addQuery(self: *@This(), map: *QueryMap, id: []const u8, patterns: []const u8) !void {
     const zone = ztracy.ZoneNC(@src(), "Language.addQuery", 0x00AAFF);
     defer zone.End();
@@ -114,6 +123,7 @@ pub const LangHub = struct {
         if (!self.map.contains(lang_choice)) {
             var ls = try LangSuite.create(self.a, lang_choice);
             try ls.addDefaultHighlightQuery();
+            try ls.addExperimentalEntityQuery();
             try self.map.put(lang_choice, ls);
         }
         return self.map.get(lang_choice) orelse unreachable;

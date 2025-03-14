@@ -60,6 +60,44 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Query Entities
+
+const EntityInfo = struct {
+    start_line: u32,
+    start_col: u32,
+    end_line: u32,
+    end_col: u32,
+};
+
+const EntityInfoList = std.ArrayList(EntityInfo);
+
+pub fn captureEntitiesToArrayList(self: *@This(), a: Allocator) !EntityInfoList {
+    var list = EntityInfoList.init(a);
+    const tree = self.tstree orelse return list;
+    const ls = self.langsuite orelse return list;
+
+    for (ls.entity_queries.values()) |sq| {
+        var cursor = try LangSuite.ts.Query.Cursor.create();
+        cursor.execute(sq.query, tree.getRootNode());
+
+        const targets_buf_capacity = 8;
+        var targets_buf: [@sizeOf(LangSuite.QueryFilter.CapturedTarget) * targets_buf_capacity]u8 = undefined;
+        while (sq.filter.nextMatch(&self.ropeman, &targets_buf, targets_buf_capacity, cursor)) |match| {
+            if (!match.all_predicates_matched) continue;
+            for (match.targets) |target| {
+                try list.append(EntityInfo{
+                    .start_line = target.start_line,
+                    .start_col = target.start_col,
+                    .end_line = target.end_line,
+                    .end_col = target.end_col,
+                });
+            }
+        }
+    }
+
+    return list;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// initiateTreeSitter
 
 pub fn initiateTreeSitter(self: *@This(), langsuite: *LangSuite) !void {
