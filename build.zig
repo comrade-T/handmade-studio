@@ -227,8 +227,14 @@ pub fn build(b: *std.Build) void {
     ///////////////////////////// Main
 
     {
+        const exe_name = b.option(
+            []const u8,
+            "exe_name",
+            "Name of the executable",
+        ) orelse "main";
+
         const exe = b.addExecutable(.{
-            .name = "main",
+            .name = exe_name,
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
