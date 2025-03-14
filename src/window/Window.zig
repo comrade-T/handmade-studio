@@ -393,10 +393,7 @@ pub fn processEditResult(
         try self.cached.updateCacheLines(self, ri, mall, default_font, default_glyph);
 
         // limit related
-        if (self.attr.limit) |limit| {
-            assert(a != null and may_qtree != null);
-            try self.setLimit(a.?, may_qtree.?, Window.getUpdatedLimits(limit, ri));
-        }
+        if (self.attr.limit) |limit| try self.setLimitNoQuadTree(limit);
     }
 
     if (may_qtree) |qtree| try self.insertToQuadTree(a.?, qtree);
