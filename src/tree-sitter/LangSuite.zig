@@ -30,8 +30,8 @@ pub const SupportedLanguages = enum { zig };
 a: Allocator,
 lang_choice: SupportedLanguages,
 language: *const ts.Language,
-highlight_queries: QueryMap,
-entity_queries: QueryMap,
+highlight_queries: QueryMap = .{},
+entity_queries: QueryMap = .{},
 
 pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
     const self = try a.create(@This());
@@ -42,8 +42,6 @@ pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
         .a = a,
         .lang_choice = lang_choice,
         .language = language,
-        .highlight_queries = QueryMap.init(a),
-        .entity_queries = QueryMap.init(a),
     };
     return self;
 }
@@ -59,7 +57,7 @@ pub fn destroy(self: *@This()) void {
             self.a.free(sq.patterns);
             self.a.destroy(sq);
         }
-        map.deinit();
+        map.deinit(self.a);
     }
     self.a.destroy(self);
 }
@@ -82,7 +80,7 @@ pub fn addQuery(self: *@This(), map: *QueryMap, id: []const u8, patterns: []cons
         .patterns = try self.a.dupe(u8, patterns),
         .filter = try QueryFilter.init(self.a, query),
     };
-    try map.put(id, sq);
+    try map.put(self.a, id, sq);
 }
 
 pub fn createParser(self: *@This()) !*ts.Parser {
@@ -126,7 +124,7 @@ pub const LangHub = struct {
 
 pub const DEFAULT_QUERY_ID = "DEFAULT";
 
-const QueryMap = std.StringArrayHashMap(*StoredQuery);
+const QueryMap = std.StringArrayHashMapUnmanaged(*StoredQuery);
 const StoredQuery = struct {
     query: *ts.Query,
     patterns: []const u8,
