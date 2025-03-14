@@ -609,24 +609,24 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     try self.spawnWindow(from, source, opts, true, true);
     const new = self.active_window orelse unreachable;
 
-    var new_x: f32 = new.attr.target_pos.x;
-    var new_y: f32 = new.attr.target_pos.y;
+    var new_x: f32 = new.getX();
+    var new_y: f32 = new.getY();
     switch (direction) {
         .right => {
-            new_x = prev.attr.pos.x + prev.cached.width;
-            new_y = prev.attr.pos.y;
+            new_x = prev.getX() + prev.getWidth();
+            new_y = prev.getY();
         },
         .left => {
-            new_x = prev.attr.pos.x - new.cached.width;
-            new_y = prev.attr.pos.y;
+            new_x = prev.getX() - new.getWidth();
+            new_y = prev.getY();
         },
         .bottom => {
-            new_x = prev.attr.pos.x;
-            new_y = prev.attr.pos.y + prev.cached.height;
+            new_x = prev.getX();
+            new_y = prev.getY() + prev.getHeight();
         },
         .top => {
-            new_x = prev.attr.pos.x;
-            new_y = prev.attr.pos.y - new.cached.height;
+            new_x = prev.getX();
+            new_y = prev.getY() - new.getHeight();
         },
     }
     try new.setPositionInstantly(self.a, self.qtree, new_x, new_y);
@@ -635,24 +635,24 @@ pub fn spawnNewWindowRelativeToActiveWindow(
         if (window == prev or window == new) continue;
         switch (direction) {
             .right => {
-                if (window.attr.pos.x > prev.attr.pos.x and window.verticalIntersect(prev)) {
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, new.cached.width, 0);
+                if (window.getX() > prev.getX() and window.verticalIntersect(prev)) {
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, new.getWidth(), 0);
                 }
             },
             .left => {
-                if (window.attr.pos.x < prev.attr.pos.x and
+                if (window.getX() < prev.getX() and
                     window.verticalIntersect(prev))
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, -new.cached.width, 0);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, -new.getWidth(), 0);
             },
             .bottom => {
-                if (window.attr.pos.y > prev.attr.pos.y and
+                if (window.getY() > prev.getY() and
                     window.horizontalIntersect(prev))
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, new.cached.height);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, new.getHeight());
             },
             .top => {
-                if (window.attr.pos.y < prev.attr.pos.y and
+                if (window.getY() < prev.getY() and
                     window.horizontalIntersect(prev))
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, -new.cached.height);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, -new.getHeight());
             },
         }
     }
