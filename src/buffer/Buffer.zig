@@ -62,16 +62,22 @@ pub fn destroy(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Query Entities
 
-pub const EntityInfo = struct {
-    start_line: u32,
-    start_col: u32,
-    end_line: u32,
-    end_col: u32,
+pub const Entity = struct {
+    name: struct {
+        start_line: u32,
+        start_col: u32,
+        end_line: u32,
+        end_col: u32,
+    },
+    contents: struct {
+        start_line: u32,
+        end_line: u32,
+    },
 };
 
-pub const EntityInfoList = std.ArrayList(EntityInfo);
+pub const EntityList = std.ArrayList(Entity);
 
-pub fn captureEntitiesToArrayList(self: *@This(), list: *EntityInfoList) !void {
+pub fn captureEntitiesToArrayList(self: *@This(), list: *EntityList) !void {
     const tree = self.tstree orelse return;
     const ls = self.langsuite orelse return;
 
@@ -83,14 +89,25 @@ pub fn captureEntitiesToArrayList(self: *@This(), list: *EntityInfoList) !void {
         var targets_buf: [@sizeOf(LangSuite.QueryFilter.CapturedTarget) * targets_buf_capacity]u8 = undefined;
         while (sq.filter.nextMatch(&self.ropeman, &targets_buf, targets_buf_capacity, cursor)) |match| {
             if (!match.all_predicates_matched) continue;
-            for (match.targets) |target| {
-                try list.append(EntityInfo{
-                    .start_line = target.start_line,
-                    .start_col = target.start_col,
-                    .end_line = target.end_line,
-                    .end_col = target.end_col,
-                });
-            }
+            assert(match.targets.len == 2);
+
+            const name = match.targets[1];
+            assert(std.mem.eql(u8, sq.query.getCaptureNameForId(name.capture_id), "name"));
+            const contents = match.targets[0];
+            assert(std.mem.eql(u8, sq.query.getCaptureNameForId(contents.capture_id), "contents"));
+
+            try list.append(.{
+                .name = .{
+                    .start_line = name.start_line,
+                    .start_col = name.start_col,
+                    .end_line = name.end_line,
+                    .end_col = name.end_col,
+                },
+                .contents = .{
+                    .start_line = contents.start_line,
+                    .end_line = contents.end_line,
+                },
+            });
         }
     }
 }

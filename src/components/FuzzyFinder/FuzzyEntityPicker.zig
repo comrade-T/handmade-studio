@@ -34,7 +34,7 @@ const FEP = "FuzzyEntityPicker";
 a: Allocator,
 finder: *FuzzyFinder,
 wm: *WindowManager,
-capture_list: Buffer.EntityInfoList,
+entity_list: Buffer.EntityList,
 
 pub fn mapKeys(fep: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .space, .e }, .{
@@ -57,7 +57,7 @@ pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs) !*Fuzz
             .onHide = .{ .f = onHide, .ctx = self },
             .updateEntries = .{ .f = updateEntries, .ctx = self },
         }),
-        .capture_list = Buffer.EntityInfoList.init(a),
+        .entity_list = Buffer.EntityList.init(a),
     };
     try self.mapKeys(doi.council);
     return self;
@@ -65,7 +65,7 @@ pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs) !*Fuzz
 
 pub fn destroy(self: *@This()) void {
     self.finder.destroy();
-    self.capture_list.deinit();
+    self.entity_list.deinit();
     self.a.destroy(self);
 }
 
@@ -75,9 +75,11 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const index = self.finder.getSelectedIndex() orelse return true;
 
-    std.debug.print("selected index: '{d}'\n", .{index});
+    const win = self.wm.active_window orelse return false;
+    assert(index < self.entity_list.items.len);
+    const entity = self.entity_list.items[index];
 
-    // TODO: do something with `self.capture_list.items[index]`
+    win.setLimit(entity.contents.start_line, entity.contents.end_line);
 
     return true;
 }
@@ -92,17 +94,17 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 
 fn updateEntries(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.capture_list.clearRetainingCapacity();
+    self.entity_list.clearRetainingCapacity();
 
     const win = self.wm.active_window orelse return;
     const buf = win.ws.buf;
-    try buf.captureEntitiesToArrayList(&self.capture_list);
+    try buf.captureEntitiesToArrayList(&self.entity_list);
 
-    for (self.capture_list.items) |capture| {
+    for (self.entity_list.items) |entity| {
         var txt_buf: [256]u8 = undefined;
         const contents = buf.ropeman.getRange(
-            .{ .line = capture.start_line, .col = capture.start_col },
-            .{ .line = capture.end_line, .col = capture.end_col },
+            .{ .line = entity.name.start_line, .col = entity.name.start_col },
+            .{ .line = entity.name.end_line, .col = entity.name.end_col },
             &txt_buf,
         );
         try self.finder.addEntry(contents);

@@ -73,7 +73,7 @@ pub fn addExperimentalEntityQuery(self: *@This()) !void {
     const patterns = switch (self.lang_choice) {
         .zig =>
         \\ (function_declaration
-        \\   name: (identifier) @function)
+        \\   name: (identifier) @name) @contents
     };
     try self.addQuery(&self.entity_queries, DEFAULT_QUERY_ID, patterns);
 }

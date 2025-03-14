@@ -137,6 +137,10 @@ pub fn centerCameraAt(self: *const @This(), screen_rect: Rect, mall: *const Rend
     mall.rcb.changeCameraPan(mall.target_camera, x_by, y_by);
 }
 
+pub fn setLimit(self: *@This(), start_line: u32, end_line: u32) void {
+    self.attr.limit = .{ .start_line = start_line, .end_line = end_line };
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Setters
 
 pub fn centerAt(self: *@This(), a: Allocator, qtree: *QuadTree, center_x: f32, center_y: f32) !void {
