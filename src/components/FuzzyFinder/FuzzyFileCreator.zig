@@ -162,5 +162,7 @@ fn createFile(self: *@This(), origin_: []const u8, new_file_path: []const u8) !v
 
     const msg = try std.fmt.allocPrint(self.a, "File '{s}' created successfully", .{new_file_path});
     defer self.a.free(msg);
-    try self.finder.opts.nl.setMessage(msg);
+
+    assert(self.finder.opts.nl != null);
+    if (self.finder.opts.nl) |nl| try nl.setMessage(msg);
 }

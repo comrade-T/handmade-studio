@@ -175,6 +175,9 @@ pub fn main() anyerror!void {
     var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, wm, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_session_savior.destroy();
 
+    var fuzzy_entity_picker = try fuzzy_finders.FuzzyEntityPicker.create(gpa, wm, &doi);
+    defer fuzzy_entity_picker.destroy();
+
     startup_ztracy_zone.End();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
@@ -217,6 +220,7 @@ pub fn main() anyerror!void {
                 fuzzy_file_opener.finder.render();
                 fuzzy_session_opener.finder.render();
                 fuzzy_session_savior.ffc.finder.render();
+                fuzzy_entity_picker.finder.render();
 
                 // NotificationLine
                 notification_line.render();

@@ -143,7 +143,9 @@ fn deleteSelectedItemWithConfirmationPrompt(ctx: *anyopaque) !void {
     const path = self.getSelectedPath() orelse return;
     const msg = try std.fmt.allocPrint(self.a, "Are you sure you want to delete '{s}'? (y / n)", .{path});
     defer self.a.free(msg);
-    try self.opts.cp.show(msg, .{ .onConfirm = .{ .f = deleteSelectedItem, .ctx = self } });
+    if (self.opts.cp) |cp| {
+        try cp.show(msg, .{ .onConfirm = .{ .f = deleteSelectedItem, .ctx = self } });
+    }
 }
 
 fn deleteSelectedItem(ctx: *anyopaque) !void {
@@ -161,7 +163,7 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
     const msg = try std.fmt.allocPrint(self.a, "'{s}' has been deleted", .{duped_path});
     defer self.a.free(msg);
-    try self.opts.nl.setMessage(msg);
+    if (self.opts.nl) |nl| try nl.setMessage(msg);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
@@ -269,6 +271,10 @@ fn confirm(ctx: *anyopaque, _: []const u8) !void {
 }
 
 fn updateEntries(self: *@This()) !void {
+    self.entry_arena.deinit();
+    self.entry_arena = ArenaAllocator.init(self.a);
+    self.entry_list.clearRetainingCapacity();
+
     if (self.opts.updateEntries) |cb| {
         try cb.f(cb.ctx, self.needle);
         return;
@@ -277,10 +283,6 @@ fn updateEntries(self: *@This()) !void {
 }
 
 fn updateFilePaths(self: *@This()) !void {
-    self.entry_arena.deinit();
-    self.entry_arena = ArenaAllocator.init(self.a);
-    self.entry_list.clearRetainingCapacity();
-
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     var final_ignore_list = ArrayList([]const u8).init(arena.allocator());
     defer arena.deinit();
@@ -342,8 +344,8 @@ const Match = struct {
 /////////////////////////////
 
 const FuzzyFinderCreateOptions = struct {
-    cp: *ConfirmationPrompt,
-    nl: *NotificationLine,
+    cp: ?*ConfirmationPrompt = null,
+    nl: ?*NotificationLine = null,
 
     input_name: []const u8,
     kind: utils.AppendFileNamesRequest.Kind,

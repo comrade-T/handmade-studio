@@ -5,6 +5,7 @@ pub const FuzzyFileOpener = @import("FuzzyFileOpener.zig");
 pub const FuzzyFileCreator = @import("FuzzyFileCreator.zig");
 pub const FuzzySessionOpener = @import("FuzzySessionOpener.zig");
 pub const FuzzySessionSavior = @import("FuzzySessionSavior.zig");
+pub const FuzzyEntityPicker = @import("FuzzyEntityPicker.zig");
 
 test {
     std.testing.refAllDeclsRecursive(utils);
