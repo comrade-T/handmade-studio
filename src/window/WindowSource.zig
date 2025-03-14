@@ -118,7 +118,7 @@ fn getCaptures(self: *@This(), start: usize, end: usize) !CapturedLinesMap {
 
     for (start..end + 1) |i| try map.put(i, try StoredCaptureList.initCapacity(self.a, 8));
 
-    for (ls.queries.values(), 0..) |sq, query_index| {
+    for (ls.highlight_queries.values(), 0..) |sq, query_index| {
         var cursor = try LangSuite.ts.Query.Cursor.create();
         cursor.execute(sq.query, tree.getRootNode());
         cursor.setPointRange(

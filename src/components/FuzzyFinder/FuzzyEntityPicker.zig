@@ -24,9 +24,6 @@ const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const WindowManager = @import("WindowManager");
-const AnchorPicker = @import("AnchorPicker");
-const ConfirmationPrompt = @import("ConfirmationPrompt");
-const NotificationLine = @import("NotificationLine");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

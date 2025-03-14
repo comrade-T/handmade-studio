@@ -413,7 +413,7 @@ pub fn getCharColor(self: *@This(), r: WindowSource.LineIterator.Result, colorsc
     var color = self.defaults.color;
 
     for (r.ids) |id| {
-        const group_name = self.ws.ls.?.queries.values()[id.query_id].query.getCaptureNameForId(id.capture_id);
+        const group_name = self.ws.ls.?.highlight_queries.values()[id.query_id].query.getCaptureNameForId(id.capture_id);
         if (colorscheme.get(group_name)) |c| {
             color = c;
             break;

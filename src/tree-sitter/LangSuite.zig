@@ -30,7 +30,7 @@ pub const SupportedLanguages = enum { zig };
 a: Allocator,
 lang_choice: SupportedLanguages,
 language: *const ts.Language,
-queries: QueryMap,
+highlight_queries: QueryMap,
 
 pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
     const self = try a.create(@This());
@@ -41,19 +41,19 @@ pub fn create(a: Allocator, lang_choice: SupportedLanguages) !*LangSuite {
         .a = a,
         .lang_choice = lang_choice,
         .language = language,
-        .queries = QueryMap.init(a),
+        .highlight_queries = QueryMap.init(a),
     };
     return self;
 }
 
 pub fn destroy(self: *@This()) void {
-    for (self.queries.values()) |sq| {
+    for (self.highlight_queries.values()) |sq| {
         sq.filter.deinit();
         sq.query.destroy();
         self.a.free(sq.patterns);
         self.a.destroy(sq);
     }
-    self.queries.deinit();
+    self.highlight_queries.deinit();
     self.a.destroy(self);
 }
 
@@ -75,7 +75,7 @@ pub fn addQuery(self: *@This(), id: []const u8, patterns: []const u8) !void {
         .patterns = try self.a.dupe(u8, patterns),
         .filter = try QueryFilter.init(self.a, query),
     };
-    try self.queries.put(id, sq);
+    try self.highlight_queries.put(id, sq);
 }
 
 pub fn createParser(self: *@This()) !*ts.Parser {
