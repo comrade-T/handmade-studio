@@ -42,9 +42,9 @@ selection_index: u16 = 0,
 x: f32 = 100,
 y: f32 = 100,
 
-path_arena: ArenaAllocator,
+entry_arena: ArenaAllocator,
 match_arena: ArenaAllocator,
-path_list: PathList,
+entry_list: PathList,
 match_list: MatchList,
 
 doi: *DepartmentOfInputs,
@@ -65,9 +65,9 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, opts: FuzzyFinderCreateOpt
     const self = try a.create(@This());
     self.* = FuzzyFinder{
         .a = a,
-        .path_arena = ArenaAllocator.init(a),
+        .entry_arena = ArenaAllocator.init(a),
         .match_arena = ArenaAllocator.init(a),
-        .path_list = try PathList.initCapacity(a, 128),
+        .entry_list = try PathList.initCapacity(a, 128),
         .match_list = MatchList.init(a),
         .doi = doi,
         .opts = opts,
@@ -94,8 +94,8 @@ pub fn destroy(self: *@This()) void {
     assert(self.doi.removeInput(self.opts.input_name));
     if (self.needle.len > 0) self.a.free(self.needle);
 
-    self.path_list.deinit();
-    self.path_arena.deinit();
+    self.entry_list.deinit();
+    self.entry_arena.deinit();
 
     self.match_list.deinit();
     self.match_arena.deinit();
@@ -132,7 +132,7 @@ pub fn getSelectedPath(self: *@This()) ?[]const u8 {
     if (self.match_list.items.len == 0) return null;
     assert(self.selection_index <= self.match_list.items.len -| 1);
     const match = self.match_list.items[self.selection_index];
-    const path = self.path_list.items[match.path_index];
+    const path = self.entry_list.items[match.entry_index];
     return path;
 }
 
@@ -193,7 +193,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
         var match_index: usize = 0;
         var cp_index: usize = 0;
 
-        var cp_iter = code_point.Iterator{ .bytes = self.path_list.items[match.path_index] };
+        var cp_iter = code_point.Iterator{ .bytes = self.entry_list.items[match.entry_index] };
         while (cp_iter.next()) |cp| {
             defer cp_index += 1;
             var color: u32 = normal_color;
@@ -235,9 +235,9 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
 
     // fuzzig will crash if needle is an empty string
     if (self.needle.len == 0) {
-        for (self.path_list.items, 0..) |_, i| {
+        for (self.entry_list.items, 0..) |_, i| {
             if (i >= self.limit) break;
-            try self.match_list.append(Match{ .path_index = i, .score = 0, .matches = &.{} });
+            try self.match_list.append(Match{ .entry_index = i, .score = 0, .matches = &.{} });
         }
         return;
     }
@@ -245,12 +245,12 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
     var searcher = try fuzzig.Ascii.init(self.match_arena.allocator(), 1024 * 4, 1024, .{ .case_sensitive = false });
     defer searcher.deinit();
 
-    for (self.path_list.items, 0..) |path, i| {
+    for (self.entry_list.items, 0..) |entry, i| {
         if (i >= self.limit) break;
 
-        const match = searcher.scoreMatches(path, self.needle);
+        const match = searcher.scoreMatches(entry, self.needle);
         if (match.score) |score| try self.match_list.append(Match{
-            .path_index = i,
+            .entry_index = i,
             .score = score,
             .matches = try self.match_arena.allocator().dupe(usize, match.matches),
         });
@@ -269,9 +269,9 @@ fn confirm(ctx: *anyopaque, _: []const u8) !void {
 }
 
 fn updateFilePaths(self: *@This()) !void {
-    self.path_arena.deinit();
-    self.path_arena = ArenaAllocator.init(self.a);
-    self.path_list.clearRetainingCapacity();
+    self.entry_arena.deinit();
+    self.entry_arena = ArenaAllocator.init(self.a);
+    self.entry_list.clearRetainingCapacity();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     var final_ignore_list = ArrayList([]const u8).init(arena.allocator());
@@ -294,9 +294,9 @@ fn updateFilePaths(self: *@This()) !void {
     }
 
     try utils.appendFileNamesRelativeToCwd(.{
-        .arena = &self.path_arena,
+        .arena = &self.entry_arena,
         .sub_path = ".",
-        .list = &self.path_list,
+        .list = &self.entry_list,
         .kind = self.opts.kind,
         .ignore_patterns = if (self.opts.ignore_ignore_patterns != null)
             final_ignore_list.items
@@ -324,7 +324,7 @@ const MatchList = ArrayList(Match);
 const Match = struct {
     score: i32,
     matches: []const usize,
-    path_index: usize,
+    entry_index: usize,
 
     pub fn moreThan(_: void, a: Match, b: Match) bool {
         return a.score > b.score;
