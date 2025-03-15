@@ -683,7 +683,7 @@ test "deleteRangesMultiCursor - with line shifts - 1st case" {
         try eqStr(
             \\hello venushello worldhello kitty
         , try ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(.{ 3, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+        try eq(.{ 2, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     const e2_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
@@ -699,7 +699,7 @@ test "deleteRangesMultiCursor - with line shifts - 1st case" {
         try eqStr(
             \\hello venuhello worlhello kitty
         , try ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+        try eq(.{ 4, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
     const e3_points = try ropeman.deleteRanges(idc_if_it_leaks, &.{
         .{ .start = .{ .line = 0, .col = 0 }, .end = .{ .line = 0, .col = 0 } },
@@ -715,7 +715,7 @@ test "deleteRangesMultiCursor - with line shifts - 1st case" {
         try eqStr(
             \\hello venhello worhello kitty
         , try ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(.{ 9, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
 }
 
@@ -763,7 +763,7 @@ test "deleteRangesMultiCursor - with line shifts - 3rd case" {
         try eqStr(
             \\hellovenushelloworldhellokitty
         , try ropeman.toString(idc_if_it_leaks, .lf));
-        try eq(.{ 6, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
+        try eq(.{ 5, 1 }, .{ ropeman.pending.items.len, ropeman.history.items.len });
     }
 }
 
