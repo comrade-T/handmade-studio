@@ -2670,6 +2670,152 @@ fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// getPositionFromByteOffset
+
+pub fn getPositionFromByteOffset(self: RcNode, byte_offset: usize) !struct { usize, usize } {
+    const GetPositionCtx = struct {
+        target_byte_offset: usize,
+        current_byte_offset: usize = 0,
+
+        line: usize = 0,
+        col: usize = 0,
+
+        fn walk(cx: *@This(), node: RcNode) WalkError!WalkResult {
+            switch (node.value.*) {
+                .branch => |*branch| {
+                    var left = WalkResult.keep_walking;
+                    const left_branch_contains_target = branch.left.value.weights().len + cx.target_byte_offset >= cx.target_byte_offset;
+                    if (left_branch_contains_target) {
+                        left = try cx.walk(branch.left);
+                    } else {
+                        cx.current_byte_offset += branch.left.value.weights().len;
+                        cx.line += branch.left.value.weights().bols;
+                    }
+                    if (left.keep_walking == false) return WalkResult.stop;
+
+                    const right = try cx.walk(branch.right);
+                    return try WalkResult.merge(branch, idc_if_it_leaks, left, right);
+                },
+                .leaf => |leaf| return cx.walker(&leaf),
+            }
+        }
+
+        fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
+            if (leaf.bol) cx.col = 0;
+
+            const leaf_contains_target = leaf.buf.len + cx.current_byte_offset >= cx.target_byte_offset;
+            if (leaf_contains_target) {
+                var iter = code_point.Iterator{ .bytes = leaf.buf };
+                while (iter.next()) |cp| {
+                    if (cx.current_byte_offset >= cx.target_byte_offset) break;
+                    cx.current_byte_offset += cp.len;
+                    cx.col += 1;
+                }
+                return WalkResult.stop;
+            }
+
+            cx.current_byte_offset += leaf.weights().len;
+            cx.col += leaf.noc;
+            if (leaf.eol) cx.line += 1;
+            return WalkResult.keep_walking;
+        }
+    };
+
+    var ctx = GetPositionCtx{ .target_byte_offset = byte_offset };
+    _ = try ctx.walk(self);
+    return .{ ctx.line, ctx.col };
+}
+
+test getPositionFromByteOffset {
+    const a = idc_if_it_leaks;
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    {
+        const root = try Node.fromString(a, &arena, "123456789");
+        try eq(.{ 0, 0 }, getPositionFromByteOffset(root, 0));
+        try eq(.{ 0, 1 }, getPositionFromByteOffset(root, 1));
+        try eq(.{ 0, 5 }, getPositionFromByteOffset(root, 5));
+    }
+    {
+        const source = "one\ntwo\nthree\nfour";
+        const root = try Node.fromString(a, &arena, source);
+
+        try eq(.{ 0, 0 }, getPositionFromByteOffset(root, 0));
+        try eq(0, getByteOffsetOfPosition(root, 0, 0));
+
+        try eq(.{ 0, 3 }, getPositionFromByteOffset(root, 3));
+        try eq(3, getByteOffsetOfPosition(root, 0, 3));
+
+        try eq(.{ 1, 0 }, getPositionFromByteOffset(root, 4));
+        try eq(4, getByteOffsetOfPosition(root, 1, 0));
+
+        try eq(.{ 1, 1 }, getPositionFromByteOffset(root, 5));
+        try eq(5, getByteOffsetOfPosition(root, 1, 1));
+
+        try eq(.{ 2, 0 }, getPositionFromByteOffset(root, 8));
+        try eq(8, getByteOffsetOfPosition(root, 2, 0));
+
+        try eq(.{ 2, 5 }, getPositionFromByteOffset(root, 13));
+        try eq(13, getByteOffsetOfPosition(root, 2, 5));
+
+        try eq(.{ 3, 0 }, getPositionFromByteOffset(root, 14));
+        try eq(14, getByteOffsetOfPosition(root, 3, 0));
+    }
+    {
+        const reverse_input_sequence = "4444\n333\n22\n1";
+        const root = try __inputCharsOneAfterAnotherAt0Position(a, &arena, reverse_input_sequence);
+        const root_debug_str =
+            \\13 4/13/10
+            \\  12 4/12/9
+            \\    11 4/11/8
+            \\      10 4/10/7
+            \\        9 3/9/6
+            \\          8 3/8/6
+            \\            7 3/7/5
+            \\              6 3/6/4
+            \\                5 2/5/3
+            \\                  4 2/4/3
+            \\                    3 2/3/2
+            \\                      2 1/2/1
+            \\                        1 B| `1`
+            \\                        1 `` |E
+            \\                      1 B| `2` Rc:2
+            \\                    1 `2` Rc:3
+            \\                  1 `` |E Rc:4
+            \\                1 B| `3` Rc:5
+            \\              1 `3` Rc:6
+            \\            1 `3` Rc:7
+            \\          1 `` |E Rc:8
+            \\        1 B| `4` Rc:9
+            \\      1 `4` Rc:10
+            \\    1 `4` Rc:11
+            \\  1 `4` Rc:12
+        ;
+        try eqStr(root_debug_str, try debugStr(idc_if_it_leaks, root));
+
+        try eq(.{ 0, 0 }, getPositionFromByteOffset(root, 0));
+        try eq(.{ 0, 1 }, getPositionFromByteOffset(root, 1));
+        try eq(0, getByteOffsetOfPosition(root, 0, 0));
+        try eq(1, getByteOffsetOfPosition(root, 0, 1));
+
+        try eq(.{ 1, 0 }, getPositionFromByteOffset(root, 2));
+        try eq(.{ 1, 1 }, getPositionFromByteOffset(root, 3));
+        try eq(.{ 1, 2 }, getPositionFromByteOffset(root, 4));
+        try eq(2, getByteOffsetOfPosition(root, 1, 0));
+        try eq(3, getByteOffsetOfPosition(root, 1, 1));
+        try eq(4, getByteOffsetOfPosition(root, 1, 2));
+
+        try eq(.{ 2, 0 }, getPositionFromByteOffset(root, 5));
+        try eq(.{ 2, 1 }, getPositionFromByteOffset(root, 6));
+        try eq(.{ 2, 2 }, getPositionFromByteOffset(root, 7));
+        try eq(.{ 2, 3 }, getPositionFromByteOffset(root, 8));
+        try eq(5, getByteOffsetOfPosition(root, 2, 0));
+        try eq(6, getByteOffsetOfPosition(root, 2, 1));
+        try eq(7, getByteOffsetOfPosition(root, 2, 2));
+        try eq(8, getByteOffsetOfPosition(root, 2, 3));
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// getByteOffsetOfPosition
 
 const GetByteOffsetOfPositionError = error{ OutOfMemory, LineOutOfBounds, ColOutOfBounds };
