@@ -666,6 +666,7 @@ const StringSource = struct {
 };
 
 const Session = struct {
+    cameraInfo: ?RenderMall.CameraInfo = null,
     string_sources: []const StringSource,
     connections: []*const ConnectionManager.Connection,
     windows: []const Window.WritableWindowState,
@@ -691,6 +692,13 @@ pub fn loadSession(self: *@This(), session_path: []const u8) !void {
     defer parsed.deinit();
 
     ///////////////////////////// create handlers & spawn windows
+
+    // call setCamera() if canvas is empty
+    if (parsed.value.cameraInfo) |camera_info| blk: {
+        if (self.wmap.keys().len > 0) break :blk;
+        self.mall.rcb.setCamera(self.mall.camera, camera_info);
+        self.mall.rcb.setCamera(self.mall.target_camera, camera_info);
+    }
 
     var strid_to_handler_map = std.AutoArrayHashMap(i128, *WindowSourceHandler).init(self.a);
     defer strid_to_handler_map.deinit();
@@ -763,6 +771,7 @@ pub fn saveSession(self: *@This(), path: []const u8) !void {
     /////////////////////////////
 
     const session = Session{
+        .cameraInfo = self.mall.icb.getCameraInfo(self.mall.camera),
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
         .connections = self.connman.connections.keys(),

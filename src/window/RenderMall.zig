@@ -215,6 +215,7 @@ pub const RenderCallbacks = struct {
     changeCameraPan: *const fn (target_camera_: *anyopaque, x_by: f32, y_by: f32) void,
     setCameraPosition: *const fn (target_camera_: *anyopaque, x: f32, y: f32) void,
     centerCameraAt: *const fn (target_camera_: *anyopaque, x: f32, y: f32) void,
+    setCamera: *const fn (camera_: *anyopaque, info: CameraInfo) void,
 
     beginScissorMode: *const fn (x: f32, y: f32, width: f32, height: f32) void,
     endScissorMode: *const fn () void,
@@ -227,6 +228,7 @@ pub const InfoCallbacks = struct {
     getCameraZoom: *const fn (camera_: *anyopaque) f32,
     getViewFromCamera: *const fn (camera_: *anyopaque) ScreenView,
     cameraTargetsEqual: *const fn (a_: *anyopaque, b: *anyopaque) bool,
+    getCameraInfo: *const fn (camera_: *anyopaque) CameraInfo,
 };
 
 pub const ScreenView = struct {
@@ -241,6 +243,13 @@ pub fn getAbsoluteScreenView(self: *const @This()) ScreenView {
         .end = .{ .x = screen_width, .y = screen_height },
     };
 }
+
+pub const CameraInfo = struct {
+    offset: struct { x: f32, y: f32 },
+    target: struct { x: f32, y: f32 },
+    rotation: f32,
+    zoom: f32,
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -15,6 +15,7 @@ pub const info_callbacks = RenderMall.InfoCallbacks{
     .getViewFromCamera = getViewFromCamera,
     .cameraTargetsEqual = cameraTargetsEqual,
     .getCameraZoom = getCameraZoom,
+    .getCameraInfo = getCameraInfo,
 };
 
 pub const render_callbacks = RenderMall.RenderCallbacks{
@@ -27,6 +28,7 @@ pub const render_callbacks = RenderMall.RenderCallbacks{
     .changeCameraPan = changeCameraPan,
     .setCameraPosition = setCameraPosition,
     .centerCameraAt = centerCameraAt,
+    .setCamera = setCamera,
     .beginScissorMode = beginScissorMode,
     .endScissorMode = endScissorMode,
 };
@@ -116,6 +118,16 @@ pub fn endScissorMode() void {
     rl.endScissorMode();
 }
 
+pub fn setCamera(camera_: *anyopaque, info: RenderMall.CameraInfo) void {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    camera.* = rl.Camera2D{
+        .offset = .{ .x = info.offset.x, .y = info.offset.y },
+        .target = .{ .x = info.target.x, .y = info.target.y },
+        .rotation = info.rotation,
+        .zoom = info.zoom,
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Info Callbacks
 
 pub fn getScreenWidthHeight() struct { f32, f32 } {
@@ -162,6 +174,16 @@ pub fn getWorldToScreen2D(camera_: *anyopaque, x: f32, y: f32) struct { f32, f32
 pub fn getCameraZoom(camera_: *anyopaque) f32 {
     const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
     return camera.zoom;
+}
+
+pub fn getCameraInfo(camera_: *anyopaque) RenderMall.CameraInfo {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+    return RenderMall.CameraInfo{
+        .offset = .{ .x = camera.offset.x, .y = camera.offset.y },
+        .target = .{ .x = camera.target.x, .y = camera.target.y },
+        .rotation = camera.rotation,
+        .zoom = camera.zoom,
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Add Font
