@@ -552,6 +552,14 @@ pub fn closeAllWindows(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const windows = self.wmap.keys();
 
+    // TODO: fix memory leak
+    // reproduce:
+    // - load a session
+    // - closeAllWindows
+    // - load another session
+    // - close the program
+    // - see the leaks happen
+
     var i: usize = windows.len;
     while (i > 0) {
         i -= 1;
@@ -688,7 +696,9 @@ pub fn loadSession(self: *@This(), session_path: []const u8) !void {
     const read_size = try file.reader().read(buf);
     if (read_size != stat.size) return error.BufferUnderrun;
 
-    const parsed = try std.json.parseFromSlice(Session, self.a, buf, .{});
+    const parsed = try std.json.parseFromSlice(Session, self.a, buf, .{
+        .ignore_unknown_fields = true,
+    });
     defer parsed.deinit();
 
     ///////////////////////////// create handlers & spawn windows
