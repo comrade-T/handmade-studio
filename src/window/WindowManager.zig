@@ -552,14 +552,6 @@ pub fn closeAllWindows(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const windows = self.wmap.keys();
 
-    // TODO: fix memory leak
-    // reproduce:
-    // - load a session
-    // - closeAllWindows
-    // - load another session
-    // - close the program
-    // - see the leaks happen
-
     var i: usize = windows.len;
     while (i > 0) {
         i -= 1;
@@ -701,13 +693,30 @@ pub fn loadSession(self: *@This(), session_path: []const u8) !void {
     });
     defer parsed.deinit();
 
-    ///////////////////////////// create handlers & spawn windows
+    ///////////////////////////// call setCamera() if canvas is empty
 
-    // call setCamera() if canvas is empty
     if (parsed.value.cameraInfo) |camera_info| blk: {
         if (self.wmap.keys().len > 0) break :blk;
         self.mall.rcb.setCamera(self.mall.camera, camera_info);
         self.mall.rcb.setCamera(self.mall.target_camera, camera_info);
+    }
+
+    ///////////////////////////// create handlers & spawn windows
+
+    // If we load a session from a file, then load the same session again,
+    // those carry the same winids, both for windows and connections.
+    // Without adjusting `increment_winid_by`, we'll run into winid collisions,
+    // which causes `connman.notifyTrackers()` to misbehave & cause leaks.
+
+    var increment_winid_by: Window.ID = 0;
+    const current_nano_timestamp = std.time.nanoTimestamp();
+    for (parsed.value.windows) |window_state| {
+        const winid = window_state.opts.id orelse continue;
+        if (self.connman.tracker_map.contains(winid)) {
+            assert(current_nano_timestamp > winid);
+            increment_winid_by = current_nano_timestamp - winid;
+            break;
+        }
     }
 
     var strid_to_handler_map = std.AutoArrayHashMap(i128, *WindowSourceHandler).init(self.a);
@@ -720,16 +729,28 @@ pub fn loadSession(self: *@This(), session_path: []const u8) !void {
     }
 
     for (parsed.value.windows) |state| {
+        var adjusted_opts = state.opts;
+        if (adjusted_opts.id == null) continue;
+        adjusted_opts.id.? += increment_winid_by;
+
         switch (state.source) {
-            .file => |path| try self.spawnWindow(.file, path, state.opts, true, false),
+            .file => |path| try self.spawnWindow(.file, path, adjusted_opts, true, false),
             .string => |string_id| {
                 const handler = strid_to_handler_map.get(string_id) orelse continue;
-                try self.spawnWindowFromHandler(handler, state.opts, true);
+                try self.spawnWindowFromHandler(handler, adjusted_opts, true);
             },
         }
     }
 
-    for (parsed.value.connections) |conn| try self.connman.notifyTrackers(conn.*);
+    for (parsed.value.connections) |conn| {
+        var adjusted_connection = conn.*;
+        adjusted_connection.start.win_id += increment_winid_by;
+        adjusted_connection.end.win_id += increment_winid_by;
+
+        assert(self.connman.tracker_map.contains(adjusted_connection.start.win_id));
+        assert(self.connman.tracker_map.contains(adjusted_connection.end.win_id));
+        try self.connman.notifyTrackers(adjusted_connection);
+    }
 }
 
 pub fn saveSession(self: *@This(), path: []const u8) !void {
