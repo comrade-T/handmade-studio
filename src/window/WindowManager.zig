@@ -698,7 +698,14 @@ pub fn loadSession(self: *@This(), session_path: []const u8) !void {
     ///////////////////////////// call setCamera() if canvas is empty
 
     if (parsed.value.cameraInfo) |camera_info| blk: {
-        if (self.wmap.keys().len > 0) break :blk;
+        var has_visible_windows = false;
+        for (self.wmap.keys()) |window| {
+            if (!window.closed) {
+                has_visible_windows = true;
+                break;
+            }
+        }
+        if (has_visible_windows) break :blk;
         self.mall.rcb.setCamera(self.mall.camera, camera_info);
         self.mall.rcb.setCamera(self.mall.target_camera, camera_info);
     }
