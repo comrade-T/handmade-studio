@@ -27,6 +27,8 @@ const assert = std.debug.assert;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+// TODO: pressing numlock seems to brick the app entirely
+
 const UpNDownContextMap = std.StringHashMap(*UpNDownCallbackMap);
 const UpNDownCallbackMap = std.AutoHashMap(u128, UpNDownCallback);
 pub const UpNDownCallback = struct {

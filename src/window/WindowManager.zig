@@ -36,7 +36,7 @@ pub const Callback = ip_.Callback;
 
 const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
-const WindowPicker = @import("WindowManager/WindowPicker.zig");
+const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
@@ -62,7 +62,7 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .q }, .{ .f = closeAllWindows, .ctx = self });
     try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
 
-    try WindowPicker.mapKeys(self, council);
+    try self.window_picker_normal.mapKeys(council);
 }
 
 const NORMAL = "normal";
@@ -149,7 +149,7 @@ qtree: *QuadTree,
 updating_windows_map: Window.UpdatingWindowsMap = .{},
 visible_windows: WindowList,
 
-window_picker: WindowPicker,
+window_picker_normal: *WindowPickerNormal,
 
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *NotificationLine) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
@@ -171,7 +171,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *N
         }, 0),
         .visible_windows = std.ArrayList(*Window).init(a),
 
-        .window_picker = WindowPicker{ .wm = self },
+        .window_picker_normal = try WindowPickerNormal.create(a, self),
     };
     return self;
 }
@@ -208,7 +208,7 @@ pub fn render(self: *@This()) !void {
     // });
     self.connman.render();
 
-    self.window_picker.render(screen_rect);
+    self.window_picker_normal.picker.render(screen_rect);
 }
 
 pub fn destroy(self: *@This()) void {
@@ -225,6 +225,8 @@ pub fn destroy(self: *@This()) void {
     self.qtree.destroy(self.a);
     self.visible_windows.deinit();
     self.updating_windows_map.deinit(self.a);
+
+    self.window_picker_normal.destroy(self.a);
 
     self.a.destroy(self);
 }

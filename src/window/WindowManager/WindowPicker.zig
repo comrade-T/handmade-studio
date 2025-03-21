@@ -27,52 +27,14 @@ const RenderMall = WindowManager.RenderMall;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const NORMAL = "normal";
-
-pub fn mapKeys(wm: *WindowManager, c: *WindowManager.MappingCouncil) !void {
-    const a = c.arena.allocator();
-    const wp = &wm.window_picker;
-
-    try c.mapUpNDown(NORMAL, &.{ .space, .f }, .{ .down_f = show, .up_f = hide, .down_ctx = wp, .up_ctx = wp });
-
-    /////////////////////////////
-
-    const MoveToCb = struct {
-        wm: *WindowManager,
-        index: usize,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.wm.window_picker.moveTo(self.index);
-        }
-        pub fn init(allocator: std.mem.Allocator, wm_: *WindowManager, index: usize) !WindowManager.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .wm = wm_, .index = index };
-            return WindowManager.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-    try c.map(NORMAL, &.{ .space, .f, .y }, try MoveToCb.init(a, wm, 0));
-    try c.map(NORMAL, &.{ .space, .f, .u }, try MoveToCb.init(a, wm, 1));
-    try c.map(NORMAL, &.{ .space, .f, .i }, try MoveToCb.init(a, wm, 2));
-    try c.map(NORMAL, &.{ .space, .f, .o }, try MoveToCb.init(a, wm, 3));
-    try c.map(NORMAL, &.{ .space, .f, .p }, try MoveToCb.init(a, wm, 4));
-
-    try c.map(NORMAL, &.{ .space, .f, .h }, try MoveToCb.init(a, wm, 5));
-    try c.map(NORMAL, &.{ .space, .f, .j }, try MoveToCb.init(a, wm, 6));
-    try c.map(NORMAL, &.{ .space, .f, .k }, try MoveToCb.init(a, wm, 7));
-    try c.map(NORMAL, &.{ .space, .f, .l }, try MoveToCb.init(a, wm, 8));
-    try c.map(NORMAL, &.{ .space, .f, .semicolon }, try MoveToCb.init(a, wm, 9));
-
-    try c.map(NORMAL, &.{ .space, .f, .n }, try MoveToCb.init(a, wm, 10));
-    try c.map(NORMAL, &.{ .space, .f, .m }, try MoveToCb.init(a, wm, 11));
-    try c.map(NORMAL, &.{ .space, .f, .comma }, try MoveToCb.init(a, wm, 12));
-    try c.map(NORMAL, &.{ .space, .f, .period }, try MoveToCb.init(a, wm, 13));
-    try c.map(NORMAL, &.{ .space, .f, .slash }, try MoveToCb.init(a, wm, 14));
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 wm: *WindowManager,
+callback: Callback,
 active: bool = false,
+
+pub const Callback = struct {
+    f: *const fn (ctx: *anyopaque, window: *Window) anyerror!void,
+    ctx: *anyopaque,
+};
 
 pub fn render(self: *const @This(), screen_rect: Rect) void {
     if (!self.active) return;
@@ -81,26 +43,24 @@ pub fn render(self: *const @This(), screen_rect: Rect) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn show(ctx: *anyopaque) !void {
+pub fn show(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.active = true;
 }
 
-fn hide(ctx: *anyopaque) !void {
+pub fn hide(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.active = false;
 }
 
-fn moveTo(self: *@This(), index: usize) void {
+pub fn executeCallback(ctx: *anyopaque, index: usize) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+
     if (index >= self.wm.visible_windows.items.len or
         index >= RIGHT_HAND_CODEPOINTS.len) return;
 
     const window = self.wm.visible_windows.items[index];
-    self.wm.setActiveWindow(window);
-
-    /////////////////////////////
-
-    window.centerCameraAt(self.wm.mall.getScreenRect(), self.wm.mall);
+    try self.callback.f(self.callback.ctx, window);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,11 +119,3 @@ const RIGHT_HAND_CODEPOINTS = [_]u21{
     'h', 'j', 'k', 'l', ';',
     'n', 'm', ',', '.', '/',
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////// TODOS after finishing renderLabel()
-
-// TODO: center view at window
-// TODO: make view so that window at the right of the screen (with padding)
-// TODO: make view so that window at the left of the screen (with padding)
-// TODO: make view so that window at the top of the screen (with padding)
-// TODO: make view so that window at the bottom of the screen (with padding)
