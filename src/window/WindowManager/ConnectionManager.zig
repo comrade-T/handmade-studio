@@ -196,6 +196,12 @@ pub const Connection = struct {
         wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
     }
 
+    pub fn isVisible(self: *const @This(), wm: *const WindowManager) bool {
+        const start_tracker = wm.connman.tracker_map.get(self.start.win_id) orelse return false;
+        const end_tracker = wm.connman.tracker_map.get(self.end.win_id) orelse return false;
+        return !start_tracker.win.closed and !end_tracker.win.closed;
+    }
+
     const Point = struct {
         win_id: i128,
         anchor: Anchor = .E,

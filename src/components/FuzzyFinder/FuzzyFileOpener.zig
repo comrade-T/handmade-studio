@@ -136,6 +136,6 @@ fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.WindowRe
     const path = self.finder.getSelectedPath() orelse return;
     try self.wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
         .subscribed_style_sets = &.{0},
-    }, direction);
+    }, direction, false);
     try FuzzyFinder.hide(self.finder);
 }

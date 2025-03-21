@@ -88,7 +88,7 @@ fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *Mapping
                 return;
             }
 
-            try self.wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction);
+            try self.wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction, false);
         }
 
         pub fn init(
@@ -603,6 +603,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     source: []const u8,
     opts: Window.SpawnOptions,
     direction: WindowRelativeDirection,
+    move: bool,
 ) !void {
     const prev = self.active_window orelse return;
 
@@ -631,6 +632,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     }
     try new.setPositionInstantly(self.a, self.qtree, new_x, new_y);
 
+    if (!move) return;
     for (self.wmap.keys()) |window| {
         if (window == prev or window == new) continue;
         switch (direction) {
@@ -769,6 +771,16 @@ pub fn saveSession(self: *@This(), path: []const u8) !void {
     for (self.handlers.keys()) |handler| {
         if (handler.source.from == .file) continue;
 
+        // only save handlers with visible windows
+        var ignore_this_handler = true;
+        for (handler.windows.keys()) |window| {
+            if (!window.closed) {
+                ignore_this_handler = false;
+                break;
+            }
+        }
+        if (ignore_this_handler) continue;
+
         var id = std.time.nanoTimestamp();
         while (true) {
             if (id != last_id) break;
@@ -787,7 +799,7 @@ pub fn saveSession(self: *@This(), path: []const u8) !void {
         }
     }
 
-    /////////////////////////////
+    ///////////////////////////// handle windows
 
     var window_state_list = std.ArrayList(Window.WritableWindowState).init(self.a);
     defer window_state_list.deinit();
@@ -799,13 +811,23 @@ pub fn saveSession(self: *@This(), path: []const u8) !void {
         try window_state_list.append(data);
     }
 
+    ///////////////////////////// handle connections
+
+    var connections = std.ArrayListUnmanaged(*const ConnectionManager.Connection){};
+    defer connections.deinit(self.a);
+
+    for (self.connman.connections.keys()) |conn| {
+        if (!conn.isVisible(self)) continue;
+        try connections.append(self.a, conn);
+    }
+
     /////////////////////////////
 
     const session = Session{
         .cameraInfo = self.mall.icb.getCameraInfo(self.mall.camera),
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
-        .connections = self.connman.connections.keys(),
+        .connections = connections.items,
     };
 
     const str = try std.json.stringifyAlloc(arena.allocator(), session, .{
