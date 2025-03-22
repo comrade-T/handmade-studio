@@ -310,6 +310,11 @@ pub fn build(b: *std.Build) void {
         const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "child_process", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
+    {
+        const path = "src/demos/threads.zig";
+        const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "threads", .root_source_file = b.path(path), .target = target, .optimize = optimize });
+        addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
