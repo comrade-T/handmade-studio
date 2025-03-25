@@ -189,7 +189,7 @@ pub fn getCameraInfo(camera_: *anyopaque) RenderMall.CameraInfo {
 ////////////////////////////////////////////////////////////////////////////////////////////// Add Font
 
 pub fn addRaylibFontToFontStore(rl_font: *rl.Font, name: []const u8, store: *FontStore) !void {
-    rl.setTextureFilter(rl_font.texture, .texture_filter_trilinear);
+    rl.setTextureFilter(rl_font.texture, .trilinear);
 
     try store.addNewFont(rl_font, name, FONT_BASE_SIZE, @floatFromInt(rl_font.ascent));
     const f = store.map.getPtr(name) orelse unreachable;

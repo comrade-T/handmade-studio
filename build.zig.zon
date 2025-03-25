@@ -1,23 +1,29 @@
 .{
-    .name = "handmade-studio",
+    .name = .handmade_studio,
+    .fingerprint = 0x86629008ee161705,
 
     .version = "0.0.0",
 
     .dependencies = .{
         .zg = .{
-            .url = "https://codeberg.org/dude_the_builder/zg/archive/v0.13.2.tar.gz",
-            .hash = "122055beff332830a391e9895c044d33b15ea21063779557024b46169fb1984c6e40",
-        },
-        .@"raylib-zig" = .{
-            .url = "https://github.com/comrade-T/raylib-zig/archive/devel.tar.gz",
-            .hash = "122068d73abbd37bde306d564ad6b1d40d34353db2e469325e45671c08ce4fc5f48d",
-        },
-        .ztracy = .{
-            .path = "submodules/ztracy",
+            .url = "https://codeberg.org/atman/zg/archive/v0.13.5.tar.gz",
+            .hash = "zg-0.13.5-oGqU3I6Z7QLV3PcngiIPop2sAiHj740sK36VsXmYUMAp",
         },
         .fuzzig = .{
             .url = "https://github.com/fjebaker/fuzzig/archive/main.tar.gz",
-            .hash = "1220ec64a1512e2050157a6450fba790df2312b3d23f64402195df01b0d850ff26c3",
+            .hash = "fuzzig-0.1.1-Ji0xitlIAQBNtK3ptAGmK5QMfog1dBL3Hqzrolq81l94",
+        },
+        .raylib_zig = .{
+            .url = "https://github.com/comrade-T/raylib-zig/archive/devel.tar.gz",
+            .hash = "raylib_zig-5.6.0-dev-KE8REAsxBQDVav1TfNd2kdJcuK5w4AqI_fq2ggBl8IWP",
+        },
+        .ztracy = .{
+            .url = "https://github.com/zig-gamedev/ztracy/archive/main.tar.gz",
+            .hash = "ztracy-0.14.0-dev-zHJSq08NFwD4iNq3K_gFxZ7Y8mMQ5wVM494x8c4R2sMz",
+        },
+        .mvzr = .{
+            .url = "https://github.com/mnemnion/mvzr/archive/refs/tags/v0.3.3.tar.gz",
+            .hash = "mvzr-0.3.2-ZSOky95lAQA00lXTN_g8JWoBuh8pw-jyzmCWAqlu1h8L",
         },
     },
 

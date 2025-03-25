@@ -73,14 +73,14 @@ const WalkCallback = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkError!Wa
 const F = *const fn (ctx: *anyopaque, leaf: *const Leaf) WalkError!WalkResult;
 const DC = *const fn (ctx: *anyopaque, decrement_col_by: usize) void;
 
+pub const KEEP_WALKING = WalkResult{ .keep_walking = true };
+pub const STOP = WalkResult{ .keep_walking = false };
+pub const FOUND = WalkResult{ .found = true };
+
 pub const WalkResult = struct {
     keep_walking: bool = false,
     found: bool = false,
     replace: ?RcNode = null,
-
-    pub const keep_walking = WalkResult{ .keep_walking = true };
-    pub const stop = WalkResult{ .keep_walking = false };
-    pub const found = WalkResult{ .found = true };
 
     pub fn merge(branch: *const Branch, a: Allocator, left: WalkResult, right: WalkResult) WalkError!WalkResult {
         var result = WalkResult{};
@@ -169,7 +169,7 @@ fn walkFromLineBegin(a: Allocator, node: RcNode, line: usize, f: WalkCallback, c
                 result.found = true;
                 return result;
             }
-            return WalkResult.keep_walking;
+            return KEEP_WALKING;
         },
     }
 }
@@ -415,7 +415,7 @@ const InsertCharsCtx = struct {
         }
 
         ctx.col -= leaf.noc;
-        return if (leaf.eol) WalkResult.stop else WalkResult.keep_walking;
+        return if (leaf.eol) STOP else KEEP_WALKING;
     }
 };
 
@@ -1008,7 +1008,7 @@ const DeleteCharsCtx = struct {
 
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
-        var result = WalkResult.keep_walking;
+        var result = KEEP_WALKING;
 
         if (ctx.delete_next_bol and ctx.count == 0) {
             result.replace = try Leaf.new(ctx.a, leaf.buf, false, leaf.eol);
@@ -1240,9 +1240,9 @@ const GetGetNocOfRangeCtx = struct {
         ctx.noc += getNumOfChars(leaf.buf);
         if (leaf.eol) {
             ctx.noc += 1;
-            return WalkResult.found;
+            return FOUND;
         }
-        return WalkResult.keep_walking;
+        return KEEP_WALKING;
     }
 };
 
@@ -2683,7 +2683,7 @@ pub fn getPositionFromByteOffset(self: RcNode, byte_offset: usize) !struct { usi
         fn walk(cx: *@This(), node: RcNode) WalkError!WalkResult {
             switch (node.value.*) {
                 .branch => |*branch| {
-                    var left = WalkResult.keep_walking;
+                    var left = KEEP_WALKING;
                     const left_branch_contains_target = branch.left.value.weights().len + cx.target_byte_offset >= cx.target_byte_offset;
                     if (left_branch_contains_target) {
                         left = try cx.walk(branch.left);
@@ -2691,7 +2691,7 @@ pub fn getPositionFromByteOffset(self: RcNode, byte_offset: usize) !struct { usi
                         cx.current_byte_offset += branch.left.value.weights().len;
                         cx.line += branch.left.value.weights().bols;
                     }
-                    if (left.keep_walking == false) return WalkResult.stop;
+                    if (left.keep_walking == false) return STOP;
 
                     const right = try cx.walk(branch.right);
                     return try WalkResult.merge(branch, idc_if_it_leaks, left, right);
@@ -2711,13 +2711,13 @@ pub fn getPositionFromByteOffset(self: RcNode, byte_offset: usize) !struct { usi
                     cx.current_byte_offset += cp.len;
                     cx.col += 1;
                 }
-                return WalkResult.stop;
+                return STOP;
             }
 
             cx.current_byte_offset += leaf.weights().len;
             cx.col += leaf.noc;
             if (leaf.eol) cx.line += 1;
-            return WalkResult.keep_walking;
+            return KEEP_WALKING;
         }
     };
 
@@ -2831,13 +2831,13 @@ pub fn getByteOffsetOfPosition(self: RcNode, line: usize, col: usize) GetByteOff
         encountered_bol: bool = false,
 
         fn walk(cx: *@This(), node: RcNode) WalkError!WalkResult {
-            if (cx.should_stop) return WalkResult.stop;
+            if (cx.should_stop) return STOP;
 
             switch (node.value.*) {
                 .branch => |*branch| {
                     const left_bols_end = cx.current_line + branch.left.value.weights().bols;
 
-                    var left = WalkResult.keep_walking;
+                    var left = KEEP_WALKING;
                     if (cx.current_line == cx.target_line or cx.target_line < left_bols_end) {
                         left = try cx.walk(branch.left);
                     }
@@ -2858,14 +2858,14 @@ pub fn getByteOffsetOfPosition(self: RcNode, line: usize, col: usize) GetByteOff
         fn walker(cx: *@This(), leaf: *const Leaf) WalkResult {
             if (!cx.encountered_bol and !leaf.bol) {
                 cx.byte_offset += leaf.weights().len;
-                return WalkResult.keep_walking;
+                return KEEP_WALKING;
             }
 
             if (leaf.bol) cx.encountered_bol = true;
 
             if (cx.encountered_bol and cx.target_col == 0) {
                 cx.should_stop = true;
-                return WalkResult.stop;
+                return STOP;
             }
 
             const sum = cx.current_col + leaf.noc;
@@ -2883,11 +2883,11 @@ pub fn getByteOffsetOfPosition(self: RcNode, line: usize, col: usize) GetByteOff
             }
             if (cx.encountered_bol and (leaf.eol or sum >= cx.target_col)) {
                 cx.should_stop = true;
-                return WalkResult.stop;
+                return STOP;
             }
 
             if (leaf.eol) cx.byte_offset += 1;
-            return WalkResult.keep_walking;
+            return KEEP_WALKING;
         }
     };
 
@@ -3124,18 +3124,18 @@ const GetRangeCtx = struct {
         if (leaf.noc == ctx.col and leaf.eol and ctx.last_line_col == null) {
             ctx.list.append('\n') catch {
                 ctx.out_of_memory = true;
-                return WalkResult.stop;
+                return STOP;
             };
             ctx.col = 0;
-            return WalkResult.stop;
+            return STOP;
         }
 
         if (!leaf.eol and leaf.noc < ctx.col) {
             ctx.col -= leaf.noc;
             if (ctx.last_line_col) |*llc| llc.* -|= leaf.noc;
-            return WalkResult.keep_walking;
+            return KEEP_WALKING;
         }
-        if (ctx.out_of_memory) return WalkResult.stop;
+        if (ctx.out_of_memory) return STOP;
 
         var iter = code_point.Iterator{ .bytes = leaf.buf };
         while (iter.next()) |cp| {
@@ -3143,7 +3143,7 @@ const GetRangeCtx = struct {
             if (iter.i - 1 >= ctx.col) {
                 ctx.list.appendSlice(leaf.buf[cp.offset .. cp.offset + cp.len]) catch {
                     ctx.out_of_memory = true;
-                    return WalkResult.stop;
+                    return STOP;
                 };
             }
         }
@@ -3153,15 +3153,15 @@ const GetRangeCtx = struct {
         if (leaf.eol and ctx.last_line_col == null) {
             ctx.list.append('\n') catch {
                 ctx.out_of_memory = true;
-                return WalkResult.stop;
+                return STOP;
             };
         }
 
         if (leaf.eol) {
             if (ctx.col > 0) ctx.out_of_bounds = true;
-            return WalkResult.stop;
+            return STOP;
         }
-        return WalkResult.keep_walking;
+        return KEEP_WALKING;
     }
 };
 
@@ -3295,8 +3295,8 @@ const GetLineAllocCtx = struct {
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         try ctx.list.appendSlice(leaf.buf);
-        if (leaf.eol) return WalkResult.stop;
-        return WalkResult.keep_walking;
+        if (leaf.eol) return STOP;
+        return KEEP_WALKING;
     }
 };
 
@@ -3331,12 +3331,12 @@ const GetColnrOfFirstNonSpaceCharCtx = struct {
             defer i += 1;
             switch (cp.code) {
                 ' ', '\t' => continue,
-                else => return WalkResult.stop,
+                else => return STOP,
             }
         }
 
-        if (leaf.eol) return WalkResult.stop;
-        return WalkResult.keep_walking;
+        if (leaf.eol) return STOP;
+        return KEEP_WALKING;
     }
 };
 
@@ -3355,8 +3355,8 @@ const GetNumOfCharsInLineCtx = struct {
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         ctx.result += leaf.noc;
-        if (leaf.eol) return WalkResult.stop;
-        return WalkResult.keep_walking;
+        if (leaf.eol) return STOP;
+        return KEEP_WALKING;
     }
 };
 
@@ -3403,7 +3403,7 @@ fn walkLineCol(a: Allocator, node: RcNode, line: usize, col: usize, f: F, dc: DC
                 result.found = true;
                 return result;
             }
-            return WalkResult.keep_walking;
+            return KEEP_WALKING;
         },
     }
 }
@@ -3437,8 +3437,8 @@ const TryOutWalkLineColCtx = struct {
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         try ctx.list.appendSlice(leaf.buf);
-        if (leaf.eol) return WalkResult.stop;
-        return WalkResult.keep_walking;
+        if (leaf.eol) return STOP;
+        return KEEP_WALKING;
     }
 
     fn walkerCol(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
@@ -3456,8 +3456,8 @@ const TryOutWalkLineColCtx = struct {
         }
         try ctx.list.appendSlice(leaf.buf[offset..]);
 
-        if (leaf.eol) return WalkResult.stop;
-        return WalkResult.keep_walking;
+        if (leaf.eol) return STOP;
+        return KEEP_WALKING;
     }
 
     fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
@@ -3669,7 +3669,7 @@ fn walkLineColBackwards(a: Allocator, node: RcNode, line: usize, col: usize, f: 
                 result.found = true;
                 return result;
             }
-            return WalkResult.keep_walking;
+            return KEEP_WALKING;
         },
     }
 }
@@ -3689,7 +3689,7 @@ const TryOutWalkLineColBackwardsCtx = struct {
     fn walker(ctx_: *anyopaque, leaf: *const Leaf) WalkError!WalkResult {
         const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_)));
         try ctx.list.appendSlice(leaf.buf);
-        return WalkResult.keep_walking;
+        return KEEP_WALKING;
     }
 
     fn decrementCol(ctx_: *anyopaque, decrement_col_by: usize) void {
@@ -3950,12 +3950,12 @@ const EqRangeCtx = struct {
             leaf_end = cp.offset + cp.len;
         }
 
-        if (leaf_start == null or leaf_end == null) return WalkResult.stop;
+        if (leaf_start == null or leaf_end == null) return STOP;
         const leaf_str = leaf.buf[leaf_start.?..leaf_end.?];
 
-        if (ctx.offset + leaf_str.len > ctx.str.len) return WalkResult.stop;
+        if (ctx.offset + leaf_str.len > ctx.str.len) return STOP;
         const substr_matches = eql(u8, ctx.str[ctx.offset .. ctx.offset + leaf_str.len], leaf_str);
-        if (substr_matches) ctx.offset += leaf_str.len else return WalkResult.stop;
+        if (substr_matches) ctx.offset += leaf_str.len else return STOP;
 
         /////////////////////////////
 
@@ -3963,7 +3963,7 @@ const EqRangeCtx = struct {
 
         if (leaf.eol) {
             if (ctx.end_line > ctx.start_line and ctx.current_line != ctx.end_line) {
-                if (ctx.str[ctx.offset] != '\n') return WalkResult.stop;
+                if (ctx.str[ctx.offset] != '\n') return STOP;
                 ctx.offset += 1;
             }
             ctx.current_line += 1;
@@ -3971,9 +3971,9 @@ const EqRangeCtx = struct {
 
         if (current_line_is_end_line) {
             if (ctx.offset == ctx.str.len) ctx.totally_match = true;
-            return WalkResult.stop;
+            return STOP;
         }
-        return WalkResult.keep_walking;
+        return KEEP_WALKING;
     }
 };
 

@@ -231,7 +231,12 @@ pub fn addPointCursor(self: *@This(), line: usize, col: usize, make_main: bool) 
         .end = Anchor{ .line = line, .col = col + 1 },
     };
 
-    const existing_index = std.sort.binarySearch(Cursor, new_cursor, self.cursors.values(), {}, CursorMapContext.order);
+    const existing_index = std.sort.binarySearch(
+        Cursor,
+        self.cursors.values(),
+        new_cursor,
+        CursorMapContext.order,
+    );
     if (existing_index != null) return;
 
     try self.addNewCursorThenSortAllCursors(new_cursor, make_main);
@@ -865,7 +870,7 @@ const CursorMapContext = struct {
         return a.line < b.line;
     }
 
-    pub fn order(_: void, a: Cursor, b: Cursor) std.math.Order {
+    pub fn order(a: Cursor, b: Cursor) std.math.Order {
         if (a.start.line == b.start.line) return std.math.order(a.start.col, b.start.col);
         return std.math.order(a.start.line, b.start.line);
     }

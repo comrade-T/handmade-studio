@@ -47,7 +47,7 @@ pub fn getGitIgnorePatternsOfCWD(a: Allocator) ![][]const u8 {
     errdefer patterns_list.deinit();
     try patterns_list.append(".git/");
 
-    var iter = std.mem.split(u8, buf, "\n");
+    var iter = std.mem.splitAny(u8, buf, "\n");
     while (iter.next()) |pattern| try patterns_list.append(pattern);
     return try patterns_list.toOwnedSlice();
 }

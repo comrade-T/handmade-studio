@@ -142,7 +142,7 @@ fn createFile(self: *@This(), origin_: []const u8, new_file_path: []const u8) !v
     const origin = if (origin_.len > 0) origin_ else ".";
 
     const new_part = if (origin_.len > 0) new_file_path[origin.len..] else new_file_path;
-    var split = std.mem.split(u8, new_part, "/");
+    var split = std.mem.splitAny(u8, new_part, "/");
 
     var dir = try std.fs.cwd().openDir(origin, .{});
     defer dir.close();

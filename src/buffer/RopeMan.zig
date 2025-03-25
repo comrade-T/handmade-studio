@@ -226,7 +226,7 @@ fn insertAndBalance(self: *@This(), chars: []const u8, destination: CursorPoint)
 fn adjustPointsAfterMultiCursorInsert(points: []CursorPoint, chars: []const u8) void {
     var last_line = chars;
     var nlcount: u16 = 0;
-    var split_iter = std.mem.split(u8, chars, "\n");
+    var split_iter = std.mem.splitAny(u8, chars, "\n");
     while (split_iter.next()) |chunk| {
         last_line = chunk;
         nlcount += 1;
@@ -815,7 +815,7 @@ test "deleteRangesMultiCursor - multiple lines - no line shifts" {
 pub fn registerLastPendingToHistory(self: *@This()) !void {
     if (self.pending.items.len == 0) return;
 
-    const last_pending = self.pending.pop();
+    const last_pending = self.pending.pop() orelse return;
     try self.history.append(last_pending);
 
     rcr.freeRcNodes(self.a, self.pending.items);

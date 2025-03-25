@@ -148,7 +148,7 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
         var i: usize = self.events.len;
         while (i > self.index + 1) {
             defer i -= 1;
-            const ev = self.events.pop();
+            const ev = self.events.pop() orelse break;
             try self.removeEventFromWindowMapAndUpdateTheCleanUpList(a, &list, ev);
         }
     }

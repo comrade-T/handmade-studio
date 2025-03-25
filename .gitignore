@@ -3,6 +3,5 @@ zig-out/
 # *.ttf
 submodules/
 *.log
-copied-libs/ztracy
 *.tracy
 .handmade_studio/

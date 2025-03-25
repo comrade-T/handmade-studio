@@ -57,7 +57,7 @@ pub fn main() anyerror!void {
     defer rl.closeWindow();
 
     rl.setTargetFPS(60);
-    rl.setExitKey(rl.KeyboardKey.key_null);
+    rl.setExitKey(rl.KeyboardKey.null);
 
     rl_initwindow_zone.End();
 
@@ -95,7 +95,7 @@ pub fn main() anyerror!void {
     var font_store = try FontStore.init(gpa);
     defer font_store.deinit();
 
-    var meslo = rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", rlcb.FONT_BASE_SIZE, null);
+    var meslo = try rl.loadFontEx("Meslo LG L DZ Regular Nerd Font Complete Mono.ttf", rlcb.FONT_BASE_SIZE, null);
     try rlcb.addRaylibFontToFontStore(&meslo, "Meslo", &font_store);
 
     var colorscheme_store = try ColorschemeStore.init(gpa);

@@ -31,7 +31,8 @@ const ts = @import("bindings.zig");
 const Query = ts.Query;
 const PredicateStep = ts.Query.PredicateStep;
 
-const Regex = @import("regex").Regex;
+const mvzr = @import("mvzr");
+const Regex = mvzr.Regex;
 const RopeMan = @import("RopeMan");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// init()
@@ -235,7 +236,7 @@ const Predicate = union(enum) {
             checkBodySteps("#match? / #not-match?", steps, &.{ .capture, .string }) catch |err| return err;
 
             const regex = try a.create(Regex);
-            regex.* = Regex.compile(a, query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)))) catch return CreationError.RegexCompileError;
+            regex.* = Regex.compile(query.getStringValueForId(@as(u32, @intCast(steps[2].value_id)))) orelse return CreationError.RegexCompileError;
 
             const p = Predicate{ .match = MatchPredicate{
                 .regex = regex,
@@ -248,10 +249,10 @@ const Predicate = union(enum) {
             const zone = ztracy.ZoneNC(@src(), "MatchPredicate.eval()", 0x33FF33);
             defer zone.End();
 
-            const result = self.regex.match(source) catch return false;
+            const result = self.regex.match(source) orelse return false;
             return switch (self.variant) {
-                .match => result,
-                .not_match => !result,
+                .match => result.slice.len == 0,
+                .not_match => !(result.slice.len == 0),
             };
         }
     };
@@ -672,7 +673,7 @@ fn testMatchContents(expected: []const u8, source: []const u8, target: CapturedT
     var bytes = ArrayList(u8).init(std.heap.page_allocator);
     defer bytes.deinit();
 
-    var split_iter = std.mem.split(u8, source, "\n");
+    var split_iter = std.mem.splitAny(u8, source, "\n");
     var i: usize = 0;
     while (split_iter.next()) |line| {
         defer i += 1;

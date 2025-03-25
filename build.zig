@@ -32,9 +32,10 @@ pub fn build(b: *std.Build) void {
 
     // const pretty = b.dependency("pretty", .{ .target = target, .optimize = optimize });
     const zg = b.dependency("zg", .{ .target = target, .optimize = optimize });
-    const raylib = b.dependency("raylib-zig", .{ .target = target, .optimize = optimize });
 
-    const regex = b.addModule("regex", .{ .root_source_file = b.path("submodules/regex/src/regex.zig") });
+    const mvzr = b.dependency("mvzr", .{ .target = target, .optimize = optimize }).module("mvzr");
+
+    const raylib = b.dependency("raylib_zig", .{ .target = target, .optimize = optimize });
 
     const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
     _ = s2s;
@@ -99,14 +100,14 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
 
     const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
-        .{ .name = "regex", .module = regex },
+        .{ .name = "mvzr", .module = mvzr },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "RopeMan", .module = ropeman.module },
     }, zig_build_test_step);
     query_filter.compile.linkLibrary(tree_sitter);
 
     const langsuite = addTestableModule(&bops, "src/tree-sitter/LangSuite.zig", &.{
-        .{ .name = "regex", .module = regex },
+        .{ .name = "mvzr", .module = mvzr },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "RopeMan", .module = ropeman.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),

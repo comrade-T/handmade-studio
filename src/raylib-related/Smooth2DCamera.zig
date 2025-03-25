@@ -80,7 +80,7 @@ fn lerpTarget(self: *@This()) void {
 }
 
 fn updateOnMouseBtnRight(self: *@This()) void {
-    if (rl.isMouseButtonDown(.mouse_button_right)) {
+    if (rl.isMouseButtonDown(.right)) {
         var delta = rl.getMouseDelta();
         delta = delta.scale(-1 / self.camera.zoom);
 
