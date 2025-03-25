@@ -250,9 +250,10 @@ const Predicate = union(enum) {
             defer zone.End();
 
             const result = self.regex.match(source) orelse return false;
+
             return switch (self.variant) {
-                .match => result.slice.len == 0,
-                .not_match => !(result.slice.len == 0),
+                .match => result.slice.len > 0,
+                .not_match => result.slice.len == 0,
             };
         }
     };
