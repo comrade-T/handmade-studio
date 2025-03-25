@@ -14,6 +14,7 @@
 // along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const assert = std.debug.assert;
 
 const ztracy = @import("ztracy");
@@ -69,9 +70,18 @@ pub fn main() anyerror!void {
 
     ///////////////////////////// GPA
 
-    var gpa__ = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa__.deinit();
-    const gpa = gpa__.allocator();
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+
+    const gpa, const is_debug = gpa: {
+        if (builtin.os.tag == .wasi) break :gpa .{ std.heap.wasm_allocator, false };
+        break :gpa switch (builtin.mode) {
+            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+        };
+    };
+    defer if (is_debug) {
+        _ = debug_allocator.deinit();
+    };
 
     ////////////////////////////////////////////////////////////////////////////////////////////// MappingCouncil
 
