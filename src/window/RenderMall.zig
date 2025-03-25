@@ -227,6 +227,7 @@ pub const InfoCallbacks = struct {
     getWorldToScreen2D: *const fn (camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 },
     getCameraZoom: *const fn (camera_: *anyopaque) f32,
     getViewFromCamera: *const fn (camera_: *anyopaque) ScreenView,
+    getAbsoluteViewFromCamera: *const fn () ScreenView,
     cameraTargetsEqual: *const fn (a_: *anyopaque, b: *anyopaque) bool,
     getCameraInfo: *const fn (camera_: *anyopaque) CameraInfo,
 };
@@ -310,4 +311,9 @@ pub fn getScreenRect(self: *const @This()) Rect {
         .width = view.end.x - view.start.x,
         .height = view.end.y - view.start.y,
     };
+}
+
+pub fn getScreenRectAbsolute(self: *const @This()) Rect {
+    const width, const height = self.icb.getScreenWidthHeight();
+    return Rect{ .x = 0, .y = 0, .width = width, .height = height };
 }

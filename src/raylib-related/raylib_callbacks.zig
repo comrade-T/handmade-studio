@@ -13,6 +13,7 @@ pub const info_callbacks = RenderMall.InfoCallbacks{
     .getScreenToWorld2D = getScreenToWorld2D,
     .getWorldToScreen2D = getWorldToScreen2D,
     .getViewFromCamera = getViewFromCamera,
+    .getAbsoluteViewFromCamera = getAbsoluteViewFromCamera,
     .cameraTargetsEqual = cameraTargetsEqual,
     .getCameraZoom = getCameraZoom,
     .getCameraInfo = getCameraInfo,
@@ -156,6 +157,16 @@ pub fn getViewFromCamera(camera_: *anyopaque) RenderMall.ScreenView {
     return RenderMall.ScreenView{
         .start = .{ .x = start.x, .y = start.y },
         .end = .{ .x = end.x, .y = end.y },
+    };
+}
+
+pub fn getAbsoluteViewFromCamera() RenderMall.ScreenView {
+    return RenderMall.ScreenView{
+        .start = .{ .x = 0, .y = 0 },
+        .end = .{
+            .x = @as(f32, @floatFromInt(rl.getScreenHeight())),
+            .y = @as(f32, @floatFromInt(rl.getScreenWidth())),
+        },
     };
 }
 

@@ -54,7 +54,7 @@ pub fn render(self: *@This()) void {
     const font = self.mall.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = font.glyph_map.get('?') orelse unreachable;
 
-    const screen_rect = self.mall.getScreenRect();
+    const screen_rect = self.mall.getScreenRectAbsolute();
 
     var x: f32 = 0;
     const y: f32 = screen_rect.height - self.font_size - self.y_offset;
