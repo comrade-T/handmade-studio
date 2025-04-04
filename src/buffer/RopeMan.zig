@@ -94,6 +94,11 @@ pub fn getByteOffsetOfRoot(self: *const @This(), line: usize, col: usize) !usize
     return try rcr.getByteOffsetOfPosition(self.root, line, col);
 }
 
+fn getPositionFromByteOffsetOfRoot(self: *const @This(), byte_offset: usize) !CursorPoint {
+    const line, const col = try rcr.getPositionFromByteOffset(self.root, byte_offset);
+    return CursorPoint{ .line = line, .col = col };
+}
+
 pub fn getByteOffsetOfPosition(node: RcNode, line: usize, col: usize) !usize {
     return try rcr.getByteOffsetOfPosition(node, line, col);
 }
@@ -205,15 +210,25 @@ pub fn seekForward(self: *const @This(), input_linenr: usize, input_colnr: usize
 
 pub fn insertChars(self: *@This(), a: Allocator, chars: []const u8, destinations: []const CursorPoint) ![]CursorPoint {
     assert(std.sort.isSorted(CursorPoint, destinations, {}, CursorPoint.cmp));
-    var points = try a.alloc(CursorPoint, destinations.len);
-    var i = destinations.len;
-    while (i > 0) {
-        i -= 1;
-        points[i].line, points[i].col, self.root = try self.insertAndBalance(chars, destinations[i]);
-        try self.pending.append(self.root);
+    var new_end_points = try a.alloc(CursorPoint, destinations.len);
+    var shift_by: usize = 0;
+    const old_root = self.root;
+
+    for (destinations, 0..) |d, i| {
+        defer shift_by += chars.len;
+
+        const old_start_byte: usize = try getByteOffsetOfPosition(old_root, d.line, d.col);
+        const new_start_byte = old_start_byte + shift_by;
+        const new_start_point = try self.getPositionFromByteOffsetOfRoot(@intCast(new_start_byte));
+
+        const new_end_line, const new_end_col, const new_root = try self.insertAndBalance(chars, new_start_point);
+        new_end_points[i] = CursorPoint{ .line = new_end_line, .col = new_end_col };
+
+        self.root = new_root;
+        try self.pending.append(new_root);
     }
-    adjustPointsAfterMultiCursorInsert(points, chars);
-    return points;
+
+    return new_end_points;
 }
 
 fn insertAndBalance(self: *@This(), chars: []const u8, destination: CursorPoint) !struct { usize, usize, RcNode } {
@@ -223,34 +238,14 @@ fn insertAndBalance(self: *@This(), chars: []const u8, destination: CursorPoint)
     return .{ line, col, balanced_root };
 }
 
-fn adjustPointsAfterMultiCursorInsert(points: []CursorPoint, chars: []const u8) void {
-    var last_line = chars;
-    var nlcount: u16 = 0;
-    var split_iter = std.mem.splitAny(u8, chars, "\n");
-    while (split_iter.next()) |chunk| {
-        last_line = chunk;
-        nlcount += 1;
-    }
-    nlcount -|= 1;
-
-    if (nlcount > 0) {
-        const noc: u16 = @intCast(rcr.getNumOfChars(last_line));
-        for (points, 0..) |point, i| {
-            const i_u16: u16 = @intCast(i);
-            points[i].line = point.line + (nlcount * i_u16);
-            points[i].col = if (nlcount == 0) point.col + noc else noc;
-        }
-    }
-}
-
 test "insertCharsMultiCursor - with new lines - 2 points start at same line" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one two");
     defer ropeman.deinit();
-    const input_points = &.{
+    const input_points = [_]CursorPoint{
         .{ .line = 0, .col = 0 },
         .{ .line = 0, .col = 3 },
     };
-    const e1_points = try ropeman.insertChars(idc_if_it_leaks, "\n", input_points);
+    const e1_points = try ropeman.insertChars(idc_if_it_leaks, "\n", &input_points);
     {
         try eqSlice(CursorPoint, &.{
             .{ .line = 1, .col = 0 },
@@ -281,12 +276,12 @@ test "insertCharsMultiCursor - with new lines - 2 points start at same line" {
 test "insertCharsMultiCursor - with new lines - 3 points start at same line" {
     var ropeman = try RopeMan.initFrom(testing_allocator, .string, "one two three");
     defer ropeman.deinit();
-    const input_points = &.{
+    const input_points = [_]CursorPoint{
         .{ .line = 0, .col = 0 },
         .{ .line = 0, .col = 3 },
         .{ .line = 0, .col = 7 },
     };
-    const e1_points = try ropeman.insertChars(idc_if_it_leaks, "\n", input_points);
+    const e1_points = try ropeman.insertChars(idc_if_it_leaks, "\n", &input_points);
     {
         try eqSlice(CursorPoint, &.{
             .{ .line = 1, .col = 0 },
@@ -325,12 +320,12 @@ test "insertCharsMultiCursor - with new lines" {
         \\hello kitty
     );
     defer ropeman.deinit();
-    const input_points = &.{
+    const input_points = [_]CursorPoint{
         .{ .line = 0, .col = 5 },
         .{ .line = 1, .col = 5 },
         .{ .line = 2, .col = 5 },
     };
-    const e1_points = try ropeman.insertChars(idc_if_it_leaks, "\n", input_points);
+    const e1_points = try ropeman.insertChars(idc_if_it_leaks, "\n", &input_points);
     {
         try eqSlice(CursorPoint, &.{
             .{ .line = 1, .col = 0 },
