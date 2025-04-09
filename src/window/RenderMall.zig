@@ -219,6 +219,8 @@ pub const RenderCallbacks = struct {
 
     beginScissorMode: *const fn (x: f32, y: f32, width: f32, height: f32) void,
     endScissorMode: *const fn () void,
+
+    setClipboardText: *const fn (text: [:0]const u8) void,
 };
 
 pub const InfoCallbacks = struct {

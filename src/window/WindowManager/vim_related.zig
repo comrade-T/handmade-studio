@@ -116,6 +116,10 @@ fn mapVisualMode(wm: *WindowManager, council: *WindowManager.MappingCouncil) !vo
 
     try council.map(VISUAL, &.{.d}, .{ .f = delete, .ctx = wm, .contexts = VISUAL_TO_NORMAL });
     try council.map(VISUAL, &.{.c}, .{ .f = delete, .ctx = wm, .contexts = VISUAL_TO_INSERT });
+
+    ///////////////////////////// yank
+
+    try council.map(VISUAL, &.{.y}, .{ .f = yankVisualSeletionToClipboard, .ctx = wm, .contexts = VISUAL_TO_NORMAL });
 }
 
 fn mapInsertMode(wm: *WindowManager, council: *WindowManager.MappingCouncil) !void {
@@ -354,4 +358,27 @@ pub fn moveCursorBackwardsBIGWORDStart(ctx: *anyopaque) !void {
     const wm = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
     const window = wm.active_window orelse return;
     window.cursor_manager.backwardsWord(.start, .BIG_WORD, 1, &window.ws.buf.ropeman);
+}
+
+// yank to clipboard
+
+pub fn yankVisualSeletionToClipboard(ctx: *anyopaque) !void {
+    const wm = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+    const window = wm.active_window orelse return;
+    const handler = wm.wmap.get(window) orelse return;
+
+    const cursor_ranges = try window.cursor_manager.produceCursorRanges(wm.a);
+    defer wm.a.free(cursor_ranges);
+    if (cursor_ranges.len == 0) return;
+
+    const byte_count = try handler.source.buf.ropeman.getRangeSize(cursor_ranges[0].start, cursor_ranges[0].end);
+    const buffer: [:0]u8 = try wm.a.allocSentinel(u8, byte_count, 0);
+    defer wm.a.free(buffer);
+
+    _ = handler.source.buf.ropeman.getRange(cursor_ranges[0].start, cursor_ranges[0].end, buffer);
+
+    /////////////////////////////
+
+    wm.mall.rcb.setClipboardText(buffer);
+    try exitVisualMode(ctx);
 }

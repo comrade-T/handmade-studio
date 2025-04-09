@@ -32,6 +32,7 @@ pub const render_callbacks = RenderMall.RenderCallbacks{
     .setCamera = setCamera,
     .beginScissorMode = beginScissorMode,
     .endScissorMode = endScissorMode,
+    .setClipboardText = setClipboardText,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
@@ -127,6 +128,10 @@ pub fn setCamera(camera_: *anyopaque, info: RenderMall.CameraInfo) void {
         .rotation = info.rotation,
         .zoom = info.zoom,
     };
+}
+
+pub fn setClipboardText(text: [:0]const u8) void {
+    rl.setClipboardText(text);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Info Callbacks

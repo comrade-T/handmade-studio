@@ -80,6 +80,12 @@ pub fn getRange(self: *const @This(), start: CursorPoint, end: ?CursorPoint, buf
     return rcr.getRange(self.root, start, end, buf);
 }
 
+pub fn getRangeSize(self: *const @This(), start: CursorPoint, end: CursorPoint) !usize {
+    const start_byte = try rcr.getByteOffsetOfPosition(self.root, start.line, start.col);
+    const end_byte = try rcr.getByteOffsetOfPosition(self.root, end.line, end.col);
+    return end_byte - start_byte;
+}
+
 pub fn getCharacterAt(self: *const @This(), point: CursorPoint, buf: []u8) u21 {
     const slice = rcr.getRange(self.root, point, .{ .line = point.line, .col = point.col + 1 }, buf);
     var iter = code_point.Iterator{ .bytes = slice };
