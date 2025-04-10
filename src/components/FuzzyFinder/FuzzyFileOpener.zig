@@ -93,7 +93,7 @@ pub fn create(
             .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
-            .sort_by_mtime_initially = true,
+            .sort_by_mtime = .on_empty_needle,
         }),
     };
     try self.mapKeys(doi.council);

@@ -260,8 +260,11 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
                 .mtime = entry.mtime,
             });
         }
-        if (self.opts.sort_by_mtime_initially and self.fresh)
-            std.mem.sort(Match, self.match_list.items, {}, Match.sortByMTime);
+        switch (self.opts.sort_by_mtime) {
+            .nope => {},
+            .initially => if (self.fresh) self.sortMatchListByMTime(),
+            .on_empty_needle => self.sortMatchListByMTime(),
+        }
         return;
     }
 
@@ -281,6 +284,10 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
     }
 
     std.mem.sort(Match, self.match_list.items, {}, Match.moreThan);
+}
+
+fn sortMatchListByMTime(self: *@This()) void {
+    std.mem.sort(Match, self.match_list.items, {}, Match.sortByMTime);
 }
 
 fn confirm(ctx: *anyopaque, _: []const u8) !void {
@@ -392,7 +399,7 @@ const FuzzyFinderCreateOptions = struct {
     ignore_ignore_patterns: ?[]const []const u8 = null,
     custom_match_patterns: ?[]const []const u8 = null,
 
-    sort_by_mtime_initially: bool = false,
+    sort_by_mtime: enum { nope, initially, on_empty_needle } = .nope,
 };
 
 pub const Callback = struct {
