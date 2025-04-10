@@ -65,6 +65,7 @@ pub fn create(
             .onHide = .{ .f = onHide, .ctx = self },
             .ignore_ignore_patterns = &.{".handmade_studio/"},
             .custom_match_patterns = &.{"*.json"},
+            .sort_by_mtime_initially = true,
         }),
     };
     try self.mapKeys(doi.council);

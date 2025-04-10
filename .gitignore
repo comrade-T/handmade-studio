@@ -5,3 +5,4 @@ submodules/
 *.log
 *.tracy
 .handmade_studio/
+*.vim

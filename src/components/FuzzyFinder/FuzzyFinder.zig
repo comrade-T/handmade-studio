@@ -44,13 +44,14 @@ y: f32 = 100,
 
 entry_arena: ArenaAllocator,
 match_arena: ArenaAllocator,
-entry_list: PathList,
+entry_list: PathWithStatsList,
 match_list: MatchList,
 
 doi: *DepartmentOfInputs,
 needle: []const u8 = "",
 
 opts: FuzzyFinderCreateOptions,
+fresh: bool = true,
 
 pub fn mapKeys(self: *@This()) !void {
     const c = self.doi.council;
@@ -67,7 +68,7 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, opts: FuzzyFinderCreateOpt
         .a = a,
         .entry_arena = ArenaAllocator.init(a),
         .match_arena = ArenaAllocator.init(a),
-        .entry_list = try PathList.initCapacity(a, 128),
+        .entry_list = try PathWithStatsList.initCapacity(a, 128),
         .match_list = MatchList.init(a),
         .doi = doi,
         .opts = opts,
@@ -105,6 +106,7 @@ pub fn destroy(self: *@This()) void {
 
 pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
+    defer self.fresh = false;
     try self.updateEntries();
     try update(self, self.needle);
     assert(try self.doi.showInput(self.opts.input_name));
@@ -132,8 +134,8 @@ pub fn getSelectedPath(self: *@This()) ?[]const u8 {
     if (self.match_list.items.len == 0) return null;
     assert(self.selection_index <= self.match_list.items.len -| 1);
     const match = self.match_list.items[self.selection_index];
-    const path = self.entry_list.items[match.entry_index];
-    return path;
+    const entry = self.entry_list.items[match.entry_index];
+    return entry.path;
 }
 
 pub fn getSelectedIndex(self: *@This()) ?usize {
@@ -143,9 +145,9 @@ pub fn getSelectedIndex(self: *@This()) ?usize {
     return match.entry_index;
 }
 
-pub fn addEntry(self: *@This(), entry: []const u8) !void {
-    const duped_entry = try self.entry_arena.allocator().dupe(u8, entry);
-    try self.entry_list.append(duped_entry);
+pub fn addEntry(self: *@This(), path: []const u8) !void {
+    const duped_path = try self.entry_arena.allocator().dupe(u8, path);
+    try self.entry_list.append(.{ .path = duped_path, .mtime = std.time.nanoTimestamp() });
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -207,7 +209,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
         var match_index: usize = 0;
         var cp_index: usize = 0;
 
-        var cp_iter = code_point.Iterator{ .bytes = self.entry_list.items[match.entry_index] };
+        var cp_iter = code_point.Iterator{ .bytes = self.entry_list.items[match.entry_index].path };
         while (cp_iter.next()) |cp| {
             defer cp_index += 1;
             var color: u32 = normal_color;
@@ -249,10 +251,17 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
 
     // fuzzig will crash if needle is an empty string
     if (self.needle.len == 0) {
-        for (self.entry_list.items, 0..) |_, i| {
+        for (self.entry_list.items, 0..) |entry, i| {
             if (i >= self.limit) break;
-            try self.match_list.append(Match{ .entry_index = i, .score = 0, .matches = &.{} });
+            try self.match_list.append(Match{
+                .entry_index = i,
+                .score = 0,
+                .matches = &.{},
+                .mtime = entry.mtime,
+            });
         }
+        if (self.opts.sort_by_mtime_initially and self.fresh)
+            std.mem.sort(Match, self.match_list.items, {}, Match.sortByMTime);
         return;
     }
 
@@ -262,11 +271,12 @@ fn updateInternal(self: *@This(), new_needle: []const u8) !void {
     for (self.entry_list.items, 0..) |entry, i| {
         if (i >= self.limit) break;
 
-        const match = searcher.scoreMatches(entry, self.needle);
+        const match = searcher.scoreMatches(entry.path, self.needle);
         if (match.score) |score| try self.match_list.append(Match{
             .entry_index = i,
             .score = score,
             .matches = try self.match_arena.allocator().dupe(usize, match.matches),
+            .mtime = entry.mtime,
         });
     }
 
@@ -318,13 +328,16 @@ fn updateFilePaths(self: *@This()) !void {
     try utils.appendFileNamesRelativeToCwd(.{
         .arena = &self.entry_arena,
         .sub_path = ".",
-        .list = &self.entry_list,
+        .list = null,
         .kind = self.opts.kind,
         .ignore_patterns = if (self.opts.ignore_ignore_patterns != null)
             final_ignore_list.items
         else
             git_ignore_patterns,
         .match_patterns = self.opts.custom_match_patterns,
+
+        .with_stats = true,
+        .list_with_stats = &self.entry_list,
     });
 }
 
@@ -340,16 +353,21 @@ fn keepSelectionIndexInBound(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types
 
-const PathList = ArrayList([]const u8);
+const PathWithStatsList = ArrayList(utils.AppendFileNamesRequest.PathWithStats);
 const MatchList = ArrayList(Match);
 
 const Match = struct {
     score: i32,
     matches: []const usize,
     entry_index: usize,
+    mtime: i128,
 
     pub fn moreThan(_: void, a: Match, b: Match) bool {
         return a.score > b.score;
+    }
+
+    pub fn sortByMTime(_: void, a: Match, b: Match) bool {
+        return a.mtime > b.mtime;
     }
 };
 
@@ -373,6 +391,8 @@ const FuzzyFinderCreateOptions = struct {
     custom_ignore_patterns: ?[]const []const u8 = null,
     ignore_ignore_patterns: ?[]const []const u8 = null,
     custom_match_patterns: ?[]const []const u8 = null,
+
+    sort_by_mtime_initially: bool = false,
 };
 
 pub const Callback = struct {

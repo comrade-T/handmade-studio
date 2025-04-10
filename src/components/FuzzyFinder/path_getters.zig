@@ -21,6 +21,7 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
+const assert = std.debug.assert;
 
 const fuzzig = @import("fuzzig");
 
@@ -57,18 +58,29 @@ pub const AppendFileNamesRequest = struct {
 
     arena: *ArenaAllocator,
     sub_path: []const u8,
-    list: *ArrayList([]const u8),
+    list: ?*ArrayList([]const u8),
     recursive: bool = true,
     kind: Kind,
 
     ignore_patterns: []const []const u8,
     match_patterns: ?[]const []const u8 = null,
+
+    with_stats: bool = false,
+    list_with_stats: ?*ArrayList(PathWithStats) = null,
+
+    pub const PathWithStats = struct { path: []const u8, mtime: i128 };
 };
 
 pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
+    if ((!req.with_stats and req.list == null) or
+        (req.with_stats and req.list_with_stats == null))
+    {
+        assert(false);
+        return;
+    }
+
     var dir = try std.fs.cwd().openDir(req.sub_path, .{ .iterate = true });
     defer dir.close();
-    errdefer dir.close();
 
     var iter = dir.iterate();
     iter_loop: while (try iter.next()) |entry| {
@@ -91,8 +103,17 @@ pub fn appendFileNamesRelativeToCwd(req: AppendFileNamesRequest) !void {
         if ((req.kind == .files and entry.kind == .file) or
             (req.kind == .directories and entry.kind == .directory) or
             (req.kind == .both))
-        {
-            try req.list.append(relative_path);
+        blk: {
+            if (!req.with_stats) {
+                try req.list.?.append(relative_path);
+                break :blk;
+            }
+
+            const stat = try dir.statFile(entry.name);
+            try req.list_with_stats.?.append(.{
+                .path = relative_path,
+                .mtime = stat.mtime,
+            });
         }
 
         if (req.recursive and entry.kind == .directory) {
