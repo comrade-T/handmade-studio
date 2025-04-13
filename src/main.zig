@@ -40,6 +40,8 @@ const DepartmentOfInputs = @import("DepartmentOfInputs");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
 const NotificationLine = @import("NotificationLine");
 
+const ManWhoHidesTheCursor = @import("raylib-related/ManWhoHidesTheCursor.zig");
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Main //////////////////////////////////////////////////////////////////////////////////////////////
 
 const screen_width = 1920;
@@ -63,6 +65,10 @@ pub fn main() anyerror!void {
     rl_initwindow_zone.End();
 
     var draw_fps = false;
+
+    ///////////////////////////// ManWhoHidesTheCursor
+
+    var man_who_hides_the_cursor = ManWhoHidesTheCursor{ .show_duration_ms = 750 };
 
     ///////////////////////////// Camera2D
 
@@ -202,6 +208,9 @@ pub fn main() anyerror!void {
 
         // Smooth Camera
         smooth_cam.updateOnNewFrame();
+
+        // ManWhoHidesTheCursor
+        man_who_hides_the_cursor.update();
 
         ///////////////////////////// Draw
 
