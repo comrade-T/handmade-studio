@@ -23,7 +23,7 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 
-const LangHub = @import("LangSuite").LangHub;
+pub const LangHub = @import("LangSuite").LangHub;
 pub const RenderMall = @import("RenderMall");
 pub const Rect = RenderMall.Rect;
 const AnchorPicker = @import("AnchorPicker");
@@ -41,7 +41,7 @@ const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
-const NotificationLine = @import("NotificationLine");
+pub const NotificationLine = @import("NotificationLine");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 

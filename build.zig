@@ -223,6 +223,17 @@ pub fn build(b: *std.Build) void {
         .{ .name = "Buffer", .module = buffer.module },
     }, zig_build_test_step);
 
+    ///////////////////////////// SessionManager
+
+    const canvas = addTestableModule(&bops, "src/session/Canvas.zig", &.{
+        .{ .name = "WindowManager", .module = window_manager.module },
+    }, zig_build_test_step);
+
+    const session_manager = addTestableModule(&bops, "src/session/SessionManager.zig", &.{
+        .{ .name = "Canvas", .module = canvas.module },
+    }, zig_build_test_step);
+    _ = session_manager;
+
     ////////////////////////////////////////////////////////////////////////////// Executables
 
     ///////////////////////////// Main
@@ -254,9 +265,10 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("AnchorPicker", anchor_picker.module);
 
         exe.root_module.addImport("DepartmentOfInputs", department_of_inputs.module);
-
         exe.root_module.addImport("ConfirmationPrompt", confirmation_prompt.module);
         exe.root_module.addImport("NotificationLine", notification_line.module);
+
+        // exe.root_module.addImport("SessionManager", session_manager.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));
