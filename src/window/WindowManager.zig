@@ -36,7 +36,7 @@ pub const Callback = ip_.Callback;
 
 pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
-const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
+pub const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
 
@@ -54,8 +54,6 @@ pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil
     try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
     try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .q }, .{ .f = closeAllWindows, .ctx = self });
     try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
-
-    try self.window_picker_normal.mapKeys(council);
 }
 
 const NORMAL = "normal";
