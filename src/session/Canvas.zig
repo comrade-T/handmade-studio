@@ -1,12 +1,30 @@
+// This file is part of Handmade Studio.
+//
+// Handmade Studio is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// Handmade Studio is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 const Canvas = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-const WindowManager = @import("WindowManager");
-const LangHub = WindowManager.LangHub;
-const RenderMall = WindowManager.RenderMall;
-const NotificationLine = WindowManager.NotificationLine;
+pub const WindowManager = @import("WindowManager");
+pub const LangHub = WindowManager.LangHub;
+pub const RenderMall = WindowManager.RenderMall;
+pub const NotificationLine = @import("NotificationLine");
+
 const ConnectionManager = WindowManager.ConnectionManager;
 const Window = WindowManager.Window;
 const WindowSourceHandler = WindowManager.WindowSourceHandler;
@@ -18,11 +36,14 @@ wm: *WindowManager,
 last_edit: i64 = 0,
 path: []const u8 = "",
 
-pub fn init(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *NotificationLine) !Canvas {
-    return Canvas{ .wm = try WindowManager.create(a, lang_hub, style_store, nl) };
+pub fn create(a: Allocator, lang_hub: *LangHub, mall: *RenderMall, nl: *NotificationLine) !*Canvas {
+    const self = try a.create(@This());
+    self.* = Canvas{ .wm = try WindowManager.create(a, lang_hub, mall, nl) };
+    return self;
 }
 
-pub fn deinit(self: *@This()) void {
+pub fn destroy(self: *@This(), a: Allocator) void {
+    a.destroy(self);
     self.wm.destroy();
 }
 

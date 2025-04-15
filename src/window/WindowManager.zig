@@ -41,7 +41,6 @@ const vim_related = @import("WindowManager/vim_related.zig");
 const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
-pub const NotificationLine = @import("NotificationLine");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
@@ -132,7 +131,6 @@ a: Allocator,
 
 lang_hub: *LangHub,
 mall: *RenderMall,
-nl: *NotificationLine,
 
 active_window: ?*Window = null,
 
@@ -151,7 +149,7 @@ visible_windows: WindowList,
 
 window_picker_normal: *WindowPickerNormal,
 
-pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *NotificationLine) !*WindowManager {
+pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
 
     const self = try a.create(@This());
@@ -159,7 +157,6 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall, nl: *N
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
-        .nl = nl,
         .connman = ConnectionManager{ .wm = self },
         .hm = HistoryManager{ .a = a, .capacity = 1024 },
 
@@ -660,198 +657,4 @@ pub fn spawnNewWindowRelativeToActiveWindow(
             },
         }
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Session
-
-const StringSource = struct {
-    id: i128,
-    contents: []const u8,
-};
-
-const Session = struct {
-    cameraInfo: ?RenderMall.CameraInfo = null,
-    string_sources: []const StringSource,
-    connections: []*const ConnectionManager.Connection,
-    windows: []const Window.WritableWindowState,
-};
-
-pub fn loadSession(self: *@This(), session_path: []const u8) !void {
-
-    ///////////////////////////// read file & parse
-
-    const file = std.fs.cwd().openFile(session_path, .{ .mode = .read_only }) catch |err| {
-        std.debug.print("catched err: {any} --> returning.\n", .{err});
-        return;
-    };
-    defer file.close();
-    const stat = try file.stat();
-
-    const buf = try self.a.alloc(u8, stat.size);
-    defer self.a.free(buf);
-    const read_size = try file.reader().read(buf);
-    if (read_size != stat.size) return error.BufferUnderrun;
-
-    const parsed = try std.json.parseFromSlice(Session, self.a, buf, .{
-        .ignore_unknown_fields = true,
-    });
-    defer parsed.deinit();
-
-    ///////////////////////////// call setCamera() if canvas is empty
-
-    if (parsed.value.cameraInfo) |camera_info| blk: {
-        var has_visible_windows = false;
-        for (self.wmap.keys()) |window| {
-            if (!window.closed) {
-                has_visible_windows = true;
-                break;
-            }
-        }
-        if (has_visible_windows) break :blk;
-        self.mall.rcb.setCamera(self.mall.camera, camera_info);
-        self.mall.rcb.setCamera(self.mall.target_camera, camera_info);
-    }
-
-    ///////////////////////////// create handlers & spawn windows
-
-    // If we load a session from a file, then load the same session again,
-    // those carry the same winids, both for windows and connections.
-    // Without adjusting `increment_winid_by`, we'll run into winid collisions,
-    // which causes `connman.notifyTrackers()` to misbehave & cause leaks.
-
-    var increment_winid_by: Window.ID = 0;
-    const current_nano_timestamp = std.time.nanoTimestamp();
-    for (parsed.value.windows) |window_state| {
-        const winid = window_state.opts.id orelse continue;
-        if (self.connman.tracker_map.contains(winid)) {
-            assert(current_nano_timestamp > winid);
-            increment_winid_by = current_nano_timestamp - winid;
-            break;
-        }
-    }
-
-    var strid_to_handler_map = std.AutoArrayHashMap(i128, *WindowSourceHandler).init(self.a);
-    defer strid_to_handler_map.deinit();
-
-    for (parsed.value.string_sources) |str_source| {
-        const handler = try WindowSourceHandler.create(self, .string, str_source.contents, self.lang_hub);
-        try self.handlers.put(self.a, handler, {});
-        try strid_to_handler_map.put(str_source.id, handler);
-    }
-
-    for (parsed.value.windows) |state| {
-        var adjusted_opts = state.opts;
-        if (adjusted_opts.id == null) continue;
-        adjusted_opts.id.? += increment_winid_by;
-
-        switch (state.source) {
-            .file => |path| try self.spawnWindow(.file, path, adjusted_opts, true, false),
-            .string => |string_id| {
-                const handler = strid_to_handler_map.get(string_id) orelse continue;
-                try self.spawnWindowFromHandler(handler, adjusted_opts, true);
-            },
-        }
-    }
-
-    for (parsed.value.connections) |conn| {
-        var adjusted_connection = conn.*;
-        adjusted_connection.start.win_id += increment_winid_by;
-        adjusted_connection.end.win_id += increment_winid_by;
-
-        assert(self.connman.tracker_map.contains(adjusted_connection.start.win_id));
-        assert(self.connman.tracker_map.contains(adjusted_connection.end.win_id));
-        try self.connman.notifyTrackers(adjusted_connection);
-    }
-}
-
-pub fn saveSession(self: *@This(), path: []const u8) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    var string_source_list = std.ArrayList(StringSource).init(self.a);
-    defer string_source_list.deinit();
-
-    var window_to_id_map = std.AutoArrayHashMap(*Window, i128).init(self.a);
-    defer window_to_id_map.deinit();
-
-    ///////////////////////////// handle string sources
-
-    var last_id: i128 = std.math.maxInt(i128);
-    for (self.handlers.keys()) |handler| {
-        if (handler.source.from == .file) continue;
-
-        // only save handlers with visible windows
-        var ignore_this_handler = true;
-        for (handler.windows.keys()) |window| {
-            if (!window.closed) {
-                ignore_this_handler = false;
-                break;
-            }
-        }
-        if (ignore_this_handler) continue;
-
-        var id = std.time.nanoTimestamp();
-        while (true) {
-            if (id != last_id) break;
-            id = std.time.nanoTimestamp();
-        }
-        last_id = id;
-
-        const contents = try handler.source.buf.ropeman.toString(arena.allocator(), .lf);
-        try string_source_list.append(StringSource{
-            .id = id,
-            .contents = contents,
-        });
-
-        for (handler.windows.keys()) |window| {
-            try window_to_id_map.put(window, id);
-        }
-    }
-
-    ///////////////////////////// handle windows
-
-    var window_state_list = std.ArrayList(Window.WritableWindowState).init(self.a);
-    defer window_state_list.deinit();
-
-    for (self.wmap.keys()) |window| {
-        if (window.closed) continue;
-        const string_id: ?i128 = window_to_id_map.get(window) orelse null;
-        const data = try window.produceWritableState(string_id);
-        try window_state_list.append(data);
-    }
-
-    ///////////////////////////// handle connections
-
-    var connections = std.ArrayListUnmanaged(*const ConnectionManager.Connection){};
-    defer connections.deinit(self.a);
-
-    for (self.connman.connections.keys()) |conn| {
-        if (!conn.isVisible(self)) continue;
-        try connections.append(self.a, conn);
-    }
-
-    /////////////////////////////
-
-    const session = Session{
-        .cameraInfo = self.mall.icb.getCameraInfo(self.mall.camera),
-        .windows = window_state_list.items,
-        .string_sources = string_source_list.items,
-        .connections = connections.items,
-    };
-
-    const str = try std.json.stringifyAlloc(arena.allocator(), session, .{
-        .whitespace = .indent_4,
-    });
-
-    try writeToFile(str, path);
-
-    const msg = try std.fmt.allocPrint(self.a, "Session written to file '{s}' successfully", .{path});
-    defer self.a.free(msg);
-    try self.nl.setMessage(msg);
-}
-
-fn writeToFile(str: []const u8, path: []const u8) !void {
-    var file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
-    try file.writeAll(str);
 }

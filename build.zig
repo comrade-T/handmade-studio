@@ -182,7 +182,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
         .{ .name = "QuadTree", .module = quad_tree.module },
-        .{ .name = "NotificationLine", .module = notification_line.module },
     }, zig_build_test_step);
 
     const department_of_inputs = addTestableModule(&bops, "src/components/DepartmentOfInputs.zig", &.{
@@ -225,14 +224,11 @@ pub fn build(b: *std.Build) void {
 
     ///////////////////////////// SessionManager
 
-    const canvas = addTestableModule(&bops, "src/session/Canvas.zig", &.{
+    const session = addTestableModule(&bops, "src/session/Session.zig", &.{
         .{ .name = "WindowManager", .module = window_manager.module },
+        .{ .name = "NotificationLine", .module = notification_line.module },
     }, zig_build_test_step);
-
-    const session_manager = addTestableModule(&bops, "src/session/SessionManager.zig", &.{
-        .{ .name = "Canvas", .module = canvas.module },
-    }, zig_build_test_step);
-    _ = session_manager;
+    _ = session;
 
     ////////////////////////////////////////////////////////////////////////////// Executables
 
@@ -268,7 +264,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("ConfirmationPrompt", confirmation_prompt.module);
         exe.root_module.addImport("NotificationLine", notification_line.module);
 
-        // exe.root_module.addImport("SessionManager", session_manager.module);
+        exe.root_module.addImport("Session", session.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
         exe.linkLibrary(ztracy.artifact("tracy"));
