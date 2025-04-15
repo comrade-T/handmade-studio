@@ -45,6 +45,7 @@ pub fn create(sess: *Session) !*Canvas {
 }
 
 pub fn destroy(self: *@This()) void {
+    if (self.path.len > 0) self.sess.a.free(self.path);
     self.sess.a.destroy(self);
     self.wm.destroy();
 }
@@ -78,7 +79,6 @@ fn getParsedState(aa: Allocator, path: []const u8) !?std.json.Parsed(WritableCan
     const stat = try file.stat();
 
     const buf = try aa.alloc(u8, stat.size);
-    defer aa.free(buf);
     const read_size = try file.reader().read(buf);
     if (read_size != stat.size) return error.BufferUnderrun;
 
@@ -183,8 +183,8 @@ fn setPath(self: *@This(), new_path: []const u8) !void {
 }
 
 fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvasState {
-    var string_source_list = std.ArrayList(StringSource).init(aa);
-    var window_to_id_map = std.AutoArrayHashMap(*Window, i128).init(aa);
+    var string_source_list = std.ArrayListUnmanaged(StringSource){};
+    var window_to_id_map = std.AutoArrayHashMapUnmanaged(*Window, i128){};
 
     ///////////////////////////// handle string sources
 
@@ -210,32 +210,30 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
         last_id = id;
 
         const contents = try handler.source.buf.ropeman.toString(aa, .lf);
-        try string_source_list.append(StringSource{
+        try string_source_list.append(aa, StringSource{
             .id = id,
             .contents = contents,
         });
 
         for (handler.windows.keys()) |window| {
-            try window_to_id_map.put(window, id);
+            try window_to_id_map.put(aa, window, id);
         }
     }
 
     ///////////////////////////// handle windows
 
-    var window_state_list = std.ArrayList(Window.WritableWindowState).init(aa);
-    defer window_state_list.deinit();
+    var window_state_list = std.ArrayListUnmanaged(Window.WritableWindowState){};
 
     for (wm.wmap.keys()) |window| {
         if (window.closed) continue;
         const string_id: ?i128 = window_to_id_map.get(window) orelse null;
         const data = try window.produceWritableState(string_id);
-        try window_state_list.append(data);
+        try window_state_list.append(aa, data);
     }
 
     ///////////////////////////// handle connections
 
     var connections = std.ArrayListUnmanaged(*const ConnectionManager.Connection){};
-
     for (wm.connman.connections.keys()) |conn| {
         if (!conn.isVisible(wm)) continue;
         try connections.append(aa, conn);
