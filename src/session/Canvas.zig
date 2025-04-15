@@ -39,7 +39,6 @@ path: []const u8 = "",
 pub fn create(sess: *Session) !*Canvas {
     const self = try sess.a.create(@This());
     const wm = try WindowManager.create(sess.a, sess.lang_hub, sess.mall);
-    try wm.mapKeys(sess.ap, sess.council);
     self.* = Canvas{ .sess = sess, .wm = wm };
     return self;
 }

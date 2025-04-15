@@ -40,83 +40,6 @@ pub const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
 
-////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
-
-pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil) !void {
-    try self.mapSpawnBlankWindowKeymaps(ap, council);
-
-    try self.mapUndoRedoKeymaps(council);
-    try council.map(NORMAL, &.{ .left_control, .q }, .{ .f = closeActiveWindow, .ctx = self });
-
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .q }, .{ .f = closeAllWindows, .ctx = self });
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .q }, .{ .f = closeAllWindows, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .q }, .{ .f = closeAllWindows, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .q }, .{ .f = closeAllWindows, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .q }, .{ .f = closeAllWindows, .ctx = self });
-}
-
-const NORMAL = "normal";
-
-fn mapSpawnBlankWindowKeymaps(wm: *@This(), ap: *const AnchorPicker, c: *MappingCouncil) !void {
-    const Cb = struct {
-        direction: WindowManager.WindowRelativeDirection,
-        wm: *WindowManager,
-        mall: *const RenderMall,
-        ap: *const AnchorPicker,
-
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-
-            if (self.wm.active_window == null) {
-                const x, const y = self.wm.mall.icb.getScreenToWorld2D(
-                    self.mall.camera,
-                    self.ap.target_anchor.x,
-                    self.ap.target_anchor.y,
-                );
-
-                try self.wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true, true);
-                return;
-            }
-
-            try self.wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction, false);
-        }
-
-        pub fn init(
-            allocator: std.mem.Allocator,
-            wm_: *WindowManager,
-            mall_: *const RenderMall,
-            ap_: *const AnchorPicker,
-            direction: WindowManager.WindowRelativeDirection,
-        ) !Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .direction = direction, .wm = wm_, .mall = mall_, .ap = ap_ };
-            return Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-
-    const a = c.arena.allocator();
-    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, wm, wm.mall, ap, .bottom));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, wm, wm.mall, ap, .right));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, wm, wm.mall, ap, .right));
-}
-
-fn mapUndoRedoKeymaps(self: *@This(), council: *MappingCouncil) !void {
-    try council.map(NORMAL, &.{ .left_control, .z }, .{ .f = undo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .z }, .{ .f = redo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .z }, .{ .f = redo, .ctx = self });
-
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .z }, .{ .f = batchUndo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .z }, .{ .f = batchUndo, .ctx = self });
-
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, .{ .f = batchRedo, .ctx = self });
-    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, .{ .f = batchRedo, .ctx = self });
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowManager
 
 a: Allocator,
@@ -475,8 +398,7 @@ pub fn cleanUpWindowsAfterAppendingToHistory(self: *@This(), a: Allocator, windo
 
 /////////////////////////////
 
-pub fn undo(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn undo(self: *@This()) !void {
     if (self.hm.undo()) |event| try self.handleUndoEvent(event);
 }
 
@@ -490,8 +412,7 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
     }
 }
 
-pub fn batchUndo(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn batchUndo(self: *@This()) !void {
     const curr, const target = self.hm.batchUndo();
 
     var i: i64 = curr;
@@ -503,8 +424,7 @@ pub fn batchUndo(ctx: *anyopaque) !void {
     }
 }
 
-pub fn redo(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn redo(self: *@This()) !void {
     if (self.hm.redo()) |event| try self.handleRedoEvent(event);
 }
 
@@ -518,8 +438,7 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
     }
 }
 
-pub fn batchRedo(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn batchRedo(self: *@This()) !void {
     const curr, const target = self.hm.batchRedo();
 
     var i: i64 = curr;
@@ -533,14 +452,12 @@ pub fn batchRedo(ctx: *anyopaque) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Close Window
 
-pub fn closeActiveWindow(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn closeActiveWindow(self: *@This()) !void {
     const active_window = self.active_window orelse return;
     try self.closeWindow(active_window, true);
 }
 
-pub fn closeAllWindows(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn closeAllWindows(self: *@This()) !void {
     const windows = self.wmap.keys();
 
     var i: usize = windows.len;
