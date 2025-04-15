@@ -241,7 +241,7 @@ const WindowToHandlerMap = std.AutoArrayHashMapUnmanaged(*Window, *WindowSourceH
 const FilePathToHandlerMap = std.StringArrayHashMapUnmanaged(*WindowSourceHandler);
 
 const WindowSourceHandlerMap = std.AutoArrayHashMapUnmanaged(*WindowSourceHandler, void);
-const WindowSourceHandler = struct {
+pub const WindowSourceHandler = struct {
     source: *WindowSource,
     windows: WindowMap,
 
