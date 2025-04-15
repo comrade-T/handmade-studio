@@ -28,7 +28,11 @@ const NotificationLine = @import("NotificationLine");
 
 const AnchorPicker = @import("AnchorPicker");
 const ip_ = @import("input_processor");
-const MappingCouncil = ip_.MappingCouncil;
+pub const Callback = ip_.Callback;
+pub const MappingCouncil = ip_.MappingCouncil;
+
+const vim_related = @import("keymaps/vim_related.zig");
+const layout_related = @import("keymaps/layout_related.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +54,9 @@ pub fn mapKeys(self: *@This()) !void {
 
     try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
+
+    try vim_related.mapKeys(self);
+    try layout_related.mapKeys(self);
 }
 
 // TODO: move all mapKeys mappings to Session level,

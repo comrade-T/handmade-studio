@@ -37,8 +37,6 @@ pub const Callback = ip_.Callback;
 pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
-const vim_related = @import("WindowManager/vim_related.zig");
-const layout_related = @import("WindowManager/layout_related.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
 
@@ -46,8 +44,6 @@ const QuadTree = _qtree.QuadTree(Window);
 
 pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil) !void {
     try self.connman.mapKeys(council);
-    try vim_related.mapKeys(self, council);
-    try layout_related.mapKeys(self, council);
 
     try self.mapSpawnBlankWindowKeymaps(ap, council);
 
