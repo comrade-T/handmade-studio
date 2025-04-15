@@ -142,6 +142,12 @@ pub fn setLimit(self: *@This(), a: Allocator, qtree: *QuadTree, may_limit: ?Curs
 }
 
 fn setLimitNoQuadTree(self: *@This(), may_limit: ?CursorManager.Limit) !void {
+    // prevent out-of-date limits in canvas file crashing the program
+    if (may_limit) |limit|
+        if (limit.start_line > self.cached.line_info.items.len or
+            limit.end_line > self.cached.line_info.items.len)
+            return;
+
     self.attr.limit = may_limit;
     if (may_limit) |limit| self.cursor_manager.setLimit(limit.start_line, limit.end_line);
 }
