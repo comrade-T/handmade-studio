@@ -52,6 +52,9 @@ pub fn mapKeys(self: *@This()) !void {
     try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
 }
 
+// TODO: move all mapKeys mappings to Session level,
+// not WindowManager level.
+
 pub fn newCanvas(self: *@This()) !*Canvas {
     const new_canvas = try Canvas.create(self);
     try self.canvases.append(self.a, new_canvas);
@@ -86,10 +89,12 @@ pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
     const active_canvas = self.getActiveCanvas() orelse return;
     if (active_canvas.wm.wmap.count() == 0) {
         try active_canvas.loadFromFile(path);
+        try self.notifyActiveCanvasName();
         return;
     }
     const new_canvas = try self.newCanvas();
     try new_canvas.loadFromFile(path);
+    try self.notifyActiveCanvasName();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -104,10 +109,24 @@ fn nextCanvas(ctx: *anyopaque) !void {
     if (self.active_index == null) return;
     if (self.active_index.? + 1 < self.canvases.items.len)
         self.active_index.? += 1;
+    try self.notifyActiveCanvasName();
 }
 
 fn previousCanvas(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     if (self.active_index == null) return;
     self.active_index.? -|= 1;
+    try self.notifyActiveCanvasName();
+}
+
+fn notifyActiveCanvasName(self: *@This()) !void {
+    const active_canvas = self.getActiveCanvas() orelse return;
+    const name = if (active_canvas.path.len == 0) "[ UNNAMED CANVAS ]" else active_canvas.path;
+    const msg = try std.fmt.allocPrint(self.a, "{s} [{d}/{d}]", .{
+        name,
+        self.active_index.? + 1,
+        self.canvases.items.len,
+    });
+    defer self.a.free(msg);
+    try self.nl.setMessage(msg);
 }
