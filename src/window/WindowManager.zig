@@ -34,7 +34,7 @@ const ip_ = @import("input_processor");
 pub const MappingCouncil = ip_.MappingCouncil;
 pub const Callback = ip_.Callback;
 
-const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
+pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
 const vim_related = @import("WindowManager/vim_related.zig");
