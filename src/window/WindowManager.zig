@@ -43,8 +43,6 @@ const QuadTree = _qtree.QuadTree(Window);
 ////////////////////////////////////////////////////////////////////////////////////////////// mapKeys
 
 pub fn mapKeys(self: *@This(), ap: *const AnchorPicker, council: *MappingCouncil) !void {
-    try self.connman.mapKeys(council);
-
     try self.mapSpawnBlankWindowKeymaps(ap, council);
 
     try self.mapUndoRedoKeymaps(council);

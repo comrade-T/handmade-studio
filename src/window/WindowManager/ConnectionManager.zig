@@ -24,92 +24,6 @@ const assert = std.debug.assert;
 const WindowManager = @import("../WindowManager.zig");
 const WM = WindowManager;
 
-////////////////////////////////////////////////////////////////////////////////////////////// Mappings
-
-pub fn mapKeys(connman: *@This(), council: *WM.MappingCouncil) !void {
-
-    ///////////////////////////// modes & contexts involved
-
-    const NORMAL = "normal";
-    const CYCLING = "cycling_connections";
-    const PENDING = "pending_connection";
-
-    const NORMAL_TO_CYCLING = WM.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{CYCLING} };
-    const CYCLING_TO_NORMAL = WM.Callback.Contexts{ .remove = &.{CYCLING}, .add = &.{NORMAL} };
-
-    const NORMAL_TO_PENDING = WM.Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{PENDING} };
-    const PENDING_TO_NORMAL = WM.Callback.Contexts{ .remove = &.{PENDING}, .add = &.{NORMAL} };
-
-    ///////////////////////////// cycling connections
-
-    try council.map(NORMAL, &.{ .c, .l }, .{ .f = enterCycleMode, .ctx = connman, .contexts = NORMAL_TO_CYCLING });
-    try council.map(CYCLING, &.{.escape}, .{ .f = exitCycleMode, .ctx = connman, .contexts = CYCLING_TO_NORMAL });
-    try council.map(CYCLING, &.{.j}, .{ .f = cycleToNextDownConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.k}, .{ .f = cycleToNextUpConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.h}, .{ .f = cycleToLeftMirroredConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.l}, .{ .f = cycleToRightMirroredConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.n}, .{ .f = cycleToNextConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.p}, .{ .f = cycleToPreviousConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.backspace}, .{ .f = removeSelectedConnection, .ctx = connman });
-    try council.map(CYCLING, &.{.delete}, .{ .f = removeSelectedConnection, .ctx = connman });
-
-    ///////////////////////////// pending connection
-
-    try council.map(NORMAL, &.{ .left_control, .c }, .{ .f = startPendingConnection, .ctx = connman, .contexts = NORMAL_TO_PENDING });
-    try council.map(PENDING, &.{.escape}, .{ .f = cancelPendingConnection, .ctx = connman, .contexts = PENDING_TO_NORMAL });
-    try council.map(PENDING, &.{.enter}, .{ .f = confirmPendingConnection, .ctx = connman, .contexts = PENDING_TO_NORMAL });
-
-    // change target window
-
-    const ChangeConnectionEndWinIDCb = struct {
-        direction: WM.WindowRelativeDirection,
-        connman: *ConnectionManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            self.connman.switchPendingConnectionEndWindow(self.direction);
-        }
-        pub fn init(allocator: std.mem.Allocator, cm_: *ConnectionManager, direction: WindowManager.WindowRelativeDirection) !WM.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .direction = direction, .connman = cm_ };
-            return WM.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-    try council.map(PENDING, &.{ .left_control, .h }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), connman, .left));
-    try council.map(PENDING, &.{ .left_control, .l }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), connman, .right));
-    try council.map(PENDING, &.{ .left_control, .k }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), connman, .top));
-    try council.map(PENDING, &.{ .left_control, .j }, try ChangeConnectionEndWinIDCb.init(council.arena.allocator(), connman, .bottom));
-
-    // change anchor
-
-    const ChangeConnectionAnchorCb = struct {
-        const Which = enum { start, end };
-        which: Which,
-        anchor: Connection.Anchor,
-        connman: *ConnectionManager,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            if (self.connman.pending_connection == null) return;
-            switch (self.which) {
-                .start => self.connman.pending_connection.?.start.anchor = self.anchor,
-                .end => self.connman.pending_connection.?.end.anchor = self.anchor,
-            }
-        }
-        pub fn init(allocator: std.mem.Allocator, cm_: *ConnectionManager, which: Which, anchor: Connection.Anchor) !WM.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .which = which, .anchor = anchor, .connman = cm_ };
-            return WM.Callback{ .f = @This().f, .ctx = self };
-        }
-    };
-    try council.map(PENDING, &.{ .s, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .start, .W));
-    try council.map(PENDING, &.{ .s, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .start, .E));
-    try council.map(PENDING, &.{ .s, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .start, .N));
-    try council.map(PENDING, &.{ .s, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .start, .S));
-    try council.map(PENDING, &.{ .e, .h }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .end, .W));
-    try council.map(PENDING, &.{ .e, .l }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .end, .E));
-    try council.map(PENDING, &.{ .e, .k }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .end, .N));
-    try council.map(PENDING, &.{ .e, .j }, try ChangeConnectionAnchorCb.init(council.arena.allocator(), connman, .end, .S));
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
 wm: *const WindowManager,
@@ -224,7 +138,7 @@ pub const Connection = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Pending Connection
 
-fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRelativeDirection) void {
+pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRelativeDirection) void {
     if (self.pending_connection) |*pc| {
         const initial_end = self.tracker_map.get(pc.end.win_id) orelse return;
         _, const may_candidate = self.wm.findClosestWindowToDirection(initial_end.win, direction);
@@ -270,14 +184,12 @@ fn calculateOptimalAnchorPoints(a: *const WM.Window, b: *const WM.Window) struct
     return .{ anchor_a, anchor_b };
 }
 
-fn startPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn startPendingConnection(self: *@This()) !void {
     const active_window = self.wm.active_window orelse return;
     self.pending_connection = Connection.new(active_window.id);
 }
 
-fn confirmPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn confirmPendingConnection(self: *@This()) !void {
     const pc = self.pending_connection orelse return;
     if (pc.start.win_id == pc.end.win_id) return;
 
@@ -285,8 +197,7 @@ fn confirmPendingConnection(ctx: *anyopaque) !void {
     try self.notifyTrackers(pc);
 }
 
-fn cancelPendingConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cancelPendingConnection(self: *@This()) !void {
     self.pending_connection = null;
 }
 
@@ -342,8 +253,7 @@ const PrevOrNext = enum { prev, next };
 
 ///////////////////////////// delete selected connection
 
-fn removeSelectedConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn removeSelectedConnection(self: *@This()) !void {
     const conn = self.getSelectedConnection() orelse return;
     self.removeConnection(conn);
 }
@@ -368,18 +278,15 @@ fn getSelectedConnection(self: *@This()) ?*Connection {
 
 ///////////////////////////// cycling methods
 
-fn cycleToNextConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cycleToNextConnection(self: *@This()) !void {
     if (self.getNextAngle()) |_| self.cycle_index += 1;
 }
 
-fn cycleToPreviousConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cycleToPreviousConnection(self: *@This()) !void {
     if (self.getPrevAngle()) |_| self.cycle_index -= 1;
 }
 
-fn cycleToNextDownConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cycleToNextDownConnection(self: *@This()) !void {
     const curr_angle = self.getCurrentAngle() orelse return;
     const may_prev_angle = self.getPrevAngle();
     const may_next_angle = self.getNextAngle();
@@ -397,8 +304,7 @@ fn cycleToNextDownConnection(ctx: *anyopaque) !void {
     }
 }
 
-fn cycleToNextUpConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cycleToNextUpConnection(self: *@This()) !void {
     const curr_angle = self.getCurrentAngle() orelse return;
     const may_prev_angle = self.getPrevAngle();
     const may_next_angle = self.getNextAngle();
@@ -431,14 +337,12 @@ fn getCurrentAngle(self: *@This()) ?f32 {
     return self.cycle_map.values()[self.cycle_index];
 }
 
-fn cycleToLeftMirroredConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cycleToLeftMirroredConnection(self: *@This()) !void {
     const angle = self.getCurrentAngle() orelse return;
     if (angle > 0) self.cycleToMirrorredConnection();
 }
 
-fn cycleToRightMirroredConnection(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn cycleToRightMirroredConnection(self: *@This()) !void {
     const angle = self.getCurrentAngle() orelse return;
     if (angle < 0) self.cycleToMirrorredConnection();
 }
@@ -466,14 +370,12 @@ fn cycleToMirrorredConnection(self: *@This()) void {
 
 ///////////////////////////// enter / exit cycling
 
-fn enterCycleMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn enterCycleMode(self: *@This()) !void {
     try self.updateCycleMap();
     self.cycle_index = 0;
 }
 
-fn exitCycleMode(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+pub fn exitCycleMode(self: *@This()) !void {
     self.cycle_map.clearRetainingCapacity();
 }
 
