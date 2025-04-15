@@ -20,10 +20,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-pub const WindowManager = @import("WindowManager");
-pub const LangHub = WindowManager.LangHub;
-pub const RenderMall = WindowManager.RenderMall;
-pub const NotificationLine = @import("NotificationLine");
+const Session = @import("Session.zig");
+const WindowManager = Session.WindowManager;
+const RenderMall = Session.RenderMall;
 
 const ConnectionManager = WindowManager.ConnectionManager;
 const Window = WindowManager.Window;
@@ -32,18 +31,21 @@ const WindowSourceHandler = WindowManager.WindowSourceHandler;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 wm: *WindowManager,
+sess: *Session,
 
 last_edit: i64 = 0,
 path: []const u8 = "",
 
-pub fn create(a: Allocator, lang_hub: *LangHub, mall: *RenderMall, nl: *NotificationLine) !*Canvas {
-    const self = try a.create(@This());
-    self.* = Canvas{ .wm = try WindowManager.create(a, lang_hub, mall, nl) };
+pub fn create(sess: *Session) !*Canvas {
+    const self = try sess.a.create(@This());
+    const wm = try WindowManager.create(sess.a, sess.lang_hub, sess.mall);
+    try wm.mapKeys(sess.ap, sess.council);
+    self.* = Canvas{ .sess = sess, .wm = wm };
     return self;
 }
 
-pub fn destroy(self: *@This(), a: Allocator) void {
-    a.destroy(self);
+pub fn destroy(self: *@This()) void {
+    self.sess.a.destroy(self);
     self.wm.destroy();
 }
 
@@ -53,21 +55,24 @@ pub fn destroy(self: *@This(), a: Allocator) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Load
 
-pub fn loadFromFile(self: *@This(), path: []const u8) !Canvas {
+pub fn loadFromFile(self: *@This(), path: []const u8) !void {
+    // TODO: if the canvas is empty, continue loading
+    // TODO: if it's not empty, spawn a new canvas and load then
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    const parsed = getParsedState(arena.allocator(), path);
+    const parsed = try getParsedState(arena.allocator(), path) orelse return;
     defer parsed.deinit();
 
-    self.setCameraIfCanvasIsEmpty(parsed);
-    try loadSession(arena.allocator, self.wm, parsed);
+    self.setCameraIfCanvasIsEmpty(parsed.value);
+    try loadSession(arena.allocator(), self.wm, parsed.value);
 }
 
-fn getParsedState(aa: Allocator, path: []const u8) !std.json.Parsed(WritableCanvasState) {
+fn getParsedState(aa: Allocator, path: []const u8) !?std.json.Parsed(WritableCanvasState) {
     const file = std.fs.cwd().openFile(path, .{ .mode = .read_only }) catch |err| {
         std.debug.print("failed opening file '{s}', got err: {any} --> returning.\n", .{ path, err });
-        return;
+        return null;
     };
     defer file.close();
     const stat = try file.stat();
@@ -83,7 +88,7 @@ fn getParsedState(aa: Allocator, path: []const u8) !std.json.Parsed(WritableCanv
 }
 
 fn setCameraIfCanvasIsEmpty(self: *@This(), parsed: WritableCanvasState) void {
-    if (parsed.value.cameraInfo) |camera_info| blk: {
+    if (parsed.cameraInfo) |camera_info| blk: {
         var has_visible_windows = false;
         for (self.wm.wmap.keys()) |window| {
             if (!window.closed) {
@@ -106,7 +111,7 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
 
     var increment_winid_by: Window.ID = 0;
     const current_nano_timestamp = std.time.nanoTimestamp();
-    for (parsed.value.windows) |window_state| {
+    for (parsed.windows) |window_state| {
         const winid = window_state.opts.id orelse continue;
         if (wm.connman.tracker_map.contains(winid)) {
             assert(current_nano_timestamp > winid);
@@ -116,13 +121,13 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
     }
 
     var strid_to_handler_map = std.AutoArrayHashMapUnmanaged(i128, *WindowSourceHandler){};
-    for (parsed.value.string_sources) |str_source| {
+    for (parsed.string_sources) |str_source| {
         const handler = try WindowSourceHandler.create(wm, .string, str_source.contents, wm.lang_hub);
         try wm.handlers.put(wm.a, handler, {});
         try strid_to_handler_map.put(aa, str_source.id, handler);
     }
 
-    for (parsed.value.windows) |state| {
+    for (parsed.windows) |state| {
         var adjusted_opts = state.opts;
         if (adjusted_opts.id == null) continue;
         adjusted_opts.id.? += increment_winid_by;
@@ -136,7 +141,7 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         }
     }
 
-    for (parsed.value.connections) |conn| {
+    for (parsed.connections) |conn| {
         var adjusted_connection = conn.*;
         adjusted_connection.start.win_id += increment_winid_by;
         adjusted_connection.end.win_id += increment_winid_by;
@@ -159,7 +164,7 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    const canvas_state = try produceWritableCanvasState(self.wm, path);
+    const canvas_state = try produceWritableCanvasState(arena.allocator(), self.wm);
 
     const json_str = try std.json.stringifyAlloc(arena.allocator(), canvas_state, .{
         .whitespace = .indent_4,
@@ -167,7 +172,14 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
     try writeToFile(json_str, path);
 
     const msg = try std.fmt.allocPrint(arena.allocator(), "Session written to file '{s}' successfully", .{path});
-    try self.wm.nl.setMessage(msg);
+    try self.sess.nl.setMessage(msg);
+
+    try self.setPath(path);
+}
+
+fn setPath(self: *@This(), new_path: []const u8) !void {
+    if (self.path.len > 0) self.sess.a.free(self.path);
+    self.path = try self.sess.a.dupe(u8, new_path);
 }
 
 fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvasState {

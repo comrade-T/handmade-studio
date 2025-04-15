@@ -23,7 +23,7 @@ const Allocator = std.mem.Allocator;
 const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
-const WindowManager = @import("WindowManager");
+const Session = @import("Session");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
 const NotificationLine = @import("NotificationLine");
 
@@ -34,7 +34,7 @@ const FSO = "FuzzySessionOpener";
 
 a: Allocator,
 finder: *FuzzyFinder,
-wm: *WindowManager,
+sess: *Session,
 
 pub fn mapKeys(fso: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .space, .s }, .{
@@ -47,7 +47,7 @@ pub fn mapKeys(fso: *@This(), c: *ip.MappingCouncil) !void {
 
 pub fn create(
     a: Allocator,
-    wm: *WindowManager,
+    sess: *Session,
     doi: *DepartmentOfInputs,
     cp: *ConfirmationPrompt,
     nl: *NotificationLine,
@@ -55,7 +55,7 @@ pub fn create(
     const self = try a.create(@This());
     self.* = .{
         .a = a,
-        .wm = wm,
+        .sess = sess,
         .finder = try FuzzyFinder.create(a, doi, .{
             .cp = cp,
             .nl = nl,
@@ -82,7 +82,8 @@ pub fn destroy(self: *@This()) void {
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const path = self.finder.getSelectedPath() orelse return true;
-    try self.wm.loadSession(path);
+    const active_canvas = self.sess.getActiveCanvas() orelse return true;
+    try active_canvas.loadFromFile(path);
     return true;
 }
 

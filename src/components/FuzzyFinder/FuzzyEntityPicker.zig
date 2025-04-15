@@ -23,7 +23,7 @@ const Allocator = std.mem.Allocator;
 const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
-const WindowManager = @import("WindowManager");
+const Session = @import("Session");
 const Buffer = @import("Buffer");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -33,7 +33,7 @@ const FEP = "FuzzyEntityPicker";
 
 a: Allocator,
 finder: *FuzzyFinder,
-wm: *WindowManager,
+sess: *Session,
 entity_list: Buffer.EntityList,
 
 pub fn mapKeys(fep: *@This(), c: *ip.MappingCouncil) !void {
@@ -45,11 +45,11 @@ pub fn mapKeys(fep: *@This(), c: *ip.MappingCouncil) !void {
     });
 }
 
-pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs) !*FuzzyEntityPicker {
+pub fn create(a: Allocator, sess: *Session, doi: *DepartmentOfInputs) !*FuzzyEntityPicker {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
-        .wm = wm,
+        .sess = sess,
         .finder = try FuzzyFinder.create(a, doi, .{
             .input_name = FEP,
             .kind = .files,
@@ -75,11 +75,12 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const index = self.finder.getSelectedIndex() orelse return true;
 
-    const win = self.wm.active_window orelse return false;
+    const wm = self.sess.getActiveCanvasWindowManager() orelse return false;
+    const win = wm.active_window orelse return false;
     assert(index < self.entity_list.items.len);
     const entity = self.entity_list.items[index];
 
-    try win.setLimit(self.wm.a, self.wm.qtree, .{
+    try win.setLimit(wm.a, wm.qtree, .{
         .start_line = entity.contents.start_line,
         .end_line = entity.contents.end_line,
     });
@@ -99,7 +100,8 @@ fn updateEntries(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.entity_list.clearRetainingCapacity();
 
-    const win = self.wm.active_window orelse return;
+    const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+    const win = wm.active_window orelse return;
     const buf = win.ws.buf;
     try buf.captureEntitiesToArrayList(&self.entity_list);
 

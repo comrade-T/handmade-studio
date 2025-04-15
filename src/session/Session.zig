@@ -18,25 +18,34 @@
 const Session = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const assert = std.debug.assert;
 
 const Canvas = @import("Canvas.zig");
-const WindowManager = Canvas.WindowManager;
+pub const WindowManager = @import("WindowManager");
 const LangHub = WindowManager.LangHub;
-const RenderMall = WindowManager.RenderMall;
+pub const RenderMall = WindowManager.RenderMall;
 const NotificationLine = @import("NotificationLine");
+
+const AnchorPicker = @import("AnchorPicker");
+const ip_ = @import("input_processor");
+const MappingCouncil = ip_.MappingCouncil;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
+
 lang_hub: *LangHub,
 mall: *RenderMall,
 nl: *NotificationLine,
+
+ap: *AnchorPicker,
+council: *MappingCouncil,
 
 active_index: ?usize = null,
 canvases: std.ArrayListUnmanaged(*Canvas) = .{},
 
 pub fn newCanvas(self: *@This()) !*Canvas {
-    const new_canvas = try Canvas.create(self.a, self.lang_hub, self.mall, self.nl);
+    const new_canvas = try Canvas.create(self);
     try self.canvases.append(self.a, new_canvas);
     self.active_index = self.canvases.items.len - 1;
     return new_canvas;
@@ -47,7 +56,25 @@ pub fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
     try new_canvas.loadFromFile(path);
 }
 
+pub fn updateAndRender(self: *@This()) !void {
+    const active_canvas = self.getActiveCanvas() orelse return;
+    try active_canvas.wm.updateAndRender();
+}
+
+pub fn getActiveCanvas(self: *@This()) ?*Canvas {
+    const index = self.active_index orelse {
+        assert(false);
+        return null;
+    };
+    return self.canvases.items[index];
+}
+
+pub fn getActiveCanvasWindowManager(self: *@This()) ?*WindowManager {
+    const active_canvas = self.getActiveCanvas() orelse return null;
+    return active_canvas.wm;
+}
+
 pub fn deinit(self: *@This()) void {
-    for (self.canvases.items) |*canvas| canvas.destroy(self.a);
+    for (self.canvases.items) |canvas| canvas.destroy();
     self.canvases.deinit(self.a);
 }

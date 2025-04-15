@@ -207,6 +207,15 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
+    ///////////////////////////// SessionManager
+
+    const session = addTestableModule(&bops, "src/session/Session.zig", &.{
+        .{ .name = "WindowManager", .module = window_manager.module },
+        .{ .name = "NotificationLine", .module = notification_line.module },
+        .{ .name = "AnchorPicker", .module = anchor_picker.module },
+        .{ .name = "input_processor", .module = input_processor.module },
+    }, zig_build_test_step);
+
     const fuzzy_finders = addTestableModule(&bops, "src/components/FuzzyFinder/fuzzy_finders.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
         .{ .name = "WindowSource", .module = window_source.module },
@@ -214,21 +223,13 @@ pub fn build(b: *std.Build) void {
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
-        .{ .name = "WindowManager", .module = window_manager.module },
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
         .{ .name = "DepartmentOfInputs", .module = department_of_inputs.module },
         .{ .name = "ConfirmationPrompt", .module = confirmation_prompt.module },
         .{ .name = "NotificationLine", .module = notification_line.module },
         .{ .name = "Buffer", .module = buffer.module },
+        .{ .name = "Session", .module = session.module },
     }, zig_build_test_step);
-
-    ///////////////////////////// SessionManager
-
-    const session = addTestableModule(&bops, "src/session/Session.zig", &.{
-        .{ .name = "WindowManager", .module = window_manager.module },
-        .{ .name = "NotificationLine", .module = notification_line.module },
-    }, zig_build_test_step);
-    _ = session;
 
     ////////////////////////////////////////////////////////////////////////////// Executables
 

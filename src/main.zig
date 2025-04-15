@@ -31,7 +31,7 @@ const ColorschemeStore = @import("ColorschemeStore");
 const RenderMall = @import("RenderMall");
 
 const LangSuite = @import("LangSuite");
-const WindowManager = @import("WindowManager");
+const Session = @import("Session");
 
 const fuzzy_finders = @import("fuzzy_finders");
 const AnchorPicker = @import("AnchorPicker");
@@ -176,22 +176,31 @@ pub fn main() anyerror!void {
     var notification_line = NotificationLine{ .a = gpa, .mall = &mall };
     defer notification_line.deinit();
 
-    // WindowManager
-    var wm = try WindowManager.create(gpa, &lang_hub, &mall, &notification_line);
-    defer wm.destroy();
-    try wm.mapKeys(&anchor_picker, council);
+    // Session
+    var session = Session{
+        .a = gpa,
+
+        .lang_hub = &lang_hub,
+        .mall = &mall,
+        .nl = &notification_line,
+
+        .ap = &anchor_picker,
+        .council = council,
+    };
+    defer session.deinit();
+    _ = try session.newCanvas(); // create empty canvas on startup
 
     // FuzzyFinder
-    var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, wm, &anchor_picker, &doi, &confirmation_prompt, &notification_line);
+    var fuzzy_file_opener = try fuzzy_finders.FuzzyFileOpener.create(gpa, &session, &anchor_picker, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_file_opener.destroy();
 
-    var fuzzy_session_opener = try fuzzy_finders.FuzzySessionOpener.create(gpa, wm, &doi, &confirmation_prompt, &notification_line);
+    var fuzzy_session_opener = try fuzzy_finders.FuzzySessionOpener.create(gpa, &session, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_session_opener.destroy();
 
-    var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, wm, &doi, &confirmation_prompt, &notification_line);
+    var fuzzy_session_savior = try fuzzy_finders.FuzzySessionSavior.create(gpa, &session, &doi, &confirmation_prompt, &notification_line);
     defer fuzzy_session_savior.destroy();
 
-    var fuzzy_entity_picker = try fuzzy_finders.FuzzyEntityPicker.create(gpa, wm, &doi);
+    var fuzzy_entity_picker = try fuzzy_finders.FuzzyEntityPicker.create(gpa, &session, &doi);
     defer fuzzy_entity_picker.destroy();
 
     startup_ztracy_zone.End();
@@ -225,7 +234,7 @@ pub fn main() anyerror!void {
                 defer rl.endMode2D();
 
                 // update windows & render them via WindowManager
-                try wm.updateAndRender();
+                try session.updateAndRender();
             }
 
             {

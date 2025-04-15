@@ -244,7 +244,7 @@ pub const WindowSourceHandler = struct {
 
     const WindowMap = std.AutoArrayHashMapUnmanaged(*Window, void);
 
-    fn create(wm: *WindowManager, from: WindowSource.InitFrom, source: []const u8, lang_hub: *LangHub) !*WindowSourceHandler {
+    pub fn create(wm: *WindowManager, from: WindowSource.InitFrom, source: []const u8, lang_hub: *LangHub) !*WindowSourceHandler {
         const self = try wm.a.create(@This());
         self.* = WindowSourceHandler{
             .source = try WindowSource.create(wm.a, from, source, lang_hub),

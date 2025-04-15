@@ -24,7 +24,7 @@ const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const FuzzyFileCreator = @import("FuzzyFileCreator.zig");
-const WindowManager = @import("WindowManager");
+const Session = @import("Session");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
 const NotificationLine = @import("NotificationLine");
 
@@ -34,7 +34,7 @@ const NORMAL = "normal";
 const FSS = "FuzzySessionSavior";
 
 a: Allocator,
-wm: *WindowManager,
+sess: *Session,
 ffc: *FuzzyFileCreator,
 
 pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
@@ -48,11 +48,11 @@ pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
     try c.map(NORMAL, &.{ .left_shift, .left_control, .s }, cb);
 }
 
-pub fn create(a: Allocator, wm: *WindowManager, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt, nl: *NotificationLine) !*FuzzySessionSavior {
+pub fn create(a: Allocator, sess: *Session, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt, nl: *NotificationLine) !*FuzzySessionSavior {
     const self = try a.create(@This());
     self.* = .{
         .a = a,
-        .wm = wm,
+        .sess = sess,
         .ffc = try FuzzyFileCreator.create(a, .{
             .kind = .both,
             .name = "FuzzySessionSavior",
@@ -74,5 +74,6 @@ pub fn destroy(self: *@This()) void {
 
 fn postConfirmCallback(ctx: *anyopaque, path: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.wm.saveSession(path);
+    const active_canvas = self.sess.getActiveCanvas() orelse return;
+    try active_canvas.saveAs(path);
 }

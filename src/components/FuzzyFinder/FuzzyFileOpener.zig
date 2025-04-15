@@ -23,7 +23,7 @@ const Allocator = std.mem.Allocator;
 const ip = @import("input_processor");
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
-const WindowManager = @import("WindowManager");
+const Session = @import("Session");
 const AnchorPicker = @import("AnchorPicker");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
 const NotificationLine = @import("NotificationLine");
@@ -36,7 +36,7 @@ const FFO_TO_NORMAL = ip.Callback.Contexts{ .remove = &.{FFO}, .add = &.{NORMAL}
 
 a: Allocator,
 finder: *FuzzyFinder,
-wm: *WindowManager,
+sess: *Session,
 ap: *AnchorPicker,
 
 pub fn mapKeys(ffo: *@This(), c: *ip.MappingCouncil) !void {
@@ -52,13 +52,13 @@ pub fn mapKeys(ffo: *@This(), c: *ip.MappingCouncil) !void {
 
     // spawn
     const RelativeSpawnCb = struct {
-        direction: WindowManager.WindowRelativeDirection,
+        direction: Session.WindowManager.WindowRelativeDirection,
         target: *FuzzyFileOpener,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             try self.target.spawnRelativeToActiveWindow(self.direction);
         }
-        pub fn init(allocator: Allocator, ctx: *anyopaque, direction: WindowManager.WindowRelativeDirection) !ip.Callback {
+        pub fn init(allocator: Allocator, ctx: *anyopaque, direction: Session.WindowManager.WindowRelativeDirection) !ip.Callback {
             const self = try allocator.create(@This());
             const target = @as(*FuzzyFileOpener, @ptrCast(@alignCast(ctx)));
             self.* = .{ .direction = direction, .target = target };
@@ -75,7 +75,7 @@ pub fn mapKeys(ffo: *@This(), c: *ip.MappingCouncil) !void {
 
 pub fn create(
     a: Allocator,
-    wm: *WindowManager,
+    sess: *Session,
     ap: *AnchorPicker,
     doi: *DepartmentOfInputs,
     cp: *ConfirmationPrompt,
@@ -84,7 +84,7 @@ pub fn create(
     const self = try a.create(@This());
     self.* = .{
         .a = a,
-        .wm = wm,
+        .sess = sess,
         .ap = ap,
         .finder = try FuzzyFinder.create(a, doi, .{
             .cp = cp,
@@ -117,7 +117,8 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
         self.ap.target_anchor.y,
     );
 
-    try self.wm.spawnWindow(.file, path, .{
+    const wm = self.sess.getActiveCanvasWindowManager() orelse return true;
+    try wm.spawnWindow(.file, path, .{
         .pos = .{ .x = x, .y = y },
         .subscribed_style_sets = &.{0},
     }, true, true);
@@ -133,9 +134,10 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn spawnRelativeToActiveWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) !void {
+fn spawnRelativeToActiveWindow(self: *@This(), direction: Session.WindowManager.WindowRelativeDirection) !void {
     const path = self.finder.getSelectedPath() orelse return;
-    try self.wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
+    const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+    try wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
         .subscribed_style_sets = &.{0},
     }, direction, false);
     try FuzzyFinder.hide(self.finder);
