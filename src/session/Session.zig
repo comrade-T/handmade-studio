@@ -51,9 +51,9 @@ pub fn newCanvas(self: *@This()) !*Canvas {
     return new_canvas;
 }
 
-pub fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
-    const new_canvas = try self.newCanvas();
-    try new_canvas.loadFromFile(path);
+pub fn deinit(self: *@This()) void {
+    for (self.canvases.items) |canvas| canvas.destroy();
+    self.canvases.deinit(self.a);
 }
 
 pub fn updateAndRender(self: *@This()) !void {
@@ -74,7 +74,19 @@ pub fn getActiveCanvasWindowManager(self: *@This()) ?*WindowManager {
     return active_canvas.wm;
 }
 
-pub fn deinit(self: *@This()) void {
-    for (self.canvases.items) |canvas| canvas.destroy();
-    self.canvases.deinit(self.a);
+pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
+    defer std.debug.print("canvas count: {d}\n", .{self.canvases.items.len});
+
+    const active_canvas = self.getActiveCanvas() orelse return;
+    if (active_canvas.wm.wmap.count() == 0) {
+        try active_canvas.loadFromFile(path);
+        return;
+    }
+    const new_canvas = try self.newCanvas();
+    try new_canvas.loadFromFile(path);
+}
+
+fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
+    const new_canvas = try self.newCanvas();
+    try new_canvas.loadFromFile(path);
 }

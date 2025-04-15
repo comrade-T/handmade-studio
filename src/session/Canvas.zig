@@ -57,9 +57,6 @@ pub fn destroy(self: *@This()) void {
 ////////////////////////////////////////////////////////////////////////////////////////////// Load
 
 pub fn loadFromFile(self: *@This(), path: []const u8) !void {
-    // TODO: if the canvas is empty, continue loading
-    // TODO: if it's not empty, spawn a new canvas and load then
-
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -68,6 +65,8 @@ pub fn loadFromFile(self: *@This(), path: []const u8) !void {
 
     self.setCameraIfCanvasIsEmpty(parsed.value);
     try loadSession(arena.allocator(), self.wm, parsed.value);
+
+    try self.setPath(path);
 }
 
 fn getParsedState(aa: Allocator, path: []const u8) !?std.json.Parsed(WritableCanvasState) {

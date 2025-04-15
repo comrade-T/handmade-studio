@@ -82,8 +82,7 @@ pub fn destroy(self: *@This()) void {
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const path = self.finder.getSelectedPath() orelse return true;
-    const active_canvas = self.sess.getActiveCanvas() orelse return true;
-    try active_canvas.loadFromFile(path);
+    try self.sess.loadCanvasFromFile(path);
     return true;
 }
 
