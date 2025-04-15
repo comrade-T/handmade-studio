@@ -44,6 +44,14 @@ council: *MappingCouncil,
 active_index: ?usize = null,
 canvases: std.ArrayListUnmanaged(*Canvas) = .{},
 
+pub fn mapKeys(self: *@This()) !void {
+    const NORMAL = "normal";
+    const c = self.council;
+
+    try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
+}
+
 pub fn newCanvas(self: *@This()) !*Canvas {
     const new_canvas = try Canvas.create(self);
     try self.canvases.append(self.a, new_canvas);
@@ -75,8 +83,6 @@ pub fn getActiveCanvasWindowManager(self: *@This()) ?*WindowManager {
 }
 
 pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
-    defer std.debug.print("canvas count: {d}\n", .{self.canvases.items.len});
-
     const active_canvas = self.getActiveCanvas() orelse return;
     if (active_canvas.wm.wmap.count() == 0) {
         try active_canvas.loadFromFile(path);
@@ -86,7 +92,22 @@ pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
     try new_canvas.loadFromFile(path);
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
     const new_canvas = try self.newCanvas();
     try new_canvas.loadFromFile(path);
+}
+
+fn nextCanvas(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.active_index == null) return;
+    if (self.active_index.? + 1 < self.canvases.items.len)
+        self.active_index.? += 1;
+}
+
+fn previousCanvas(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.active_index == null) return;
+    self.active_index.? -|= 1;
 }

@@ -188,6 +188,7 @@ pub fn main() anyerror!void {
         .council = council,
     };
     defer session.deinit();
+    try session.mapKeys();
     _ = try session.newCanvas(); // create empty canvas on startup
 
     // FuzzyFinder
