@@ -180,7 +180,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "Window", .module = window.module },
         .{ .name = "input_processor", .module = input_processor.module },
-        .{ .name = "AnchorPicker", .module = anchor_picker.module },
         .{ .name = "QuadTree", .module = quad_tree.module },
     }, zig_build_test_step);
 

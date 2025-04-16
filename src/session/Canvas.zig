@@ -32,6 +32,7 @@ const WindowSourceHandler = WindowManager.WindowSourceHandler;
 
 wm: *WindowManager,
 sess: *Session,
+camera_info: RenderMall.CameraInfo = .{},
 
 last_edit: i64 = 0,
 path: []const u8 = "",
@@ -52,6 +53,10 @@ pub fn destroy(self: *@This()) void {
 // pub fn close(self: *@This()) void {
 //     // TODO:
 // }
+
+pub fn saveCameraInfo(self: *@This()) void {
+    self.camera_info = self.wm.mall.icb.getCameraInfo(self.wm.mall.camera);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Load
 

@@ -248,10 +248,10 @@ pub fn getAbsoluteScreenView(self: *const @This()) ScreenView {
 }
 
 pub const CameraInfo = struct {
-    offset: struct { x: f32, y: f32 },
-    target: struct { x: f32, y: f32 },
-    rotation: f32,
-    zoom: f32,
+    offset: struct { x: f32 = 0, y: f32 = 0 } = .{},
+    target: struct { x: f32 = 0, y: f32 = 0 } = .{},
+    rotation: f32 = 0,
+    zoom: f32 = 1,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////

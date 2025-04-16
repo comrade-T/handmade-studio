@@ -65,9 +65,6 @@ pub fn mapKeys(self: *@This()) !void {
     try window_manager.mapKeys(self);
 }
 
-// TODO: move all mapKeys mappings to Session level,
-// not WindowManager level.
-
 pub fn newCanvas(self: *@This()) !*Canvas {
     const new_canvas = try Canvas.create(self);
     try self.canvases.append(self.a, new_canvas);
@@ -105,6 +102,7 @@ pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
         try self.notifyActiveCanvasName();
         return;
     }
+    active_canvas.saveCameraInfo();
     const new_canvas = try self.newCanvas();
     try new_canvas.loadFromFile(path);
     try self.notifyActiveCanvasName();
@@ -119,17 +117,35 @@ fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
 
 fn nextCanvas(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    if (self.active_index == null) return;
-    if (self.active_index.? + 1 < self.canvases.items.len)
-        self.active_index.? += 1;
-    try self.notifyActiveCanvasName();
+    try self.switchCanvas(.next);
 }
 
 fn previousCanvas(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    if (self.active_index == null) return;
-    self.active_index.? -|= 1;
+    try self.switchCanvas(.prev);
+}
+
+fn switchCanvas(self: *@This(), kind: enum { prev, next }) !void {
+    const prev_index = self.active_index orelse return;
+    const prev_canvas = self.getActiveCanvas() orelse return;
+    prev_canvas.saveCameraInfo();
+
+    switch (kind) {
+        .prev => self.active_index.? -|= 1,
+        .next => {
+            if (self.active_index.? + 1 < self.canvases.items.len)
+                self.active_index.? += 1;
+        },
+    }
+
     try self.notifyActiveCanvasName();
+
+    const new_index = self.active_index orelse return;
+    const new_canvas = self.getActiveCanvas() orelse return;
+    if (new_index != prev_index) {
+        new_canvas.wm.mall.rcb.setCamera(new_canvas.wm.mall.camera, new_canvas.camera_info);
+        new_canvas.wm.mall.rcb.setCamera(new_canvas.wm.mall.target_camera, new_canvas.camera_info);
+    }
 }
 
 fn notifyActiveCanvasName(self: *@This()) !void {
