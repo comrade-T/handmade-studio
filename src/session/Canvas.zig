@@ -181,6 +181,7 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
 }
 
 fn setPath(self: *@This(), new_path: []const u8) !void {
+    if (std.mem.eql(u8, self.path, new_path)) return;
     if (self.path.len > 0) self.sess.a.free(self.path);
     self.path = try self.sess.a.dupe(u8, new_path);
 }

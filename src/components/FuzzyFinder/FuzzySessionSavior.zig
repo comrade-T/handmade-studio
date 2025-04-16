@@ -37,7 +37,14 @@ a: Allocator,
 sess: *Session,
 ffc: *FuzzyFileCreator,
 
+fn triggerAfterUnnamedSave(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try FuzzyFinder.show(self.ffc.finder);
+}
+
 pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
+    try ffs.sess.addCallback(.after_unnamed_save, .{ .f = triggerAfterUnnamedSave, .ctx = ffs }); // TriggerCallback
+
     const cb = ip.Callback{
         .f = FuzzyFinder.show,
         .ctx = ffs.ffc.finder,

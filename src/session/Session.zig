@@ -51,10 +51,13 @@ council: *MappingCouncil,
 active_index: ?usize = null,
 canvases: std.ArrayListUnmanaged(*Canvas) = .{},
 
+tcbmap: std.AutoHashMapUnmanaged(TriggerCallbackKey, TriggerCallback) = .{},
+
 pub fn mapKeys(self: *@This()) !void {
     const NORMAL = "normal";
     const c = self.council;
 
+    try c.map(NORMAL, &.{ .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
 
@@ -75,6 +78,7 @@ pub fn newCanvas(self: *@This()) !*Canvas {
 pub fn deinit(self: *@This()) void {
     for (self.canvases.items) |canvas| canvas.destroy();
     self.canvases.deinit(self.a);
+    self.tcbmap.deinit(self.a);
 }
 
 pub fn updateAndRender(self: *@This()) !void {
@@ -106,6 +110,17 @@ pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
     const new_canvas = try self.newCanvas();
     try new_canvas.loadFromFile(path);
     try self.notifyActiveCanvasName();
+}
+
+pub fn saveActiveCanvas(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_canvas = self.getActiveCanvas() orelse return;
+    if (active_canvas.path.len == 0) {
+        const cb = self.tcbmap.get(.after_unnamed_save) orelse return;
+        try cb.f(cb.ctx);
+        return;
+    }
+    assert(try active_canvas.save());
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -158,4 +173,16 @@ fn notifyActiveCanvasName(self: *@This()) !void {
     });
     defer self.a.free(msg);
     try self.nl.setMessage(msg);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// TriggerCallback
+
+pub const TriggerCallbackKey = enum {
+    after_unnamed_save,
+};
+pub const TriggerCallback = struct { f: CallbackFunc, ctx: *anyopaque };
+pub const CallbackFunc = *const fn (ctx: *anyopaque) anyerror!void;
+
+pub fn addCallback(self: *@This(), key: TriggerCallbackKey, cb: TriggerCallback) !void {
+    try self.tcbmap.put(self.a, key, cb);
 }
