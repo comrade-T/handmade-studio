@@ -20,7 +20,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-const Canvas = @import("Canvas.zig");
+pub const Canvas = @import("Canvas.zig");
 pub const WindowManager = @import("WindowManager");
 const LangHub = WindowManager.LangHub;
 pub const RenderMall = WindowManager.RenderMall;
@@ -60,6 +60,7 @@ pub fn mapKeys(self: *@This()) !void {
     const c = self.council;
 
     try c.map(NORMAL, &.{ .space, .s, .c }, .{ .f = closeActiveCanvas, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .s, .n }, .{ .f = newEmptyCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
@@ -158,6 +159,11 @@ fn confirmCloseActiveCanvas(ctx: *anyopaque) !void {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+fn newEmptyCanvas(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    _ = try self.newCanvas();
+}
 
 fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
     const new_canvas = try self.newCanvas();

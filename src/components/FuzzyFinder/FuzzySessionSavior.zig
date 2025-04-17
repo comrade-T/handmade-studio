@@ -36,6 +36,7 @@ const FSS = "FuzzySessionSavior";
 a: Allocator,
 sess: *Session,
 ffc: *FuzzyFileCreator,
+on_confirm_path: []const u8 = "",
 
 fn triggerAfterUnnamedSave(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -63,7 +64,8 @@ pub fn create(a: Allocator, sess: *Session, doi: *DepartmentOfInputs, cp: *Confi
         .ffc = try FuzzyFileCreator.create(a, .{
             .kind = .both,
             .name = "FuzzySessionSavior",
-            .file_callback = .{ .f = postConfirmCallback, .ctx = self },
+            .file_callback = .{ .f = confirmCallback, .ctx = self },
+            .force_file_callback = .{ .f = forceConfirmCallback, .ctx = self },
             .ignore_ignore_patterns = &.{".handmade_studio/"},
             .custom_match_patterns = &.{"*.json"},
         }, doi, cp, nl),
@@ -79,8 +81,50 @@ pub fn destroy(self: *@This()) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn postConfirmCallback(ctx: *anyopaque, path: []const u8) !void {
+fn confirmCallback(ctx: *anyopaque, path: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const active_canvas = self.sess.getActiveCanvas() orelse return;
+    const active_canvas = self.sess.getActiveCanvas() orelse return false;
+    if (self.ffc.finder.match_list.items.len == 0 or
+        std.mem.eql(u8, active_canvas.path, path))
+    {
+        try active_canvas.saveAs(path);
+        return true;
+    }
+
+    const msg = try std.fmt.allocPrint(self.a, "Overwrite '{s}' with '{s}'??", .{
+        active_canvas.getName(),
+        path,
+    });
+    defer self.a.free(msg);
+
+    const cp = self.ffc.finder.opts.cp orelse {
+        assert(false);
+        return false;
+    };
+
+    try cp.show(msg, .{
+        .onConfirm = .{ .f = confirmOverwrite, .ctx = self },
+        .onCancel = .{ .f = cancelOverwrite, .ctx = self },
+    });
+    self.on_confirm_path = try self.a.dupe(u8, path);
+    return false;
+}
+
+fn forceConfirmCallback(ctx: *anyopaque, path: []const u8) !bool {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_canvas = self.sess.getActiveCanvas() orelse return false;
     try active_canvas.saveAs(path);
+    return true;
+}
+
+fn confirmOverwrite(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    defer self.a.free(self.on_confirm_path);
+    const active_canvas = self.sess.getActiveCanvas() orelse return;
+    try active_canvas.saveAs(self.on_confirm_path);
+}
+
+fn cancelOverwrite(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    defer self.a.free(self.on_confirm_path);
 }

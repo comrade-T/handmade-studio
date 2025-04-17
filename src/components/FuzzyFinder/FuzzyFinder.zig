@@ -407,7 +407,7 @@ pub const Callback = struct {
     ctx: *anyopaque,
 };
 
-const BoolCallback = struct {
+pub const BoolCallback = struct {
     f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!bool,
     ctx: *anyopaque,
 };

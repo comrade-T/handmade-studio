@@ -39,7 +39,8 @@ opts: Opts,
 const Opts = struct {
     name: []const u8,
     kind: Kind,
-    file_callback: ?FuzzyFinder.Callback = null,
+    force_file_callback: ?FuzzyFinder.BoolCallback = null,
+    file_callback: ?FuzzyFinder.BoolCallback = null,
 
     custom_ignore_patterns: ?[]const []const u8 = null,
     ignore_ignore_patterns: ?[]const []const u8 = null,
@@ -85,7 +86,7 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
     if (self.finder.getSelectedPath()) |path| {
-        if (try self.executeFileCallback(path)) return true;
+        if (try self.executeFileCallback(path, false)) return true;
 
         assert(try self.finder.doi.replaceInputContent(self.opts.name, path));
         self.cleanUpNewFileOrigin();
@@ -94,23 +95,24 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     }
 
     try self.createFile(self.new_file_origin, input_contents);
-    _ = try self.executeFileCallback(input_contents);
+    _ = try self.executeFileCallback(input_contents, false);
     return true;
 }
 
 fn forceConfirm(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.createFile("", self.finder.needle);
-    _ = try self.executeFileCallback(self.finder.needle);
+    _ = try self.executeFileCallback(self.finder.needle, true);
     try FuzzyFinder.hide(self.finder);
 }
 
-fn executeFileCallback(self: *@This(), path: []const u8) !bool {
+fn executeFileCallback(self: *@This(), path: []const u8, forced: bool) !bool {
     if (isFile(path)) {
-        if (self.opts.file_callback) |cb| {
-            try cb.f(cb.ctx, path);
-            return true;
+        if (self.opts.force_file_callback) |cb| blk: {
+            if (!forced) break :blk;
+            return try cb.f(cb.ctx, path);
         }
+        if (self.opts.file_callback) |cb| return try cb.f(cb.ctx, path);
     }
     return false;
 }
