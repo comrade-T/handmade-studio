@@ -25,6 +25,7 @@ pub const WindowManager = @import("WindowManager");
 const LangHub = WindowManager.LangHub;
 pub const RenderMall = WindowManager.RenderMall;
 const NotificationLine = @import("NotificationLine");
+const ConfirmationPrompt = @import("ConfirmationPrompt");
 
 const AnchorPicker = @import("AnchorPicker");
 const ip_ = @import("input_processor");
@@ -44,6 +45,7 @@ a: Allocator,
 lang_hub: *LangHub,
 mall: *RenderMall,
 nl: *NotificationLine,
+cp: *ConfirmationPrompt,
 
 ap: *AnchorPicker,
 council: *MappingCouncil,
@@ -57,6 +59,7 @@ pub fn mapKeys(self: *@This()) !void {
     const NORMAL = "normal";
     const c = self.council;
 
+    try c.map(NORMAL, &.{ .space, .s, .c }, .{ .f = closeActiveCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
@@ -123,6 +126,31 @@ pub fn saveActiveCanvas(ctx: *anyopaque) !void {
     assert(try active_canvas.save());
 }
 
+pub fn closeActiveCanvas(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_canvas = self.getActiveCanvas() orelse return;
+    const canvas_name = if (active_canvas.path.len == 0) "[ UNNAMED CANVAS ]" else active_canvas.path;
+    const msg = try std.fmt.allocPrint(self.a, "Are you sure you want to close session '{s}'? (y / n)", .{canvas_name});
+    defer self.a.free(msg);
+    try self.cp.show(msg, .{ .onConfirm = .{ .f = confirmCloseActiveCanvas, .ctx = self } });
+}
+
+fn confirmCloseActiveCanvas(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const active_canvas = self.getActiveCanvas() orelse return;
+
+    _ = self.canvases.orderedRemove(self.active_index.?);
+    active_canvas.destroy();
+    self.active_index.? -|= 1;
+
+    if (self.canvases.items.len == 0) {
+        _ = try self.newCanvas();
+        return;
+    }
+    const new_active_canvas = self.getActiveCanvas() orelse unreachable;
+    new_active_canvas.restoreCameraState();
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn newCanvasFromFile(self: *@This(), path: []const u8) !void {
@@ -157,10 +185,7 @@ fn switchCanvas(self: *@This(), kind: enum { prev, next }) !void {
 
     const new_index = self.active_index orelse return;
     const new_canvas = self.getActiveCanvas() orelse return;
-    if (new_index != prev_index) {
-        new_canvas.wm.mall.rcb.setCamera(new_canvas.wm.mall.camera, new_canvas.camera_info);
-        new_canvas.wm.mall.rcb.setCamera(new_canvas.wm.mall.target_camera, new_canvas.camera_info);
-    }
+    if (new_index != prev_index) new_canvas.restoreCameraState();
 }
 
 fn notifyActiveCanvasName(self: *@This()) !void {

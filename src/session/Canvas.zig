@@ -50,12 +50,13 @@ pub fn destroy(self: *@This()) void {
     self.sess.a.destroy(self);
 }
 
-// pub fn close(self: *@This()) void {
-//     // TODO:
-// }
-
 pub fn saveCameraInfo(self: *@This()) void {
     self.camera_info = self.wm.mall.icb.getCameraInfo(self.wm.mall.camera);
+}
+
+pub fn restoreCameraState(self: *const @This()) void {
+    self.wm.mall.rcb.setCamera(self.wm.mall.camera, self.camera_info);
+    self.wm.mall.rcb.setCamera(self.wm.mall.target_camera, self.camera_info);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Load

@@ -183,6 +183,7 @@ pub fn main() anyerror!void {
         .lang_hub = &lang_hub,
         .mall = &mall,
         .nl = &notification_line,
+        .cp = &confirmation_prompt,
 
         .ap = &anchor_picker,
         .council = council,

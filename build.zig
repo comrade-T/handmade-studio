@@ -213,6 +213,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "NotificationLine", .module = notification_line.module },
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
         .{ .name = "input_processor", .module = input_processor.module },
+        .{ .name = "ConfirmationPrompt", .module = confirmation_prompt.module },
     }, zig_build_test_step);
 
     const fuzzy_finders = addTestableModule(&bops, "src/components/FuzzyFinder/fuzzy_finders.zig", &.{
