@@ -129,8 +129,14 @@ pub fn saveActiveCanvas(ctx: *anyopaque) !void {
 pub fn closeActiveCanvas(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const active_canvas = self.getActiveCanvas() orelse return;
-    const canvas_name = if (active_canvas.path.len == 0) "[ UNNAMED CANVAS ]" else active_canvas.path;
-    const msg = try std.fmt.allocPrint(self.a, "Are you sure you want to close session '{s}'? (y / n)", .{canvas_name});
+    const msg = try std.fmt.allocPrint(
+        self.a,
+        "Are you sure you want to close session {s}{s}? (y / n)",
+        .{
+            active_canvas.getName(),
+            if (active_canvas.hasUnsavedChanges()) "*" else "",
+        },
+    );
     defer self.a.free(msg);
     try self.cp.show(msg, .{ .onConfirm = .{ .f = confirmCloseActiveCanvas, .ctx = self } });
 }
@@ -190,9 +196,9 @@ fn switchCanvas(self: *@This(), kind: enum { prev, next }) !void {
 
 fn notifyActiveCanvasName(self: *@This()) !void {
     const active_canvas = self.getActiveCanvas() orelse return;
-    const name = if (active_canvas.path.len == 0) "[ UNNAMED CANVAS ]" else active_canvas.path;
-    const msg = try std.fmt.allocPrint(self.a, "{s} [{d}/{d}]", .{
-        name,
+    const msg = try std.fmt.allocPrint(self.a, "{s}{s} [{d}/{d}]", .{
+        active_canvas.getName(),
+        if (active_canvas.hasUnsavedChanges()) "*" else "",
         self.active_index.? + 1,
         self.canvases.items.len,
     });

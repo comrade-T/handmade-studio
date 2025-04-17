@@ -34,7 +34,7 @@ wm: *WindowManager,
 sess: *Session,
 camera_info: RenderMall.CameraInfo = .{},
 
-last_edit: i64 = 0,
+last_save: i64 = 0,
 path: []const u8 = "",
 
 pub fn create(sess: *Session) !*Canvas {
@@ -52,6 +52,14 @@ pub fn destroy(self: *@This()) void {
 
 pub fn saveCameraInfo(self: *@This()) void {
     self.camera_info = self.wm.mall.icb.getCameraInfo(self.wm.mall.camera);
+}
+
+pub fn getName(self: *@This()) []const u8 {
+    return if (self.path.len == 0) "[ UNNAMED CANVAS ]" else self.path;
+}
+
+pub fn hasUnsavedChanges(self: *@This()) bool {
+    return self.path.len == 0 or (self.last_save != self.wm.hm.last_edit);
 }
 
 pub fn restoreCameraState(self: *const @This()) void {
@@ -72,6 +80,12 @@ pub fn loadFromFile(self: *@This(), path: []const u8) !void {
     try loadSession(arena.allocator(), self.wm, parsed.value);
 
     try self.setPath(path);
+    self.setLastSaveTimestampToSameAsHistoryManager();
+}
+
+fn setLastSaveTimestampToSameAsHistoryManager(self: *@This()) void {
+    // TODO: actually add a saved_at field to WritableCanvasState
+    self.last_save = self.wm.hm.last_edit;
 }
 
 fn getParsedState(aa: Allocator, path: []const u8) !?std.json.Parsed(WritableCanvasState) {
@@ -168,6 +182,7 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
+    defer self.setLastSaveTimestampToSameAsHistoryManager();
     const canvas_state = try produceWritableCanvasState(arena.allocator(), self.wm);
 
     const json_str = try std.json.stringifyAlloc(arena.allocator(), canvas_state, .{

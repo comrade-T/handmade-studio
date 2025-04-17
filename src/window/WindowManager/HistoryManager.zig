@@ -29,6 +29,7 @@ capacity: usize,
 index: i64 = -1,
 events: std.MultiArrayList(Event) = .{},
 wmap: std.AutoHashMapUnmanaged(*Window, usize) = .{},
+last_edit: i64 = 0,
 
 pub const Event = union(enum) {
     spawn: *Window,
@@ -91,6 +92,7 @@ pub fn batchRedo(self: *@This()) struct { i64, i64 } {
 
 pub fn undo(self: *@This()) ?Event {
     if (self.index <= -1 or self.events.len == 0) return null;
+    defer self.updateLastEditTimestamp();
     defer {
         self.index -= 1;
         assert(self.index >= -1);
@@ -134,10 +136,16 @@ pub fn addMoveEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by:
 
 ////////////////////////////////////////////////////////////////////////////////////////////// internal
 
+fn updateLastEditTimestamp(self: *@This()) void {
+    self.last_edit = std.time.microTimestamp();
+}
+
 fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
     assert(self.capacity > 0);
     assert(self.index == 0 or self.index < self.events.len);
     assert(self.events.len <= self.capacity);
+
+    defer self.updateLastEditTimestamp();
 
     var list = std.ArrayListUnmanaged(*Window){};
     var overcap = false;
