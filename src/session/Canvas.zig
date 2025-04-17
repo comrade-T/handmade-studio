@@ -46,8 +46,8 @@ pub fn create(sess: *Session) !*Canvas {
 
 pub fn destroy(self: *@This()) void {
     if (self.path.len > 0) self.sess.a.free(self.path);
-    self.sess.a.destroy(self);
     self.wm.destroy();
+    self.sess.a.destroy(self);
 }
 
 // pub fn close(self: *@This()) void {
