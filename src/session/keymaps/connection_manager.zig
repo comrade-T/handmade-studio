@@ -97,6 +97,7 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(PENDING, &.{ .left_control, .l }, try ChangeConnectionEndWinIDCb.init(a, sess, .right));
     try c.map(PENDING, &.{ .left_control, .k }, try ChangeConnectionEndWinIDCb.init(a, sess, .top));
     try c.map(PENDING, &.{ .left_control, .j }, try ChangeConnectionEndWinIDCb.init(a, sess, .bottom));
+    try c.map(PENDING, &.{.s}, try AdaptedCb.init(a, sess, CM.swapPendingConnectionPoints, .{}));
 
     // change anchor
 

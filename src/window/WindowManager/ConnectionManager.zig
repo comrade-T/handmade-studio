@@ -81,8 +81,10 @@ pub const Connection = struct {
     }
 
     const CONNECTION_COLOR = 0xffffffff;
-    const CONNECTION_START_POINT_COLOR = 0x03d3fcff;
-    const CONNECTION_END_POINT_COLOR = 0xd11daaff;
+    const MAGENTA = 0xd11daaff;
+    const CYAN = 0x03d3fcff;
+    const CONNECTION_START_POINT_COLOR = MAGENTA;
+    const CONNECTION_END_POINT_COLOR = CYAN;
 
     const NORMAL_THICKNESS = 1;
     const SELECTED_THICKNESS = 5;
@@ -195,6 +197,12 @@ pub fn confirmPendingConnection(self: *@This()) !void {
 
     defer self.pending_connection = null;
     try self.notifyTrackers(pc);
+}
+
+pub fn swapPendingConnectionPoints(self: *@This()) !void {
+    const old_pending_connection = self.pending_connection orelse return;
+    self.pending_connection.?.start = old_pending_connection.end;
+    self.pending_connection.?.end = old_pending_connection.start;
 }
 
 pub fn cancelPendingConnection(self: *@This()) !void {
