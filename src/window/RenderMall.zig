@@ -22,6 +22,7 @@ const assert = std.debug.assert;
 const testing_allocator = std.testing.allocator;
 const eq = std.testing.expectEqual;
 
+const _code_point = @import("code_point");
 pub const FontStore = @import("FontStore");
 pub const ColorschemeStore = @import("ColorschemeStore");
 
@@ -83,6 +84,24 @@ pub fn deinit(self: *@This()) void {
     self.fonts.deinit(self.a);
     self.font_sizes.deinit(self.a);
     self.colorschemes.deinit(self.a);
+}
+
+pub fn printMessage(self: *const @This(), message: []const u8, font_size: f32, color: u32, y_offset: f32) void {
+    const font = self.font_store.getDefaultFont() orelse unreachable;
+    const default_glyph = font.glyph_map.get('?') orelse unreachable;
+
+    const screen_rect = self.getScreenRectAbsolute();
+
+    var x: f32 = 0;
+    const y: f32 = screen_rect.height - font_size - y_offset;
+
+    var cp_iter = _code_point.Iterator{ .bytes = message };
+    while (cp_iter.next()) |cp| {
+        const char_width = calculateGlyphWidth(font, font_size, cp.code, default_glyph);
+        defer x += char_width;
+
+        self.rcb.drawCodePoint(font, cp.code, x, y, font_size, color);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

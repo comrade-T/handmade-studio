@@ -147,6 +147,7 @@ pub fn build(b: *std.Build) void {
     const render_mall = addTestableModule(&bops, "src/window/RenderMall.zig", &.{
         .{ .name = "FontStore", .module = font_store.module },
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
+        .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
     const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{
@@ -170,7 +171,6 @@ pub fn build(b: *std.Build) void {
 
     const notification_line = addTestableModule(&bops, "src/components/NotificationLine.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
-        .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
     const window_manager = addTestableModule(&bops, "src/window/WindowManager.zig", &.{
@@ -203,7 +203,6 @@ pub fn build(b: *std.Build) void {
     const confirmation_prompt = addTestableModule(&bops, "src/components/ConfirmationPrompt.zig", &.{
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "RenderMall", .module = render_mall.module },
-        .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
     ///////////////////////////// SessionManager

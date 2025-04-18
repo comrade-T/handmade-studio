@@ -50,22 +50,7 @@ pub fn setMessage(self: *@This(), msg: []const u8) !void {
 
 pub fn render(self: *@This()) void {
     const message = self.message orelse return;
-
-    const font = self.mall.font_store.getDefaultFont() orelse unreachable;
-    const default_glyph = font.glyph_map.get('?') orelse unreachable;
-
-    const screen_rect = self.mall.getScreenRectAbsolute();
-
-    var x: f32 = 0;
-    const y: f32 = screen_rect.height - self.font_size - self.y_offset;
-
-    var cp_iter = code_point.Iterator{ .bytes = message };
-    while (cp_iter.next()) |cp| {
-        const char_width = RenderMall.calculateGlyphWidth(font, self.font_size, cp.code, default_glyph);
-        defer x += char_width;
-
-        self.mall.rcb.drawCodePoint(font, cp.code, x, y, self.font_size, self.text_color);
-    }
+    self.mall.printMessage(message, self.font_size, self.text_color, self.y_offset);
 }
 
 pub fn clearIfDurationMet(self: *@This()) void {
