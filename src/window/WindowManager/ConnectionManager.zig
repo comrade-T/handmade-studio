@@ -162,6 +162,10 @@ pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRela
             const start = self.tracker_map.get(pc.start.win_id) orelse return;
             const end = self.tracker_map.get(pc.end.win_id) orelse return;
             pc.start.anchor, pc.end.anchor = calculateOptimalAnchorPoints(start.win, end.win);
+
+            // should start on left side, should end at right side.
+            const angle = pc.calculateAngle(pc.start.win_id, self.wm);
+            if (angle < 0) pc.swapPoints();
         }
     }
 }
