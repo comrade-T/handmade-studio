@@ -57,6 +57,7 @@ pub fn render(self: *const @This()) void {
         if (selconn) |selected| {
             if (conn == selected) {
                 conn.render(self.wm, Connection.SELECTED_THICKNESS);
+                conn.renderPendingIndicators(self.wm);
                 continue;
             }
         }
@@ -64,6 +65,12 @@ pub fn render(self: *const @This()) void {
     }
 
     if (self.pending_connection) |*pc| pc.renderPendingIndicators(self.wm);
+}
+
+pub fn swapSelectedConnectionPoints(self: *@This()) !void {
+    if (self.cycle_map.values().len == 0) return;
+    const selconn = self.cycle_map.keys()[self.cycle_index];
+    selconn.swapPoints();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Connection struct
@@ -110,6 +117,12 @@ pub const Connection = struct {
         const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
         wm.mall.rcb.drawCircle(start_x, start_y, 10, CONNECTION_START_POINT_COLOR);
         wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
+    }
+
+    fn swapPoints(self: *@This()) void {
+        const old = self.*;
+        self.start = old.end;
+        self.end = old.start;
     }
 
     pub fn isVisible(self: *const @This(), wm: *const WindowManager) bool {
@@ -200,9 +213,7 @@ pub fn confirmPendingConnection(self: *@This()) !void {
 }
 
 pub fn swapPendingConnectionPoints(self: *@This()) !void {
-    const old_pending_connection = self.pending_connection orelse return;
-    self.pending_connection.?.start = old_pending_connection.end;
-    self.pending_connection.?.end = old_pending_connection.start;
+    if (self.pending_connection) |*pc| pc.swapPoints();
 }
 
 pub fn cancelPendingConnection(self: *@This()) !void {

@@ -70,6 +70,7 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(CYCLING, &.{.p}, try AdaptedCb.init(a, sess, CM.cycleToPreviousConnection, .{}));
     try c.map(CYCLING, &.{.backspace}, try AdaptedCb.init(a, sess, CM.removeSelectedConnection, .{}));
     try c.map(CYCLING, &.{.delete}, try AdaptedCb.init(a, sess, CM.removeSelectedConnection, .{}));
+    try c.map(CYCLING, &.{.s}, try AdaptedCb.init(a, sess, CM.swapSelectedConnectionPoints, .{}));
 
     ///////////////////////////// pending connection
 
