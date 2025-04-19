@@ -75,6 +75,14 @@ pub fn swapSelectedConnectionPoints(self: *@This()) !void {
     selconn.swapPoints();
 }
 
+pub fn undo(self: *@This()) !void {
+    try self.wm.undo();
+}
+
+pub fn redo(self: *@This()) !void {
+    try self.wm.redo();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Connection struct
 
 const ConnectionPtrMap = std.AutoArrayHashMapUnmanaged(*Connection, void);
@@ -139,6 +147,7 @@ pub const Connection = struct {
     }
 
     fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {
+        if (self.hidden) return;
         const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
         const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
         wm.mall.rcb.drawCircle(start_x, start_y, 10, CONNECTION_START_POINT_COLOR);
@@ -151,8 +160,14 @@ pub const Connection = struct {
         self.end = old.start;
     }
 
-    pub fn show(self: *@This()) void {
+    pub fn show(self: *@This(), connman: *ConnectionManager) void {
         self.hidden = false;
+        for (connman.cycle_map.keys(), 0..) |conn, i| {
+            if (conn == self) {
+                connman.cycle_index = i;
+                break;
+            }
+        }
     }
 
     pub fn hide(self: *@This()) void {
@@ -162,7 +177,7 @@ pub const Connection = struct {
     pub fn isVisible(self: *const @This(), wm: *const WindowManager) bool {
         const start_tracker = wm.connman.tracker_map.get(self.start.win_id) orelse return false;
         const end_tracker = wm.connman.tracker_map.get(self.end.win_id) orelse return false;
-        return !start_tracker.win.closed and !end_tracker.win.closed;
+        return !self.hidden and !start_tracker.win.closed and !end_tracker.win.closed;
     }
 
     const Point = struct {
@@ -258,7 +273,7 @@ pub fn confirmPendingConnection(self: *@This()) !void {
     if (pc.start.win_id == pc.end.win_id) return;
 
     defer self.cleanUpAfterPendingConnection();
-    try self.addConnection(pc);
+    try self.addConnection(pc, true);
 }
 
 pub fn swapPendingConnectionPoints(self: *@This()) !void {
@@ -292,7 +307,7 @@ pub fn registerWindow(self: *@This(), window: *WM.Window) !void {
     try self.tracker_map.put(self.wm.a, window.id, ConnectionManager.WindowConnectionsTracker{ .win = window });
 }
 
-pub fn addConnection(self: *@This(), conn: Connection) !void {
+pub fn addConnection(self: *@This(), conn: Connection, add_to_history: bool) !void {
     var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
     var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
 
@@ -303,10 +318,12 @@ pub fn addConnection(self: *@This(), conn: Connection) !void {
     try start_tracker.outgoing.put(self.wm.a, c, {});
     try end_tracker.incoming.put(self.wm.a, c, {});
 
-    self.wm.cleanUpAfterAppendingToHistory(
-        self.wm.a,
-        try self.wm.hm.addAddConnectionEvent(self.wm.a, c),
-    );
+    if (add_to_history) {
+        self.wm.cleanUpAfterAppendingToHistory(
+            self.wm.a,
+            try self.wm.hm.addAddConnectionEvent(self.wm.a, c),
+        );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Remove all connections of a window
@@ -339,9 +356,15 @@ pub fn hideSelectedConnection(self: *@This()) !void {
         self.wm.a,
         try self.wm.hm.addHideConnectionEvent(self.wm.a, conn),
     );
+
+    self.seekToNextVisibleCandidate();
 }
 
-pub fn removeConnection(self: *@This(), conn: *Connection) void {
+pub fn cleanUpConnectionAfterAppendingToHistory(self: *@This(), conn: *Connection) void {
+    if (!conn.isVisible(self.wm)) self.removeConnection(conn);
+}
+
+fn removeConnection(self: *@This(), conn: *Connection) void {
     var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
     var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
 
@@ -349,9 +372,10 @@ pub fn removeConnection(self: *@This(), conn: *Connection) void {
     _ = end_tracker.incoming.swapRemove(conn);
     _ = self.connections.swapRemove(conn);
     _ = self.cycle_map.orderedRemove(conn);
-    self.cycle_index -|= 1;
 
     self.wm.a.destroy(conn);
+
+    self.seekToNextVisibleCandidate();
 }
 
 fn getSelectedConnection(self: *@This()) ?*Connection {
@@ -363,16 +387,20 @@ fn getSelectedConnection(self: *@This()) ?*Connection {
 
 pub fn cycleToNextConnection(self: *@This()) !void {
     if (self.getNextAngle()) |_| self.cycle_index += 1;
+    self.seekToNextVisibleCandidate();
 }
 
 pub fn cycleToPreviousConnection(self: *@This()) !void {
     if (self.getPrevAngle()) |_| self.cycle_index -= 1;
+    self.seekToPrevVisibleCandidate();
 }
 
 pub fn cycleToNextDownConnection(self: *@This()) !void {
     const curr_angle = self.getCurrentAngle() orelse return;
     const may_prev_angle = self.getPrevAngle();
     const may_next_angle = self.getNextAngle();
+
+    defer self.seekToNextVisibleCandidate();
 
     if (curr_angle < 0) {
         if (may_prev_angle) |prev_angle| {
@@ -392,6 +420,8 @@ pub fn cycleToNextUpConnection(self: *@This()) !void {
     const may_prev_angle = self.getPrevAngle();
     const may_next_angle = self.getNextAngle();
 
+    defer self.seekToPrevVisibleCandidate();
+
     if (curr_angle < 0) {
         if (may_next_angle) |next_angle| {
             if (next_angle >= 0) return;
@@ -403,6 +433,30 @@ pub fn cycleToNextUpConnection(self: *@This()) !void {
             self.cycle_index -= 1;
         }
     }
+}
+
+fn seekToNextVisibleCandidate(self: *@This()) void {
+    if (self.shouldStopSeeking()) return;
+    if (self.cycle_index + 1 >= self.cycle_map.count()) return;
+    self.cycle_index += 1;
+    self.seekToPrevVisibleCandidate();
+}
+
+fn seekToPrevVisibleCandidate(self: *@This()) void {
+    if (self.shouldStopSeeking()) return;
+    if (self.cycle_index == 0) return;
+    self.cycle_index -= 1;
+    self.seekToNextVisibleCandidate();
+}
+
+fn shouldStopSeeking(self: *@This()) bool {
+    if (self.cycle_map.count() == 0) return true;
+    if (self.cycle_index >= self.cycle_map.count()) {
+        self.cycle_index = 0;
+        return true;
+    }
+    if (!self.cycle_map.keys()[self.cycle_index].hidden) return true;
+    return false;
 }
 
 fn getPrevAngle(self: *@This()) ?f32 {
@@ -423,11 +477,13 @@ fn getCurrentAngle(self: *@This()) ?f32 {
 pub fn cycleToLeftMirroredConnection(self: *@This()) !void {
     const angle = self.getCurrentAngle() orelse return;
     if (angle > 0) self.cycleToMirrorredConnection();
+    self.seekToNextVisibleCandidate();
 }
 
 pub fn cycleToRightMirroredConnection(self: *@This()) !void {
     const angle = self.getCurrentAngle() orelse return;
     if (angle < 0) self.cycleToMirrorredConnection();
+    self.seekToPrevVisibleCandidate();
 }
 
 fn cycleToMirrorredConnection(self: *@This()) void {
@@ -456,6 +512,7 @@ fn cycleToMirrorredConnection(self: *@This()) void {
 pub fn enterCycleMode(self: *@This()) !void {
     try self.updateCycleMap();
     self.cycle_index = 0;
+    self.seekToNextVisibleCandidate();
 }
 
 pub fn exitCycleMode(self: *@This()) !void {

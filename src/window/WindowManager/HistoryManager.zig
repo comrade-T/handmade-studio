@@ -223,6 +223,7 @@ fn handleChopAndOvercap(
     switch (ev) {
         .add_connection, .hide_connection => |conn| {
             try connections_to_cleanup.append(a, conn);
+            return;
         },
         else => {},
     }

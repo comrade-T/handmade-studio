@@ -389,7 +389,9 @@ fn addWindowToCloseHistory(self: *@This(), win: *Window) !void {
 
 pub fn cleanUpAfterAppendingToHistory(self: *@This(), a: Allocator, append_result: HistoryManager.AddNewEventResult) void {
     defer a.free(append_result.connections_to_cleanup);
-    for (append_result.connections_to_cleanup) |conn| self.connman.removeConnection(conn);
+    for (append_result.connections_to_cleanup) |conn| {
+        self.connman.cleanUpConnectionAfterAppendingToHistory(conn);
+    }
 
     defer a.free(append_result.windows_to_cleanup);
     for (append_result.windows_to_cleanup) |win| {
@@ -414,7 +416,7 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
 
         .add_connection => |conn| conn.hide(),
-        .hide_connection => |conn| conn.show(),
+        .hide_connection => |conn| conn.show(&self.connman),
     }
 }
 
@@ -442,7 +444,7 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, info.x_by, info.y_by),
         .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
 
-        .add_connection => |conn| conn.show(),
+        .add_connection => |conn| conn.show(&self.connman),
         .hide_connection => |conn| conn.hide(),
     }
 }

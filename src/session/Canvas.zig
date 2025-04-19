@@ -166,7 +166,7 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
 
         assert(wm.connman.tracker_map.contains(adjusted_connection.start.win_id));
         assert(wm.connman.tracker_map.contains(adjusted_connection.end.win_id));
-        try wm.connman.addConnection(adjusted_connection);
+        try wm.connman.addConnection(adjusted_connection, false);
     }
 }
 
