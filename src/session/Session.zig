@@ -162,6 +162,8 @@ fn confirmCloseActiveCanvas(ctx: *anyopaque) !void {
 
 fn newEmptyCanvas(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const prev_canvas = self.getActiveCanvas() orelse return;
+    prev_canvas.saveCameraInfo();
     _ = try self.newCanvas();
 }
 
