@@ -155,7 +155,7 @@ fn updateLastEditTimestamp(self: *@This()) void {
     self.last_edit = std.time.microTimestamp();
 }
 
-fn addNewEvent(self: *@This(), a: Allocator, event: Event) !AddNewEventResult {
+fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResult {
     assert(self.capacity > 0);
     assert(self.index == 0 or self.index < self.events.len);
     assert(self.events.len <= self.capacity);
@@ -172,8 +172,8 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !AddNewEventResult {
         var i: usize = self.events.len;
         while (i > self.index + 1) {
             defer i -= 1;
-            const ev = self.events.pop() orelse break;
-            try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, ev);
+            const old_event = self.events.pop() orelse break;
+            try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
         }
     }
 
@@ -181,9 +181,9 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !AddNewEventResult {
 
     if (self.events.len + 1 >= self.capacity) {
         overcap = true;
-        const ev = self.events.get(0);
+        const old_event = self.events.get(0);
 
-        try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, ev);
+        try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
         self.events.orderedRemove(0);
     }
 
@@ -192,8 +192,8 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !AddNewEventResult {
     if (!overcap) self.index += 1;
     assert(self.index < self.capacity - 1);
 
-    try self.events.append(self.a, event);
-    try self.addEventToWindowMap(event);
+    try self.events.append(self.a, new_event);
+    try self.addEventToWindowMap(new_event);
 
     return AddNewEventResult{
         .windows_to_cleanup = try windows_to_cleanup.toOwnedSlice(a),
@@ -218,11 +218,19 @@ fn handleChopAndOvercap(
     a: Allocator,
     windows_to_cleanup: *std.ArrayListUnmanaged(*Window),
     connections_to_cleanup: *std.ArrayListUnmanaged(*Connection),
-    ev: Event,
+    old_event: Event,
+    new_event: Event,
 ) !void {
-    switch (ev) {
-        .add_connection, .hide_connection => |conn| {
-            try connections_to_cleanup.append(a, conn);
+    switch (old_event) {
+        .add_connection, .hide_connection => |old_conn| {
+            switch (new_event) {
+                .add_connection, .hide_connection => |new_conn| {
+                    if (new_conn != old_conn) {
+                        try connections_to_cleanup.append(a, old_conn);
+                    }
+                },
+                else => try connections_to_cleanup.append(a, old_conn),
+            }
             return;
         },
         else => {},
@@ -230,14 +238,16 @@ fn handleChopAndOvercap(
 
     /////////////////////////////
 
-    const win = getWindowFromEvent(ev) orelse unreachable;
+    const win = getWindowFromEvent(old_event) orelse unreachable;
     assert(self.wmap.contains(win));
 
     const count = self.wmap.getPtr(win) orelse unreachable;
     assert(count.* > 0);
 
     if (count.* == 1) {
-        try windows_to_cleanup.append(a, win);
+        const new_win = getWindowFromEvent(new_event) orelse unreachable;
+        if (win != new_win) try windows_to_cleanup.append(a, win);
+
         const removed = self.wmap.remove(win);
         assert(removed);
         return;
