@@ -374,22 +374,25 @@ pub fn spawnWindow(
 ////////////////////////////////////////////////////////////////////////////////////////////// History
 
 fn addWindowToSpawnHistory(self: *@This(), win: *Window) !void {
-    self.cleanUpWindowsAfterAppendingToHistory(
+    self.cleanUpAfterAppendingToHistory(
         self.a,
         try self.hm.addSpawnEvent(self.a, win),
     );
 }
 
 fn addWindowToCloseHistory(self: *@This(), win: *Window) !void {
-    self.cleanUpWindowsAfterAppendingToHistory(
+    self.cleanUpAfterAppendingToHistory(
         self.a,
         try self.hm.addCloseEvent(self.a, win),
     );
 }
 
-pub fn cleanUpWindowsAfterAppendingToHistory(self: *@This(), a: Allocator, windows_to_clean_up: []*Window) void {
-    defer a.free(windows_to_clean_up);
-    for (windows_to_clean_up) |win| {
+pub fn cleanUpAfterAppendingToHistory(self: *@This(), a: Allocator, append_result: HistoryManager.AddNewEventResult) void {
+    defer a.free(append_result.connections_to_cleanup);
+    for (append_result.connections_to_cleanup) |conn| self.connman.removeConnection(conn);
+
+    defer a.free(append_result.windows_to_cleanup);
+    for (append_result.windows_to_cleanup) |win| {
         if (!win.closed) continue;
         var handler = self.wmap.get(win) orelse continue;
         handler.cleanUp(win, self);
@@ -409,6 +412,9 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .toggle_border => |win| win.toggleBorder(),
         .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, -info.x_by, -info.y_by),
         .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
+
+        .add_connection => |conn| conn.hide(),
+        .hide_connection => |conn| conn.show(),
     }
 }
 
@@ -435,6 +441,9 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .toggle_border => |win| win.toggleBorder(),
         .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, info.x_by, info.y_by),
         .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
+
+        .add_connection => |conn| conn.show(),
+        .hide_connection => |conn| conn.hide(),
     }
 }
 

@@ -26,7 +26,7 @@ const WM = WindowManager;
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
-wm: *const WindowManager,
+wm: *WindowManager,
 
 connections: ConnectionPtrMap = ConnectionPtrMap{},
 tracker_map: TrackerMap = TrackerMap{},
@@ -81,6 +81,7 @@ const ConnectionPtrMap = std.AutoArrayHashMapUnmanaged(*Connection, void);
 pub const Connection = struct {
     start: Point,
     end: Point,
+    hidden: bool = false,
 
     fn new(start_win_id: i128) Connection {
         return Connection{
@@ -109,6 +110,7 @@ pub const Connection = struct {
     }
 
     fn render(self: *const @This(), wm: *const WindowManager, thickness: f32) void {
+        if (self.hidden) return;
         const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
         const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, CONNECTION_COLOR);
@@ -147,6 +149,14 @@ pub const Connection = struct {
         const old = self.*;
         self.start = old.end;
         self.end = old.start;
+    }
+
+    pub fn show(self: *@This()) void {
+        self.hidden = false;
+    }
+
+    pub fn hide(self: *@This()) void {
+        self.hidden = true;
     }
 
     pub fn isVisible(self: *const @This(), wm: *const WindowManager) bool {
@@ -248,7 +258,7 @@ pub fn confirmPendingConnection(self: *@This()) !void {
     if (pc.start.win_id == pc.end.win_id) return;
 
     defer self.cleanUpAfterPendingConnection();
-    try self.notifyTrackers(pc);
+    try self.addConnection(pc);
 }
 
 pub fn swapPendingConnectionPoints(self: *@This()) !void {
@@ -282,7 +292,7 @@ pub fn registerWindow(self: *@This(), window: *WM.Window) !void {
     try self.tracker_map.put(self.wm.a, window.id, ConnectionManager.WindowConnectionsTracker{ .win = window });
 }
 
-pub fn notifyTrackers(self: *@This(), conn: Connection) !void {
+pub fn addConnection(self: *@This(), conn: Connection) !void {
     var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
     var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
 
@@ -292,6 +302,11 @@ pub fn notifyTrackers(self: *@This(), conn: Connection) !void {
 
     try start_tracker.outgoing.put(self.wm.a, c, {});
     try end_tracker.incoming.put(self.wm.a, c, {});
+
+    self.wm.cleanUpAfterAppendingToHistory(
+        self.wm.a,
+        try self.wm.hm.addAddConnectionEvent(self.wm.a, c),
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Remove all connections of a window
@@ -316,12 +331,17 @@ const PrevOrNext = enum { prev, next };
 
 ///////////////////////////// delete selected connection
 
-pub fn removeSelectedConnection(self: *@This()) !void {
+pub fn hideSelectedConnection(self: *@This()) !void {
     const conn = self.getSelectedConnection() orelse return;
-    self.removeConnection(conn);
+    conn.hide();
+
+    self.wm.cleanUpAfterAppendingToHistory(
+        self.wm.a,
+        try self.wm.hm.addHideConnectionEvent(self.wm.a, conn),
+    );
 }
 
-fn removeConnection(self: *@This(), conn: *Connection) void {
+pub fn removeConnection(self: *@This(), conn: *Connection) void {
     var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
     var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
 

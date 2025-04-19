@@ -21,6 +21,7 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const WindowManager = @import("../WindowManager.zig");
 const Window = WindowManager.Window;
+const Connection = WindowManager.ConnectionManager.Connection;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -37,6 +38,9 @@ pub const Event = union(enum) {
     toggle_border: *Window,
     change_padding: struct { win: *Window, x_by: f32, y_by: f32 },
     move: struct { win: *Window, x_by: f32, y_by: f32 },
+
+    add_connection: *Connection,
+    hide_connection: *Connection,
 };
 
 pub fn deinit(self: *@This()) void {
@@ -112,26 +116,37 @@ pub fn redo(self: *@This()) ?Event {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const WindowsToCleanUp = []*Window;
+pub const AddNewEventResult = struct {
+    windows_to_cleanup: []*Window,
+    connections_to_cleanup: []*Connection,
+};
 
-pub fn addSpawnEvent(self: *@This(), a: Allocator, win: *Window) !WindowsToCleanUp {
+pub fn addSpawnEvent(self: *@This(), a: Allocator, win: *Window) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .spawn = win });
 }
 
-pub fn addCloseEvent(self: *@This(), a: Allocator, win: *Window) !WindowsToCleanUp {
+pub fn addCloseEvent(self: *@This(), a: Allocator, win: *Window) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .close = win });
 }
 
-pub fn addToggleBorderEvent(self: *@This(), a: Allocator, win: *Window) !WindowsToCleanUp {
+pub fn addToggleBorderEvent(self: *@This(), a: Allocator, win: *Window) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .toggle_border = win });
 }
 
-pub fn addChangePaddingEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by: f32) !WindowsToCleanUp {
+pub fn addChangePaddingEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by: f32) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .change_padding = .{ .win = win, .x_by = x_by, .y_by = y_by } });
 }
 
-pub fn addMoveEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by: f32) !WindowsToCleanUp {
+pub fn addMoveEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by: f32) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .move = .{ .win = win, .x_by = x_by, .y_by = y_by } });
+}
+
+pub fn addAddConnectionEvent(self: *@This(), a: Allocator, conn: *Connection) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .add_connection = conn });
+}
+
+pub fn addHideConnectionEvent(self: *@This(), a: Allocator, conn: *Connection) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .hide_connection = conn });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// internal
@@ -140,14 +155,15 @@ fn updateLastEditTimestamp(self: *@This()) void {
     self.last_edit = std.time.microTimestamp();
 }
 
-fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
+fn addNewEvent(self: *@This(), a: Allocator, event: Event) !AddNewEventResult {
     assert(self.capacity > 0);
     assert(self.index == 0 or self.index < self.events.len);
     assert(self.events.len <= self.capacity);
 
     defer self.updateLastEditTimestamp();
 
-    var list = std.ArrayListUnmanaged(*Window){};
+    var windows_to_cleanup = std.ArrayListUnmanaged(*Window){};
+    var connections_to_cleanup = std.ArrayListUnmanaged(*Connection){};
     var overcap = false;
 
     ///////////////////////////// if the needle (index) is in the middle, chop off the rest of the history
@@ -157,7 +173,7 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
         while (i > self.index + 1) {
             defer i -= 1;
             const ev = self.events.pop() orelse break;
-            try self.removeEventFromWindowMapAndUpdateTheCleanUpList(a, &list, ev);
+            try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, ev);
         }
     }
 
@@ -167,7 +183,7 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
         overcap = true;
         const ev = self.events.get(0);
 
-        try self.removeEventFromWindowMapAndUpdateTheCleanUpList(a, &list, ev);
+        try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, ev);
         self.events.orderedRemove(0);
     }
 
@@ -179,7 +195,10 @@ fn addNewEvent(self: *@This(), a: Allocator, event: Event) !WindowsToCleanUp {
     try self.events.append(self.a, event);
     try self.addEventToWindowMap(event);
 
-    return list.toOwnedSlice(a);
+    return AddNewEventResult{
+        .windows_to_cleanup = try windows_to_cleanup.toOwnedSlice(a),
+        .connections_to_cleanup = try connections_to_cleanup.toOwnedSlice(a),
+    };
 }
 
 fn addEventToWindowMap(self: *@This(), ev: Event) !void {
@@ -194,12 +213,22 @@ fn addEventToWindowMap(self: *@This(), ev: Event) !void {
     count.* += 1;
 }
 
-fn removeEventFromWindowMapAndUpdateTheCleanUpList(
+fn handleChopAndOvercap(
     self: *@This(),
     a: Allocator,
-    list: *std.ArrayListUnmanaged(*Window),
+    windows_to_cleanup: *std.ArrayListUnmanaged(*Window),
+    connections_to_cleanup: *std.ArrayListUnmanaged(*Connection),
     ev: Event,
 ) !void {
+    switch (ev) {
+        .add_connection, .hide_connection => |conn| {
+            try connections_to_cleanup.append(a, conn);
+        },
+        else => {},
+    }
+
+    /////////////////////////////
+
     const win = getWindowFromEvent(ev) orelse unreachable;
     assert(self.wmap.contains(win));
 
@@ -207,7 +236,7 @@ fn removeEventFromWindowMapAndUpdateTheCleanUpList(
     assert(count.* > 0);
 
     if (count.* == 1) {
-        try list.append(a, win);
+        try windows_to_cleanup.append(a, win);
         const removed = self.wmap.remove(win);
         assert(removed);
         return;
@@ -222,5 +251,8 @@ fn getWindowFromEvent(ev: Event) ?*Window {
         .toggle_border => |win| win,
         .change_padding => |info| info.win,
         .move => |info| info.win,
+
+        .add_connection => null,
+        .hide_connection => null,
     };
 }

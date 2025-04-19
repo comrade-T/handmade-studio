@@ -125,7 +125,7 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
     // If we load a session from a file, then load the same session again,
     // those carry the same winids, both for windows and connections.
     // Without adjusting `increment_winid_by`, we'll run into winid collisions,
-    // which causes `connman.notifyTrackers()` to misbehave & cause leaks.
+    // which causes `connman.addConnection()` to misbehave & cause leaks.
 
     var increment_winid_by: Window.ID = 0;
     const current_nano_timestamp = std.time.nanoTimestamp();
@@ -166,7 +166,7 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
 
         assert(wm.connman.tracker_map.contains(adjusted_connection.start.win_id));
         assert(wm.connman.tracker_map.contains(adjusted_connection.end.win_id));
-        try wm.connman.notifyTrackers(adjusted_connection);
+        try wm.connman.addConnection(adjusted_connection);
     }
 }
 

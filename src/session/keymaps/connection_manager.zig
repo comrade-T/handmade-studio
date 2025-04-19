@@ -68,8 +68,8 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(CYCLING, &.{.l}, try AdaptedCb.init(a, sess, CM.cycleToRightMirroredConnection, .{}));
     try c.map(CYCLING, &.{.n}, try AdaptedCb.init(a, sess, CM.cycleToNextConnection, .{}));
     try c.map(CYCLING, &.{.p}, try AdaptedCb.init(a, sess, CM.cycleToPreviousConnection, .{}));
-    try c.map(CYCLING, &.{.backspace}, try AdaptedCb.init(a, sess, CM.removeSelectedConnection, .{}));
-    try c.map(CYCLING, &.{.delete}, try AdaptedCb.init(a, sess, CM.removeSelectedConnection, .{}));
+    try c.map(CYCLING, &.{.backspace}, try AdaptedCb.init(a, sess, CM.hideSelectedConnection, .{}));
+    try c.map(CYCLING, &.{.delete}, try AdaptedCb.init(a, sess, CM.hideSelectedConnection, .{}));
     try c.map(CYCLING, &.{.s}, try AdaptedCb.init(a, sess, CM.swapSelectedConnectionPoints, .{}));
 
     ///////////////////////////// pending connection
