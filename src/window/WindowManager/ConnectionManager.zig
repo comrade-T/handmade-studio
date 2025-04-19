@@ -30,7 +30,9 @@ wm: *const WindowManager,
 
 connections: ConnectionPtrMap = ConnectionPtrMap{},
 tracker_map: TrackerMap = TrackerMap{},
+
 pending_connection: ?Connection = null,
+pending_connection_initial_window: ?*WM.Window = null,
 
 cycle_map: CycleMap = CycleMap{},
 cycle_index: usize = 0,
@@ -117,7 +119,7 @@ pub const Connection = struct {
         _ = self;
 
         const ARROWHEAD_ANGLE = 20.0; // in degrees
-        const ARROWHEAD_LINE_LENGTH = 100.0; // length of the arrowhead lines
+        const ARROWHEAD_LINE_LENGTH = 10.0; // length of the arrowhead lines
         const ARROWHEAD_THICKNESS = 1;
 
         const angle = std.math.atan2(end_y - start_y, end_x - start_x);
@@ -177,10 +179,20 @@ pub const Connection = struct {
 
 pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRelativeDirection) void {
     if (self.pending_connection) |*pc| {
-        const initial_end = self.tracker_map.get(pc.end.win_id) orelse return;
-        _, const may_candidate = self.wm.findClosestWindowToDirection(initial_end.win, direction);
+        const start_b4 = self.tracker_map.get(pc.start.win_id) orelse return;
+        const end_b4 = self.tracker_map.get(pc.end.win_id) orelse return;
+
+        const init_is_end = if (end_b4.win == self.pending_connection_initial_window.?) true else false;
+        const candidate_starting_point = if (init_is_end) start_b4.win else end_b4.win;
+        _, const may_candidate = self.wm.findClosestWindowToDirection(candidate_starting_point, direction);
+
         if (may_candidate) |candidate| {
-            pc.end.win_id = candidate.id;
+            if (!init_is_end or (start_b4.win == end_b4.win)) {
+                pc.end.win_id = candidate.id;
+            } else {
+                pc.start.win_id = candidate.id;
+            }
+
             const start = self.tracker_map.get(pc.start.win_id) orelse return;
             const end = self.tracker_map.get(pc.end.win_id) orelse return;
             pc.start.anchor, pc.end.anchor = calculateOptimalAnchorPoints(start.win, end.win);
@@ -228,13 +240,14 @@ fn calculateOptimalAnchorPoints(a: *const WM.Window, b: *const WM.Window) struct
 pub fn startPendingConnection(self: *@This()) !void {
     const active_window = self.wm.active_window orelse return;
     self.pending_connection = Connection.new(active_window.id);
+    self.pending_connection_initial_window = active_window;
 }
 
 pub fn confirmPendingConnection(self: *@This()) !void {
     const pc = self.pending_connection orelse return;
     if (pc.start.win_id == pc.end.win_id) return;
 
-    defer self.pending_connection = null;
+    defer self.cleanUpAfterPendingConnection();
     try self.notifyTrackers(pc);
 }
 
@@ -243,7 +256,12 @@ pub fn swapPendingConnectionPoints(self: *@This()) !void {
 }
 
 pub fn cancelPendingConnection(self: *@This()) !void {
+    self.cleanUpAfterPendingConnection();
+}
+
+fn cleanUpAfterPendingConnection(self: *@This()) void {
     self.pending_connection = null;
+    self.pending_connection_initial_window = null;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Trackers
