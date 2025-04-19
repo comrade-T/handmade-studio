@@ -61,7 +61,7 @@ pub fn mapKeys(self: *@This()) !void {
 
     try c.map(NORMAL, &.{ .space, .s, .c }, .{ .f = closeActiveCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .n }, .{ .f = newEmptyCanvas, .ctx = self });
-    try c.map(NORMAL, &.{ .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
     try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
 

@@ -110,6 +110,28 @@ pub const Connection = struct {
         const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
         const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, CONNECTION_COLOR);
+        self.drawArrowhead(wm, start_x, start_y, end_x, end_y);
+    }
+
+    fn drawArrowhead(self: *const @This(), wm: *const WindowManager, start_x: f32, start_y: f32, end_x: f32, end_y: f32) void {
+        _ = self;
+
+        const ARROWHEAD_ANGLE = 20.0; // in degrees
+        const ARROWHEAD_LINE_LENGTH = 100.0; // length of the arrowhead lines
+        const ARROWHEAD_THICKNESS = 1;
+
+        const angle = std.math.atan2(end_y - start_y, end_x - start_x);
+        const left_angle = angle + (ARROWHEAD_ANGLE * std.math.pi) / 180.0;
+        const right_angle = angle - (ARROWHEAD_ANGLE * std.math.pi) / 180.0;
+
+        const left_x = end_x - ARROWHEAD_LINE_LENGTH * @cos(left_angle);
+        const left_y = end_y - ARROWHEAD_LINE_LENGTH * @sin(left_angle);
+        const right_x = end_x - ARROWHEAD_LINE_LENGTH * @cos(right_angle);
+        const right_y = end_y - ARROWHEAD_LINE_LENGTH * @sin(right_angle);
+
+        // Draw the two lines for the arrowhead
+        wm.mall.rcb.drawLine(end_x, end_y, left_x, left_y, ARROWHEAD_THICKNESS, CONNECTION_COLOR);
+        wm.mall.rcb.drawLine(end_x, end_y, right_x, right_y, ARROWHEAD_THICKNESS, CONNECTION_COLOR);
     }
 
     fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {

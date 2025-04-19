@@ -52,8 +52,8 @@ pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
         .contexts = .{ .remove = &.{NORMAL}, .add = &.{FSS} },
         .require_clarity_afterwards = true,
     };
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .s }, cb);
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .s }, cb);
+    try c.map(NORMAL, &.{ .space, .left_control, .left_shift, .s }, cb);
+    try c.map(NORMAL, &.{ .space, .left_shift, .left_control, .s }, cb);
 }
 
 pub fn create(a: Allocator, sess: *Session, doi: *DepartmentOfInputs, cp: *ConfirmationPrompt, nl: *NotificationLine) !*FuzzySessionSavior {
