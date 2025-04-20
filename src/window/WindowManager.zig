@@ -418,6 +418,7 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .add_connection => |conn| conn.hide(),
         .hide_connection => |conn| conn.show(&self.connman),
         .swap_selected_connection_points => |conn| conn.swapPoints(),
+        .set_connection_arrowhead => |info| info.conn.arrowhead_index = info.prev,
     }
 }
 
@@ -448,6 +449,7 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .add_connection => |conn| conn.show(&self.connman),
         .hide_connection => |conn| conn.hide(),
         .swap_selected_connection_points => |conn| conn.swapPoints(),
+        .set_connection_arrowhead => |info| info.conn.arrowhead_index = info.next,
     }
 }
 

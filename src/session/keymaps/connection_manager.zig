@@ -81,7 +81,7 @@ pub fn mapKeys(sess: *Session) !void {
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-            wm.connman.setSelectedConnectionArrowhead(self.index);
+            try wm.connman.setSelectedConnectionArrowhead(self.index);
         }
         pub fn init(allocator: std.mem.Allocator, sess_: *Session, index: u32) !Session.Callback {
             const self = try allocator.create(@This());

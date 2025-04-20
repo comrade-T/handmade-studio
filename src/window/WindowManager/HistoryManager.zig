@@ -42,6 +42,7 @@ pub const Event = union(enum) {
     add_connection: *Connection,
     hide_connection: *Connection,
     swap_selected_connection_points: *Connection,
+    set_connection_arrowhead: struct { conn: *Connection, prev: u32, next: u32 },
 };
 
 pub fn deinit(self: *@This()) void {
@@ -156,6 +157,10 @@ pub fn addSwapSelectedConnectionPointsEvent(self: *@This(), a: Allocator, conn: 
     return try self.addNewEvent(a, .{ .swap_selected_connection_points = conn });
 }
 
+pub fn addSetConnectionArrowheadEvent(self: *@This(), a: Allocator, conn: *Connection, prev: u32, next: u32) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .set_connection_arrowhead = .{ .conn = conn, .prev = prev, .next = next } });
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// internal
 
 fn updateLastEditTimestamp(self: *@This()) void {
@@ -228,19 +233,12 @@ fn handleChopAndOvercap(
     old_event: Event,
     new_event: Event,
 ) !void {
-    switch (old_event) {
-        .add_connection, .hide_connection => |old_conn| {
-            switch (new_event) {
-                .add_connection, .hide_connection, .swap_selected_connection_points => |new_conn| {
-                    if (new_conn != old_conn) {
-                        try connections_to_cleanup.append(a, old_conn);
-                    }
-                },
-                else => try connections_to_cleanup.append(a, old_conn),
-            }
+    if (getConnectionFromEvent(old_event)) |old_conn| blk: {
+        const new_conn = getConnectionFromEvent(new_event) orelse break :blk;
+        if (new_conn != old_conn) {
+            try connections_to_cleanup.append(a, old_conn);
             return;
-        },
-        else => {},
+        }
     }
 
     /////////////////////////////
@@ -262,16 +260,24 @@ fn handleChopAndOvercap(
     count.* -= 1;
 }
 
+fn getConnectionFromEvent(ev: Event) ?*Connection {
+    return switch (ev) {
+        .add_connection,
+        .hide_connection,
+        .swap_selected_connection_points,
+        => |conn| conn,
+
+        .set_connection_arrowhead => |info| info.conn,
+
+        else => null,
+    };
+}
+
 fn getWindowFromEvent(ev: Event) ?*Window {
     return switch (ev) {
-        .spawn => |win| win,
-        .close => |win| win,
-        .toggle_border => |win| win,
+        .spawn, .close, .toggle_border => |win| win,
         .change_padding => |info| info.win,
         .move => |info| info.win,
-
-        .add_connection => null,
-        .hide_connection => null,
-        .swap_selected_connection_points => null,
+        else => null,
     };
 }

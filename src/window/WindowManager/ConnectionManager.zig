@@ -106,10 +106,18 @@ pub fn swapSelectedConnectionPoints(self: *@This()) !void {
     );
 }
 
-pub fn setSelectedConnectionArrowhead(self: *@This(), index: u32) void {
+pub fn setSelectedConnectionArrowhead(self: *@This(), new_index: u32) !void {
     if (self.ama.elders.items.len == 0) return;
     const selconn = self.getSelectedConnection() orelse return;
-    selconn.arrowhead_index = index;
+    const old_index = selconn.arrowhead_index;
+    if (old_index == new_index) return;
+
+    selconn.arrowhead_index = new_index;
+
+    self.wm.cleanUpAfterAppendingToHistory(
+        self.wm.a,
+        try self.wm.hm.addSetConnectionArrowheadEvent(self.wm.a, selconn, old_index, new_index),
+    );
 }
 
 pub fn startSettingArrowhead(self: *@This()) !void {
