@@ -27,8 +27,22 @@ const ArrowheadManager = @import("ArrowheadManager.zig");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
+const DEFAULT_CONNECTION_THICKNESS = 1;
+const DEFAULT_SELECTED_CONNECTION_THICKNESS = 1;
+const SELECTED_CONNECTION_THICKNESS_WHEN_SETTING_ARRROWHEAD = DEFAULT_CONNECTION_THICKNESS;
+
+const DEFAULT_CONNECTION_COLOR = 0xffffffff;
+// const SELECTED_CONNECTION_COLOR_WHEN_SETTING_ARRROWHEAD = 0xffffffaa;
+const SELECTED_CONNECTION_COLOR_WHEN_SETTING_ARRROWHEAD = 0xffffffff;
+
 wm: *WindowManager,
 ama: ArrowheadManager,
+default_arrowhead: *ArrowheadManager.Arrowhead,
+
+connection_thickness: f32 = DEFAULT_CONNECTION_THICKNESS,
+selected_connection_thickness: f32 = DEFAULT_SELECTED_CONNECTION_THICKNESS,
+connection_color: u32 = DEFAULT_CONNECTION_COLOR,
+selected_connection_color: u32 = DEFAULT_CONNECTION_COLOR,
 
 setting_arrowhead: bool = false,
 
@@ -42,9 +56,11 @@ cycle_map: CycleMap = CycleMap{},
 cycle_index: usize = 0,
 
 pub fn init(a: Allocator, wm: *WindowManager) !ConnectionManager {
+    const ama = try ArrowheadManager.init(a);
     return ConnectionManager{
         .wm = wm,
-        .ama = try ArrowheadManager.init(a),
+        .ama = ama,
+        .default_arrowhead = ama.getElder(0),
     };
 }
 
@@ -70,12 +86,12 @@ pub fn render(self: *const @This()) void {
     for (self.connections.keys()) |conn| {
         if (selconn) |selected| {
             if (conn == selected) {
-                conn.render(self.wm, Connection.SELECTED_THICKNESS);
+                conn.render(self, true);
                 if (!self.setting_arrowhead) conn.renderPendingIndicators(self.wm);
                 continue;
             }
         }
-        conn.render(self.wm, Connection.NORMAL_THICKNESS);
+        conn.render(self, false);
     }
 
     if (self.pending_connection) |*pc| pc.renderPendingIndicators(self.wm);
@@ -99,9 +115,13 @@ pub fn setSelectedConnectionArrowhead(self: *@This(), index: usize) void {
 
 pub fn startSettingArrowhead(self: *@This()) !void {
     self.setting_arrowhead = true;
+    self.selected_connection_color = SELECTED_CONNECTION_COLOR_WHEN_SETTING_ARRROWHEAD;
+    self.selected_connection_thickness = SELECTED_CONNECTION_THICKNESS_WHEN_SETTING_ARRROWHEAD;
 }
 pub fn stopSettingArrowhead(self: *@This()) !void {
     self.setting_arrowhead = false;
+    self.selected_connection_color = DEFAULT_CONNECTION_COLOR;
+    self.selected_connection_thickness = DEFAULT_SELECTED_CONNECTION_THICKNESS;
 }
 
 pub fn undo(self: *@This()) !void {
@@ -130,14 +150,10 @@ pub const Connection = struct {
         };
     }
 
-    const CONNECTION_COLOR = 0xffffffff;
     const MAGENTA = 0xd11daaff;
     const CYAN = 0x03d3fcff;
     const CONNECTION_START_POINT_COLOR = MAGENTA;
     const CONNECTION_END_POINT_COLOR = CYAN;
-
-    const NORMAL_THICKNESS = 1;
-    const SELECTED_THICKNESS = 5;
 
     fn calculateAngle(self: *const @This(), win_id: i128, wm: *const WindowManager) f32 {
         const start_point, const end_point = if (win_id == self.start.win_id) .{ self.start, self.end } else .{ self.end, self.start };
@@ -149,33 +165,20 @@ pub const Connection = struct {
         return std.math.atan2(deltaX, deltaY) * 180 / std.math.pi;
     }
 
-    fn render(self: *const @This(), wm: *const WindowManager, thickness: f32) void {
+    fn render(self: *const @This(), connman: *const ConnectionManager, selected: bool) void {
         if (self.hidden) return;
-        const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
-        const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
-        wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, CONNECTION_COLOR);
-        self.drawArrowhead(wm, start_x, start_y, end_x, end_y);
-    }
+        const thickness = if (selected) connman.selected_connection_thickness else connman.connection_thickness;
+        const color = if (selected) connman.selected_connection_color else connman.connection_color;
 
-    fn drawArrowhead(self: *const @This(), wm: *const WindowManager, start_x: f32, start_y: f32, end_x: f32, end_y: f32) void {
-        _ = self;
+        const start_x, const start_y = (self.start.getPosition(connman.wm) catch return assert(false)) orelse return;
+        const end_x, const end_y = (self.end.getPosition(connman.wm) catch return assert(false)) orelse return;
+        connman.wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, color);
 
-        const ARROWHEAD_ANGLE = 20.0; // in degrees
-        const ARROWHEAD_LINE_LENGTH = 10.0; // length of the arrowhead lines
-        const ARROWHEAD_THICKNESS = 1;
-
-        const angle = std.math.atan2(end_y - start_y, end_x - start_x);
-        const left_angle = angle + (ARROWHEAD_ANGLE * std.math.pi) / 180.0;
-        const right_angle = angle - (ARROWHEAD_ANGLE * std.math.pi) / 180.0;
-
-        const left_x = end_x - ARROWHEAD_LINE_LENGTH * @cos(left_angle);
-        const left_y = end_y - ARROWHEAD_LINE_LENGTH * @sin(left_angle);
-        const right_x = end_x - ARROWHEAD_LINE_LENGTH * @cos(right_angle);
-        const right_y = end_y - ARROWHEAD_LINE_LENGTH * @sin(right_angle);
-
-        // Draw the two lines for the arrowhead
-        wm.mall.rcb.drawLine(end_x, end_y, left_x, left_y, ARROWHEAD_THICKNESS, CONNECTION_COLOR);
-        wm.mall.rcb.drawLine(end_x, end_y, right_x, right_y, ARROWHEAD_THICKNESS, CONNECTION_COLOR);
+        if (self.arrowhead) |ah| {
+            ah.render(start_x, start_y, end_x, end_y, connman.wm.mall);
+            return;
+        }
+        connman.default_arrowhead.render(start_x, start_y, end_x, end_y, connman.wm.mall);
     }
 
     fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {

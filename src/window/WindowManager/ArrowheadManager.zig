@@ -18,6 +18,7 @@
 const ArrowheadManager = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const RenderMall = @import("RenderMall");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -36,10 +37,10 @@ pub fn deinit(self: *@This()) void {
     self.elders.deinit();
 }
 
-pub fn getElder(self: *@This(), index: usize) *Arrowhead {
+pub fn getElder(self: *const @This(), index: usize) *Arrowhead {
     std.debug.assert(self.elders.items.len > 0);
-    if (index >= self.elders.items.len) return &self.elders.items[index];
-    return &self.elders.items[self.elders.items.len - 1];
+    if (index >= self.elders.items.len) return &self.elders.items[self.elders.items.len - 1];
+    return &self.elders.items[index];
 }
 
 pub fn replaceElderWithDisciple(self: *@This(), index: usize) !void {
@@ -60,9 +61,24 @@ pub const Arrowhead = struct {
         self.line_length += other.line_length;
         self.angle += other.angle;
     }
+
+    pub fn render(self: *@This(), start_x: f32, start_y: f32, end_x: f32, end_y: f32, mall: *const RenderMall) void {
+        const angle = std.math.atan2(end_y - start_y, end_x - start_x);
+        const left_angle = angle + (self.angle * std.math.pi) / 180.0;
+        const right_angle = angle - (self.angle * std.math.pi) / 180.0;
+
+        const left_x = end_x - self.line_length * @cos(left_angle);
+        const left_y = end_y - self.line_length * @sin(left_angle);
+        const right_x = end_x - self.line_length * @cos(right_angle);
+        const right_y = end_y - self.line_length * @sin(right_angle);
+
+        mall.rcb.drawLine(end_x, end_y, left_x, left_y, self.thickness, self.color);
+        mall.rcb.drawLine(end_x, end_y, right_x, right_y, self.thickness, self.color);
+    }
 };
 
 const default_arrowheads = [_]Arrowhead{
+    .{},
     .{ .line_length = 20, .angle = 20 },
     .{ .line_length = 20, .angle = 30, .thickness = 2 },
 };
