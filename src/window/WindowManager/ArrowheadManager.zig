@@ -46,6 +46,11 @@ pub fn getElder(self: *const @This(), index_: u32) ?*const Arrowhead {
     return &self.elders.items[index];
 }
 
+pub fn replaceAllElders(self: *@This(), new_elders: []const Arrowhead) !void {
+    self.elders.clearRetainingCapacity();
+    try self.elders.appendSlice(new_elders);
+}
+
 // pub fn replaceElderWithDisciple(self: *@This(), index: usize) !void {
 //     if (index >= self.elders.items.len) return;
 //     self.elders.items[index] = self.disciple;

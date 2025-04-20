@@ -23,7 +23,7 @@ const assert = std.debug.assert;
 
 const WindowManager = @import("../WindowManager.zig");
 const Window = WindowManager.Window;
-const ArrowheadManager = @import("ArrowheadManager.zig");
+pub const ArrowheadManager = @import("ArrowheadManager.zig");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
