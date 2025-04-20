@@ -41,6 +41,7 @@ pub const Event = union(enum) {
 
     add_connection: *Connection,
     hide_connection: *Connection,
+    swap_selected_connection_points: *Connection,
 };
 
 pub fn deinit(self: *@This()) void {
@@ -141,12 +142,18 @@ pub fn addMoveEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by:
     return try self.addNewEvent(a, .{ .move = .{ .win = win, .x_by = x_by, .y_by = y_by } });
 }
 
+/////////////////////////////
+
 pub fn addAddConnectionEvent(self: *@This(), a: Allocator, conn: *Connection) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .add_connection = conn });
 }
 
 pub fn addHideConnectionEvent(self: *@This(), a: Allocator, conn: *Connection) !AddNewEventResult {
     return try self.addNewEvent(a, .{ .hide_connection = conn });
+}
+
+pub fn addSwapSelectedConnectionPointsEvent(self: *@This(), a: Allocator, conn: *Connection) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .swap_selected_connection_points = conn });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// internal
@@ -224,7 +231,7 @@ fn handleChopAndOvercap(
     switch (old_event) {
         .add_connection, .hide_connection => |old_conn| {
             switch (new_event) {
-                .add_connection, .hide_connection => |new_conn| {
+                .add_connection, .hide_connection, .swap_selected_connection_points => |new_conn| {
                     if (new_conn != old_conn) {
                         try connections_to_cleanup.append(a, old_conn);
                     }
@@ -265,5 +272,6 @@ fn getWindowFromEvent(ev: Event) ?*Window {
 
         .add_connection => null,
         .hide_connection => null,
+        .swap_selected_connection_points => null,
     };
 }

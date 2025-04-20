@@ -73,6 +73,11 @@ pub fn swapSelectedConnectionPoints(self: *@This()) !void {
     if (self.cycle_map.values().len == 0) return;
     const selconn = self.cycle_map.keys()[self.cycle_index];
     selconn.swapPoints();
+
+    self.wm.cleanUpAfterAppendingToHistory(
+        self.wm.a,
+        try self.wm.hm.addSwapSelectedConnectionPointsEvent(self.wm.a, selconn),
+    );
 }
 
 pub fn undo(self: *@This()) !void {
@@ -154,7 +159,7 @@ pub const Connection = struct {
         wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
     }
 
-    fn swapPoints(self: *@This()) void {
+    pub fn swapPoints(self: *@This()) void {
         const old = self.*;
         self.start = old.end;
         self.end = old.start;
