@@ -97,7 +97,7 @@ pub fn batchRedo(self: *@This()) struct { i64, i64 } {
 }
 
 pub fn undo(self: *@This()) ?Event {
-    if (self.index <= -1 or self.events.len == 0) return null;
+    if (self.index < 0 or self.events.len == 0) return null;
     defer self.updateLastEditTimestamp();
     defer {
         self.index -= 1;
@@ -180,7 +180,7 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
 
     ///////////////////////////// if the needle (index) is in the middle, chop off the rest of the history
 
-    if (self.events.len > 1 and self.index < self.events.len - 1) {
+    if (self.events.len > 0 and self.index <= self.events.len - 1) {
         var i: usize = self.events.len;
         while (i > self.index + 1) {
             defer i -= 1;
