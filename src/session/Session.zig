@@ -30,6 +30,7 @@ const ConfirmationPrompt = @import("ConfirmationPrompt");
 const AnchorPicker = @import("AnchorPicker");
 const ip_ = @import("input_processor");
 pub const Callback = ip_.Callback;
+pub const UpNDownCallback = ip_.UpNDownCallback;
 pub const MappingCouncil = ip_.MappingCouncil;
 
 const vim_related = @import("keymaps/vim_related.zig");

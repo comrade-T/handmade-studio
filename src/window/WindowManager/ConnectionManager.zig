@@ -22,20 +22,31 @@ const ArrayList = std.ArrayList;
 const assert = std.debug.assert;
 
 const WindowManager = @import("../WindowManager.zig");
-const WM = WindowManager;
+const Window = WindowManager.Window;
+const ArrowheadManager = @import("ArrowheadManager.zig");
 
 ////////////////////////////////////////////////////////////////////////////////////////////// ConnectionManager struct
 
 wm: *WindowManager,
+ama: ArrowheadManager,
+
+setting_arrowhead: bool = false,
 
 connections: ConnectionPtrMap = ConnectionPtrMap{},
 tracker_map: TrackerMap = TrackerMap{},
 
 pending_connection: ?Connection = null,
-pending_connection_initial_window: ?*WM.Window = null,
+pending_connection_initial_window: ?*Window = null,
 
 cycle_map: CycleMap = CycleMap{},
 cycle_index: usize = 0,
+
+pub fn init(a: Allocator, wm: *WindowManager) !ConnectionManager {
+    return ConnectionManager{
+        .wm = wm,
+        .ama = try ArrowheadManager.init(a),
+    };
+}
 
 pub fn deinit(self: *@This()) void {
     for (self.tracker_map.values()) |*tracker| {
@@ -47,6 +58,7 @@ pub fn deinit(self: *@This()) void {
     self.connections.deinit(self.wm.a);
 
     self.cycle_map.deinit(self.wm.a);
+    self.ama.deinit();
 }
 
 pub fn render(self: *const @This()) void {
@@ -59,7 +71,7 @@ pub fn render(self: *const @This()) void {
         if (selconn) |selected| {
             if (conn == selected) {
                 conn.render(self.wm, Connection.SELECTED_THICKNESS);
-                conn.renderPendingIndicators(self.wm);
+                if (!self.setting_arrowhead) conn.renderPendingIndicators(self.wm);
                 continue;
             }
         }
@@ -70,14 +82,26 @@ pub fn render(self: *const @This()) void {
 }
 
 pub fn swapSelectedConnectionPoints(self: *@This()) !void {
-    if (self.cycle_map.values().len == 0) return;
-    const selconn = self.cycle_map.keys()[self.cycle_index];
+    const selconn = self.getSelectedConnection() orelse return;
     selconn.swapPoints();
 
     self.wm.cleanUpAfterAppendingToHistory(
         self.wm.a,
         try self.wm.hm.addSwapSelectedConnectionPointsEvent(self.wm.a, selconn),
     );
+}
+
+pub fn setSelectedConnectionArrowhead(self: *@This(), index: usize) void {
+    if (self.ama.elders.items.len == 0) return;
+    const selconn = self.getSelectedConnection() orelse return;
+    selconn.arrowhead = self.ama.getElder(index);
+}
+
+pub fn startSettingArrowhead(self: *@This()) !void {
+    self.setting_arrowhead = true;
+}
+pub fn stopSettingArrowhead(self: *@This()) !void {
+    self.setting_arrowhead = false;
 }
 
 pub fn undo(self: *@This()) !void {
@@ -92,9 +116,12 @@ pub fn redo(self: *@This()) !void {
 
 const ConnectionPtrMap = std.AutoArrayHashMapUnmanaged(*Connection, void);
 pub const Connection = struct {
+    // TODO: reduce the size of this struct by moving the .anchor field out of the Point struct.
+
     start: Point,
     end: Point,
     hidden: bool = false,
+    arrowhead: ?*ArrowheadManager.Arrowhead = null,
 
     fn new(start_win_id: i128) Connection {
         return Connection{
@@ -207,7 +234,14 @@ pub const Connection = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Pending Connection
 
-pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRelativeDirection) void {
+pub fn setPendingConnectionArrowhead(self: *@This(), index: usize) void {
+    if (self.pending_connection) |*pc| {
+        if (self.ama.elders.items.len == 0) return;
+        pc.arrowhead = self.ama.getElder(index);
+    }
+}
+
+pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) void {
     if (self.pending_connection) |*pc| {
         const start_b4 = self.tracker_map.get(pc.start.win_id) orelse return;
         const end_b4 = self.tracker_map.get(pc.end.win_id) orelse return;
@@ -234,7 +268,7 @@ pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WM.WindowRela
     }
 }
 
-fn calculateOptimalAnchorPoints(a: *const WM.Window, b: *const WM.Window) struct { Connection.Anchor, Connection.Anchor } {
+fn calculateOptimalAnchorPoints(a: *const Window, b: *const Window) struct { Connection.Anchor, Connection.Anchor } {
     const cx_a = a.getX() + a.getWidth() / 2;
     const cy_a = a.getY() + a.getHeight() / 2;
     const cx_b = b.getX() + b.getWidth() / 2;
@@ -296,9 +330,9 @@ fn cleanUpAfterPendingConnection(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Trackers
 
-const TrackerMap = std.AutoArrayHashMapUnmanaged(WM.Window.ID, WindowConnectionsTracker);
+const TrackerMap = std.AutoArrayHashMapUnmanaged(Window.ID, WindowConnectionsTracker);
 const WindowConnectionsTracker = struct {
-    win: *WM.Window,
+    win: *Window,
     incoming: ConnectionPtrMap = ConnectionPtrMap{},
     outgoing: ConnectionPtrMap = ConnectionPtrMap{},
 
@@ -308,7 +342,7 @@ const WindowConnectionsTracker = struct {
     }
 };
 
-pub fn registerWindow(self: *@This(), window: *WM.Window) !void {
+pub fn registerWindow(self: *@This(), window: *Window) !void {
     try self.tracker_map.put(self.wm.a, window.id, ConnectionManager.WindowConnectionsTracker{ .win = window });
 }
 

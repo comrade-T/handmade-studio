@@ -72,7 +72,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .a = a,
         .lang_hub = lang_hub,
         .mall = style_store,
-        .connman = ConnectionManager{ .wm = self },
+        .connman = try ConnectionManager.init(a, self),
         .hm = HistoryManager{ .a = a, .capacity = 1024 },
 
         .qtree = try QuadTree.create(a, .{
