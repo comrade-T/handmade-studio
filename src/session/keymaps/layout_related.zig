@@ -131,9 +131,43 @@ pub fn mapKeys(sess: *Session) !void {
 
     // toggle border
     try c.map(NORMAL, &.{ .left_control, .b }, .{ .f = toggleActiveWindowBorder, .ctx = sess });
+
+    // align
+    try c.map(NORMAL, &.{ .space, .a, .l }, .{ .f = alignVerticallyToFirstConnectionFrom, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .a, .h }, .{ .f = alignVerticallyToFirstConnectionTo, .ctx = sess });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+
+fn alignVerticallyToFirstConnectionFrom(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    try alignVerticallyToFirstConnection(sess, .start);
+}
+
+fn alignVerticallyToFirstConnectionTo(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    try alignVerticallyToFirstConnection(sess, .end);
+}
+
+fn alignVerticallyToFirstConnection(sess: *Session, anchor: enum { start, end }) !void {
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    const active_window = wm.active_window orelse return;
+
+    const tracker = wm.connman.tracker_map.get(active_window.id) orelse return;
+    if (tracker.incoming.count() == 0) return;
+
+    const conn = tracker.incoming.keys()[0];
+    const from_tracker = wm.connman.tracker_map.get(conn.start.win_id) orelse return;
+
+    const mover = if (anchor == .start) active_window else from_tracker.win;
+    const target = if (anchor == .start) from_tracker.win else active_window;
+    const y_by = try mover.alignVerticallyTo(wm.a, wm.qtree, &wm.updating_windows_map, target);
+
+    wm.cleanUpAfterAppendingToHistory(
+        wm.a,
+        try wm.hm.addMoveEvent(wm.a, mover, 0, y_by),
+    );
+}
 
 // pub fn centerActiveWindowAt(wm: *WindowManager, center_x: f32, center_y: f32) void {
 //     const active_window = wm.active_window orelse return;

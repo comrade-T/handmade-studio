@@ -97,5 +97,8 @@ const default_arrowheads = [_]Arrowhead{
     .{},
     .{ .line_length = 20, .angle = 20 },
     .{ .line_length = 20, .angle = 30, .thickness = 2 },
+    .{ .line_length = 30, .angle = 30, .thickness = 3 },
+    .{ .line_length = 30, .angle = 30, .thickness = 5 },
+
     .{ .thickness = 0 },
 };
