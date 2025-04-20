@@ -150,7 +150,8 @@ pub fn moveActiveWindowBy(wm: *WindowManager, x_by: f32, y_by: f32) !void {
 }
 
 pub fn toggleActiveWindowBorder(ctx: *anyopaque) !void {
-    const wm = @as(*WindowManager, @ptrCast(@alignCast(ctx)));
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
     const active_window = wm.active_window orelse return;
     active_window.toggleBorder();
     wm.cleanUpAfterAppendingToHistory(
