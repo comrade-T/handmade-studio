@@ -77,30 +77,31 @@ pub fn mapKeys(sess: *Session) !void {
 
     const SetSelectedConnectionArrowhead = struct {
         sess: *Session,
-        index: usize,
+        index: u32,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const wm = self.sess.getActiveCanvasWindowManager() orelse return;
             wm.connman.setSelectedConnectionArrowhead(self.index);
         }
-        pub fn init(allocator: std.mem.Allocator, sess_: *Session, index: usize) !Session.Callback {
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, index: u32) !Session.Callback {
             const self = try allocator.create(@This());
             self.* = .{ .index = index, .sess = sess_ };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.map(CYCLING, &.{ .a, .u }, try SetSelectedConnectionArrowhead.init(a, sess, 0));
-    try c.map(CYCLING, &.{ .a, .i }, try SetSelectedConnectionArrowhead.init(a, sess, 1));
-    try c.map(CYCLING, &.{ .a, .o }, try SetSelectedConnectionArrowhead.init(a, sess, 2));
-    try c.map(CYCLING, &.{ .a, .p }, try SetSelectedConnectionArrowhead.init(a, sess, 3));
-    try c.map(CYCLING, &.{ .a, .h }, try SetSelectedConnectionArrowhead.init(a, sess, 4));
-    try c.map(CYCLING, &.{ .a, .j }, try SetSelectedConnectionArrowhead.init(a, sess, 5));
-    try c.map(CYCLING, &.{ .a, .k }, try SetSelectedConnectionArrowhead.init(a, sess, 6));
-    try c.map(CYCLING, &.{ .a, .l }, try SetSelectedConnectionArrowhead.init(a, sess, 7));
-    try c.map(CYCLING, &.{ .a, .n }, try SetSelectedConnectionArrowhead.init(a, sess, 8));
-    try c.map(CYCLING, &.{ .a, .m }, try SetSelectedConnectionArrowhead.init(a, sess, 9));
-    try c.map(CYCLING, &.{ .a, .comma }, try SetSelectedConnectionArrowhead.init(a, sess, 10));
-    try c.map(CYCLING, &.{ .a, .period }, try SetSelectedConnectionArrowhead.init(a, sess, 11));
+    try c.map(CYCLING, &.{ .a, .zero }, try SetSelectedConnectionArrowhead.init(a, sess, 0));
+    try c.map(CYCLING, &.{ .a, .u }, try SetSelectedConnectionArrowhead.init(a, sess, 1));
+    try c.map(CYCLING, &.{ .a, .i }, try SetSelectedConnectionArrowhead.init(a, sess, 2));
+    try c.map(CYCLING, &.{ .a, .o }, try SetSelectedConnectionArrowhead.init(a, sess, 3));
+    try c.map(CYCLING, &.{ .a, .p }, try SetSelectedConnectionArrowhead.init(a, sess, 4));
+    try c.map(CYCLING, &.{ .a, .h }, try SetSelectedConnectionArrowhead.init(a, sess, 5));
+    try c.map(CYCLING, &.{ .a, .j }, try SetSelectedConnectionArrowhead.init(a, sess, 6));
+    try c.map(CYCLING, &.{ .a, .k }, try SetSelectedConnectionArrowhead.init(a, sess, 7));
+    try c.map(CYCLING, &.{ .a, .l }, try SetSelectedConnectionArrowhead.init(a, sess, 8));
+    try c.map(CYCLING, &.{ .a, .n }, try SetSelectedConnectionArrowhead.init(a, sess, 9));
+    try c.map(CYCLING, &.{ .a, .m }, try SetSelectedConnectionArrowhead.init(a, sess, 10));
+    try c.map(CYCLING, &.{ .a, .comma }, try SetSelectedConnectionArrowhead.init(a, sess, 11));
+    try c.map(CYCLING, &.{ .a, .period }, try SetSelectedConnectionArrowhead.init(a, sess, 12));
 
     const AdaptedUpNDownCb = struct {
         up_func: FuncType,
@@ -160,30 +161,31 @@ pub fn mapKeys(sess: *Session) !void {
 
     const SetPendingConnectionArrowhead = struct {
         sess: *Session,
-        index: usize,
+        index: u32,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const wm = self.sess.getActiveCanvasWindowManager() orelse return;
             wm.connman.setPendingConnectionArrowhead(self.index);
         }
-        pub fn init(allocator: std.mem.Allocator, sess_: *Session, index: usize) !Session.Callback {
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, index: u32) !Session.Callback {
             const self = try allocator.create(@This());
             self.* = .{ .index = index, .sess = sess_ };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.map(PENDING, &.{ .a, .u }, try SetPendingConnectionArrowhead.init(a, sess, 0));
-    try c.map(PENDING, &.{ .a, .i }, try SetPendingConnectionArrowhead.init(a, sess, 1));
-    try c.map(PENDING, &.{ .a, .o }, try SetPendingConnectionArrowhead.init(a, sess, 2));
-    try c.map(PENDING, &.{ .a, .p }, try SetPendingConnectionArrowhead.init(a, sess, 3));
-    try c.map(PENDING, &.{ .a, .h }, try SetPendingConnectionArrowhead.init(a, sess, 4));
-    try c.map(PENDING, &.{ .a, .j }, try SetPendingConnectionArrowhead.init(a, sess, 5));
-    try c.map(PENDING, &.{ .a, .k }, try SetPendingConnectionArrowhead.init(a, sess, 6));
-    try c.map(PENDING, &.{ .a, .l }, try SetPendingConnectionArrowhead.init(a, sess, 7));
-    try c.map(PENDING, &.{ .a, .n }, try SetPendingConnectionArrowhead.init(a, sess, 8));
-    try c.map(PENDING, &.{ .a, .m }, try SetPendingConnectionArrowhead.init(a, sess, 9));
-    try c.map(PENDING, &.{ .a, .comma }, try SetPendingConnectionArrowhead.init(a, sess, 10));
-    try c.map(PENDING, &.{ .a, .period }, try SetPendingConnectionArrowhead.init(a, sess, 11));
+    try c.map(PENDING, &.{ .a, .zero }, try SetPendingConnectionArrowhead.init(a, sess, 0));
+    try c.map(PENDING, &.{ .a, .u }, try SetPendingConnectionArrowhead.init(a, sess, 1));
+    try c.map(PENDING, &.{ .a, .i }, try SetPendingConnectionArrowhead.init(a, sess, 2));
+    try c.map(PENDING, &.{ .a, .o }, try SetPendingConnectionArrowhead.init(a, sess, 3));
+    try c.map(PENDING, &.{ .a, .p }, try SetPendingConnectionArrowhead.init(a, sess, 4));
+    try c.map(PENDING, &.{ .a, .h }, try SetPendingConnectionArrowhead.init(a, sess, 5));
+    try c.map(PENDING, &.{ .a, .j }, try SetPendingConnectionArrowhead.init(a, sess, 6));
+    try c.map(PENDING, &.{ .a, .k }, try SetPendingConnectionArrowhead.init(a, sess, 7));
+    try c.map(PENDING, &.{ .a, .l }, try SetPendingConnectionArrowhead.init(a, sess, 8));
+    try c.map(PENDING, &.{ .a, .n }, try SetPendingConnectionArrowhead.init(a, sess, 9));
+    try c.map(PENDING, &.{ .a, .m }, try SetPendingConnectionArrowhead.init(a, sess, 10));
+    try c.map(PENDING, &.{ .a, .comma }, try SetPendingConnectionArrowhead.init(a, sess, 11));
+    try c.map(PENDING, &.{ .a, .period }, try SetPendingConnectionArrowhead.init(a, sess, 12));
 
     try c.mapUpNDown(CYCLING, &.{.a}, try AdaptedUpNDownCb.init(a, sess, CM.startSettingArrowhead, CM.stopSettingArrowhead));
 

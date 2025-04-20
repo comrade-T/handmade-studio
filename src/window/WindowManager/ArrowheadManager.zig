@@ -17,6 +17,7 @@
 
 const ArrowheadManager = @This();
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const RenderMall = @import("RenderMall");
 
@@ -37,16 +38,18 @@ pub fn deinit(self: *@This()) void {
     self.elders.deinit();
 }
 
-pub fn getElder(self: *const @This(), index: usize) *Arrowhead {
-    std.debug.assert(self.elders.items.len > 0);
+pub fn getElder(self: *const @This(), index_: u32) ?*const Arrowhead {
+    assert(self.elders.items.len > 0);
+    const index: usize = @intCast(index_);
+    if (index == 0) return null;
     if (index >= self.elders.items.len) return &self.elders.items[self.elders.items.len - 1];
     return &self.elders.items[index];
 }
 
-pub fn replaceElderWithDisciple(self: *@This(), index: usize) !void {
-    if (index >= self.elders.items.len) return;
-    self.elders.items[index] = self.disciple;
-}
+// pub fn replaceElderWithDisciple(self: *@This(), index: usize) !void {
+//     if (index >= self.elders.items.len) return;
+//     self.elders.items[index] = self.disciple;
+// }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -62,7 +65,9 @@ pub const Arrowhead = struct {
         self.angle += other.angle;
     }
 
-    pub fn render(self: *@This(), start_x: f32, start_y: f32, end_x: f32, end_y: f32, mall: *const RenderMall) void {
+    pub fn render(self: *const @This(), start_x: f32, start_y: f32, end_x: f32, end_y: f32, mall: *const RenderMall) void {
+        if (self.shouldNotRender()) return;
+
         const angle = std.math.atan2(end_y - start_y, end_x - start_x);
         const left_angle = angle + (self.angle * std.math.pi) / 180.0;
         const right_angle = angle - (self.angle * std.math.pi) / 180.0;
@@ -75,10 +80,17 @@ pub const Arrowhead = struct {
         mall.rcb.drawLine(end_x, end_y, left_x, left_y, self.thickness, self.color);
         mall.rcb.drawLine(end_x, end_y, right_x, right_y, self.thickness, self.color);
     }
+
+    fn shouldNotRender(self: *const @This()) bool {
+        return self.thickness == 0;
+    }
 };
 
 const default_arrowheads = [_]Arrowhead{
+    .{ .thickness = 0 }, // 0
+
     .{},
     .{ .line_length = 20, .angle = 20 },
     .{ .line_length = 20, .angle = 30, .thickness = 2 },
+    .{ .thickness = 0 },
 };

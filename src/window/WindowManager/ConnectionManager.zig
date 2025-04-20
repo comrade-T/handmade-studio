@@ -37,7 +37,7 @@ const SELECTED_CONNECTION_COLOR_WHEN_SETTING_ARRROWHEAD = 0xffffffff;
 
 wm: *WindowManager,
 ama: ArrowheadManager,
-default_arrowhead: *ArrowheadManager.Arrowhead,
+default_arrowhead_index: u32 = 1,
 
 connection_thickness: f32 = DEFAULT_CONNECTION_THICKNESS,
 selected_connection_thickness: f32 = DEFAULT_SELECTED_CONNECTION_THICKNESS,
@@ -60,7 +60,6 @@ pub fn init(a: Allocator, wm: *WindowManager) !ConnectionManager {
     return ConnectionManager{
         .wm = wm,
         .ama = ama,
-        .default_arrowhead = ama.getElder(0),
     };
 }
 
@@ -107,10 +106,10 @@ pub fn swapSelectedConnectionPoints(self: *@This()) !void {
     );
 }
 
-pub fn setSelectedConnectionArrowhead(self: *@This(), index: usize) void {
+pub fn setSelectedConnectionArrowhead(self: *@This(), index: u32) void {
     if (self.ama.elders.items.len == 0) return;
     const selconn = self.getSelectedConnection() orelse return;
-    selconn.arrowhead = self.ama.getElder(index);
+    selconn.arrowhead_index = index;
 }
 
 pub fn startSettingArrowhead(self: *@This()) !void {
@@ -141,7 +140,7 @@ pub const Connection = struct {
     start: Point,
     end: Point,
     hidden: bool = false,
-    arrowhead: ?*ArrowheadManager.Arrowhead = null,
+    arrowhead_index: u32 = 0,
 
     fn new(start_win_id: i128) Connection {
         return Connection{
@@ -174,11 +173,11 @@ pub const Connection = struct {
         const end_x, const end_y = (self.end.getPosition(connman.wm) catch return assert(false)) orelse return;
         connman.wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, color);
 
-        if (self.arrowhead) |ah| {
-            ah.render(start_x, start_y, end_x, end_y, connman.wm.mall);
-            return;
-        }
-        connman.default_arrowhead.render(start_x, start_y, end_x, end_y, connman.wm.mall);
+        const ah = if (self.arrowhead_index > 0)
+            connman.ama.getElder(self.arrowhead_index) orelse unreachable
+        else
+            connman.ama.getElder(connman.default_arrowhead_index) orelse return;
+        ah.render(start_x, start_y, end_x, end_y, connman.wm.mall);
     }
 
     fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {
@@ -237,11 +236,8 @@ pub const Connection = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Pending Connection
 
-pub fn setPendingConnectionArrowhead(self: *@This(), index: usize) void {
-    if (self.pending_connection) |*pc| {
-        if (self.ama.elders.items.len == 0) return;
-        pc.arrowhead = self.ama.getElder(index);
-    }
+pub fn setPendingConnectionArrowhead(self: *@This(), index: u32) void {
+    if (self.pending_connection) |*pc| pc.arrowhead_index = index;
 }
 
 pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) void {
