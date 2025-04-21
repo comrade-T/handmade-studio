@@ -46,5 +46,5 @@ fn callback(ctx: *anyopaque, window: *Window) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const wm = self.picker.wm;
     wm.setActiveWindow(window);
-    window.centerCameraAt(wm.mall.getScreenRect(), wm.mall);
+    window.centerCameraAt(wm.mall);
 }

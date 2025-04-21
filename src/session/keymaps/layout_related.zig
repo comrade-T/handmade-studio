@@ -147,7 +147,7 @@ fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
     const target = wm.getFirstIncomingWindow() orelse return;
 
     wm.setActiveWindow(target);
-    target.centerCameraAt(wm.mall.getScreenRect(), wm.mall);
+    target.centerCameraAt(wm.mall);
 }
 
 fn alignVerticallyToFirstConnectionFrom(ctx: *anyopaque) !void {

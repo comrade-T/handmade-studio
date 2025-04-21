@@ -99,6 +99,8 @@ pub fn setCameraPosition(target_camera_: *anyopaque, x: f32, y: f32) void {
     const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
     target_camera.*.target.x = x;
     target_camera.*.target.y = y;
+    const anchor_world_pos = rl.getScreenToWorld2D(.{ .x = x, .y = y }, target_camera.*);
+    target_camera.offset = anchor_world_pos;
 }
 
 pub fn centerCameraAt(target_camera_: *anyopaque, x: f32, y: f32) void {
