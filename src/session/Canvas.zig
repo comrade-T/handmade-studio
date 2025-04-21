@@ -169,8 +169,6 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         assert(wm.connman.tracker_map.contains(adjusted_connection.end.win_id));
         try wm.connman.addConnection(adjusted_connection, false);
     }
-
-    if (parsed.arrowheads) |arrowheads| try wm.connman.ama.replaceAllElders(arrowheads);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Save
@@ -262,11 +260,6 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
         try connections.append(aa, conn);
     }
 
-    ///////////////////////////// arrowheads
-
-    var arrowheads = std.ArrayListUnmanaged(Arrowhead){};
-    for (wm.connman.ama.elders.items) |ah| try arrowheads.append(aa, ah);
-
     ///////////////////////////// return
 
     return WritableCanvasState{
@@ -274,7 +267,6 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
         .connections = connections.items,
-        .arrowheads = arrowheads.items,
     };
 }
 
@@ -294,5 +286,4 @@ const WritableCanvasState = struct {
     string_sources: []const StringSource,
     connections: []*const ConnectionManager.Connection,
     windows: []const Window.WritableWindowState,
-    arrowheads: ?[]const Arrowhead = null,
 };
