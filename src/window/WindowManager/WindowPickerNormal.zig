@@ -45,6 +45,6 @@ pub fn destroy(self: *@This(), a: Allocator) void {
 fn callback(ctx: *anyopaque, window: *Window) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const wm = self.picker.wm;
-    wm.setActiveWindow(window);
+    wm.setActiveWindow(window, true);
     window.centerCameraAt(wm.mall);
 }

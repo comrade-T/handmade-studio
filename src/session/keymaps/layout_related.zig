@@ -146,7 +146,7 @@ fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     const target = wm.getFirstIncomingWindow() orelse return;
 
-    wm.setActiveWindow(target);
+    wm.setActiveWindow(target, true);
     target.centerCameraAt(wm.mall);
 }
 
@@ -226,5 +226,5 @@ pub fn changeActiveWindowBoundSizeBy(wm: *WindowManager, width_by: f32, height_b
 pub fn makeClosestWindowActive(wm: *WindowManager, direction: WindowManager.WindowRelativeDirection) !void {
     const curr = wm.active_window orelse return;
     _, const may_candidate = wm.findClosestWindowToDirection(curr, direction);
-    if (may_candidate) |candidate| wm.active_window = candidate;
+    if (may_candidate) |candidate| wm.setActiveWindow(candidate, true);
 }

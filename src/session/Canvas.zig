@@ -174,11 +174,12 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         const adjusted_id = id + increment_winid_by;
         for (wm.wmap.keys()) |win| {
             if (win.id == adjusted_id) {
-                wm.setActiveWindow(win);
+                wm.setActiveWindow(win, false);
                 break :blk;
             }
         }
     }
+    wm.wshm.reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Save

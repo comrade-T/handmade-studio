@@ -36,6 +36,7 @@ pub const Callback = ip_.Callback;
 
 pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
+const WindowSwitchHistoryManager = @import("WindowManager/WindowSwitchHistoryManager.zig");
 pub const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
@@ -57,6 +58,7 @@ wmap: WindowToHandlerMap = WindowToHandlerMap{},
 
 connman: ConnectionManager,
 hm: HistoryManager,
+wshm: WindowSwitchHistoryManager,
 
 qtree: *QuadTree,
 updating_windows_map: Window.UpdatingWindowsMap = .{},
@@ -74,6 +76,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .mall = style_store,
         .connman = try ConnectionManager.init(a, self),
         .hm = HistoryManager{ .a = a, .capacity = 1024 },
+        .wshm = WindowSwitchHistoryManager{ .wm = self },
 
         .qtree = try QuadTree.create(a, .{
             .x = -QUADTREE_WIDTH / 2,
@@ -133,6 +136,7 @@ pub fn destroy(self: *@This()) void {
     self.wmap.deinit(self.a);
 
     self.hm.deinit();
+    self.wshm.deinit();
 
     self.qtree.destroy(self.a);
     self.visible_windows.deinit();
@@ -143,8 +147,21 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
-pub fn setActiveWindow(self: *@This(), win: ?*Window) void {
+pub fn setActiveWindow(self: *@This(), win: ?*Window, add_to_history: bool) void {
+    if (add_to_history) self.wshm.addNewEvent(.{ .from = self.active_window, .to = win }) catch {};
     self.active_window = win;
+}
+
+pub fn undoWindowSwitch(self: *@This()) !void {
+    const new_win = self.wshm.undo() orelse return;
+    self.setActiveWindow(new_win, false);
+    new_win.centerCameraAt(self.mall);
+}
+
+pub fn redoWindowSwitch(self: *@This()) !void {
+    const new_win = self.wshm.redo() orelse return;
+    self.setActiveWindow(new_win, false);
+    new_win.centerCameraAt(self.mall);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler
@@ -204,6 +221,7 @@ pub const WindowSourceHandler = struct {
     }
 
     fn cleanUp(self: *@This(), win: *Window, wm: *WindowManager) void {
+        wm.wshm.purgeWindow(win);
         wm.connman.removeAllConnectionsOfWindow(win);
 
         const removed_from_windows = self.windows.swapRemove(win);
@@ -335,7 +353,7 @@ fn calculateSubAxisDistance(direction: WindowRelativeDirection, to: WindowEdgeSt
 pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !void {
     const window = try handler.spawnWindow(self, opts);
     try self.wmap.put(self.a, window, handler);
-    if (make_active or self.active_window == null) self.setActiveWindow(window);
+    if (make_active or self.active_window == null) self.setActiveWindow(window, true);
 }
 
 pub fn spawnWindow(
@@ -353,7 +371,7 @@ pub fn spawnWindow(
             const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
             if (add_to_history) try self.addWindowToSpawnHistory(window);
-            if (make_active or self.active_window == null) self.setActiveWindow(window);
+            if (make_active or self.active_window == null) self.setActiveWindow(window, true);
             return;
         }
     }
@@ -368,7 +386,7 @@ pub fn spawnWindow(
 
     if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
 
-    if (make_active or self.active_window == null) self.setActiveWindow(window);
+    if (make_active or self.active_window == null) self.setActiveWindow(window, true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// History
@@ -508,12 +526,12 @@ fn closeWindow(self: *@This(), win: *Window, add_to_history: bool) !void {
     const new_active_window = self.findClosestWindow(win);
     win.close();
     if (add_to_history) try self.addWindowToCloseHistory(win);
-    self.setActiveWindow(new_active_window);
+    self.setActiveWindow(new_active_window, false);
 }
 
 fn openWindowAndMakeActive(self: *@This(), win: *Window) void {
     win.open();
-    self.setActiveWindow(win);
+    self.setActiveWindow(win, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout

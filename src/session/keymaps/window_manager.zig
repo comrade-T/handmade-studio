@@ -72,6 +72,9 @@ pub fn mapKeys(sess: *Session) !void {
     try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
     try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
     try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+
+    try council.map(NORMAL, &.{ .space, .left_shift, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
+    try council.map(NORMAL, &.{ .space, .left_shift, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
 }
 
 fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
