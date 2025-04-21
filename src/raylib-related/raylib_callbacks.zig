@@ -97,10 +97,19 @@ pub fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {
 
 pub fn setCameraPosition(target_camera_: *anyopaque, x: f32, y: f32) void {
     const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
-    target_camera.*.target.x = x;
-    target_camera.*.target.y = y;
-    const anchor_world_pos = rl.getScreenToWorld2D(.{ .x = x, .y = y }, target_camera.*);
-    target_camera.offset = anchor_world_pos;
+
+    const center_x = @as(f32, @floatFromInt(rl.getScreenWidth())) / 2;
+    const center_y = @as(f32, @floatFromInt(rl.getScreenHeight())) / 2;
+    const center = rl.getScreenToWorld2D(.{ .x = center_x, .y = center_y }, target_camera.*);
+
+    const current = rl.getScreenToWorld2D(target_camera.offset, target_camera.*);
+    const diff = rl.Vector2{
+        .x = center.x - current.x,
+        .y = center.y - current.y,
+    };
+
+    target_camera.target.x = x - diff.x;
+    target_camera.target.y = y - diff.y;
 }
 
 pub fn centerCameraAt(target_camera_: *anyopaque, x: f32, y: f32) void {
