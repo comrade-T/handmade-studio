@@ -209,7 +209,19 @@ pub fn main() anyerror!void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
-    while (!rl.windowShouldClose()) {
+    const TIME_TO_CLOSE_MS = 0 * 1_000;
+    const TIME_TO_CLOSE = TIME_TO_CLOSE_MS * 1_000_000;
+    var timestamp_to_close: ?i128 = null;
+    var time_to_close_sec: i128 = 0;
+
+    while (true) {
+        if (rl.windowShouldClose()) timestamp_to_close = std.time.nanoTimestamp() + TIME_TO_CLOSE;
+        if (timestamp_to_close) |close_time| {
+            if (std.time.nanoTimestamp() > close_time) break;
+            const num = @divFloor(close_time - std.time.nanoTimestamp(), 1_000_000 * 1_000) + 1;
+            if (num != time_to_close_sec) std.debug.print("{d} sec until program close\n", .{num});
+            time_to_close_sec = num;
+        }
 
         ///////////////////////////// Update
 
