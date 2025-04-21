@@ -495,27 +495,35 @@ pub fn cycleToNextUpConnection(self: *@This()) !void {
 }
 
 fn seekToNextVisibleCandidate(self: *@This()) void {
-    if (self.shouldStopSeeking()) return;
-    if (self.cycle_index + 1 >= self.cycle_map.count()) return;
-    self.cycle_index += 1;
-    self.seekToPrevVisibleCandidate();
+    const initial_index = self.cycle_index;
+    while (self.cycle_index < self.cycle_map.count()) {
+        const conn = self.cycle_map.keys()[self.cycle_index];
+        if (!conn.hidden) return;
+        self.cycle_index += 1;
+    }
+    for (0..initial_index) |i| {
+        const conn = self.cycle_map.keys()[i];
+        if (!conn.hidden) {
+            self.cycle_index = i;
+            return;
+        }
+    }
 }
 
 fn seekToPrevVisibleCandidate(self: *@This()) void {
-    if (self.shouldStopSeeking()) return;
-    if (self.cycle_index == 0) return;
-    self.cycle_index -= 1;
-    self.seekToNextVisibleCandidate();
-}
-
-fn shouldStopSeeking(self: *@This()) bool {
-    if (self.cycle_map.count() == 0) return true;
-    if (self.cycle_index >= self.cycle_map.count()) {
-        self.cycle_index = 0;
-        return true;
+    const initial_index = self.cycle_index;
+    while (self.cycle_index > 0) {
+        const conn = self.cycle_map.keys()[self.cycle_index];
+        if (!conn.hidden) return;
+        self.cycle_index -= 1;
     }
-    if (!self.cycle_map.keys()[self.cycle_index].hidden) return true;
-    return false;
+    for (initial_index..self.cycle_map.count()) |i| {
+        const conn = self.cycle_map.keys()[i];
+        if (!conn.hidden) {
+            self.cycle_index = i;
+            return;
+        }
+    }
 }
 
 fn getPrevAngle(self: *@This()) ?f32 {
