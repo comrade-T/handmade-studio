@@ -137,6 +137,8 @@ pub fn mapKeys(sess: *Session) !void {
     // align
     try c.map(NORMAL, &.{ .space, .a, .l }, .{ .f = alignVerticallyToFirstConnectionFrom, .ctx = sess });
     try c.map(NORMAL, &.{ .space, .a, .h }, .{ .f = alignVerticallyToFirstConnectionTo, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .a, .j }, .{ .f = alignHorizontallyToFirstConnectionFrom, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
@@ -152,27 +154,42 @@ fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
 
 fn alignVerticallyToFirstConnectionFrom(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    try alignVerticallyToFirstConnection(sess, .start);
+    try alignVerticallyToFirstConnection(sess, .vertical, .start);
 }
 
 fn alignVerticallyToFirstConnectionTo(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    try alignVerticallyToFirstConnection(sess, .end);
+    try alignVerticallyToFirstConnection(sess, .vertical, .end);
 }
 
-fn alignVerticallyToFirstConnection(sess: *Session, anchor: enum { start, end }) !void {
+fn alignHorizontallyToFirstConnectionFrom(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    try alignVerticallyToFirstConnection(sess, .horizontal, .start);
+}
+
+fn alignHorizontallyToFirstConnectionTo(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    try alignVerticallyToFirstConnection(sess, .horizontal, .end);
+}
+
+fn alignVerticallyToFirstConnection(sess: *Session, kind: enum { horizontal, vertical }, anchor: enum { start, end }) !void {
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     const active_window = wm.active_window orelse return;
     const from_win = wm.getFirstIncomingWindow() orelse return;
 
     const mover = if (anchor == .start) active_window else from_win;
     const target = if (anchor == .start) from_win else active_window;
-    const y_by = try mover.alignVerticallyTo(wm.a, wm.qtree, &wm.updating_windows_map, target);
 
-    wm.cleanUpAfterAppendingToHistory(
-        wm.a,
-        try wm.hm.addMoveEvent(wm.a, mover, 0, y_by),
-    );
+    switch (kind) {
+        .vertical => {
+            const y_by = try mover.alignVerticallyTo(wm.a, wm.qtree, &wm.updating_windows_map, target);
+            wm.cleanUpAfterAppendingToHistory(wm.a, try wm.hm.addMoveEvent(wm.a, mover, 0, y_by));
+        },
+        .horizontal => {
+            const x_by = try mover.alignHorizontallyTo(wm.a, wm.qtree, &wm.updating_windows_map, target);
+            wm.cleanUpAfterAppendingToHistory(wm.a, try wm.hm.addMoveEvent(wm.a, mover, x_by, 0));
+        },
+    }
 }
 
 // pub fn centerActiveWindowAt(wm: *WindowManager, center_x: f32, center_y: f32) void {

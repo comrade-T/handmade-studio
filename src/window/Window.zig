@@ -161,6 +161,14 @@ pub fn alignVerticallyTo(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *
     return diff;
 }
 
+pub fn alignHorizontallyTo(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *UpdatingWindowsMap, target: *Window) !f32 {
+    const self_center = self.getX() + self.getWidth() / 2;
+    const target_center = target.getX() + target.getWidth() / 2;
+    const diff = target_center - self_center;
+    try self.moveBy(a, qtree, umap, diff, 0);
+    return diff;
+}
+
 pub fn moveBy(self: *@This(), a: Allocator, qtree: *QuadTree, umap: *UpdatingWindowsMap, x: f32, y: f32) !void {
     self.removeFromQuadTree(a, qtree);
 
