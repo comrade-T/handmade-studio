@@ -582,3 +582,15 @@ pub fn spawnNewWindowRelativeToActiveWindow(
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
+
+pub fn getFirstIncomingWindow(self: *@This()) ?*Window {
+    const active_window = self.active_window orelse return null;
+    const tracker = self.connman.tracker_map.get(active_window.id) orelse return null;
+    if (tracker.incoming.count() == 0) return null;
+
+    const conn = tracker.incoming.keys()[0];
+    const from_tracker = self.connman.tracker_map.get(conn.start.win_id) orelse return null;
+    return from_tracker.win;
+}

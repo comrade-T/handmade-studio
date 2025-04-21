@@ -129,6 +129,8 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(NORMAL, &.{ .left_control, .k }, try SwitchActiveWinCb.init(a, sess, .top));
     try c.map(NORMAL, &.{ .left_control, .j }, try SwitchActiveWinCb.init(a, sess, .bottom));
 
+    try c.map(NORMAL, &.{ .space, .g, .p }, .{ .f = selectFirstIncomingWindow, .ctx = sess });
+
     // toggle border
     try c.map(NORMAL, &.{ .left_control, .b }, .{ .f = toggleActiveWindowBorder, .ctx = sess });
 
@@ -138,6 +140,15 @@ pub fn mapKeys(sess: *Session) !void {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+
+fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    const target = wm.getFirstIncomingWindow() orelse return;
+
+    wm.setActiveWindow(target);
+    target.centerCameraAt(wm.mall.getScreenRect(), wm.mall);
+}
 
 fn alignVerticallyToFirstConnectionFrom(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
@@ -152,15 +163,10 @@ fn alignVerticallyToFirstConnectionTo(ctx: *anyopaque) !void {
 fn alignVerticallyToFirstConnection(sess: *Session, anchor: enum { start, end }) !void {
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     const active_window = wm.active_window orelse return;
+    const from_win = wm.getFirstIncomingWindow() orelse return;
 
-    const tracker = wm.connman.tracker_map.get(active_window.id) orelse return;
-    if (tracker.incoming.count() == 0) return;
-
-    const conn = tracker.incoming.keys()[0];
-    const from_tracker = wm.connman.tracker_map.get(conn.start.win_id) orelse return;
-
-    const mover = if (anchor == .start) active_window else from_tracker.win;
-    const target = if (anchor == .start) from_tracker.win else active_window;
+    const mover = if (anchor == .start) active_window else from_win;
+    const target = if (anchor == .start) from_win else active_window;
     const y_by = try mover.alignVerticallyTo(wm.a, wm.qtree, &wm.updating_windows_map, target);
 
     wm.cleanUpAfterAppendingToHistory(
