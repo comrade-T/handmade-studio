@@ -131,6 +131,28 @@ pub fn mapKeys(sess: *Session) !void {
 
     try c.mapUpNDown(CYCLING, &.{.a}, try AdaptedUpNDownCb.init(a, sess, CM.startSettingArrowhead, CM.stopSettingArrowhead));
 
+    const AlignConnectionKind = Session.WindowManager.ConnectionManager.AlignConnectionKind;
+    const AlignConnectionAnchor = Session.WindowManager.ConnectionManager.AlignConnectionAnchor;
+    const AlignConnectionCb = struct {
+        sess: *Session,
+        kind: AlignConnectionKind,
+        anchor: AlignConnectionAnchor,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+            try wm.connman.alignSelectedConnectionWindows(self.kind, self.anchor);
+        }
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, kind: AlignConnectionKind, anchor: AlignConnectionAnchor) !Session.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .kind = kind, .anchor = anchor, .sess = sess_ };
+            return Session.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try c.map(CYCLING, &.{ .space, .a, .h }, try AlignConnectionCb.init(a, sess, .vertical, .end));
+    try c.map(CYCLING, &.{ .space, .a, .l }, try AlignConnectionCb.init(a, sess, .vertical, .start));
+    try c.map(CYCLING, &.{ .space, .a, .k }, try AlignConnectionCb.init(a, sess, .horizontal, .end));
+    try c.map(CYCLING, &.{ .space, .a, .j }, try AlignConnectionCb.init(a, sess, .horizontal, .start));
+
     ///////////////////////////// pending connection
 
     try c.map(NORMAL, &.{ .left_control, .c }, try AdaptedCb.init(a, sess, CM.startPendingConnection, NORMAL_TO_PENDING));

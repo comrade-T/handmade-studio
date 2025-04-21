@@ -96,6 +96,8 @@ pub fn render(self: *const @This()) void {
     if (self.pending_connection) |*pc| pc.renderPendingIndicators(self.wm);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Selected Connection
+
 pub fn swapSelectedConnectionPoints(self: *@This()) !void {
     const selconn = self.getSelectedConnection() orelse return;
     selconn.swapPoints(self);
@@ -137,6 +139,24 @@ pub fn undo(self: *@This()) !void {
 
 pub fn redo(self: *@This()) !void {
     try self.wm.redo();
+}
+
+pub const AlignConnectionKind = enum { horizontal, vertical };
+pub const AlignConnectionAnchor = enum { start, end };
+pub fn alignSelectedConnectionWindows(
+    self: *@This(),
+    kind: AlignConnectionKind,
+    anchor: AlignConnectionAnchor,
+) !void {
+    const conn = self.getSelectedConnection() orelse return;
+
+    const start_tracker = self.tracker_map.get(conn.start.win_id) orelse return;
+    const end_tracker = self.tracker_map.get(conn.end.win_id) orelse return;
+
+    const mover = if (anchor == .start) end_tracker.win else start_tracker.win;
+    const target = if (anchor == .start) start_tracker.win else end_tracker.win;
+
+    try self.wm.alignWindows(mover, target, kind);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Connection struct

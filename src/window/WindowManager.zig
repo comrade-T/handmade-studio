@@ -612,3 +612,17 @@ pub fn getFirstIncomingWindow(self: *@This()) ?*Window {
     const from_tracker = self.connman.tracker_map.get(conn.start.win_id) orelse return null;
     return from_tracker.win;
 }
+
+const AlignConnectionKind = ConnectionManager.AlignConnectionKind;
+pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: AlignConnectionKind) !void {
+    switch (kind) {
+        .vertical => {
+            const y_by = try mover.alignVerticallyTo(self.a, self.qtree, &self.updating_windows_map, target);
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, mover, 0, y_by));
+        },
+        .horizontal => {
+            const x_by = try mover.alignHorizontallyTo(self.a, self.qtree, &self.updating_windows_map, target);
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, mover, x_by, 0));
+        },
+    }
+}
