@@ -169,6 +169,16 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         assert(wm.connman.tracker_map.contains(adjusted_connection.end.win_id));
         try wm.connman.addConnection(adjusted_connection, false);
     }
+
+    if (parsed.active_window_id) |id| blk: {
+        const adjusted_id = id + increment_winid_by;
+        for (wm.wmap.keys()) |win| {
+            if (win.id == adjusted_id) {
+                wm.setActiveWindow(win);
+                break :blk;
+            }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Save
@@ -260,6 +270,11 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
         try connections.append(aa, conn);
     }
 
+    ///////////////////////////// active_window_id
+
+    const active_window = wm.active_window orelse null;
+    const active_window_id: ?Window.ID = if (active_window) |aw| aw.id else null;
+
     ///////////////////////////// return
 
     return WritableCanvasState{
@@ -267,6 +282,7 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
         .windows = window_state_list.items,
         .string_sources = string_source_list.items,
         .connections = connections.items,
+        .active_window_id = active_window_id,
     };
 }
 
@@ -282,8 +298,10 @@ const StringSource = struct {
 };
 
 const WritableCanvasState = struct {
-    cameraInfo: ?RenderMall.CameraInfo = null,
     string_sources: []const StringSource,
     connections: []*const ConnectionManager.Connection,
     windows: []const Window.WritableWindowState,
+
+    cameraInfo: ?RenderMall.CameraInfo = null,
+    active_window_id: ?Window.ID = null,
 };
