@@ -235,10 +235,8 @@ fn handleChopAndOvercap(
 ) !void {
     if (getConnectionFromEvent(old_event)) |old_conn| blk: {
         const new_conn = getConnectionFromEvent(new_event) orelse break :blk;
-        if (new_conn != old_conn) {
-            try connections_to_cleanup.append(a, old_conn);
-            return;
-        }
+        if (new_conn != old_conn) try connections_to_cleanup.append(a, old_conn);
+        return;
     }
 
     /////////////////////////////

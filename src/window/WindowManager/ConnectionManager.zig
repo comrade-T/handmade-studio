@@ -196,13 +196,17 @@ pub const Connection = struct {
         wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
     }
 
+    fn swapPointsOnly(self: *@This()) void {
+        const old = self.*;
+        self.start = old.end;
+        self.end = old.start;
+    }
+
     pub fn swapPoints(self: *@This(), connman: *ConnectionManager) void {
         var initial_start_tracker = connman.tracker_map.getPtr(self.start.win_id) orelse return;
         var initial_end_tracker = connman.tracker_map.getPtr(self.end.win_id) orelse return;
 
-        const old = self.*;
-        self.start = old.end;
-        self.end = old.start;
+        self.swapPointsOnly();
 
         assert(initial_start_tracker.outgoing.swapRemove(self));
         initial_start_tracker.incoming.put(connman.wm.a, self, {}) catch unreachable;
@@ -279,7 +283,7 @@ pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowManager
 
             // should start on left side, should end at right side.
             const angle = pc.calculateAngle(pc.start.win_id, self.wm);
-            if (angle < 0) pc.swapPoints(self);
+            if (angle < 0) pc.swapPointsOnly();
         }
     }
 }
@@ -332,7 +336,7 @@ pub fn confirmPendingConnection(self: *@This()) !void {
 }
 
 pub fn swapPendingConnectionPoints(self: *@This()) !void {
-    if (self.pending_connection) |*pc| pc.swapPoints(self);
+    if (self.pending_connection) |*pc| pc.swapPointsOnly();
 }
 
 pub fn cancelPendingConnection(self: *@This()) !void {
