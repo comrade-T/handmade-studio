@@ -529,6 +529,7 @@ fn seekToNextVisibleCandidate(self: *@This()) void {
             return;
         }
     }
+    self.cycle_index = initial_index;
 }
 
 fn seekToPrevVisibleCandidate(self: *@This()) void {
@@ -546,6 +547,7 @@ fn seekToPrevVisibleCandidate(self: *@This()) void {
             return;
         }
     }
+    self.cycle_index = initial_index;
 }
 
 fn getPrevAngle(self: *@This()) ?f32 {
