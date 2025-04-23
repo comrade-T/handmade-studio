@@ -603,12 +603,22 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
 
-pub fn getFirstIncomingWindow(self: *@This()) ?*Window {
+pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
     const active_window = self.active_window orelse return null;
     const tracker = self.connman.tracker_map.get(active_window.id) orelse return null;
     if (tracker.incoming.count() == 0) return null;
 
-    const conn = tracker.incoming.keys()[0];
+    var may_visible_index: ?usize = null;
+    const keys = tracker.incoming.keys();
+    for (0..tracker.incoming.count()) |i| {
+        if (keys[i].isVisible(self)) {
+            may_visible_index = i;
+            break;
+        }
+    }
+
+    const visible_index = may_visible_index orelse return null;
+    const conn = keys[visible_index];
     const from_tracker = self.connman.tracker_map.get(conn.start.win_id) orelse return null;
     return from_tracker.win;
 }

@@ -148,7 +148,7 @@ pub fn mapKeys(sess: *Session) !void {
 fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
-    const target = wm.getFirstIncomingWindow() orelse return;
+    const target = wm.getFirstVisibleIncomingWindow() orelse return;
 
     wm.setActiveWindow(target, true);
     target.centerCameraAt(wm.mall);
@@ -177,7 +177,7 @@ fn alignHorizontallyToFirstConnectionTo(ctx: *anyopaque) !void {
 fn alignToFirstConnection(sess: *Session, kind: AlignConnectionKind, anchor: AlignConnectionAnchor) !void {
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     const active_window = wm.active_window orelse return;
-    const from_win = wm.getFirstIncomingWindow() orelse return;
+    const from_win = wm.getFirstVisibleIncomingWindow() orelse return;
 
     const mover = if (anchor == .start) active_window else from_win;
     const target = if (anchor == .start) from_win else active_window;
