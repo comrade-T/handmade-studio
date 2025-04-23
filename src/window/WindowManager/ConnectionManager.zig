@@ -515,6 +515,7 @@ pub fn cycleToNextUpConnection(self: *@This()) !void {
 }
 
 fn seekToNextVisibleCandidate(self: *@This()) void {
+    if (self.cycle_map.count() == 0) return;
     const initial_index = self.cycle_index;
     while (self.cycle_index < self.cycle_map.count()) {
         const conn = self.cycle_map.keys()[self.cycle_index];
@@ -531,6 +532,7 @@ fn seekToNextVisibleCandidate(self: *@This()) void {
 }
 
 fn seekToPrevVisibleCandidate(self: *@This()) void {
+    if (self.cycle_map.count() == 0) return;
     const initial_index = self.cycle_index;
     while (self.cycle_index > 0) {
         const conn = self.cycle_map.keys()[self.cycle_index];
