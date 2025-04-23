@@ -233,9 +233,10 @@ fn handleChopAndOvercap(
     old_event: Event,
     new_event: Event,
 ) !void {
-    if (getConnectionFromEvent(old_event)) |old_conn| blk: {
-        const new_conn = getConnectionFromEvent(new_event) orelse break :blk;
-        if (new_conn != old_conn) try connections_to_cleanup.append(a, old_conn);
+    if (getConnectionFromEvent(old_event)) |old_conn| {
+        const may_new_conn = getConnectionFromEvent(new_event);
+        if (may_new_conn == null or may_new_conn.? != old_conn)
+            try connections_to_cleanup.append(a, old_conn);
         return;
     }
 
@@ -248,8 +249,9 @@ fn handleChopAndOvercap(
     assert(count.* > 0);
 
     if (count.* == 1) {
-        const new_win = getWindowFromEvent(new_event) orelse unreachable;
-        if (win != new_win) try windows_to_cleanup.append(a, win);
+        const may_new_win = getWindowFromEvent(new_event);
+        if (may_new_win == null or win != may_new_win.?)
+            try windows_to_cleanup.append(a, win);
 
         const removed = self.wmap.remove(win);
         assert(removed);
