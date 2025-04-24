@@ -83,6 +83,7 @@ pub fn mapKeys(sess: *Session) !void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Multi Win
 
+    try c.map(NORMAL, &.{ .space, .left_control, .j }, try AdaptedCb.init(a, sess, WindowManager.selectActiveWindow, NORMAL_TO_MULTI_WIN));
     try c.map(NORMAL, &.{ .space, .left_control, .l }, try AdaptedCb.init(a, sess, WindowManager.selectAllDescendants, NORMAL_TO_MULTI_WIN));
     try c.map(MULTI_WIN, &.{.escape}, try AdaptedCb.init(a, sess, WindowManager.clearSelection, MULTI_WIN_TO_NORMAL));
 }

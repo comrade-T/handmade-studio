@@ -722,6 +722,12 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Align
 
 /////////////////////////////
 
+pub fn selectActiveWindow(self: *@This()) !void {
+    if (!self.selection.isEmpty()) return;
+    const active_window = self.active_window orelse return;
+    try self.selection.addWindow(active_window);
+}
+
 pub fn selectAllDescendants(self: *@This()) !void {
     if (!self.selection.isEmpty()) return;
     const active_window = self.active_window orelse return;
