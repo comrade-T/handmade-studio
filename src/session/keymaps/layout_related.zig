@@ -18,6 +18,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const Session = @import("../Session.zig");
+const Callback = Session.Callback;
 const WindowManager = Session.WindowManager;
 const AlignConnectionKind = Session.WindowManager.ConnectionManager.AlignConnectionKind;
 const AlignConnectionAnchor = Session.WindowManager.ConnectionManager.AlignConnectionAnchor;
@@ -25,6 +26,7 @@ const AlignConnectionAnchor = Session.WindowManager.ConnectionManager.AlignConne
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const NORMAL = "normal";
+const MULTI_WIN = @import("./window_manager.zig").MULTI_WIN;
 
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
@@ -67,6 +69,11 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(NORMAL, &.{ .m, .d }, try MoveByCb.init(a, sess, 100, 0));
     try c.map(NORMAL, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, -100));
     try c.map(NORMAL, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 100));
+
+    try c.map(MULTI_WIN, &.{ .m, .a }, try MoveByCb.init(a, sess, -100, 0));
+    try c.map(MULTI_WIN, &.{ .m, .d }, try MoveByCb.init(a, sess, 100, 0));
+    try c.map(MULTI_WIN, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, -100));
+    try c.map(MULTI_WIN, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 100));
 
     // change window padding
     const ChangePaddingByCb = struct {

@@ -18,12 +18,17 @@
 const std = @import("std");
 const Session = @import("../Session.zig");
 const WindowManager = Session.WindowManager;
+const Callback = Session.Callback;
 
 const NORMAL = "normal";
+pub const MULTI_WIN = "MULTI_WIN";
+
+const MULTI_WIN_TO_NORMAL = Callback.Contexts{ .remove = &.{MULTI_WIN}, .add = &.{NORMAL} };
+const NORMAL_TO_MULTI_WIN = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{MULTI_WIN} };
 
 pub fn mapKeys(sess: *Session) !void {
-    const council = sess.council;
-    const a = council.arena.allocator();
+    const c = sess.council;
+    const a = c.arena.allocator();
 
     const FuncType = *const fn (ctx: *WindowManager) anyerror!void;
     const AdaptedCb = struct {
@@ -43,14 +48,14 @@ pub fn mapKeys(sess: *Session) !void {
 
     ///////////////////////////// Close Windows
 
-    try council.map(NORMAL, &.{ .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeActiveWindow, .{}));
+    try c.map(NORMAL, &.{ .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeActiveWindow, .{}));
 
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
-    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
-    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
+    try c.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
+    try c.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
+    try c.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
+    try c.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
 
     ///////////////////////////// Spawn Blank Windows
 
@@ -58,26 +63,28 @@ pub fn mapKeys(sess: *Session) !void {
 
     ///////////////////////////// Undo / Redo
 
-    try council.map(NORMAL, &.{ .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.undo, .{})); // to this
+    try c.map(NORMAL, &.{ .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.undo, .{})); // to this
 
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
 
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
+    try c.map(NORMAL, &.{ .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
+    try c.map(NORMAL, &.{ .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
 
-    try council.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try council.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try council.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try council.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try council.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try council.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
 
-    try council.map(NORMAL, &.{ .space, .g, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
-    try council.map(NORMAL, &.{ .space, .g, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
+    try c.map(NORMAL, &.{ .space, .g, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
+    try c.map(NORMAL, &.{ .space, .g, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
 
-    try council.map(NORMAL, &.{ .space, .left_control, .l }, try AdaptedCb.init(a, sess, WindowManager.selectAllDescendants, .{}));
-    try council.map(NORMAL, &.{.escape}, try AdaptedCb.init(a, sess, WindowManager.clearSelection, .{}));
+    ////////////////////////////////////////////////////////////////////////////////////////////// Multi Win
+
+    try c.map(NORMAL, &.{ .space, .left_control, .l }, try AdaptedCb.init(a, sess, WindowManager.selectAllDescendants, NORMAL_TO_MULTI_WIN));
+    try c.map(MULTI_WIN, &.{.escape}, try AdaptedCb.init(a, sess, WindowManager.clearSelection, MULTI_WIN_TO_NORMAL));
 }
 
 fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
