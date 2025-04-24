@@ -108,7 +108,7 @@ pub fn updateAndRender(self: *@This()) !void {
 }
 
 pub fn render(self: *@This()) !void {
-    const screen_rect = self.mall.getScreenRect();
+    const screen_rect = self.mall.getScreenRect(null);
 
     // NOTE: put a `defer` statement here and `WindowPicker.moveTo()` won't work
     // due to keyboard events get resolved before `render()` is called.
@@ -129,7 +129,7 @@ pub fn render(self: *@This()) !void {
     // });
     self.connman.render();
 
-    self.window_picker_normal.picker.render(screen_rect);
+    self.window_picker_normal.picker.render();
 }
 
 pub fn destroy(self: *@This()) void {

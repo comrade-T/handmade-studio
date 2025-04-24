@@ -31,13 +31,18 @@ wm: *WindowManager,
 callback: Callback,
 active: bool = false,
 
+hide_active_window_label: bool = false,
+use_target_camera: bool = true,
+
 pub const Callback = struct {
     f: *const fn (ctx: *anyopaque, window: *Window) anyerror!void,
     ctx: *anyopaque,
 };
 
-pub fn render(self: *const @This(), screen_rect: Rect) void {
+pub fn render(self: *const @This()) void {
     if (!self.active) return;
+    const camera: ?*anyopaque = if (self.use_target_camera) self.wm.mall.target_camera else null;
+    const screen_rect = self.wm.mall.getScreenRect(camera);
     self.renderTargetLabels(screen_rect, self.wm.visible_windows.items);
 }
 
@@ -67,7 +72,7 @@ pub fn executeCallback(ctx: *anyopaque, index: usize) !void {
 
 fn renderTargetLabels(self: *const @This(), screen_rect: Rect, windows: []*Window) void {
     for (windows, 0..) |win, i| {
-        if (win == self.wm.active_window) continue;
+        if (self.hide_active_window_label and (win == self.wm.active_window)) continue;
         const code_point = if (i < RIGHT_HAND_CODEPOINTS.len) RIGHT_HAND_CODEPOINTS[i] else break;
 
         const r = win.getRect();
@@ -76,7 +81,7 @@ fn renderTargetLabels(self: *const @This(), screen_rect: Rect, windows: []*Windo
         const visible_width = @min(r.x + r.width, screen_rect.x + screen_rect.width) - visible_x;
         const visible_height = @min(r.y + r.height, screen_rect.y + screen_rect.height) - visible_y;
 
-        assert(visible_width >= 0 and visible_height >= 0);
+        // assert(visible_width >= 0 and visible_height >= 0);
 
         if (visible_width > 0 and visible_height > 0) {
             const visible_center_x = visible_x + visible_width / 2;

@@ -324,8 +324,8 @@ pub const Rect = struct {
     }
 };
 
-pub fn getScreenRect(self: *const @This()) Rect {
-    const view = self.icb.getViewFromCamera(self.camera);
+pub fn getScreenRect(self: *const @This(), camera: ?*anyopaque) Rect {
+    const view = self.icb.getViewFromCamera(camera orelse self.camera);
     return Rect{
         .x = view.start.x,
         .y = view.start.y,
