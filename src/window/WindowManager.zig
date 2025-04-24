@@ -702,7 +702,7 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Align
 /////////////////////////////
 
 pub fn selectAllDescendants(self: *@This()) !void {
-    assert(self.selection.isEmpty());
+    if (!self.selection.isEmpty()) return;
     const active_window = self.active_window orelse return;
 
     var list = std.ArrayList(*Window).init(self.a);
