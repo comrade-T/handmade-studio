@@ -65,15 +65,10 @@ pub fn mapKeys(sess: *Session) !void {
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.map(NORMAL, &.{ .m, .a }, try MoveByCb.init(a, sess, -100, 0));
-    try c.map(NORMAL, &.{ .m, .d }, try MoveByCb.init(a, sess, 100, 0));
-    try c.map(NORMAL, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, -100));
-    try c.map(NORMAL, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 100));
-
-    try c.map(MULTI_WIN, &.{ .m, .a }, try MoveByCb.init(a, sess, -100, 0));
-    try c.map(MULTI_WIN, &.{ .m, .d }, try MoveByCb.init(a, sess, 100, 0));
-    try c.map(MULTI_WIN, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, -100));
-    try c.map(MULTI_WIN, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 100));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .a }, try MoveByCb.init(a, sess, -100, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .d }, try MoveByCb.init(a, sess, 100, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, -100));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 100));
 
     // change window padding
     const ChangePaddingByCb = struct {

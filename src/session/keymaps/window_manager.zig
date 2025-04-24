@@ -63,23 +63,23 @@ pub fn mapKeys(sess: *Session) !void {
 
     ///////////////////////////// Undo / Redo
 
-    try c.map(NORMAL, &.{ .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.undo, .{})); // to this
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.undo, .{})); // to this
 
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.redo, .{}));
 
-    try c.map(NORMAL, &.{ .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
-    try c.map(NORMAL, &.{ .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchUndo, .{}));
 
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try c.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try c.map(NORMAL, &.{ .left_shift, .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try c.map(NORMAL, &.{ .left_alt, .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
-    try c.map(NORMAL, &.{ .left_alt, .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_control, .left_shift, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_control, .left_alt, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_shift, .left_control, .left_alt, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_shift, .left_alt, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
 
-    try c.map(NORMAL, &.{ .space, .g, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
-    try c.map(NORMAL, &.{ .space, .g, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Multi Win
 
