@@ -36,7 +36,7 @@ pub const MappingCouncil = ip_.MappingCouncil;
 const vim_related = @import("keymaps/vim_related.zig");
 const layout_related = @import("keymaps/layout_related.zig");
 const connection_manager = @import("keymaps/connection_manager.zig");
-const window_picker_normal = @import("keymaps/window_picker_normal.zig");
+const window_picker = @import("keymaps/window_picker.zig");
 const window_manager = @import("keymaps/window_manager.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +69,7 @@ pub fn mapKeys(self: *@This()) !void {
     try vim_related.mapKeys(self);
     try layout_related.mapKeys(self);
     try connection_manager.mapKeys(self);
-    try window_picker_normal.mapKeys(self);
+    try window_picker.mapKeys(self);
     try window_manager.mapKeys(self);
 }
 
