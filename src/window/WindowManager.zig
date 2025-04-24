@@ -687,14 +687,20 @@ pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
 
 const AlignConnectionKind = ConnectionManager.AlignConnectionKind;
 pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: AlignConnectionKind) !void {
+    const active_window = self.active_window orelse return;
+    var targets: []const *Window = &.{mover};
+    if (mover == active_window) targets = self.getActiveWindows() orelse return;
+
     switch (kind) {
         .vertical => {
-            const y_by = try mover.alignVerticallyTo(self.a, self.qtree, &self.updating_windows_map, target);
-            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, &.{mover}, 0, y_by));
+            const y_by = mover.getVerticalAlignDistance(target);
+            for (targets) |win| try win.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, y_by);
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, targets, 0, y_by));
         },
         .horizontal => {
-            const x_by = try mover.alignHorizontallyTo(self.a, self.qtree, &self.updating_windows_map, target);
-            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, &.{mover}, x_by, 0));
+            const x_by = mover.getHorizontalAlignDistance(target);
+            for (targets) |win| try win.moveBy(self.a, self.qtree, &self.updating_windows_map, x_by, 0);
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, targets, x_by, 0));
         },
     }
 }

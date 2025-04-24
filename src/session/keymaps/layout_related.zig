@@ -139,10 +139,10 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(NORMAL, &.{ .left_control, .b }, .{ .f = toggleActiveWindowBorder, .ctx = sess });
 
     // align
-    try c.map(NORMAL, &.{ .space, .a, .l }, .{ .f = alignVerticallyToFirstConnectionFrom, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .a, .h }, .{ .f = alignVerticallyToFirstConnectionTo, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .a, .j }, .{ .f = alignHorizontallyToFirstConnectionFrom, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .l }, .{ .f = alignVerticallyToFirstConnectionFrom, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .h }, .{ .f = alignVerticallyToFirstConnectionTo, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .j }, .{ .f = alignHorizontallyToFirstConnectionFrom, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
