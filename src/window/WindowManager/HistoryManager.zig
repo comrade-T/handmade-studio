@@ -29,15 +29,18 @@ a: Allocator,
 capacity: usize,
 index: i64 = -1,
 events: std.MultiArrayList(Event) = .{},
-wmap: std.AutoHashMapUnmanaged(*Window, usize) = .{},
+wmap: std.AutoArrayHashMapUnmanaged(*Window, usize) = .{},
 last_edit: i64 = 0,
 
+pub const Windows = []const *Window;
+
 pub const Event = union(enum) {
-    spawn: *Window,
-    close: *Window,
-    toggle_border: *Window,
-    change_padding: struct { win: *Window, x_by: f32, y_by: f32 },
-    move: struct { win: *Window, x_by: f32, y_by: f32 },
+    spawn: Windows,
+    close: Windows,
+    toggle_border: Windows,
+    change_padding: struct { windows: Windows, x_by: f32, y_by: f32 },
+    move: struct { windows: Windows, x_by: f32, y_by: f32 },
+    // TODO: add the rest of layout related events
 
     add_connection: *Connection,
     hide_connection: *Connection,
@@ -46,6 +49,10 @@ pub const Event = union(enum) {
 };
 
 pub fn deinit(self: *@This()) void {
+    while (self.events.len > 0) {
+        const ev = self.events.pop() orelse break;
+        if (getWindowsFromEvent(ev)) |windows| self.a.free(windows);
+    }
     self.events.deinit(self.a);
     self.wmap.deinit(self.a);
 }
@@ -123,24 +130,32 @@ pub const AddNewEventResult = struct {
     connections_to_cleanup: []*Connection,
 };
 
-pub fn addSpawnEvent(self: *@This(), a: Allocator, win: *Window) !AddNewEventResult {
-    return try self.addNewEvent(a, .{ .spawn = win });
+pub fn addSpawnEvent(self: *@This(), a: Allocator, windows: Windows) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .spawn = try self.a.dupe(*Window, windows) });
 }
 
-pub fn addCloseEvent(self: *@This(), a: Allocator, win: *Window) !AddNewEventResult {
-    return try self.addNewEvent(a, .{ .close = win });
+pub fn addCloseEvent(self: *@This(), a: Allocator, windows: Windows) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .close = try self.a.dupe(*Window, windows) });
 }
 
-pub fn addToggleBorderEvent(self: *@This(), a: Allocator, win: *Window) !AddNewEventResult {
-    return try self.addNewEvent(a, .{ .toggle_border = win });
+pub fn addToggleBorderEvent(self: *@This(), a: Allocator, windows: Windows) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .toggle_border = try self.a.dupe(*Window, windows) });
 }
 
-pub fn addChangePaddingEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by: f32) !AddNewEventResult {
-    return try self.addNewEvent(a, .{ .change_padding = .{ .win = win, .x_by = x_by, .y_by = y_by } });
+pub fn addChangePaddingEvent(self: *@This(), a: Allocator, windows: Windows, x_by: f32, y_by: f32) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .change_padding = .{
+        .windows = try self.a.dupe(*Window, windows),
+        .x_by = x_by,
+        .y_by = y_by,
+    } });
 }
 
-pub fn addMoveEvent(self: *@This(), a: Allocator, win: *Window, x_by: f32, y_by: f32) !AddNewEventResult {
-    return try self.addNewEvent(a, .{ .move = .{ .win = win, .x_by = x_by, .y_by = y_by } });
+pub fn addMoveEvent(self: *@This(), a: Allocator, windows: Windows, x_by: f32, y_by: f32) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .move = .{
+        .windows = try self.a.dupe(*Window, windows),
+        .x_by = x_by,
+        .y_by = y_by,
+    } });
 }
 
 /////////////////////////////
@@ -184,7 +199,10 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
         var i: usize = self.events.len;
         while (i > self.index + 1) {
             defer i -= 1;
+
             const old_event = self.events.pop() orelse break;
+            defer if (getWindowsFromEvent(old_event)) |windows| self.a.free(windows);
+
             try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
         }
     }
@@ -196,6 +214,8 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
         const old_event = self.events.get(0);
 
         try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
+        if (getWindowsFromEvent(self.events.get(0))) |windows| self.a.free(windows);
+
         self.events.orderedRemove(0);
     }
 
@@ -214,15 +234,17 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
 }
 
 fn addEventToWindowMap(self: *@This(), ev: Event) !void {
-    const win = getWindowFromEvent(ev) orelse return;
+    const windows = getWindowsFromEvent(ev) orelse return;
 
-    if (!self.wmap.contains(win)) {
-        try self.wmap.put(self.a, win, 1);
-        return;
+    for (windows) |win| {
+        if (!self.wmap.contains(win)) {
+            try self.wmap.put(self.a, win, 1);
+            continue;
+        }
+
+        const count = self.wmap.getPtr(win) orelse continue;
+        count.* += 1;
     }
-
-    const count = self.wmap.getPtr(win) orelse return;
-    count.* += 1;
 }
 
 fn handleChopAndOvercap(
@@ -242,22 +264,27 @@ fn handleChopAndOvercap(
 
     /////////////////////////////
 
-    const win = getWindowFromEvent(old_event) orelse unreachable;
-    assert(self.wmap.contains(win));
+    const old_windows = getWindowsFromEvent(old_event) orelse unreachable;
+    assert(self.wmapContainsAllWindows(old_windows));
 
-    const count = self.wmap.getPtr(win) orelse unreachable;
-    assert(count.* > 0);
+    const may_new_windows = getWindowsFromEvent(new_event);
+    if (may_new_windows == null or !std.mem.eql(*Window, old_windows, may_new_windows.?)) {
+        for (old_windows) |window| {
+            const count = self.wmap.getPtr(window) orelse unreachable;
+            assert(count.* > 0);
 
-    if (count.* == 1) {
-        const may_new_win = getWindowFromEvent(new_event);
-        if (may_new_win == null or win != may_new_win.?)
-            try windows_to_cleanup.append(a, win);
-
-        const removed = self.wmap.remove(win);
-        assert(removed);
-        return;
+            if (count.* == 1) {
+                try windows_to_cleanup.append(a, window);
+                count.* -= 1;
+                assert(self.wmap.swapRemove(window));
+            }
+        }
     }
-    count.* -= 1;
+}
+
+fn wmapContainsAllWindows(self: *@This(), slice: Windows) bool {
+    for (slice) |window| assert(self.wmap.contains(window));
+    return true;
 }
 
 fn getConnectionFromEvent(ev: Event) ?*Connection {
@@ -273,11 +300,11 @@ fn getConnectionFromEvent(ev: Event) ?*Connection {
     };
 }
 
-fn getWindowFromEvent(ev: Event) ?*Window {
+pub fn getWindowsFromEvent(ev: Event) ?Windows {
     return switch (ev) {
-        .spawn, .close, .toggle_border => |win| win,
-        .change_padding => |info| info.win,
-        .move => |info| info.win,
+        .spawn, .close, .toggle_border => |windows| windows,
+        .change_padding => |info| info.windows,
+        .move => |info| info.windows,
         else => null,
     };
 }

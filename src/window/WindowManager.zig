@@ -36,6 +36,7 @@ pub const Callback = ip_.Callback;
 
 pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
+const Windows = HistoryManager.Windows;
 const WindowSwitchHistoryManager = @import("WindowManager/WindowSwitchHistoryManager.zig");
 pub const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
 const _qtree = @import("QuadTree");
@@ -66,6 +67,8 @@ visible_windows: WindowList,
 
 window_picker_normal: *WindowPickerNormal,
 
+selection: Selection,
+
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
 
@@ -87,6 +90,8 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         .visible_windows = std.ArrayList(*Window).init(a),
 
         .window_picker_normal = try WindowPickerNormal.create(a, self),
+
+        .selection = try Selection.init(a),
     };
     return self;
 }
@@ -135,14 +140,16 @@ pub fn destroy(self: *@This()) void {
     self.fmap.deinit(self.a);
     self.wmap.deinit(self.a);
 
-    self.hm.deinit();
-    self.wshm.deinit();
-
     self.qtree.destroy(self.a);
     self.visible_windows.deinit();
     self.updating_windows_map.deinit(self.a);
 
     self.window_picker_normal.destroy(self.a);
+
+    self.selection.deinit();
+
+    self.hm.deinit();
+    self.wshm.deinit();
 
     self.a.destroy(self);
 }
@@ -370,7 +377,7 @@ pub fn spawnWindow(
         if (self.fmap.get(source)) |handler| {
             const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
-            if (add_to_history) try self.addWindowToSpawnHistory(window);
+            if (add_to_history) try self.addWindowToSpawnHistory(&.{window});
             if (make_active or self.active_window == null) self.setActiveWindow(window, true);
             return;
         }
@@ -381,7 +388,7 @@ pub fn spawnWindow(
     try self.handlers.put(self.a, handler, {});
 
     const window = try handler.spawnWindow(self, opts);
-    if (add_to_history) try self.addWindowToSpawnHistory(window);
+    if (add_to_history) try self.addWindowToSpawnHistory(&.{window});
     try self.wmap.put(self.a, window, handler);
 
     if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
@@ -391,17 +398,17 @@ pub fn spawnWindow(
 
 ////////////////////////////////////////////////////////////////////////////////////////////// History
 
-fn addWindowToSpawnHistory(self: *@This(), win: *Window) !void {
+fn addWindowToSpawnHistory(self: *@This(), windows: Windows) !void {
     self.cleanUpAfterAppendingToHistory(
         self.a,
-        try self.hm.addSpawnEvent(self.a, win),
+        try self.hm.addSpawnEvent(self.a, windows),
     );
 }
 
-fn addWindowToCloseHistory(self: *@This(), win: *Window) !void {
+fn addWindowToCloseHistory(self: *@This(), windows: Windows) !void {
     self.cleanUpAfterAppendingToHistory(
         self.a,
-        try self.hm.addCloseEvent(self.a, win),
+        try self.hm.addCloseEvent(self.a, windows),
     );
 }
 
@@ -427,11 +434,15 @@ pub fn undo(self: *@This()) !void {
 
 fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
     switch (event) {
-        .spawn => |win| try self.closeWindow(win, false),
-        .close => |win| self.openWindowAndMakeActive(win),
-        .toggle_border => |win| win.toggleBorder(),
-        .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, -info.x_by, -info.y_by),
-        .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
+        .spawn => |windows| try self.closeWindows(windows, false),
+        .close => |windows| self.openWindowAndMakeActive(windows),
+        .toggle_border => |windows| for (windows) |win| win.toggleBorder(),
+
+        .change_padding => |info| for (info.windows) |win|
+            try win.changePaddingBy(self.a, self.qtree, -info.x_by, -info.y_by),
+
+        .move => |info| for (info.windows) |win|
+            try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
 
         .add_connection => |conn| conn.hide(),
         .hide_connection => |conn| conn.show(&self.connman),
@@ -458,11 +469,17 @@ pub fn redo(self: *@This()) !void {
 
 fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
     switch (event) {
-        .spawn => |win| self.openWindowAndMakeActive(win),
-        .close => |win| try self.closeWindow(win, false),
-        .toggle_border => |win| win.toggleBorder(),
-        .change_padding => |info| try info.win.changePaddingBy(self.a, self.qtree, info.x_by, info.y_by),
-        .move => |info| try info.win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
+        .spawn => |windows| self.openWindowAndMakeActive(windows),
+        .close => |windows| try self.closeWindows(windows, false),
+        .toggle_border => |windows| for (windows) |win| win.toggleBorder(),
+
+        .change_padding => |info| for (info.windows) |win|
+            try win.changePaddingBy(self.a, self.qtree, info.x_by, info.y_by),
+
+        .move => |info| for (info.windows) |win|
+            try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
+
+        /////////////////////////////
 
         .add_connection => |conn| conn.show(&self.connman),
         .hide_connection => |conn| conn.hide(),
@@ -485,19 +502,19 @@ pub fn batchRedo(self: *@This()) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Close Window
 
+pub fn getActiveWindows(self: *@This()) ?Windows {
+    if (!self.selection.isEmpty()) return self.selection.windows.items;
+    if (self.active_window == null) return null;
+    return (&self.active_window.?)[0..1];
+}
+
 pub fn closeActiveWindow(self: *@This()) !void {
-    const active_window = self.active_window orelse return;
-    try self.closeWindow(active_window, true);
+    const windows = self.getActiveWindows() orelse return;
+    try self.closeWindows(windows, true);
 }
 
 pub fn closeAllWindows(self: *@This()) !void {
-    const windows = self.wmap.keys();
-
-    var i: usize = windows.len;
-    while (i > 0) {
-        i -= 1;
-        try self.closeWindow(windows[i], true);
-    }
+    try self.closeWindows(self.wmap.keys(), true);
 }
 
 fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
@@ -522,16 +539,32 @@ fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
     return candidate;
 }
 
-fn closeWindow(self: *@This(), win: *Window, add_to_history: bool) !void {
-    const new_active_window = self.findClosestWindow(win);
-    win.close();
-    if (add_to_history) try self.addWindowToCloseHistory(win);
+fn closeWindows(self: *@This(), windows: Windows, add_to_history: bool) !void {
+    if (windows.len == 0) {
+        assert(false);
+        return;
+    }
+
+    const new_active_window = self.findClosestWindow(windows[0]);
+
+    var i: usize = windows.len;
+    while (i > 0) {
+        i -= 1;
+        windows[i].close();
+    }
+
+    if (add_to_history) try self.addWindowToCloseHistory(windows);
+
     self.setActiveWindow(new_active_window, false);
 }
 
-fn openWindowAndMakeActive(self: *@This(), win: *Window) void {
-    win.open();
-    self.setActiveWindow(win, false);
+fn openWindowAndMakeActive(self: *@This(), windows: Windows) void {
+    if (windows.len == 0) {
+        assert(false);
+        return;
+    }
+    for (windows) |win| win.open();
+    self.setActiveWindow(windows[0], false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Auto Layout
@@ -601,6 +634,28 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Selection
+
+const Selection = struct {
+    windows: WindowList,
+
+    fn init(a: Allocator) !Selection {
+        return Selection{ .windows = WindowList.init(a) };
+    }
+
+    fn deinit(self: *@This()) void {
+        self.windows.deinit();
+    }
+
+    fn isEmpty(self: *const @This()) bool {
+        return self.windows.items.len == 0;
+    }
+
+    fn addWindow(self: *@This(), win: *Window) !void {
+        try self.windows.append(win);
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
 
 pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
@@ -628,11 +683,11 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Align
     switch (kind) {
         .vertical => {
             const y_by = try mover.alignVerticallyTo(self.a, self.qtree, &self.updating_windows_map, target);
-            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, mover, 0, y_by));
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, &.{mover}, 0, y_by));
         },
         .horizontal => {
             const x_by = try mover.alignHorizontallyTo(self.a, self.qtree, &self.updating_windows_map, target);
-            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, mover, x_by, 0));
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, &.{mover}, x_by, 0));
         },
     }
 }

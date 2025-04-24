@@ -191,31 +191,36 @@ fn alignToFirstConnection(sess: *Session, kind: AlignConnectionKind, anchor: Ali
 // }
 
 pub fn moveActiveWindowBy(wm: *WindowManager, x_by: f32, y_by: f32) !void {
-    const active_window = wm.active_window orelse return;
-    try active_window.moveBy(wm.a, wm.qtree, &wm.updating_windows_map, x_by, y_by);
+    const windows = wm.getActiveWindows() orelse return;
+    for (windows) |win| {
+        try win.moveBy(wm.a, wm.qtree, &wm.updating_windows_map, x_by, y_by);
+    }
     wm.cleanUpAfterAppendingToHistory(
         wm.a,
-        try wm.hm.addMoveEvent(wm.a, active_window, x_by, y_by),
+        try wm.hm.addMoveEvent(wm.a, windows, x_by, y_by),
     );
 }
 
 pub fn toggleActiveWindowBorder(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
-    const active_window = wm.active_window orelse return;
-    active_window.toggleBorder();
+    const windows = wm.getActiveWindows() orelse return;
+
+    for (windows) |win| win.toggleBorder();
+
     wm.cleanUpAfterAppendingToHistory(
         wm.a,
-        try wm.hm.addToggleBorderEvent(wm.a, active_window),
+        try wm.hm.addToggleBorderEvent(wm.a, windows),
     );
 }
 
 pub fn changeActiveWindowPaddingBy(wm: *WindowManager, x_by: f32, y_by: f32) !void {
-    const active_window = wm.active_window orelse return;
-    try active_window.changePaddingBy(wm.a, wm.qtree, x_by, y_by);
+    const windows = wm.getActiveWindows() orelse return;
+    for (windows) |win| try win.changePaddingBy(wm.a, wm.qtree, x_by, y_by);
+
     wm.cleanUpAfterAppendingToHistory(
         wm.a,
-        try wm.hm.addChangePaddingEvent(wm.a, active_window, x_by, y_by),
+        try wm.hm.addChangePaddingEvent(wm.a, windows, x_by, y_by),
     );
 }
 
