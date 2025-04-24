@@ -118,7 +118,8 @@ pub fn render(self: *@This()) !void {
 
     for (self.visible_windows.items) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
-        window.render(is_active, self.mall, null);
+        const is_selected = if (self.selection.wmap.get(window)) |_| true else false;
+        window.render(is_active, is_selected, self.mall, null);
     }
 
     // std.debug.print("#wins: {d} | visible on screen: {d} | #windows in tree: {d}\n", .{
@@ -503,7 +504,7 @@ pub fn batchRedo(self: *@This()) !void {
 ////////////////////////////////////////////////////////////////////////////////////////////// Close Window
 
 pub fn getActiveWindows(self: *@This()) ?Windows {
-    if (!self.selection.isEmpty()) return self.selection.windows.items;
+    if (!self.selection.isEmpty()) return self.selection.windows();
     if (self.active_window == null) return null;
     return (&self.active_window.?)[0..1];
 }
@@ -637,22 +638,28 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 ////////////////////////////////////////////////////////////////////////////////////////////// Selection
 
 const Selection = struct {
-    windows: WindowList,
+    wmap: WindowMap,
+
+    const WindowMap = std.AutoArrayHashMap(*Window, void);
 
     fn init(a: Allocator) !Selection {
-        return Selection{ .windows = WindowList.init(a) };
+        return Selection{ .wmap = WindowMap.init(a) };
     }
 
     fn deinit(self: *@This()) void {
-        self.windows.deinit();
+        self.wmap.deinit();
+    }
+
+    fn windows(self: *const @This()) []const *Window {
+        return self.wmap.keys();
     }
 
     fn isEmpty(self: *const @This()) bool {
-        return self.windows.items.len == 0;
+        return self.windows().len == 0;
     }
 
     fn addWindow(self: *@This(), win: *Window) !void {
-        try self.windows.append(win);
+        try self.wmap.put(win, {});
     }
 };
 
@@ -690,4 +697,33 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Align
             self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, &.{mover}, x_by, 0));
         },
     }
+}
+
+/////////////////////////////
+
+pub fn selectAllDescendants(self: *@This()) !void {
+    assert(self.selection.isEmpty());
+    const active_window = self.active_window orelse return;
+
+    var list = std.ArrayList(*Window).init(self.a);
+    defer list.deinit();
+
+    try list.append(active_window);
+
+    var i: usize = 0;
+    while (i < list.items.len) {
+        defer i += 1;
+        const window = list.items[i];
+        const tracker = self.connman.tracker_map.get(window.id) orelse continue;
+        for (tracker.outgoing.keys()) |conn| {
+            const conn_tracker = self.connman.tracker_map.get(conn.end.win_id) orelse continue;
+            try list.append(conn_tracker.win);
+        }
+    }
+
+    for (list.items) |window| try self.selection.addWindow(window);
+}
+
+pub fn clearSelection(self: *@This()) !void {
+    self.selection.wmap.clearRetainingCapacity();
 }

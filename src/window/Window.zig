@@ -311,7 +311,13 @@ fn insertToQuadTree(self: *@This(), a: Allocator, qtree: *QuadTree) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?RenderMall.ScreenView) void {
+pub fn render(
+    self: *@This(),
+    is_active: bool,
+    is_selected: bool,
+    mall: *RenderMall,
+    may_view: ?RenderMall.ScreenView,
+) void {
 
     ///////////////////////////// Profiling
 
@@ -352,6 +358,7 @@ pub fn render(self: *@This(), is_active: bool, mall: *RenderMall, may_view: ?Ren
     var renderer = Renderer{
         .win = self,
         .win_is_active = is_active,
+        .win_is_selected = is_selected,
         .view = view,
         .target_view = target_view,
         .default_font = default_font,

@@ -18,6 +18,7 @@ win: *Window,
 view: ScreenView,
 target_view: ScreenView,
 win_is_active: bool,
+win_is_selected: bool,
 
 default_font: *const FontStore.Font,
 default_glyph: FontStore.Font.GlyphData,
@@ -366,7 +367,7 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
     const mall = self.mall;
     const win = self.win;
 
-    defer if (self.win.attr.bordered) {
+    defer if (self.win_is_selected or self.win.attr.bordered) { // temporary solution for selectAllDescendants() MVP
         const THICKNESS = 2;
         mall.rcb.drawRectangleLines(
             win.getX(),
