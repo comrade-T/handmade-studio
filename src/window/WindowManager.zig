@@ -38,7 +38,7 @@ pub const ConnectionManager = @import("WindowManager/ConnectionManager.zig");
 const HistoryManager = @import("WindowManager/HistoryManager.zig");
 const Windows = HistoryManager.Windows;
 const WindowSwitchHistoryManager = @import("WindowManager/WindowSwitchHistoryManager.zig");
-pub const WindowPickerNormal = @import("WindowManager/WindowPickerNormal.zig");
+pub const WindowPicker = @import("WindowManager/WindowPicker.zig");
 const _qtree = @import("QuadTree");
 const QuadTree = _qtree.QuadTree(Window);
 
@@ -65,7 +65,8 @@ qtree: *QuadTree,
 updating_windows_map: Window.UpdatingWindowsMap = .{},
 visible_windows: WindowList,
 
-window_picker_normal: *WindowPickerNormal,
+window_picker_normal: WindowPicker,
+selection_window_picker: WindowPicker,
 
 selection: Selection,
 
@@ -89,9 +90,10 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         }, 0),
         .visible_windows = std.ArrayList(*Window).init(a),
 
-        .window_picker_normal = try WindowPickerNormal.create(a, self),
-
         .selection = try Selection.init(a),
+
+        .window_picker_normal = WindowPicker{ .wm = self, .callback = .{ .f = setActiveWindowPickerCallback, .ctx = self } },
+        .selection_window_picker = WindowPicker{ .wm = self, .callback = .{ .f = toggleWindowFromSelection, .ctx = self } },
     };
     return self;
 }
@@ -129,7 +131,8 @@ pub fn render(self: *@This()) !void {
     // });
     self.connman.render();
 
-    self.window_picker_normal.picker.render();
+    self.window_picker_normal.render();
+    self.selection_window_picker.render();
 }
 
 pub fn destroy(self: *@This()) void {
@@ -145,8 +148,6 @@ pub fn destroy(self: *@This()) void {
     self.visible_windows.deinit();
     self.updating_windows_map.deinit(self.a);
 
-    self.window_picker_normal.destroy(self.a);
-
     self.selection.deinit();
 
     self.hm.deinit();
@@ -158,6 +159,12 @@ pub fn destroy(self: *@This()) void {
 pub fn setActiveWindow(self: *@This(), win: ?*Window, add_to_history: bool) void {
     if (add_to_history) self.wshm.addNewEvent(.{ .from = self.active_window, .to = win }) catch {};
     self.active_window = win;
+}
+
+fn setActiveWindowPickerCallback(ctx: *anyopaque, window: *Window) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.setActiveWindow(window, true);
+    window.centerCameraAt(self.mall);
 }
 
 pub fn undoWindowSwitch(self: *@This()) !void {
@@ -661,6 +668,14 @@ const Selection = struct {
     fn addWindow(self: *@This(), win: *Window) !void {
         try self.wmap.put(win, {});
     }
+
+    fn toggleWindow(self: *@This(), win: *Window) !void {
+        if (self.wmap.contains(win)) {
+            assert(self.wmap.orderedRemove(win));
+            return;
+        }
+        try self.wmap.put(win, {});
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
@@ -732,4 +747,9 @@ pub fn selectAllDescendants(self: *@This()) !void {
 
 pub fn clearSelection(self: *@This()) !void {
     self.selection.wmap.clearRetainingCapacity();
+}
+
+fn toggleWindowFromSelection(ctx: *anyopaque, window: *Window) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.selection.toggleWindow(window);
 }
