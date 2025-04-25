@@ -26,6 +26,8 @@ fn helloZLSNew() !void {
 
     /////////////////////////////
 
+    var transport = lsp.TransportOverStdio.init(child.stdout.?, child.stdin.?);
+
     const msg = lsp.JsonRPCMessage{
         .request = .{
             .id = .{ .string = "testing" },
@@ -35,29 +37,33 @@ fn helloZLSNew() !void {
     };
     const json_str = try std.json.stringifyAlloc(aa, msg, .{});
 
-    {
-        var transport = lsp.TransportOverStdio.init(child.stdout.?, child.stdin.?);
-        try transport.writeJsonMessage(json_str);
+    //////////////////////////////////////////////////////////////////////////////////////////////
 
-        for (0..5) |i| {
-            const output = transport.readJsonMessage(aa) catch |err| {
-                if (err == error.EndOfStream) break;
-                return;
-            };
-            std.debug.print("i = {d} | output: '{s}'\n", .{ i, output });
-        }
-    }
-    std.debug.print("===================================================================\n", .{});
-    {
-        var transport = lsp.TransportOverStdio.init(child.stdout.?, child.stdin.?);
-        try transport.writeJsonMessage(json_str);
+    try transport.writeJsonMessage(json_str);
 
-        for (0..5) |i| {
-            const output = transport.readJsonMessage(aa) catch |err| {
-                if (err == error.EndOfStream) break;
-                return;
-            };
-            std.debug.print("i = {d} | output: '{s}'\n", .{ i, output });
+    var i: usize = 0;
+    while (true) {
+        if (i > 10) break;
+
+        const output = transport.readJsonMessage(aa) catch |err| {
+            if (err == error.EndOfStream) break;
+            return;
+        };
+        const parsed = try std.json.parseFromSlice(lsp.JsonRPCMessage, aa, output, .{});
+        const res = parsed.value;
+
+        switch (res) {
+            .request => @panic("not implemented"),
+            .notification => |_| std.debug.print("notification: '{s}'\n", .{output}),
+            .response => |response| switch (response.result_or_error) {
+                .@"error" => {
+                    std.debug.print("Got error so I will write a message now.\n", .{});
+                    try transport.writeJsonMessage(json_str);
+                    i += 1;
+                    std.debug.print("======================= i = {d}\n", .{i});
+                },
+                .result => |_| unreachable,
+            },
         }
     }
 
