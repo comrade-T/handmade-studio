@@ -6,14 +6,73 @@ const lsp = @import("lsp");
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() !void {
-    try helloZLS();
+    try helloZLSNew();
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn helloZLSNew() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const aa = arena.allocator();
+
+    const argv = [_][]const u8{"/home/ziontee113/.local/share/nvim/mason/bin/zls"};
+    var child = std.process.Child.init(&argv, aa);
+
+    child.stdin_behavior = .Pipe;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+
+    /////////////////////////////
+
+    const msg = lsp.JsonRPCMessage{
+        .request = .{
+            .id = .{ .string = "testing" },
+            .method = "workspace/configuration",
+            .params = null,
+        },
+    };
+    const json_str = try std.json.stringifyAlloc(aa, msg, .{});
+
+    {
+        var transport = lsp.TransportOverStdio.init(child.stdout.?, child.stdin.?);
+        try transport.writeJsonMessage(json_str);
+
+        for (0..5) |i| {
+            const output = transport.readJsonMessage(aa) catch |err| {
+                if (err == error.EndOfStream) break;
+                return;
+            };
+            std.debug.print("i = {d} | output: '{s}'\n", .{ i, output });
+        }
+    }
+    std.debug.print("===================================================================\n", .{});
+    {
+        var transport = lsp.TransportOverStdio.init(child.stdout.?, child.stdin.?);
+        try transport.writeJsonMessage(json_str);
+
+        for (0..5) |i| {
+            const output = transport.readJsonMessage(aa) catch |err| {
+                if (err == error.EndOfStream) break;
+                return;
+            };
+            std.debug.print("i = {d} | output: '{s}'\n", .{ i, output });
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
+    _ = try child.wait();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 fn generateDummyJsonRPCMessage(aa: Allocator) ![]const u8 {
     const msg = lsp.JsonRPCMessage{
         .request = .{
-            .id = .{ .string = "ligma" },
-            .method = "test",
+            .id = .{ .string = "testing" },
+            .method = "workspace/configuration",
             .params = null,
         },
     };
@@ -22,7 +81,7 @@ fn generateDummyJsonRPCMessage(aa: Allocator) ![]const u8 {
     return try std.fmt.allocPrint(aa, "Content-length: {d}\r\n\r\n{s}\r\n\r\n", .{ json_str.len, json_str });
 }
 
-fn helloZLS() !void {
+fn helloZLSOld() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const aa = arena.allocator();
