@@ -1,12 +1,50 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+
+const Mutex = std.Thread.Mutex;
+const Condition = std.Thread.Condition;
+
 const lsp = @import("lsp");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() !void {
-    try helloZLSNew();
+    var predicate = false;
+    var m = Mutex{};
+    var c = Condition{};
+
+    const thread = try std.Thread.spawn(.{}, producer, .{ &predicate, &m, &c });
+    consumer(&predicate, &m, &c);
+    thread.join();
+}
+
+fn consumer(predicate: *bool, m: *Mutex, c: *Condition) void {
+    m.lock();
+    defer m.unlock();
+
+    while (!predicate.*) {
+        std.debug.print("while loop starts\n", .{});
+        c.wait(m);
+        std.debug.print("wait is done with predicate: {any}\n", .{predicate.*});
+    }
+
+    std.Thread.sleep(1_000_000_000);
+    std.debug.print("ok man\n", .{});
+}
+
+fn producer(predicate: *bool, m: *Mutex, c: *Condition) void {
+    {
+        m.lock();
+        defer m.unlock();
+
+        const sleep_for_sec = 3;
+        std.debug.print("start_sleeping for {d} seconds\n", .{sleep_for_sec});
+        std.Thread.sleep(sleep_for_sec * 1_000_000_000);
+
+        predicate.* = true;
+    }
+    c.signal();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
