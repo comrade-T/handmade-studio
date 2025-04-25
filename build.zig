@@ -37,8 +37,10 @@ pub fn build(b: *std.Build) void {
 
     const raylib = b.dependency("raylib_zig", .{ .target = target, .optimize = optimize });
 
-    const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
-    _ = s2s;
+    const lsp_codegen = b.dependency("lsp_codegen", .{});
+
+    // const s2s = b.addModule("s2s", .{ .root_source_file = b.path("copied-libs/s2s.zig") });
+    // _ = s2s;
 
     const ztracy_options = .{
         .enable_ztracy = b.option(
@@ -324,9 +326,23 @@ pub fn build(b: *std.Build) void {
         const spawn_rec_by_clicking_exe = b.addExecutable(.{ .name = "threads", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         addRunnableRaylibFile(b, spawn_rec_by_clicking_exe, raylib, path);
     }
+    {
+        const path = "src/demos/try_lsp.zig";
+        const exe = b.addExecutable(.{ .name = "try_lsp", .root_source_file = b.path(path), .target = target, .optimize = optimize });
+        exe.root_module.addImport("lsp", lsp_codegen.module("lsp"));
+        addRunnableFile(b, exe, path);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+fn addRunnableFile(b: *std.Build, compile: *std.Build.Step.Compile, path: []const u8) void {
+    const run_cmd = b.addRunArtifact(compile);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    const run_step = b.step(path, path);
+    run_step.dependOn(&run_cmd.step);
+}
 
 fn addRunnableRaylibFile(b: *std.Build, compile: *std.Build.Step.Compile, raylib: *std.Build.Dependency, path: []const u8) void {
     compile.linkLibrary(raylib.artifact("raylib"));

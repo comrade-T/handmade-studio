@@ -25,6 +25,10 @@
             .url = "https://github.com/mnemnion/mvzr/archive/refs/tags/v0.3.3.tar.gz",
             .hash = "mvzr-0.3.2-ZSOky95lAQA00lXTN_g8JWoBuh8pw-jyzmCWAqlu1h8L",
         },
+        .lsp_codegen = .{
+            .url = "git+https://github.com/zigtools/zig-lsp-codegen.git#6bbaefedc9a34308fbea573e1043c325ea4d9632",
+            .hash = "lsp_codegen-0.1.0-CMjjo8lYCQDFSvieYT3OeuLrs8ZRTS-TzzfrDDDcD-h1",
+        },
     },
 
     .paths = .{
