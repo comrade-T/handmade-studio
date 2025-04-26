@@ -131,6 +131,11 @@ pub fn build(b: *std.Build) void {
     const linked_list = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
     _ = linked_list;
 
+    const LSP = addTestableModule(&bops, "src/LSP/LSP.zig", &.{
+        .{ .name = "lsp_codegen", .module = lsp_codegen.module("lsp") },
+    }, zig_build_test_step);
+    _ = LSP;
+
     const cursor_manager = addTestableModule(&bops, "src/window/CursorManager.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "RopeMan", .module = ropeman.module },
@@ -329,7 +334,7 @@ pub fn build(b: *std.Build) void {
     {
         const path = "src/demos/try_lsp.zig";
         const exe = b.addExecutable(.{ .name = "try_lsp", .root_source_file = b.path(path), .target = target, .optimize = optimize });
-        exe.root_module.addImport("lsp", lsp_codegen.module("lsp"));
+        exe.root_module.addImport("lsp_codegen", lsp_codegen.module("lsp"));
         addRunnableFile(b, exe, path);
     }
 }

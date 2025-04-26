@@ -5,7 +5,7 @@ const ArrayList = std.ArrayList;
 const Mutex = std.Thread.Mutex;
 const Condition = std.Thread.Condition;
 
-const lsp = @import("lsp");
+const lsp = @import("lsp_codegen");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -55,14 +55,14 @@ fn producer(predicate: *bool, m: *Mutex, c: *Condition) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const Capabilities = struct {
+const ClientCapabilities = struct {
     // TODO:
 };
 
 const InitializeParams = struct {
     processId: ?u32 = null,
     rootUri: []const u8,
-    capabilities: Capabilities = .{},
+    capabilities: ClientCapabilities = .{},
 };
 
 fn helloZLSNew() !void {
@@ -116,6 +116,7 @@ fn helloZLSNew() !void {
                                 for (obj.keys()) |key| {
                                     std.debug.print("obj key: '{s}'\n", .{key});
                                 }
+
                                 // TODO: use std.json.parseFromValue to parse into a static type
                             },
                             else => std.debug.print("got something else not obj\n", .{}),

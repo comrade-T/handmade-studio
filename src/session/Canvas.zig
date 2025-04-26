@@ -202,7 +202,7 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
     });
     try writeToFile(json_str, path);
 
-    const msg = try std.fmt.allocPrint(arena.allocator(), "Session written to file '{s}' successfully", .{path});
+    const msg = try std.fmt.allocPrint(arena.allocator(), "Canvas written to file '{s}' successfully", .{path});
     try self.sess.nl.setMessage(msg);
 
     try self.setPath(path);
