@@ -10,6 +10,12 @@ const lsp = @import("lsp");
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() !void {
+    try helloZLSNew();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn tryOutThreadCondition() !void {
     var predicate = false;
     var m = Mutex{};
     var c = Condition{};
@@ -49,6 +55,16 @@ fn producer(predicate: *bool, m: *Mutex, c: *Condition) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+const Capabilities = struct {
+    // TODO:
+};
+
+const InitializeParams = struct {
+    processId: ?u32 = null,
+    rootUri: []const u8,
+    capabilities: Capabilities = .{},
+};
+
 fn helloZLSNew() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -66,41 +82,47 @@ fn helloZLSNew() !void {
 
     var transport = lsp.TransportOverStdio.init(child.stdout.?, child.stdin.?);
 
-    const msg = lsp.JsonRPCMessage{
-        .request = .{
-            .id = .{ .string = "testing" },
-            .method = "workspace/configuration",
-            .params = null,
+    const msg = lsp.TypedJsonRPCRequest(InitializeParams){
+        .id = .{ .number = 0 },
+        .method = "initialize",
+        .params = .{
+            .rootUri = "",
         },
     };
+
     const json_str = try std.json.stringifyAlloc(aa, msg, .{});
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     try transport.writeJsonMessage(json_str);
 
-    var i: usize = 0;
     while (true) {
-        if (i > 10) break;
-
         const output = transport.readJsonMessage(aa) catch |err| {
             if (err == error.EndOfStream) break;
             return;
         };
         const parsed = try std.json.parseFromSlice(lsp.JsonRPCMessage, aa, output, .{});
-        const res = parsed.value;
 
-        switch (res) {
+        switch (parsed.value) {
             .request => @panic("not implemented"),
             .notification => |_| std.debug.print("notification: '{s}'\n", .{output}),
             .response => |response| switch (response.result_or_error) {
-                .@"error" => {
-                    std.debug.print("Got error so I will write a message now.\n", .{});
-                    try transport.writeJsonMessage(json_str);
-                    i += 1;
-                    std.debug.print("======================= i = {d}\n", .{i});
+                .@"error" => std.debug.print("Got error\n", .{}),
+                .result => |may_res| {
+                    std.debug.print("I got a ?res\n", .{});
+                    if (may_res) |res| {
+                        switch (res) {
+                            .object => |obj| {
+                                for (obj.keys()) |key| {
+                                    std.debug.print("obj key: '{s}'\n", .{key});
+                                }
+                                // TODO: use std.json.parseFromValue to parse into a static type
+                            },
+                            else => std.debug.print("got something else not obj\n", .{}),
+                        }
+                    }
+                    std.debug.print("============================\n", .{});
                 },
-                .result => |_| unreachable,
             },
         }
     }
