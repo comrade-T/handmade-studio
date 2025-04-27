@@ -18,6 +18,7 @@
 const std = @import("std");
 const Session = @import("../Session.zig");
 const WindowManager = Session.WindowManager;
+const Anchor = WindowManager.ConnectionManager.Connection.Anchor;
 const Callback = Session.Callback;
 
 const NORMAL = "normal";
@@ -89,9 +90,11 @@ pub fn mapKeys(sess: *Session) !void {
 }
 
 fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
+    const EstablishConnectionType = enum { none, horizontal, vertical };
     const Cb = struct {
         sess: *Session,
         spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
+        establish_connection: EstablishConnectionType,
 
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -104,23 +107,38 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
                 return;
             }
 
+            const a = wm.active_window orelse return;
             try wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.spawn_opts);
+
+            const b = wm.active_window orelse return;
+
+            const a_anchor, const b_anchor = switch (self.establish_connection) {
+                .none => return,
+                .horizontal => .{ Anchor.E, Anchor.W },
+                .vertical => .{ Anchor.S, Anchor.N },
+            };
+            try wm.connman.establishHardCodedPendingConnection(a, a_anchor, b, b_anchor);
         }
 
         pub fn init(
             allocator: std.mem.Allocator,
             sess_: *Session,
             spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
+            establish_connection: EstablishConnectionType,
         ) !Session.Callback {
             const self = try allocator.create(@This());
-            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts };
+            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts, .establish_connection = establish_connection };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
 
     const c = sess.council;
     const a = c.arena.allocator();
-    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }));
+    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .none));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
+
+    try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .vertical));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .horizontal));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .horizontal));
 }

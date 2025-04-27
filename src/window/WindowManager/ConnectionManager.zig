@@ -363,6 +363,22 @@ pub fn cancelPendingConnection(self: *@This()) !void {
     self.cleanUpAfterPendingConnection();
 }
 
+pub fn establishHardCodedPendingConnection(
+    self: *@This(),
+    a: *Window,
+    a_anchor: Connection.Anchor,
+    b: *Window,
+    b_anchor: Connection.Anchor,
+) !void {
+    self.pending_connection = Connection.new(a.id);
+    self.pending_connection_initial_window = a;
+
+    self.pending_connection.?.start.anchor = a_anchor;
+    self.pending_connection.?.end = .{ .win_id = b.id, .anchor = b_anchor };
+
+    try self.confirmPendingConnection();
+}
+
 fn cleanUpAfterPendingConnection(self: *@This()) void {
     self.pending_connection = null;
     self.pending_connection_initial_window = null;
