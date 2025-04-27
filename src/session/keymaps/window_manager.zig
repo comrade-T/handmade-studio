@@ -90,8 +90,8 @@ pub fn mapKeys(sess: *Session) !void {
 
 fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
     const Cb = struct {
-        direction: WindowManager.WindowRelativeDirection,
         sess: *Session,
+        spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
 
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -104,19 +104,23 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
                 return;
             }
 
-            try wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.direction, false);
+            try wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.spawn_opts);
         }
 
-        pub fn init(allocator: std.mem.Allocator, sess_: *Session, direction: WindowManager.WindowRelativeDirection) !Session.Callback {
+        pub fn init(
+            allocator: std.mem.Allocator,
+            sess_: *Session,
+            spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
+        ) !Session.Callback {
             const self = try allocator.create(@This());
-            self.* = .{ .direction = direction, .sess = sess_ };
+            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
 
     const c = sess.council;
     const a = c.arena.allocator();
-    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .bottom));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .right));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .right));
+    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }));
 }

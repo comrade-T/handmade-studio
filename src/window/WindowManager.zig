@@ -579,22 +579,27 @@ fn openWindowAndMakeActive(self: *@This(), windows: Windows) void {
 
 pub const WindowRelativeDirection = enum { left, right, top, bottom };
 
+pub const SpawnRelativeeWindowOpts = struct {
+    move: bool = false,
+    x_by: f32 = 0,
+    y_by: f32 = 0,
+    direction: WindowRelativeDirection = .bottom,
+};
 pub fn spawnNewWindowRelativeToActiveWindow(
     self: *@This(),
     from: WindowSource.InitFrom,
     source: []const u8,
-    opts: Window.SpawnOptions,
-    direction: WindowRelativeDirection,
-    move: bool,
+    win_opts: Window.SpawnOptions,
+    spawn_opts: SpawnRelativeeWindowOpts,
 ) !void {
     const prev = self.active_window orelse return;
 
-    try self.spawnWindow(from, source, opts, true, true);
+    try self.spawnWindow(from, source, win_opts, true, true);
     const new = self.active_window orelse unreachable;
 
     var new_x: f32 = new.getX();
     var new_y: f32 = new.getY();
-    switch (direction) {
+    switch (spawn_opts.direction) {
         .right => {
             new_x = prev.getX() + prev.getWidth();
             new_y = prev.getY();
@@ -612,12 +617,14 @@ pub fn spawnNewWindowRelativeToActiveWindow(
             new_y = prev.getY() - new.getHeight();
         },
     }
+    new_x += spawn_opts.x_by;
+    new_y += spawn_opts.y_by;
     try new.setPositionInstantly(self.a, self.qtree, new_x, new_y);
 
-    if (!move) return;
+    if (!spawn_opts.move) return;
     for (self.wmap.keys()) |window| {
         if (window == prev or window == new) continue;
-        switch (direction) {
+        switch (spawn_opts.direction) {
             .right => {
                 if (window.getX() > prev.getX() and window.verticalIntersect(prev)) {
                     try window.moveBy(self.a, self.qtree, &self.updating_windows_map, new.getWidth(), 0);

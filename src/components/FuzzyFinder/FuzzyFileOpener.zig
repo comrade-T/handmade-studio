@@ -139,6 +139,8 @@ fn spawnRelativeToActiveWindow(self: *@This(), direction: Session.WindowManager.
     const wm = self.sess.getActiveCanvasWindowManager() orelse return;
     try wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
         .subscribed_style_sets = &.{0},
-    }, direction, false);
+    }, .{
+        .direction = direction,
+    });
     try FuzzyFinder.hide(self.finder);
 }

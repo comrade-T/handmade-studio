@@ -17,9 +17,6 @@
 
 const LSP = @This();
 const std = @import("std");
+const types = @import("lsp_codegen").types;
 
-// TODO:
-
-test {
-    try std.testing.expectEqual(1, 1);
-}
+////////////////////////////////////////////////////////////////////////////////////////////// Types
