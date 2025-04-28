@@ -21,25 +21,8 @@ pub fn main() !void {
         std.debug.print("i = {d}\n", .{i});
         std.Thread.sleep(100 * 1_000_000);
 
-        if (i == 30) {
-            {
-                client.lock.lock();
-                defer client.lock.unlock();
-
-                client.msg_kind = .blah;
-            }
-            client.condition.signal();
-        }
-
-        if (i == 60) {
-            {
-                client.lock.lock();
-                defer client.lock.unlock();
-
-                client.msg_kind = .meh;
-            }
-            client.condition.signal();
-        }
+        if (i == 30) client.sendBlah();
+        if (i == 60) client.sendMeh();
     }
 }
 

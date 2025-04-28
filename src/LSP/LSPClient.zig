@@ -21,7 +21,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Mutex = std.Thread.Mutex;
 const Condition = std.Thread.Condition;
-const Thread = std.Thread;
 const assert = std.debug.assert;
 
 const lsp = @import("lsp_codegen");
@@ -54,112 +53,66 @@ pub fn init(aa: Allocator) !LSPClient {
 }
 
 pub fn start(self: *@This()) !void {
-    const thread = try Thread.spawn(.{ .allocator = self.aa }, spawnAndWait, .{self});
+    const thread = try std.Thread.spawn(.{ .allocator = self.aa }, spawnAndWaitPoll, .{self});
     thread.detach();
 }
 
-fn spawnAndWait(self: *@This()) void {
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn sendBlah(self: *@This()) void {
+    {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        self.msg_kind = .blah;
+    }
+    self.condition.signal();
+}
+
+pub fn sendMeh(self: *@This()) void {
+    {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        self.msg_kind = .meh;
+    }
+    self.condition.signal();
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn spawnAndWaitPoll(self: *@This()) !void {
     self.proc.spawn() catch unreachable;
     self.transport = lsp.TransportOverStdio.init(self.proc.stdout.?, self.proc.stdin.?);
 
-    const read_thread = Thread.spawn(.{ .allocator = self.aa }, handleReads, .{self}) catch unreachable;
-    read_thread.detach();
-
-    self.handleWrites();
-
-    _ = self.proc.wait() catch unreachable;
-
-    std.debug.print("yo waiting is done!\n", .{});
-}
-
-fn handleReads(self: *@This()) void {
-    defer std.debug.print("yo no more reads\n", .{});
+    var poller = std.io.poll(self.aa, enum { stdout }, .{
+        .stdout = self.proc.stdout.?,
+    });
+    defer poller.deinit();
 
     while (true) {
-        const output = self.transport.readJsonMessage(self.aa) catch |err| {
-            if (err == error.EndOfStream) break;
-            return;
-        };
-        const parsed = std.json.parseFromSlice(lsp.JsonRPCMessage, self.aa, output, .{}) catch unreachable;
+        const poll_result = try poller.poll();
 
-        switch (parsed.value) {
-            .request => @panic("not implemented"),
-            .notification => |_| std.debug.print("notification: '{s}'\n", .{output}),
-            .response => |response| switch (response.result_or_error) {
-                .@"error" => std.debug.print("Got error\n", .{}),
-                .result => |may_res| {
-                    std.debug.print("I got a ?res\n", .{});
-                    if (may_res) |res| {
-                        switch (res) {
-                            .object => |obj| {
-                                for (obj.keys()) |key| {
-                                    std.debug.print("obj key: '{s}'\n", .{key});
-                                }
-                                // TODO: use std.json.parseFromValue to parse into a static type
-                            },
-                            else => std.debug.print("got something else not obj\n", .{}),
-                        }
-                    }
-                    std.debug.print("============================\n", .{});
-                },
-            },
+        std.debug.print("=========================================================\n", .{});
+        std.debug.print("poll result: {any}\n", .{poll_result});
+        std.debug.print("count: {d}\n", .{poller.fifo(.stdout).count});
+
+        if (poll_result) {
+            const reader = poller.fifo(.stdout).reader();
+
+            while (poller.fifo(.stdout).count > 0) {
+                std.debug.print("---------------------\n", .{});
+
+                const header = try lsp.BaseProtocolHeader.parse(reader);
+                std.debug.print("header.content_length {d}\n", .{header.content_length});
+                std.debug.print("count after header: {d}\n", .{poller.fifo(.stdout).count});
+
+                const json_message = try self.aa.alloc(u8, header.content_length);
+                try reader.readNoEof(json_message);
+
+                std.debug.print("json_message: {s}\n", .{json_message});
+                std.debug.print("count after json_message: {d}\n", .{poller.fifo(.stdout).count});
+            }
         }
     }
-}
-
-fn handleWrites(self: *@This()) void {
-    const ClientCapabilities = struct {
-        // TODO:
-    };
-
-    const InitializeParams = struct {
-        processId: ?u32 = null,
-        rootUri: []const u8,
-        capabilities: ClientCapabilities = .{},
-    };
-
-    const initialize_request = lsp.TypedJsonRPCRequest(InitializeParams){
-        .id = .{ .number = 0 },
-        .method = "initialize",
-        .params = .{
-            .rootUri = "",
-        },
-    };
-
-    const blah_request = lsp.TypedJsonRPCRequest(InitializeParams){
-        .id = .{ .string = "blah" },
-        .method = "blah",
-        .params = null,
-    };
-
-    const meh_request = lsp.TypedJsonRPCRequest(InitializeParams){
-        .id = .{ .string = "meh" },
-        .method = "meh",
-        .params = null,
-    };
-
-    /////////////////////////////
-
-    self.lock.lock();
-    defer self.lock.unlock();
-
-    while (true) {
-        const request = switch (self.msg_kind) {
-            .initialize => initialize_request,
-            .blah => blah_request,
-            .meh => meh_request,
-        };
-        const json_str = std.json.stringifyAlloc(self.aa, request, .{}) catch unreachable;
-        self.transport.writeJsonMessage(json_str) catch unreachable;
-
-        if (self.msg_kind == .meh) {
-            self.proc.stdin.?.close();
-            self.proc.stdin = null;
-            break;
-        }
-
-        self.condition.wait(&self.lock);
-    }
-
-    std.debug.print("yo no more write\n", .{});
 }
