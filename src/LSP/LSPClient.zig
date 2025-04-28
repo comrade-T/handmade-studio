@@ -64,13 +64,17 @@ fn spawnAndWait(self: *@This()) void {
 
     const read_thread = Thread.spawn(.{ .allocator = self.aa }, handleReads, .{self}) catch unreachable;
     read_thread.detach();
-    const write_thread = Thread.spawn(.{ .allocator = self.aa }, handleWrites, .{self}) catch unreachable;
-    write_thread.detach();
+
+    self.handleWrites();
 
     _ = self.proc.wait() catch unreachable;
+
+    std.debug.print("yo waiting is done!\n", .{});
 }
 
 fn handleReads(self: *@This()) void {
+    defer std.debug.print("yo no more reads\n", .{});
+
     while (true) {
         const output = self.transport.readJsonMessage(self.aa) catch |err| {
             if (err == error.EndOfStream) break;
@@ -148,6 +152,14 @@ fn handleWrites(self: *@This()) void {
         const json_str = std.json.stringifyAlloc(self.aa, request, .{}) catch unreachable;
         self.transport.writeJsonMessage(json_str) catch unreachable;
 
+        if (self.msg_kind == .meh) {
+            self.proc.stdin.?.close();
+            self.proc.stdin = null;
+            break;
+        }
+
         self.condition.wait(&self.lock);
     }
+
+    std.debug.print("yo no more write\n", .{});
 }
