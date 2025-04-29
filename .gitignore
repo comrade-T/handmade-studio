@@ -6,3 +6,5 @@ submodules/
 *.tracy
 .handmade_studio/
 *.vim
+
+server_path.txt

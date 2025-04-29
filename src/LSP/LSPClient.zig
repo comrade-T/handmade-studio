@@ -28,21 +28,24 @@ const types = lsp.types;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-aa: Allocator,
+a: Allocator,
 proc: std.process.Child,
+poller: std.io.Poller(StreamEnum) = undefined,
+request: ?Request = null,
 
-transport: lsp.TransportOverStdio = undefined,
-lock: Mutex = .{},
-condition: Condition = .{},
+const StreamEnum = enum { stdout };
+const SERVER_PATH = @embedFile("server_path.txt");
 
-msg_kind: enum { initialize, blah, meh } = .initialize,
+const Request = struct {
+    // TODO:
+};
 
-pub fn init(aa: Allocator) !LSPClient {
-    const argv = [_][]const u8{"/home/ziontee113/.local/share/nvim/mason/bin/zls"};
+pub fn init(a: Allocator) !LSPClient {
+    const argv = [_][]const u8{SERVER_PATH};
 
     var self = LSPClient{
-        .aa = aa,
-        .proc = std.process.Child.init(&argv, aa),
+        .a = a,
+        .proc = std.process.Child.init(&argv, a),
     };
 
     self.proc.stdin_behavior = .Pipe;
@@ -52,67 +55,35 @@ pub fn init(aa: Allocator) !LSPClient {
     return self;
 }
 
+pub fn deinit(self: *@This()) !void {
+    self.poller.deinit();
+}
+
 pub fn start(self: *@This()) !void {
-    const thread = try std.Thread.spawn(.{ .allocator = self.aa }, spawnAndWaitPoll, .{self});
-    thread.detach();
-}
+    try self.proc.spawn();
 
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-pub fn sendBlah(self: *@This()) void {
-    {
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        self.msg_kind = .blah;
-    }
-    self.condition.signal();
-}
-
-pub fn sendMeh(self: *@This()) void {
-    {
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        self.msg_kind = .meh;
-    }
-    self.condition.signal();
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-fn spawnAndWaitPoll(self: *@This()) !void {
-    self.proc.spawn() catch unreachable;
-    self.transport = lsp.TransportOverStdio.init(self.proc.stdout.?, self.proc.stdin.?);
-
-    var poller = std.io.poll(self.aa, enum { stdout }, .{
+    self.poller = std.io.poll(self.a, enum { stdout }, .{
         .stdout = self.proc.stdout.?,
     });
-    defer poller.deinit();
+}
 
-    while (true) {
-        const poll_result = try poller.poll();
+pub fn onFrame(self: *@This()) !void {
 
-        std.debug.print("=========================================================\n", .{});
-        std.debug.print("poll result: {any}\n", .{poll_result});
-        std.debug.print("count: {d}\n", .{poller.fifo(.stdout).count});
+    ///////////////////////////// Read
 
-        if (poll_result) {
-            const reader = poller.fifo(.stdout).reader();
+    const POLL_TIMEOUT_NS = 1_000;
+    const poll_result = try self.poller.pollTimeout(POLL_TIMEOUT_NS);
 
-            while (poller.fifo(.stdout).count > 0) {
-                std.debug.print("---------------------\n", .{});
+    if (poll_result) {
+        // TODO: read from stdout
+    }
 
-                const header = try lsp.BaseProtocolHeader.parse(reader);
-                std.debug.print("header.content_length {d}\n", .{header.content_length});
-                std.debug.print("count after header: {d}\n", .{poller.fifo(.stdout).count});
+    ///////////////////////////// Write
 
-                const json_message = try self.aa.alloc(u8, header.content_length);
-                try reader.readNoEof(json_message);
+    if (self.request) |request| {
+        const json_str = try std.json.stringifyAlloc(self.a, request, .{});
+        defer self.a.free(json_str);
 
-                std.debug.print("json_message: {s}\n", .{json_message});
-                std.debug.print("count after json_message: {d}\n", .{poller.fifo(.stdout).count});
-            }
-        }
+        // TODO: write json_str to stdin
     }
 }
