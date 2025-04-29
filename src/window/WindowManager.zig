@@ -750,6 +750,7 @@ pub fn selectAllDescendants(self: *@This()) !void {
         const window = list.items[i];
         const tracker = self.connman.tracker_map.get(window.id) orelse continue;
         for (tracker.outgoing.keys()) |conn| {
+            if (!conn.isVisible(self)) continue;
             const conn_tracker = self.connman.tracker_map.get(conn.end.win_id) orelse continue;
             try list.append(conn_tracker.win);
         }
