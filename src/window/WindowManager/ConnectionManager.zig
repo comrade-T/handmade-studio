@@ -535,12 +535,12 @@ fn seekToNextVisibleCandidate(self: *@This()) void {
     const initial_index = self.cycle_index;
     while (self.cycle_index < self.cycle_map.count()) {
         const conn = self.cycle_map.keys()[self.cycle_index];
-        if (!conn.hidden) return;
+        if (conn.isVisible(self.wm)) return;
         self.cycle_index += 1;
     }
     for (0..initial_index) |i| {
         const conn = self.cycle_map.keys()[i];
-        if (!conn.hidden) {
+        if (conn.isVisible(self.wm)) {
             self.cycle_index = i;
             return;
         }
@@ -553,12 +553,12 @@ fn seekToPrevVisibleCandidate(self: *@This()) void {
     const initial_index = self.cycle_index;
     while (self.cycle_index > 0) {
         const conn = self.cycle_map.keys()[self.cycle_index];
-        if (!conn.hidden) return;
+        if (conn.isVisible(self.wm)) return;
         self.cycle_index -= 1;
     }
     for (initial_index..self.cycle_map.count()) |i| {
         const conn = self.cycle_map.keys()[i];
-        if (!conn.hidden) {
+        if (conn.isVisible(self.wm)) {
             self.cycle_index = i;
             return;
         }
