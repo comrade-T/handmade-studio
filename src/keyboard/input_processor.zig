@@ -237,6 +237,7 @@ pub const MappingCouncil = struct {
         for (mappings) |keys| try self.map(context_id, keys, callback);
     }
 
+    // mmc stands for "map multiple contexts"
     pub fn mmc(self: *@This(), contexts: []const []const u8, keys: []const Key, callback: Callback) !void {
         for (contexts) |context_id| try self.map(context_id, keys, callback);
     }

@@ -134,6 +134,7 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(NORMAL, &.{ .left_control, .j }, try SwitchActiveWinCb.init(a, sess, .bottom));
 
     try c.map(NORMAL, &.{ .space, .g, .p }, .{ .f = selectFirstIncomingWindow, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .j }, .{ .f = centerCameraAtActiveWindow, .ctx = sess });
 
     // toggle border
     try c.map(NORMAL, &.{ .left_control, .b }, .{ .f = toggleActiveWindowBorder, .ctx = sess });
@@ -146,6 +147,13 @@ pub fn mapKeys(sess: *Session) !void {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+
+fn centerCameraAtActiveWindow(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    const active_window = wm.active_window orelse return;
+    active_window.centerCameraAt(wm.mall);
+}
 
 fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
