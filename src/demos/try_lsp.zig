@@ -14,15 +14,17 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    _ = try LSPClient.init(arena.allocator());
+    var client = try LSPClient.init(arena.allocator());
+    try client.start();
 
-    // for (0..100) |i| {
-    //     std.debug.print("i = {d}\n", .{i});
-    //     std.Thread.sleep(100 * 1_000_000);
-    //
-    //     if (i == 30) client.sendBlah();
-    //     if (i == 60) client.sendMeh();
-    // }
+    for (0..30) |i| {
+        std.debug.print("i = {d}\n", .{i});
+        std.Thread.sleep(100 * 1_000_000);
+
+        try client.readOnFrame();
+
+        if (i == 5) try client.sendRequestToInitialize();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

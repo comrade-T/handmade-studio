@@ -7,4 +7,4 @@ submodules/
 .handmade_studio/
 *.vim
 
-server_path.txt
+src/LSP/*.txt

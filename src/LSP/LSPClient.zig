@@ -31,17 +31,21 @@ const types = lsp.types;
 a: Allocator,
 proc: std.process.Child,
 poller: std.io.Poller(StreamEnum) = undefined,
-request: ?Request = null,
+id_number: i64 = 0,
+
+pending_content_length: usize = 0,
+b_reader_remnant: []const u8 = "",
 
 const StreamEnum = enum { stdout };
 const SERVER_PATH = @embedFile("server_path.txt");
 
-const Request = struct {
-    // TODO:
-};
-
 pub fn init(a: Allocator) !LSPClient {
-    const argv = [_][]const u8{SERVER_PATH};
+    const path = if (SERVER_PATH[SERVER_PATH.len - 1] == '\r' or SERVER_PATH[SERVER_PATH.len - 1] == '\n')
+        SERVER_PATH[0 .. SERVER_PATH.len - 1]
+    else
+        SERVER_PATH;
+
+    const argv = [_][]const u8{path};
 
     var self = LSPClient{
         .a = a,
@@ -57,33 +61,122 @@ pub fn init(a: Allocator) !LSPClient {
 
 pub fn deinit(self: *@This()) !void {
     self.poller.deinit();
+    if (self.b_reader_remnant.len > 0) self.a.free(self.b_reader_remnant);
 }
 
 pub fn start(self: *@This()) !void {
     try self.proc.spawn();
 
-    self.poller = std.io.poll(self.a, enum { stdout }, .{
+    self.poller = std.io.poll(self.a, StreamEnum, .{
         .stdout = self.proc.stdout.?,
     });
 }
 
-pub fn onFrame(self: *@This()) !void {
-
-    ///////////////////////////// Read
-
+pub fn readOnFrame(self: *@This()) !void {
     const POLL_TIMEOUT_NS = 1_000;
     const poll_result = try self.poller.pollTimeout(POLL_TIMEOUT_NS);
 
     if (poll_result) {
-        // TODO: read from stdout
+        const stdout = self.poller.fifo(.stdout);
+        var b_reader = std.io.bufferedReader(stdout.reader());
+
+        if (self.b_reader_remnant.len > 0) {
+            @memcpy(b_reader.buf[0..self.b_reader_remnant.len], self.b_reader_remnant);
+            b_reader.start = 0;
+            b_reader.end = self.b_reader_remnant.len;
+
+            self.a.free(self.b_reader_remnant);
+            self.b_reader_remnant = "";
+        }
+
+        while (stdout.count > 0 or b_reader.end - b_reader.start > 0) {
+            const MIN_COUNT = 64;
+
+            if (stdout.count < MIN_COUNT) {
+                const buf_size = b_reader.end - b_reader.start;
+                if (buf_size < MIN_COUNT) {
+                    if (buf_size == 0) break;
+                    self.b_reader_remnant = try self.a.dupe(u8, b_reader.buf[b_reader.start..b_reader.end]);
+                    break;
+                }
+            }
+
+            const msg_len = if (self.pending_content_length == 0) blk: {
+                const header = try lsp.BaseProtocolHeader.parse(stdout.reader());
+                break :blk header.content_length;
+            } else self.pending_content_length;
+
+            if (stdout.count < msg_len and b_reader.end - b_reader.start < msg_len) {
+                self.pending_content_length = msg_len;
+                break;
+            }
+            self.pending_content_length = 0;
+
+            const json_msg = try self.a.alloc(u8, msg_len);
+            defer self.a.free(json_msg);
+            try stdout.reader().readNoEof(json_msg);
+
+            std.debug.print("json_msg: '{s}'\n", .{json_msg});
+        }
     }
+}
 
-    ///////////////////////////// Write
+////////////////////////////////////////////////////////////////////////////////////////////// Getters
 
-    if (self.request) |request| {
-        const json_str = try std.json.stringifyAlloc(self.a, request, .{});
-        defer self.a.free(json_str);
+fn getIDNumberThenIncrementIt(self: *@This()) i64 {
+    defer self.id_number += 1;
+    return self.id_number;
+}
 
-        // TODO: write json_str to stdin
-    }
+fn getStdIn(self: *@This()) std.fs.File {
+    return self.proc.stdin orelse unreachable;
+}
+
+fn getStdout(self: *@This()) std.fs.File {
+    return self.proc.stdout orelse unreachable;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Request
+
+const ROOT_URI = @embedFile("root_uri.txt");
+pub fn sendRequestToInitialize(self: *@This()) !void {
+    const uri = if (ROOT_URI[ROOT_URI.len - 1] == '\r' or ROOT_URI[ROOT_URI.len - 1] == '\n')
+        ROOT_URI[0 .. ROOT_URI.len - 1]
+    else
+        ROOT_URI;
+    std.debug.print("uri:  '{s}'\n", .{uri});
+
+    const req = lsp.TypedJsonRPCRequest(types.InitializeParams){
+        .id = .{ .number = self.getIDNumberThenIncrementIt() },
+        .method = "initialize",
+        .params = .{
+            .rootUri = uri,
+            .capabilities = .{
+                .general = .{
+                    .positionEncodings = &.{.@"utf-8"},
+                },
+            },
+        },
+    };
+    try serializeObjAndWriteItToFile(self.a, self.getStdIn(), req);
+}
+
+fn serializeObjAndWriteItToFile(a: Allocator, file: std.fs.File, obj: anytype) !void {
+    const json_str = try std.json.stringifyAlloc(a, obj, .{});
+    defer a.free(json_str);
+    try writeJsonMessage(file, json_str);
+}
+
+fn writeJsonMessage(file: std.fs.File, json_str: []const u8) !void {
+    const header: lsp.BaseProtocolHeader = .{ .content_length = json_str.len };
+
+    var buffer: [64]u8 = undefined;
+    const prefix = std.fmt.bufPrint(&buffer, "{}", .{header}) catch unreachable;
+
+    var iovecs: [2]std.posix.iovec_const = .{
+        .{ .base = prefix.ptr, .len = prefix.len },
+        .{ .base = json_str.ptr, .len = json_str.len },
+    };
+
+    try file.writevAll(&iovecs);
 }
