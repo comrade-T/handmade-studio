@@ -33,7 +33,7 @@ proc: std.process.Child,
 poller: std.io.Poller(StreamEnum) = undefined,
 id_number: i64 = 0,
 
-pending_content_length: usize = 0,
+pending_content_length: ?usize = null,
 b_reader_remnant: []const u8 = "",
 
 const StreamEnum = enum { stdout };
@@ -90,31 +90,36 @@ pub fn readOnFrame(self: *@This()) !void {
         }
 
         while (stdout.count > 0 or b_reader.end - b_reader.start > 0) {
-            const MIN_COUNT = 64;
+            if (self.pending_content_length == null) {
+                const MIN_HEADER_SIZE = 32;
+                if (stdout.count < MIN_HEADER_SIZE) {
+                    const buf_size = b_reader.end - b_reader.start;
+                    if (buf_size < MIN_HEADER_SIZE) {
+                        if (buf_size == 0) break;
+                        self.b_reader_remnant = try self.a.dupe(u8, b_reader.buf[b_reader.start..b_reader.end]);
+                        break;
+                    }
+                }
 
-            if (stdout.count < MIN_COUNT) {
+                const header = try lsp.BaseProtocolHeader.parse(b_reader.reader());
+                self.pending_content_length = header.content_length;
+            }
+
+            const content_length = self.pending_content_length orelse continue;
+            if (stdout.count < content_length) {
                 const buf_size = b_reader.end - b_reader.start;
-                if (buf_size < MIN_COUNT) {
+                if (buf_size < content_length) {
                     if (buf_size == 0) break;
                     self.b_reader_remnant = try self.a.dupe(u8, b_reader.buf[b_reader.start..b_reader.end]);
                     break;
                 }
             }
 
-            const msg_len = if (self.pending_content_length == 0) blk: {
-                const header = try lsp.BaseProtocolHeader.parse(stdout.reader());
-                break :blk header.content_length;
-            } else self.pending_content_length;
+            defer self.pending_content_length = null;
 
-            if (stdout.count < msg_len and b_reader.end - b_reader.start < msg_len) {
-                self.pending_content_length = msg_len;
-                break;
-            }
-            self.pending_content_length = 0;
-
-            const json_msg = try self.a.alloc(u8, msg_len);
+            const json_msg = try self.a.alloc(u8, content_length);
             defer self.a.free(json_msg);
-            try stdout.reader().readNoEof(json_msg);
+            try b_reader.reader().readNoEof(json_msg);
 
             std.debug.print("json_msg: '{s}'\n", .{json_msg});
         }
@@ -175,7 +180,7 @@ pub fn sendInitializedNotification(self: *@This()) !void {
 }
 
 const DOCUMENT_URI = @embedFile("document_uri.txt");
-pub fn sendTypeDefinitionRequest(self: *@This()) !void {
+pub fn sendDefinitionRequest(self: *@This()) !void {
     const document_uri = if (DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\r' or DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\n')
         DOCUMENT_URI[0 .. DOCUMENT_URI.len - 1]
     else
@@ -186,7 +191,24 @@ pub fn sendTypeDefinitionRequest(self: *@This()) !void {
         .method = "textDocument/definition",
         .params = .{
             .textDocument = .{ .uri = document_uri },
-            .position = .{ .line = 58, .character = 13 },
+            .position = .{ .line = 41, .character = 16 },
+        },
+    };
+    try serializeObjAndWriteItToFile(self.a, self.getStdIn(), req);
+}
+
+pub fn sendDeclarationRequest(self: *@This()) !void {
+    const document_uri = if (DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\r' or DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\n')
+        DOCUMENT_URI[0 .. DOCUMENT_URI.len - 1]
+    else
+        DOCUMENT_URI;
+
+    const req = lsp.TypedJsonRPCRequest(types.DeclarationParams){
+        .id = .{ .number = self.getIDNumberThenIncrementIt() },
+        .method = "textDocument/declaration",
+        .params = .{
+            .textDocument = .{ .uri = document_uri },
+            .position = .{ .line = 41, .character = 16 },
         },
     };
     try serializeObjAndWriteItToFile(self.a, self.getStdIn(), req);

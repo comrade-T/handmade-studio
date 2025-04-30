@@ -26,7 +26,8 @@ pub fn main() !void {
         if (i == 5) try client.sendRequestToInitialize();
         if (i == 6) try client.sendInitializedNotification();
         if (i == 10) try client.sendDidOpenNotification();
-        if (i == 15) try client.sendTypeDefinitionRequest();
+        if (i == 14) try client.sendDeclarationRequest();
+        if (i == 15) try client.sendDefinitionRequest();
     }
 }
 
