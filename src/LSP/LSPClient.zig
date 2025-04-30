@@ -59,9 +59,9 @@ pub fn init(a: Allocator) !LSPClient {
     return self;
 }
 
-pub fn deinit(self: *@This()) !void {
-    self.poller.deinit();
+pub fn deinit(self: *@This()) void {
     if (self.b_reader_remnant.len > 0) self.a.free(self.b_reader_remnant);
+    self.poller.deinit();
 }
 
 pub fn start(self: *@This()) !void {

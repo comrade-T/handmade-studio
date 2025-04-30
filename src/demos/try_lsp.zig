@@ -11,23 +11,31 @@ const LSPClient = @import("LSPClient");
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    var gpa_: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa_.deinit();
+    const gpa = gpa_.allocator();
 
-    var client = try LSPClient.init(arena.allocator());
-    try client.start();
+    var c1 = try LSPClient.init(gpa);
+    defer c1.deinit();
+    try c1.start();
+
+    var c2 = try LSPClient.init(gpa);
+    defer c2.deinit();
+    try c2.start();
 
     for (0..30) |i| {
         std.debug.print("i = {d}\n", .{i});
         std.Thread.sleep(100 * 1_000_000);
 
-        try client.readOnFrame();
+        for ([_]*LSPClient{ &c1, &c2 }) |client| {
+            try client.readOnFrame();
 
-        if (i == 5) try client.sendRequestToInitialize();
-        if (i == 6) try client.sendInitializedNotification();
-        if (i == 10) try client.sendDidOpenNotification();
-        if (i == 14) try client.sendDeclarationRequest();
-        if (i == 15) try client.sendDefinitionRequest();
+            if (i == 5) try client.sendRequestToInitialize();
+            if (i == 6) try client.sendInitializedNotification();
+            if (i == 10) try client.sendDidOpenNotification();
+            if (i == 14) try client.sendDeclarationRequest();
+            if (i == 15) try client.sendDefinitionRequest();
+        }
     }
 }
 
