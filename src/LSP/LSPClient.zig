@@ -78,7 +78,7 @@ pub fn readOnFrame(self: *@This()) !void {
 
     if (poll_result) {
         const stdout = self.poller.fifo(.stdout);
-        var b_reader = std.io.bufferedReader(stdout.reader());
+        var b_reader = std.io.bufferedReaderSize(512, stdout.reader());
 
         if (self.b_reader_remnant.len > 0) {
             @memcpy(b_reader.buf[0..self.b_reader_remnant.len], self.b_reader_remnant);
@@ -144,7 +144,6 @@ pub fn sendRequestToInitialize(self: *@This()) !void {
         ROOT_URI[0 .. ROOT_URI.len - 1]
     else
         ROOT_URI;
-    std.debug.print("uri:  '{s}'\n", .{uri});
 
     const req = lsp.TypedJsonRPCRequest(types.InitializeParams){
         .id = .{ .number = self.getIDNumberThenIncrementIt() },
@@ -152,9 +151,67 @@ pub fn sendRequestToInitialize(self: *@This()) !void {
         .params = .{
             .rootUri = uri,
             .capabilities = .{
+                .textDocument = .{
+                    .definition = .{
+                        .dynamicRegistration = false,
+                        .linkSupport = false,
+                    },
+                },
                 .general = .{
                     .positionEncodings = &.{.@"utf-8"},
                 },
+            },
+        },
+    };
+    try serializeObjAndWriteItToFile(self.a, self.getStdIn(), req);
+}
+
+pub fn sendInitializedNotification(self: *@This()) !void {
+    const req = lsp.TypedJsonRPCNotification(types.InitializedParams){
+        .method = "initialized",
+        .params = .{},
+    };
+    try serializeObjAndWriteItToFile(self.a, self.getStdIn(), req);
+}
+
+const DOCUMENT_URI = @embedFile("document_uri.txt");
+pub fn sendTypeDefinitionRequest(self: *@This()) !void {
+    const document_uri = if (DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\r' or DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\n')
+        DOCUMENT_URI[0 .. DOCUMENT_URI.len - 1]
+    else
+        DOCUMENT_URI;
+
+    const req = lsp.TypedJsonRPCRequest(types.DefinitionParams){
+        .id = .{ .number = self.getIDNumberThenIncrementIt() },
+        .method = "textDocument/definition",
+        .params = .{
+            .textDocument = .{ .uri = document_uri },
+            .position = .{ .line = 58, .character = 13 },
+        },
+    };
+    try serializeObjAndWriteItToFile(self.a, self.getStdIn(), req);
+}
+
+const DOCUMENT_TEXT = @embedFile("LSPClient.zig");
+pub fn sendDidOpenNotification(self: *@This()) !void {
+    const document_uri = if (DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\r' or DOCUMENT_URI[DOCUMENT_URI.len - 1] == '\n')
+        DOCUMENT_URI[0 .. DOCUMENT_URI.len - 1]
+    else
+        DOCUMENT_URI;
+
+    const document_text = if (DOCUMENT_TEXT[DOCUMENT_TEXT.len - 1] == '\r' or DOCUMENT_TEXT[DOCUMENT_TEXT.len - 1] == '\n')
+        DOCUMENT_TEXT[0 .. DOCUMENT_TEXT.len - 1]
+    else
+        DOCUMENT_TEXT;
+
+    const req = lsp.TypedJsonRPCNotification(types.DidOpenTextDocumentParams){
+        .method = "textDocument/didOpen",
+        .params = .{
+            .textDocument = .{
+                .uri = document_uri,
+                .languageId = "zig",
+                .version = 0,
+                .text = document_text,
             },
         },
     };
