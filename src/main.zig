@@ -32,6 +32,7 @@ const RenderMall = @import("RenderMall");
 
 const LangSuite = @import("LangSuite");
 const Session = @import("Session");
+const LSPClientManager = @import("LSPClientManager");
 
 const fuzzy_finders = @import("fuzzy_finders");
 const AnchorPicker = @import("AnchorPicker");
@@ -176,6 +177,10 @@ pub fn main() anyerror!void {
     var notification_line = NotificationLine{ .a = gpa, .mall = &mall };
     defer notification_line.deinit();
 
+    // LSPClientManager
+    var lspman = LSPClientManager{ .a = gpa };
+    defer lspman.deinit();
+
     // Session
     var session = Session{
         .a = gpa,
@@ -187,6 +192,7 @@ pub fn main() anyerror!void {
 
         .ap = &anchor_picker,
         .council = council,
+        .lspman = &lspman,
     };
     defer session.deinit();
     try session.mapKeys();

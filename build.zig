@@ -131,7 +131,7 @@ pub fn build(b: *std.Build) void {
     const linked_list = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
     _ = linked_list;
 
-    const LSPClient = addTestableModule(&bops, "src/LSP/LSPClient.zig", &.{
+    const lsp_client_manager = addTestableModule(&bops, "src/LSP/LSPClientManager.zig", &.{
         .{ .name = "lsp_codegen", .module = lsp_codegen.module("lsp") },
     }, zig_build_test_step);
 
@@ -219,6 +219,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "AnchorPicker", .module = anchor_picker.module },
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "ConfirmationPrompt", .module = confirmation_prompt.module },
+        .{ .name = "LSPClientManager", .module = lsp_client_manager.module },
     }, zig_build_test_step);
 
     const fuzzy_finders = addTestableModule(&bops, "src/components/FuzzyFinder/fuzzy_finders.zig", &.{
@@ -270,6 +271,7 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addImport("ConfirmationPrompt", confirmation_prompt.module);
         exe.root_module.addImport("NotificationLine", notification_line.module);
 
+        exe.root_module.addImport("LSPClientManager", lsp_client_manager.module);
         exe.root_module.addImport("Session", session.module);
 
         exe.root_module.addImport("ztracy", ztracy.module("root"));
@@ -334,7 +336,7 @@ pub fn build(b: *std.Build) void {
         const path = "src/demos/try_lsp.zig";
         const exe = b.addExecutable(.{ .name = "try_lsp", .root_source_file = b.path(path), .target = target, .optimize = optimize });
         exe.root_module.addImport("lsp_codegen", lsp_codegen.module("lsp"));
-        exe.root_module.addImport("LSPClient", LSPClient.module);
+        exe.root_module.addImport("LSPClient", lsp_client_manager.module);
         addRunnableFile(b, exe, path);
     }
 }

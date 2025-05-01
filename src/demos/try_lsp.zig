@@ -15,26 +15,26 @@ pub fn main() !void {
     defer _ = gpa_.deinit();
     const gpa = gpa_.allocator();
 
-    var c1 = try LSPClient.init(gpa);
-    defer c1.deinit();
+    var c1 = try LSPClient.create(gpa);
+    defer c1.destroy();
     try c1.start();
 
-    var c2 = try LSPClient.init(gpa);
-    defer c2.deinit();
-    try c2.start();
+    // var c2 = try LSPClient.init(gpa);
+    // defer c2.deinit();
+    // try c2.start();
 
     for (0..30) |i| {
         std.debug.print("i = {d}\n", .{i});
         std.Thread.sleep(100 * 1_000_000);
 
-        for ([_]*LSPClient{ &c1, &c2 }) |client| {
+        for ([_]*LSPClient{c1}) |client| {
             try client.readOnFrame();
 
             if (i == 5) try client.sendRequestToInitialize();
             if (i == 6) try client.sendInitializedNotification();
             if (i == 10) try client.sendDidOpenNotification();
             if (i == 14) try client.sendDeclarationRequest();
-            if (i == 15) try client.sendDefinitionRequest();
+            // if (i == 15) try client.sendDefinitionRequest();
         }
     }
 }

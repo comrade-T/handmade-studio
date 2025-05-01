@@ -70,6 +70,10 @@ selection_window_picker: WindowPicker,
 
 selection: Selection,
 
+// temporary solution for LSP
+post_file_open_callback_func: ?*const fn (ctx: *anyopaque, win: *Window) anyerror!void = null,
+post_file_open_callback_ctx: *anyopaque = undefined,
+
 pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*WindowManager {
     const QUADTREE_WIDTH = 2_000_000;
 
@@ -399,7 +403,12 @@ pub fn spawnWindow(
     if (add_to_history) try self.addWindowToSpawnHistory(&.{window});
     try self.wmap.put(self.a, window, handler);
 
-    if (from == .file) try self.fmap.put(self.a, handler.source.path, handler);
+    if (from == .file) {
+        try self.fmap.put(self.a, handler.source.path, handler);
+        if (self.post_file_open_callback_func) |f| {
+            try f(self.post_file_open_callback_ctx, window);
+        }
+    }
 
     if (make_active or self.active_window == null) self.setActiveWindow(window, true);
 }
@@ -729,14 +738,12 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Align
 
 /////////////////////////////
 
-pub fn selectActiveWindow(self: *@This()) !void {
-    if (!self.selection.isEmpty()) return;
+pub fn toggleActiveWindowFromSelection(self: *@This()) !void {
     const active_window = self.active_window orelse return;
-    try self.selection.addWindow(active_window);
+    try self.selection.toggleWindow(active_window);
 }
 
 pub fn selectAllDescendants(self: *@This()) !void {
-    if (!self.selection.isEmpty()) return;
     const active_window = self.active_window orelse return;
 
     var list = std.ArrayList(*Window).init(self.a);

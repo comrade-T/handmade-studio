@@ -31,12 +31,16 @@ pub fn mapKeys(sess: *Session) !void {
 const NORMAL = "normal";
 const VISUAL = "visual";
 const INSERT = "insert";
+const G_PREFIX = "G_PREFIX";
 
 const NORMAL_TO_INSERT = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{INSERT} };
 const INSERT_TO_NORMAL = Callback.Contexts{ .remove = &.{INSERT}, .add = &.{NORMAL} };
 const NORMAL_TO_VISUAL = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{VISUAL} };
 const VISUAL_TO_NORMAL = Callback.Contexts{ .remove = &.{VISUAL}, .add = &.{NORMAL} };
 const VISUAL_TO_INSERT = Callback.Contexts{ .remove = &.{VISUAL}, .add = &.{INSERT} };
+
+const NORMAL_TO_G_PREFIX = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{G_PREFIX} };
+const G_PREFIX_TO_NORMAL = Callback.Contexts{ .remove = &.{G_PREFIX}, .add = &.{NORMAL} };
 
 fn mapNormalMode(sess: *Session, c: *Session.MappingCouncil) !void {
 
@@ -86,6 +90,9 @@ fn mapNormalMode(sess: *Session, c: *Session.MappingCouncil) !void {
         .contexts = NORMAL_TO_INSERT,
         .require_clarity_afterwards = true,
     });
+
+    // g prefix
+    try c.map(NORMAL, &.{.g}, .{ .f = nop, .ctx = sess, .contexts = NORMAL_TO_G_PREFIX });
 }
 
 fn mapVisualMode(sess: *Session, council: *Session.MappingCouncil) !void {
@@ -163,6 +170,27 @@ fn mapInsertMode(sess: *Session, council: *Session.MappingCouncil) !void {
 
     // backspace
     try council.map(INSERT, &.{.backspace}, .{ .f = backspace, .ctx = sess });
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// g prefix
+
+// fn mapGMode(sess: *Session) !void {
+//     const c = sess.council;
+//
+//     try c.map(G_PREFIX, &.{.d}, .{ .f = sendGoToDeclarationRequest, .ctx = sess, .contexts = G_PREFIX_TO_NORMAL });
+// }
+//
+// fn sendGoToDeclarationRequest(ctx: *anyopaque) !void {
+//     const session = @as(*Session, @ptrCast(@alignCast(ctx)));
+//     const wm = session.getActiveCanvasWindowManager() orelse return;
+//     const active_window = wm.active_window orelse return;
+//
+//     // TODO: integrate Session with LSPClient
+//     // TODO: create a method in LSPClient
+// }
+
+fn nop(ctx: *anyopaque) !void {
+    _ = ctx;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete

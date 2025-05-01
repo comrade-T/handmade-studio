@@ -42,6 +42,11 @@ pub fn create(sess: *Session) !*Canvas {
     const self = try sess.a.create(@This());
     const wm = try WindowManager.create(sess.a, sess.lang_hub, sess.mall);
     self.* = Canvas{ .sess = sess, .wm = wm };
+
+    // temporary solution for LSP
+    self.wm.post_file_open_callback_func = Session.postFileOpenCallback;
+    self.wm.post_file_open_callback_ctx = sess;
+
     return self;
 }
 

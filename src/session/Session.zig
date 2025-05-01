@@ -32,6 +32,7 @@ const ip_ = @import("input_processor");
 pub const Callback = ip_.Callback;
 pub const UpNDownCallback = ip_.UpNDownCallback;
 pub const MappingCouncil = ip_.MappingCouncil;
+const LSPClientManager = @import("LSPClientManager");
 
 const vim_related = @import("keymaps/vim_related.zig");
 const layout_related = @import("keymaps/layout_related.zig");
@@ -50,6 +51,7 @@ cp: *ConfirmationPrompt,
 
 ap: *AnchorPicker,
 council: *MappingCouncil,
+lspman: *LSPClientManager,
 
 active_index: ?usize = null,
 canvases: std.ArrayListUnmanaged(*Canvas) = .{},
@@ -225,4 +227,13 @@ pub const CallbackFunc = *const fn (ctx: *anyopaque) anyerror!void;
 
 pub fn addCallback(self: *@This(), key: TriggerCallbackKey, cb: TriggerCallback) !void {
     try self.tcbmap.put(self.a, key, cb);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// LSP Related
+
+// temporary solution for LSP
+pub fn postFileOpenCallback(ctx: *anyopaque, win: *WindowManager.Window) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    _ = self;
+    _ = win;
 }

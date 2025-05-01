@@ -31,6 +31,7 @@ const types = lsp.types;
 a: Allocator,
 proc: std.process.Child,
 poller: std.io.Poller(StreamEnum) = undefined,
+
 id_number: i64 = 0,
 
 pending_content_length: ?usize = null,
@@ -39,7 +40,7 @@ b_reader_remnant: []const u8 = "",
 const StreamEnum = enum { stdout };
 const SERVER_PATH = @embedFile("server_path.txt");
 
-pub fn init(a: Allocator) !LSPClient {
+pub fn create(a: Allocator) !*LSPClient {
     const path = if (SERVER_PATH[SERVER_PATH.len - 1] == '\r' or SERVER_PATH[SERVER_PATH.len - 1] == '\n')
         SERVER_PATH[0 .. SERVER_PATH.len - 1]
     else
@@ -47,7 +48,8 @@ pub fn init(a: Allocator) !LSPClient {
 
     const argv = [_][]const u8{path};
 
-    var self = LSPClient{
+    const self = try a.create(@This());
+    self.* = LSPClient{
         .a = a,
         .proc = std.process.Child.init(&argv, a),
     };
@@ -59,13 +61,15 @@ pub fn init(a: Allocator) !LSPClient {
     return self;
 }
 
-pub fn deinit(self: *@This()) void {
+pub fn destroy(self: *@This()) void {
     if (self.b_reader_remnant.len > 0) self.a.free(self.b_reader_remnant);
     self.poller.deinit();
+    self.a.destroy(self);
 }
 
 pub fn start(self: *@This()) !void {
     try self.proc.spawn();
+    try self.proc.waitForSpawn();
 
     self.poller = std.io.poll(self.a, StreamEnum, .{
         .stdout = self.proc.stdout.?,

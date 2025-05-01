@@ -97,6 +97,13 @@ pub fn destroy(self: *@This()) void {
     self.a.destroy(self);
 }
 
+pub fn getURI(self: *@This(), a: Allocator) !?[]u8 {
+    if (self.path.len == 0) null;
+    const abs_path = try std.fs.cwd().realpathAlloc(a, self.path);
+    defer a.free(abs_path);
+    return try std.fmt.allocPrint(a, "file://{s}", .{abs_path});
+}
+
 fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void {
     const lang_choice = LangSuite.getLangChoiceFromFilePath(self.path) orelse return;
     self.ls = try lang_hub.get(lang_choice);
