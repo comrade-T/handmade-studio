@@ -113,6 +113,14 @@ pub fn loadCanvasFromFile(self: *@This(), path: []const u8) !void {
         try self.notifyActiveCanvasName();
         return;
     }
+
+    for (self.canvases.items, 0..) |canvas, i| {
+        if (std.mem.eql(u8, canvas.path, path)) {
+            try self.switchCanvas(.{ .set = i });
+            return;
+        }
+    }
+
     active_canvas.saveCameraInfo();
     const new_canvas = try self.newCanvas();
     try new_canvas.loadFromFile(path);
@@ -185,12 +193,13 @@ fn previousCanvas(ctx: *anyopaque) !void {
     try self.switchCanvas(.prev);
 }
 
-fn switchCanvas(self: *@This(), kind: enum { prev, next }) !void {
+fn switchCanvas(self: *@This(), kind: union(enum) { prev, next, set: usize }) !void {
     const prev_index = self.active_index orelse return;
     const prev_canvas = self.getActiveCanvas() orelse return;
     prev_canvas.saveCameraInfo();
 
     switch (kind) {
+        .set => |set_to| self.active_index.? = set_to,
         .prev => self.active_index.? -|= 1,
         .next => {
             if (self.active_index.? + 1 < self.canvases.items.len)
