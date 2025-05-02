@@ -54,8 +54,14 @@ pub fn main() anyerror!void {
     ///////////////////////////// Window Initialization
 
     const rl_initwindow_zone = ztracy.ZoneNC(@src(), "raylib initWindow()", 0xAABBFF);
+    const window_resizable = comptime if (builtin.mode == .Debug) false else true;
 
-    rl.setConfigFlags(.{ .window_transparent = false, .vsync_hint = true, .msaa_4x_hint = true });
+    rl.setConfigFlags(.{
+        .window_transparent = false,
+        .vsync_hint = true,
+        .msaa_4x_hint = true,
+        .window_resizable = window_resizable,
+    });
 
     rl.initWindow(screen_width, screen_height, "Handmade Studio");
     defer rl.closeWindow();
