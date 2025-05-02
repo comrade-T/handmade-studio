@@ -157,7 +157,7 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         adjusted_opts.id.? += increment_winid_by;
 
         switch (state.source) {
-            .file => |path| try wm.spawnWindow(.file, path, adjusted_opts, true, false),
+            .file => |path| _ = try wm.spawnWindow(.file, path, adjusted_opts, true, false),
             .string => |string_id| {
                 const handler = strid_to_handler_map.get(string_id) orelse continue;
                 try wm.spawnWindowFromHandler(handler, adjusted_opts, true);

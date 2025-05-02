@@ -597,6 +597,8 @@ fn cycleToMirrorredConnection(self: *@This()) void {
     if (self.cycle_map.values().len < 2) return;
     const mirrored_angle = self.cycle_map.values()[self.cycle_index] * -1;
 
+    // TODO: handle hidden connections
+
     var new_cycle_index: usize = 0;
     var min_distance: f32 = std.math.floatMax(f32);
     for (self.cycle_map.values(), 0..) |angle, i| {

@@ -70,6 +70,8 @@ selection_window_picker: WindowPicker,
 
 selection: Selection,
 
+yanker: Yanker,
+
 // temporary solution for LSP
 post_file_open_callback_func: ?*const fn (ctx: *anyopaque, win: *Window) anyerror!void = null,
 post_file_open_callback_ctx: *anyopaque = undefined,
@@ -94,10 +96,12 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
         }, 0),
         .visible_windows = std.ArrayList(*Window).init(a),
 
-        .selection = try Selection.init(a),
-
         .window_picker_normal = WindowPicker{ .wm = self, .callback = .{ .f = setActiveWindowPickerCallback, .ctx = self } },
         .selection_window_picker = WindowPicker{ .wm = self, .callback = .{ .f = toggleWindowFromSelection, .ctx = self } },
+
+        .selection = try Selection.init(a),
+
+        .yanker = Yanker{ .wm = self },
     };
     return self;
 }
@@ -152,10 +156,11 @@ pub fn destroy(self: *@This()) void {
     self.visible_windows.deinit();
     self.updating_windows_map.deinit(self.a);
 
-    self.selection.deinit();
-
     self.hm.deinit();
     self.wshm.deinit();
+
+    self.selection.deinit();
+    self.yanker.map.deinit(self.a);
 
     self.a.destroy(self);
 }
@@ -224,6 +229,7 @@ pub const WindowSourceHandler = struct {
             var id = std.time.nanoTimestamp();
             while (true) {
                 if (id != wm.last_win_id) break;
+                std.Thread.sleep(1);
                 id = std.time.nanoTimestamp();
             }
             wm.last_win_id = id;
@@ -382,16 +388,16 @@ pub fn spawnWindow(
     opts: Window.SpawnOptions,
     make_active: bool,
     add_to_history: bool,
-) !void {
+) !*Window {
 
     // if file path exists in fmap
     if (from == .file) {
         if (self.fmap.get(source)) |handler| {
             const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
-            if (add_to_history) try self.addWindowToSpawnHistory(&.{window});
+            if (add_to_history) try self.addWindowsToSpawnHistory(&.{window});
             if (make_active or self.active_window == null) self.setActiveWindow(window, true);
-            return;
+            return window;
         }
     }
 
@@ -400,7 +406,7 @@ pub fn spawnWindow(
     try self.handlers.put(self.a, handler, {});
 
     const window = try handler.spawnWindow(self, opts);
-    if (add_to_history) try self.addWindowToSpawnHistory(&.{window});
+    if (add_to_history) try self.addWindowsToSpawnHistory(&.{window});
     try self.wmap.put(self.a, window, handler);
 
     if (from == .file) {
@@ -411,18 +417,19 @@ pub fn spawnWindow(
     }
 
     if (make_active or self.active_window == null) self.setActiveWindow(window, true);
+    return window;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// History
 
-fn addWindowToSpawnHistory(self: *@This(), windows: Windows) !void {
+fn addWindowsToSpawnHistory(self: *@This(), windows: Windows) !void {
     self.cleanUpAfterAppendingToHistory(
         self.a,
         try self.hm.addSpawnEvent(self.a, windows),
     );
 }
 
-fn addWindowToCloseHistory(self: *@This(), windows: Windows) !void {
+fn addWindowsToCloseHistory(self: *@This(), windows: Windows) !void {
     self.cleanUpAfterAppendingToHistory(
         self.a,
         try self.hm.addCloseEvent(self.a, windows),
@@ -525,7 +532,7 @@ pub fn getActiveWindows(self: *@This()) ?Windows {
     return (&self.active_window.?)[0..1];
 }
 
-pub fn closeActiveWindow(self: *@This()) !void {
+pub fn closeActiveWindows(self: *@This()) !void {
     const windows = self.getActiveWindows() orelse return;
     try self.closeWindows(windows, true);
 }
@@ -570,7 +577,7 @@ fn closeWindows(self: *@This(), windows: Windows, add_to_history: bool) !void {
         windows[i].close();
     }
 
-    if (add_to_history) try self.addWindowToCloseHistory(windows);
+    if (add_to_history) try self.addWindowsToCloseHistory(windows);
 
     self.setActiveWindow(new_active_window, false);
 }
@@ -603,7 +610,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
 ) !void {
     const prev = self.active_window orelse return;
 
-    try self.spawnWindow(from, source, win_opts, true, true);
+    _ = try self.spawnWindow(from, source, win_opts, true, true);
     const new = self.active_window orelse unreachable;
 
     var new_x: f32 = new.getX();
@@ -773,4 +780,87 @@ pub fn clearSelection(self: *@This()) !void {
 fn toggleWindowFromSelection(ctx: *anyopaque, window: *Window) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.selection.toggleWindow(window);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Yank & Paste Selected Windows
+
+const YankedWindowsMap = std.AutoArrayHashMapUnmanaged(*Window, void);
+
+const Yanker = struct {
+    wm: *WindowManager,
+    map: YankedWindowsMap = .{},
+
+    pub fn yankSelectedWindows(self: *@This()) !void {
+        if (self.wm.selection.isEmpty()) return;
+        self.clear();
+        for (self.wm.selection.wmap.keys()) |win| try self.addWindow(win);
+    }
+
+    fn hasThingsToPaste(self: *const @This()) bool {
+        return self.map.count() > 0;
+    }
+
+    fn addWindow(self: *@This(), win: *Window) !void {
+        try self.map.put(self.wm.a, win, {});
+    }
+
+    fn clear(self: *@This()) void {
+        self.map.clearRetainingCapacity();
+    }
+};
+
+pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
+    if (!self.yanker.hasThingsToPaste()) return;
+
+    var x_by: f32, var y_by: f32 = .{ 0, 0 };
+    if (kind == .screen_center) {
+        var min_left: f32 = std.math.floatMax(f32);
+        var min_top: f32 = std.math.floatMax(f32);
+        var max_right: f32 = std.math.floatMin(f32);
+        var max_bottom: f32 = std.math.floatMin(f32);
+
+        for (self.yanker.map.keys()) |win| {
+            min_left = @min(min_left, win.getX());
+            min_top = @min(min_top, win.getY());
+            max_right = @max(max_right, win.getX() + win.getWidth());
+            max_bottom = @max(max_bottom, win.getY() + win.getHeight());
+        }
+
+        const current_center_x = min_left + ((max_right - min_left) / 2);
+        const current_center_y = min_top + ((max_bottom - min_top) / 2);
+
+        const screen_rect = self.mall.getScreenRect(self.mall.target_camera);
+        const screen_center_x = screen_rect.x + screen_rect.width / 2;
+        const screen_center_y = screen_rect.y + screen_rect.height / 2;
+
+        x_by = screen_center_x - current_center_x;
+        y_by = screen_center_y - current_center_y;
+    }
+
+    var duped_windows = try self.a.alloc(*Window, self.yanker.map.count());
+    defer self.a.free(duped_windows);
+
+    for (self.yanker.map.keys(), 0..) |target, i| {
+        const new_window = try self.duplicateWindow(target, x_by, y_by);
+        duped_windows[i] = new_window;
+    }
+
+    try self.addWindowsToSpawnHistory(duped_windows);
+}
+
+fn duplicateWindow(self: *@This(), target: *const Window, move_x_by: f32, move_y_by: f32) !*Window {
+    var opts = target.produceSpawnOptions();
+    opts.id = null;
+    opts.pos.x += move_x_by;
+    opts.pos.y += move_y_by;
+
+    return switch (target.ws.from) {
+        .file => self.spawnWindow(.file, target.ws.path, opts, false, false),
+        .string => blk: {
+            const str_source = try target.ws.buf.ropeman.toString(self.a, .lf);
+            defer self.a.free(str_source);
+            const new_win = self.spawnWindow(.string, str_source, opts, false, false);
+            break :blk new_win;
+        },
+    };
 }

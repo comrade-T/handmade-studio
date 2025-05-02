@@ -229,6 +229,31 @@ pub fn addCallback(self: *@This(), key: TriggerCallbackKey, cb: TriggerCallback)
     try self.tcbmap.put(self.a, key, cb);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Yank Selected Windows
+
+pub fn yankSelectedWindows(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const wm = self.getActiveCanvasWindowManager() orelse return;
+    try wm.yanker.yankSelectedWindows();
+    try wm.clearSelection();
+
+    const msg = try std.fmt.allocPrint(self.a, "Yanked {d} Windows", .{wm.yanker.map.count()});
+    defer self.a.free(msg);
+    try self.nl.setMessage(msg);
+}
+
+pub fn pasteAtScreenCenter(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const wm = self.getActiveCanvasWindowManager() orelse return;
+    try wm.paste(.screen_center);
+}
+
+pub fn pasteInPlace(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const wm = self.getActiveCanvasWindowManager() orelse return;
+    try wm.paste(.in_place);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// LSP Related
 
 // temporary solution for LSP

@@ -515,7 +515,7 @@ pub fn intersects(self: *const Window, other: *const Window) bool {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Session
 
-fn produceSpawnOptions(self: *@This()) SpawnOptions {
+pub fn produceSpawnOptions(self: *const @This()) SpawnOptions {
     return SpawnOptions{
         .culling = self.attr.culling,
         .pos = self.attr.target_pos,
@@ -593,7 +593,7 @@ pub const Attributes = struct {
 
     limit: ?CursorManager.Limit = null,
 
-    const Position = struct {
+    pub const Position = struct {
         x: f32 = 0,
         y: f32 = 0,
         lerp_time: f32 = 0.2,

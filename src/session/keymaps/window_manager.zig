@@ -24,8 +24,8 @@ const Callback = Session.Callback;
 const NORMAL = "normal";
 pub const MULTI_WIN = "MULTI_WIN";
 
-const MULTI_WIN_TO_NORMAL = Callback.Contexts{ .remove = &.{MULTI_WIN}, .add = &.{NORMAL} };
-const NORMAL_TO_MULTI_WIN = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{MULTI_WIN} };
+pub const MULTI_WIN_TO_NORMAL = Callback.Contexts{ .remove = &.{MULTI_WIN}, .add = &.{NORMAL} };
+pub const NORMAL_TO_MULTI_WIN = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{MULTI_WIN} };
 
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
@@ -49,7 +49,7 @@ pub fn mapKeys(sess: *Session) !void {
 
     ///////////////////////////// Close Windows
 
-    try c.map(NORMAL, &.{ .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeActiveWindow, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_control, .q }, try AdaptedCb.init(a, sess, WindowManager.closeActiveWindows, .{}));
 
     try c.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
     try c.map(NORMAL, &.{ .left_control, .left_alt, .left_shift, .q }, try AdaptedCb.init(a, sess, WindowManager.closeAllWindows, .{}));
@@ -103,7 +103,7 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
             if (wm.active_window == null) {
                 const width, const height = wm.mall.icb.getScreenWidthHeight();
                 const x, const y = wm.mall.icb.getScreenToWorld2D(wm.mall.camera, width / 2, height / 2);
-                try wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true, true);
+                _ = try wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true, true);
                 return;
             }
 

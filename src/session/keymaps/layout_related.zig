@@ -27,6 +27,7 @@ const AlignConnectionAnchor = Session.WindowManager.ConnectionManager.AlignConne
 
 const NORMAL = "normal";
 const MULTI_WIN = @import("./window_manager.zig").MULTI_WIN;
+const MULTI_WIN_TO_NORMAL = @import("./window_manager.zig").MULTI_WIN_TO_NORMAL;
 
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
@@ -144,6 +145,11 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .h }, .{ .f = alignVerticallyToFirstConnectionTo, .ctx = sess });
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .j }, .{ .f = alignHorizontallyToFirstConnectionFrom, .ctx = sess });
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
+
+    ///////////////////////////// yank & paste
+
+    try c.map(MULTI_WIN, &.{.y}, .{ .f = Session.yankSelectedWindows, .ctx = sess, .contexts = MULTI_WIN_TO_NORMAL });
+    try c.map(NORMAL, &.{.p}, .{ .f = Session.pasteAtScreenCenter, .ctx = sess });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning

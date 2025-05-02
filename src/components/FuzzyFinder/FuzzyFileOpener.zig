@@ -118,7 +118,7 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     );
 
     const wm = self.sess.getActiveCanvasWindowManager() orelse return true;
-    try wm.spawnWindow(.file, path, .{
+    _ = try wm.spawnWindow(.file, path, .{
         .pos = .{ .x = x, .y = y },
         .subscribed_style_sets = &.{0},
     }, true, true);
