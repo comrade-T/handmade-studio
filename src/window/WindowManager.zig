@@ -776,6 +776,10 @@ pub fn clearSelection(self: *@This()) !void {
     self.selection.wmap.clearRetainingCapacity();
 }
 
+pub fn addWindowsToSelection(self: *@This(), windows: []const *Window) !void {
+    for (windows) |win| try self.selection.addWindow(win);
+}
+
 fn toggleWindowFromSelection(ctx: *anyopaque, window: *Window) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.selection.toggleWindow(window);
@@ -808,8 +812,8 @@ const Yanker = struct {
     }
 };
 
-pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
-    if (!self.yanker.hasThingsToPaste()) return;
+pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center }) ![]const *Window {
+    if (!self.yanker.hasThingsToPaste()) return &.{};
 
     var x_by: f32, var y_by: f32 = .{ 0, 0 };
     if (kind == .screen_center) {
@@ -838,8 +842,7 @@ pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
 
     /////////////////////////////
 
-    var duped_windows = try self.a.alloc(*Window, self.yanker.map.count());
-    defer self.a.free(duped_windows);
+    var duped_windows = try a.alloc(*Window, self.yanker.map.count());
 
     for (self.yanker.map.keys(), 0..) |target, i| {
         const new_window = try self.duplicateWindow(target, x_by, y_by);
@@ -880,7 +883,12 @@ pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
 
     /////////////////////////////
 
+    const index = self.yanker.map.getIndex(self.active_window.?) orelse unreachable;
+    self.setActiveWindow(duped_windows[index], true);
+
     try self.addWindowsToSpawnHistory(duped_windows);
+
+    return duped_windows;
 }
 
 fn duplicateWindow(self: *@This(), target: *const Window, move_x_by: f32, move_y_by: f32) !*Window {

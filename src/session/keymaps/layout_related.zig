@@ -150,6 +150,33 @@ pub fn mapKeys(sess: *Session) !void {
 
     try c.map(MULTI_WIN, &.{.y}, .{ .f = Session.yankSelectedWindows, .ctx = sess, .contexts = MULTI_WIN_TO_NORMAL });
     try c.map(NORMAL, &.{.p}, .{ .f = Session.pasteAtScreenCenter, .ctx = sess });
+
+    try c.mapUpNDown(MULTI_WIN, &.{.p}, .{
+        .down_ctx = sess,
+        .down_f = Session.nop,
+        .up_ctx = sess,
+        .up_f = Session.stopYankingDown,
+    });
+
+    const MoveByMaybePasteCb = struct {
+        sess: *Session,
+        x: f32,
+        y: f32,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            try self.sess.moveByAfterMaybePaste(self.x, self.y);
+        }
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, x: f32, y: f32) !Session.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .sess = sess_, .x = x, .y = y };
+            return Session.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try c.map(MULTI_WIN, &.{ .p, .a }, try MoveByMaybePasteCb.init(a, sess, -100, 0));
+    try c.map(MULTI_WIN, &.{ .p, .d }, try MoveByMaybePasteCb.init(a, sess, 100, 0));
+    try c.map(MULTI_WIN, &.{ .p, .w }, try MoveByMaybePasteCb.init(a, sess, 0, -100));
+    try c.map(MULTI_WIN, &.{ .p, .s }, try MoveByMaybePasteCb.init(a, sess, 0, 100));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning

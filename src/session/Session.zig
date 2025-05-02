@@ -58,6 +58,8 @@ canvases: std.ArrayListUnmanaged(*Canvas) = .{},
 
 tcbmap: std.AutoHashMapUnmanaged(TriggerCallbackKey, TriggerCallback) = .{},
 
+yanked_and_pasted: bool = false,
+
 pub fn mapKeys(self: *@This()) !void {
     const NORMAL = "normal";
     const c = self.council;
@@ -240,6 +242,35 @@ pub fn addCallback(self: *@This(), key: TriggerCallbackKey, cb: TriggerCallback)
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Yank Selected Windows
 
+pub fn nop(ctx: *anyopaque) !void {
+    _ = ctx;
+}
+
+pub fn moveByAfterMaybePaste(self: *@This(), x_by: f32, y_by: f32) !void {
+    if (!self.yanked_and_pasted) {
+        const wm = self.getActiveCanvasWindowManager() orelse return;
+        try wm.yanker.yankSelectedWindows();
+
+        const duped_windows = try wm.paste(self.a, .in_place);
+        defer self.a.free(duped_windows);
+
+        try wm.clearSelection();
+        try wm.addWindowsToSelection(duped_windows);
+
+        self.yanked_and_pasted = true;
+    }
+
+    const wm = self.getActiveCanvasWindowManager() orelse return;
+    try layout_related.moveActiveWindowBy(wm, x_by, y_by);
+}
+
+pub fn stopYankingDown(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.yanked_and_pasted = false;
+}
+
+/////////////////////////////
+
 pub fn yankSelectedWindows(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const wm = self.getActiveCanvasWindowManager() orelse return;
@@ -254,13 +285,8 @@ pub fn yankSelectedWindows(ctx: *anyopaque) !void {
 pub fn pasteAtScreenCenter(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const wm = self.getActiveCanvasWindowManager() orelse return;
-    try wm.paste(.screen_center);
-}
-
-pub fn pasteInPlace(ctx: *anyopaque) !void {
-    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const wm = self.getActiveCanvasWindowManager() orelse return;
-    try wm.paste(.in_place);
+    const duped_windows = try wm.paste(self.a, .screen_center);
+    defer self.a.free(duped_windows);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// LSP Related
