@@ -150,11 +150,8 @@ pub fn alignSelectedConnectionWindows(
 ) !void {
     const conn = self.getSelectedConnection() orelse return;
 
-    const start_tracker = self.tracker_map.get(conn.start.win_id) orelse return;
-    const end_tracker = self.tracker_map.get(conn.end.win_id) orelse return;
-
-    const mover = if (anchor == .start) end_tracker.win else start_tracker.win;
-    const target = if (anchor == .start) start_tracker.win else end_tracker.win;
+    const mover = if (anchor == .start) conn.end.win else conn.start.win;
+    const target = if (anchor == .start) conn.start.win else conn.end.win;
 
     try self.wm.alignWindows(mover, target, kind);
 }
@@ -170,10 +167,10 @@ pub const Connection = struct {
     hidden: bool = false,
     arrowhead_index: u32 = 0,
 
-    fn new(start_win_id: i128) Connection {
+    fn new(win: *Window) Connection {
         return Connection{
-            .start = .{ .win_id = start_win_id },
-            .end = .{ .win_id = start_win_id },
+            .start = .{ .win = win },
+            .end = .{ .win = win },
         };
     }
 
@@ -182,10 +179,10 @@ pub const Connection = struct {
     const CONNECTION_START_POINT_COLOR = MAGENTA;
     const CONNECTION_END_POINT_COLOR = CYAN;
 
-    fn calculateAngle(self: *const @This(), win_id: i128, wm: *const WindowManager) f32 {
-        const start_point, const end_point = if (win_id == self.start.win_id) .{ self.start, self.end } else .{ self.end, self.start };
-        const start_x, const start_y = (start_point.getPosition(wm) catch return 0) orelse return 0;
-        const end_x, const end_y = (end_point.getPosition(wm) catch return 0) orelse return 0;
+    fn calculateAngle(self: *const @This(), win: *Window) f32 {
+        const start_point, const end_point = if (win == self.start.win) .{ self.start, self.end } else .{ self.end, self.start };
+        const start_x, const start_y = (start_point.getPosition() catch return 0) orelse return 0;
+        const end_x, const end_y = (end_point.getPosition() catch return 0) orelse return 0;
 
         const deltaX = end_x - start_x;
         const deltaY = end_y - start_y;
@@ -197,8 +194,8 @@ pub const Connection = struct {
         const thickness = if (selected) connman.selected_connection_thickness else connman.connection_thickness;
         const color = if (selected) connman.selected_connection_color else connman.connection_color;
 
-        const start_x, const start_y = (self.start.getPosition(connman.wm) catch return assert(false)) orelse return;
-        const end_x, const end_y = (self.end.getPosition(connman.wm) catch return assert(false)) orelse return;
+        const start_x, const start_y = (self.start.getPosition() catch return assert(false)) orelse return;
+        const end_x, const end_y = (self.end.getPosition() catch return assert(false)) orelse return;
         connman.wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, thickness, color);
 
         const ah = if (self.arrowhead_index > 0)
@@ -210,8 +207,8 @@ pub const Connection = struct {
 
     fn renderPendingIndicators(self: *const @This(), wm: *const WindowManager) void {
         if (self.hidden) return;
-        const start_x, const start_y = (self.start.getPosition(wm) catch return assert(false)) orelse return;
-        const end_x, const end_y = (self.end.getPosition(wm) catch return assert(false)) orelse return;
+        const start_x, const start_y = (self.start.getPosition() catch return assert(false)) orelse return;
+        const end_x, const end_y = (self.end.getPosition() catch return assert(false)) orelse return;
         wm.mall.rcb.drawCircle(start_x, start_y, 10, CONNECTION_START_POINT_COLOR);
         wm.mall.rcb.drawCircle(end_x, end_y, 10, CONNECTION_END_POINT_COLOR);
     }
@@ -223,8 +220,8 @@ pub const Connection = struct {
     }
 
     pub fn swapPoints(self: *@This(), connman: *ConnectionManager) void {
-        var initial_start_tracker = connman.tracker_map.getPtr(self.start.win_id) orelse return;
-        var initial_end_tracker = connman.tracker_map.getPtr(self.end.win_id) orelse return;
+        var initial_start_tracker = connman.tracker_map.getPtr(self.start.win) orelse return;
+        var initial_end_tracker = connman.tracker_map.getPtr(self.end.win) orelse return;
 
         self.swapPointsOnly();
 
@@ -249,19 +246,16 @@ pub const Connection = struct {
         self.hidden = true;
     }
 
-    pub fn isVisible(self: *const @This(), wm: *const WindowManager) bool {
-        const start_tracker = wm.connman.tracker_map.get(self.start.win_id) orelse return false;
-        const end_tracker = wm.connman.tracker_map.get(self.end.win_id) orelse return false;
-        return !self.hidden and !start_tracker.win.closed and !end_tracker.win.closed;
+    pub fn isVisible(self: *const @This()) bool {
+        return !self.hidden and !self.start.win.closed and !self.end.win.closed;
     }
 
     const Point = struct {
-        win_id: i128,
+        win: *Window,
         anchor: Anchor = .E,
 
-        fn getPosition(self: *const @This(), wm: *const WindowManager) error{TrackerNotFound}!?struct { f32, f32 } {
-            const tracker = wm.connman.tracker_map.get(self.win_id) orelse return error.TrackerNotFound;
-            const win = tracker.win;
+        fn getPosition(self: *const @This()) error{TrackerNotFound}!?struct { f32, f32 } {
+            const win = self.win;
             if (win.closed) return null;
             switch (self.anchor) {
                 .N => return .{ win.attr.pos.x + win.getWidth() / 2, win.attr.pos.y },
@@ -275,6 +269,35 @@ pub const Connection = struct {
     pub const Anchor = enum { N, E, S, W };
 };
 
+///////////////////////////// Persistent
+
+pub const PersistentConnection = struct {
+    start: PersistentPoint,
+    end: PersistentPoint,
+    hidden: bool = false,
+    arrowhead_index: u32 = 0,
+
+    pub fn fromExistingConnection(conn: *const Connection) PersistentConnection {
+        return PersistentConnection{
+            .start = .{
+                .win_id = conn.start.win.id,
+                .anchor = conn.start.anchor,
+            },
+            .end = .{
+                .win_id = conn.end.win.id,
+                .anchor = conn.end.anchor,
+            },
+            .hidden = conn.hidden,
+            .arrowhead_index = conn.arrowhead_index,
+        };
+    }
+
+    const PersistentPoint = struct {
+        win_id: Window.ID,
+        anchor: Connection.Anchor,
+    };
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Pending Connection
 
 pub fn setPendingConnectionArrowhead(self: *@This(), index: u32) void {
@@ -283,26 +306,24 @@ pub fn setPendingConnectionArrowhead(self: *@This(), index: u32) void {
 
 pub fn switchPendingConnectionEndWindow(self: *@This(), direction: WindowManager.WindowRelativeDirection) void {
     if (self.pending_connection) |*pc| {
-        const start_b4 = self.tracker_map.get(pc.start.win_id) orelse return;
-        const end_b4 = self.tracker_map.get(pc.end.win_id) orelse return;
+        const start_b4 = pc.start.win;
+        const end_b4 = pc.end.win;
 
-        const init_is_end = if (end_b4.win == self.pending_connection_initial_window.?) true else false;
-        const candidate_starting_point = if (init_is_end) start_b4.win else end_b4.win;
+        const init_is_end = if (end_b4 == self.pending_connection_initial_window.?) true else false;
+        const candidate_starting_point = if (init_is_end) start_b4 else end_b4;
         _, const may_candidate = self.wm.findClosestWindowToDirection(candidate_starting_point, direction);
 
         if (may_candidate) |candidate| {
-            if (!init_is_end or (start_b4.win == end_b4.win)) {
-                pc.end.win_id = candidate.id;
+            if (!init_is_end or (start_b4 == end_b4)) {
+                pc.end.win = candidate;
             } else {
-                pc.start.win_id = candidate.id;
+                pc.start.win = candidate;
             }
 
-            const start = self.tracker_map.get(pc.start.win_id) orelse return;
-            const end = self.tracker_map.get(pc.end.win_id) orelse return;
-            pc.start.anchor, pc.end.anchor = calculateOptimalAnchorPoints(start.win, end.win);
+            pc.start.anchor, pc.end.anchor = calculateOptimalAnchorPoints(pc.start.win, pc.end.win);
 
             // should start on left side, should end at right side.
-            const angle = pc.calculateAngle(pc.start.win_id, self.wm);
+            const angle = pc.calculateAngle(pc.start.win);
             if (angle < 0) pc.swapPointsOnly();
         }
     }
@@ -343,13 +364,13 @@ fn calculateOptimalAnchorPoints(a: *const Window, b: *const Window) struct { Con
 
 pub fn startPendingConnection(self: *@This()) !void {
     const active_window = self.wm.active_window orelse return;
-    self.pending_connection = Connection.new(active_window.id);
+    self.pending_connection = Connection.new(active_window);
     self.pending_connection_initial_window = active_window;
 }
 
 pub fn confirmPendingConnection(self: *@This()) !void {
     const pc = self.pending_connection orelse return;
-    if (pc.start.win_id == pc.end.win_id) return;
+    if (pc.start.win == pc.end.win) return;
 
     defer self.cleanUpAfterPendingConnection();
     try self.addConnection(pc, true);
@@ -370,11 +391,11 @@ pub fn establishHardCodedPendingConnection(
     b: *Window,
     b_anchor: Connection.Anchor,
 ) !void {
-    self.pending_connection = Connection.new(a.id);
+    self.pending_connection = Connection.new(a);
     self.pending_connection_initial_window = a;
 
     self.pending_connection.?.start.anchor = a_anchor;
-    self.pending_connection.?.end = .{ .win_id = b.id, .anchor = b_anchor };
+    self.pending_connection.?.end = .{ .win = b, .anchor = b_anchor };
 
     try self.confirmPendingConnection();
 }
@@ -386,9 +407,8 @@ fn cleanUpAfterPendingConnection(self: *@This()) void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Trackers
 
-const TrackerMap = std.AutoArrayHashMapUnmanaged(Window.ID, WindowConnectionsTracker);
-const WindowConnectionsTracker = struct {
-    win: *Window,
+const TrackerMap = std.AutoArrayHashMapUnmanaged(*Window, Tracker);
+const Tracker = struct {
     incoming: ConnectionPtrMap = ConnectionPtrMap{},
     outgoing: ConnectionPtrMap = ConnectionPtrMap{},
 
@@ -399,12 +419,12 @@ const WindowConnectionsTracker = struct {
 };
 
 pub fn registerWindow(self: *@This(), window: *Window) !void {
-    try self.tracker_map.put(self.wm.a, window.id, ConnectionManager.WindowConnectionsTracker{ .win = window });
+    try self.tracker_map.put(self.wm.a, window, Tracker{});
 }
 
 pub fn addConnection(self: *@This(), conn: Connection, add_to_history: bool) !void {
-    var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
-    var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
+    var start_tracker = self.tracker_map.getPtr(conn.start.win) orelse return;
+    var end_tracker = self.tracker_map.getPtr(conn.end.win) orelse return;
 
     const c = try self.wm.a.create(Connection);
     c.* = conn;
@@ -424,10 +444,10 @@ pub fn addConnection(self: *@This(), conn: Connection, add_to_history: bool) !vo
 ////////////////////////////////////////////////////////////////////////////////////////////// Remove all connections of a window
 
 pub fn removeAllConnectionsOfWindow(self: *@This(), win: *WindowManager.Window) void {
-    var tracker = self.tracker_map.getPtr(win.id) orelse return;
+    var tracker = self.tracker_map.getPtr(win) orelse return;
     defer {
         tracker.deinit(self.wm.a);
-        assert(self.tracker_map.swapRemove(win.id));
+        assert(self.tracker_map.swapRemove(win));
     }
     for (tracker.incoming.keys()) |conn| self.removeConnection(conn);
     for (tracker.outgoing.keys()) |conn| self.removeConnection(conn);
@@ -456,12 +476,12 @@ pub fn hideSelectedConnection(self: *@This()) !void {
 }
 
 pub fn cleanUpConnectionAfterAppendingToHistory(self: *@This(), conn: *Connection) void {
-    if (!conn.isVisible(self.wm)) self.removeConnection(conn);
+    if (!conn.isVisible()) self.removeConnection(conn);
 }
 
 fn removeConnection(self: *@This(), conn: *Connection) void {
-    var start_tracker = self.tracker_map.getPtr(conn.start.win_id) orelse return;
-    var end_tracker = self.tracker_map.getPtr(conn.end.win_id) orelse return;
+    var start_tracker = self.tracker_map.getPtr(conn.start.win) orelse return;
+    var end_tracker = self.tracker_map.getPtr(conn.end.win) orelse return;
 
     _ = start_tracker.outgoing.swapRemove(conn);
     _ = end_tracker.incoming.swapRemove(conn);
@@ -535,12 +555,12 @@ fn seekToNextVisibleCandidate(self: *@This()) void {
     const initial_index = self.cycle_index;
     while (self.cycle_index < self.cycle_map.count()) {
         const conn = self.cycle_map.keys()[self.cycle_index];
-        if (conn.isVisible(self.wm)) return;
+        if (conn.isVisible()) return;
         self.cycle_index += 1;
     }
     for (0..initial_index) |i| {
         const conn = self.cycle_map.keys()[i];
-        if (conn.isVisible(self.wm)) {
+        if (conn.isVisible()) {
             self.cycle_index = i;
             return;
         }
@@ -553,12 +573,12 @@ fn seekToPrevVisibleCandidate(self: *@This()) void {
     const initial_index = self.cycle_index;
     while (self.cycle_index > 0) {
         const conn = self.cycle_map.keys()[self.cycle_index];
-        if (conn.isVisible(self.wm)) return;
+        if (conn.isVisible()) return;
         self.cycle_index -= 1;
     }
     for (initial_index..self.cycle_map.count()) |i| {
         const conn = self.cycle_map.keys()[i];
-        if (conn.isVisible(self.wm)) {
+        if (conn.isVisible()) {
             self.cycle_index = i;
             return;
         }
@@ -631,14 +651,14 @@ pub fn exitCycleMode(self: *@This()) !void {
 const CycleMap = std.AutoArrayHashMapUnmanaged(*Connection, f32);
 fn updateCycleMap(self: *@This()) !void {
     const win = self.wm.active_window orelse return;
-    const tracker = self.tracker_map.getPtr(win.id) orelse return;
+    const tracker = self.tracker_map.getPtr(win) orelse return;
     if (tracker.incoming.keys().len == 0 and tracker.outgoing.keys().len == 0) return;
 
     self.cycle_map.deinit(self.wm.a);
     self.cycle_map = std.AutoArrayHashMapUnmanaged(*Connection, f32){};
 
-    for (tracker.incoming.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win.id, self.wm));
-    for (tracker.outgoing.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win.id, self.wm));
+    for (tracker.incoming.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win));
+    for (tracker.outgoing.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win));
 
     const SortContext = struct {
         angles: []const f32,

@@ -375,10 +375,11 @@ fn calculateSubAxisDistance(direction: WindowRelativeDirection, to: WindowEdgeSt
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Spawn Window
 
-pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !void {
+pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opts: Window.SpawnOptions, make_active: bool) !*Window {
     const window = try handler.spawnWindow(self, opts);
     try self.wmap.put(self.a, window, handler);
     if (make_active or self.active_window == null) self.setActiveWindow(window, true);
+    return window;
 }
 
 pub fn spawnWindow(
@@ -705,13 +706,13 @@ const Selection = struct {
 
 pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
     const active_window = self.active_window orelse return null;
-    const tracker = self.connman.tracker_map.get(active_window.id) orelse return null;
+    const tracker = self.connman.tracker_map.get(active_window) orelse return null;
     if (tracker.incoming.count() == 0) return null;
 
     var may_visible_index: ?usize = null;
     const keys = tracker.incoming.keys();
     for (0..tracker.incoming.count()) |i| {
-        if (keys[i].isVisible(self)) {
+        if (keys[i].isVisible()) {
             may_visible_index = i;
             break;
         }
@@ -719,8 +720,7 @@ pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
 
     const visible_index = may_visible_index orelse return null;
     const conn = keys[visible_index];
-    const from_tracker = self.connman.tracker_map.get(conn.start.win_id) orelse return null;
-    return from_tracker.win;
+    return conn.start.win;
 }
 
 const AlignConnectionKind = ConnectionManager.AlignConnectionKind;
@@ -762,11 +762,10 @@ pub fn selectAllDescendants(self: *@This()) !void {
     while (i < list.items.len) {
         defer i += 1;
         const window = list.items[i];
-        const tracker = self.connman.tracker_map.get(window.id) orelse continue;
+        const tracker = self.connman.tracker_map.get(window) orelse continue;
         for (tracker.outgoing.keys()) |conn| {
-            if (!conn.isVisible(self)) continue;
-            const conn_tracker = self.connman.tracker_map.get(conn.end.win_id) orelse continue;
-            try list.append(conn_tracker.win);
+            if (!conn.isVisible()) continue;
+            try list.append(conn.end.win);
         }
     }
 
@@ -852,28 +851,26 @@ pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
     var connections = std.AutoArrayHashMap(ConnectionManager.Connection, void).init(self.a);
     defer connections.deinit();
     for (self.yanker.map.keys(), 0..) |win, i| {
-        const tracker = self.connman.tracker_map.get(win.id) orelse unreachable;
+        const tracker = self.connman.tracker_map.get(win) orelse unreachable;
 
         for (tracker.incoming.keys()) |conn| {
             var new_conn = conn.*;
-            new_conn.end.win_id = duped_windows[i].id;
+            new_conn.end.win = duped_windows[i];
 
-            const start_tracker = self.connman.tracker_map.get(conn.start.win_id) orelse unreachable;
-            if (self.yanker.map.contains(start_tracker.win)) {
-                const index = self.yanker.map.getIndex(start_tracker.win) orelse unreachable;
-                new_conn.start.win_id = duped_windows[index].id;
+            if (self.yanker.map.contains(conn.start.win)) {
+                const index = self.yanker.map.getIndex(conn.start.win) orelse unreachable;
+                new_conn.start.win = duped_windows[index];
             }
             try connections.put(new_conn, {});
         }
 
         for (tracker.outgoing.keys()) |conn| {
             var new_conn = conn.*;
-            new_conn.start.win_id = duped_windows[i].id;
+            new_conn.start.win = duped_windows[i];
 
-            const end_tracker = self.connman.tracker_map.get(conn.end.win_id) orelse unreachable;
-            if (self.yanker.map.contains(end_tracker.win)) {
-                const index = self.yanker.map.getIndex(end_tracker.win) orelse unreachable;
-                new_conn.end.win_id = duped_windows[index].id;
+            if (self.yanker.map.contains(conn.end.win)) {
+                const index = self.yanker.map.getIndex(conn.end.win) orelse unreachable;
+                new_conn.end.win = duped_windows[index];
             }
             try connections.put(new_conn, {});
         }

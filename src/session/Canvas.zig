@@ -127,23 +127,6 @@ fn setCameraIfCanvasIsEmpty(self: *@This(), parsed: WritableCanvasState) void {
 }
 
 fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !void {
-
-    // If we load a session from a file, then load the same session again,
-    // those carry the same winids, both for windows and connections.
-    // Without adjusting `increment_winid_by`, we'll run into winid collisions,
-    // which causes `connman.addConnection()` to misbehave & cause leaks.
-
-    var increment_winid_by: Window.ID = 0;
-    const current_nano_timestamp = std.time.nanoTimestamp();
-    for (parsed.windows) |window_state| {
-        const winid = window_state.opts.id orelse continue;
-        if (wm.connman.tracker_map.contains(winid)) {
-            assert(current_nano_timestamp > winid);
-            increment_winid_by = current_nano_timestamp - winid;
-            break;
-        }
-    }
-
     var strid_to_handler_map = std.AutoArrayHashMapUnmanaged(i128, *WindowSourceHandler){};
     for (parsed.string_sources) |str_source| {
         const handler = try WindowSourceHandler.create(wm, .string, str_source.contents, wm.lang_hub);
@@ -151,34 +134,37 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         try strid_to_handler_map.put(aa, str_source.id, handler);
     }
 
+    var id_to_window_map = std.AutoArrayHashMapUnmanaged(Window.ID, *Window){};
     for (parsed.windows) |state| {
-        var adjusted_opts = state.opts;
-        if (adjusted_opts.id == null) continue;
-        adjusted_opts.id.? += increment_winid_by;
-
         switch (state.source) {
-            .file => |path| _ = try wm.spawnWindow(.file, path, adjusted_opts, true, false),
+            .file => |path| _ = try wm.spawnWindow(.file, path, state.opts, true, false),
             .string => |string_id| {
                 const handler = strid_to_handler_map.get(string_id) orelse continue;
-                try wm.spawnWindowFromHandler(handler, adjusted_opts, true);
+                const window = try wm.spawnWindowFromHandler(handler, state.opts, true);
+                try id_to_window_map.put(aa, window.id, window);
             },
         }
     }
 
-    for (parsed.connections) |conn| {
-        var adjusted_connection = conn.*;
-        adjusted_connection.start.win_id += increment_winid_by;
-        adjusted_connection.end.win_id += increment_winid_by;
-
-        assert(wm.connman.tracker_map.contains(adjusted_connection.start.win_id));
-        assert(wm.connman.tracker_map.contains(adjusted_connection.end.win_id));
-        try wm.connman.addConnection(adjusted_connection, false);
+    for (parsed.connections) |pconn| {
+        const conn = ConnectionManager.Connection{
+            .start = .{
+                .anchor = pconn.start.anchor,
+                .win = id_to_window_map.get(pconn.start.win_id) orelse unreachable,
+            },
+            .end = .{
+                .anchor = pconn.end.anchor,
+                .win = id_to_window_map.get(pconn.end.win_id) orelse unreachable,
+            },
+            .arrowhead_index = pconn.arrowhead_index,
+            .hidden = pconn.hidden,
+        };
+        try wm.connman.addConnection(conn, false);
     }
 
     if (parsed.active_window_id) |id| blk: {
-        const adjusted_id = id + increment_winid_by;
         for (wm.wmap.keys()) |win| {
-            if (win.id == adjusted_id) {
+            if (win.id == id) {
                 wm.setActiveWindow(win, false);
                 break :blk;
             }
@@ -270,10 +256,10 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
 
     ///////////////////////////// handle connections
 
-    var connections = std.ArrayListUnmanaged(*const ConnectionManager.Connection){};
+    var connections = std.ArrayListUnmanaged(ConnectionManager.PersistentConnection){};
     for (wm.connman.connections.keys()) |conn| {
-        if (!conn.isVisible(wm)) continue;
-        try connections.append(aa, conn);
+        if (!conn.isVisible()) continue;
+        try connections.append(aa, ConnectionManager.PersistentConnection.fromExistingConnection(conn));
     }
 
     ///////////////////////////// active_window_id
@@ -305,7 +291,7 @@ const StringSource = struct {
 
 const WritableCanvasState = struct {
     string_sources: []const StringSource,
-    connections: []*const ConnectionManager.Connection,
+    connections: []const ConnectionManager.PersistentConnection,
     windows: []const Window.WritableWindowState,
 
     cameraInfo: ?RenderMall.CameraInfo = null,
