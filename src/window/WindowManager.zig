@@ -837,6 +837,8 @@ pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
         y_by = screen_center_y - current_center_y;
     }
 
+    /////////////////////////////
+
     var duped_windows = try self.a.alloc(*Window, self.yanker.map.count());
     defer self.a.free(duped_windows);
 
@@ -844,6 +846,42 @@ pub fn paste(self: *@This(), kind: enum { in_place, screen_center }) !void {
         const new_window = try self.duplicateWindow(target, x_by, y_by);
         duped_windows[i] = new_window;
     }
+
+    /////////////////////////////
+
+    var connections = std.AutoArrayHashMap(ConnectionManager.Connection, void).init(self.a);
+    defer connections.deinit();
+    for (self.yanker.map.keys(), 0..) |win, i| {
+        const tracker = self.connman.tracker_map.get(win.id) orelse unreachable;
+
+        for (tracker.incoming.keys()) |conn| {
+            var new_conn = conn.*;
+            new_conn.end.win_id = duped_windows[i].id;
+
+            const start_tracker = self.connman.tracker_map.get(conn.start.win_id) orelse unreachable;
+            if (self.yanker.map.contains(start_tracker.win)) {
+                const index = self.yanker.map.getIndex(start_tracker.win) orelse unreachable;
+                new_conn.start.win_id = duped_windows[index].id;
+            }
+            try connections.put(new_conn, {});
+        }
+
+        for (tracker.outgoing.keys()) |conn| {
+            var new_conn = conn.*;
+            new_conn.start.win_id = duped_windows[i].id;
+
+            const end_tracker = self.connman.tracker_map.get(conn.end.win_id) orelse unreachable;
+            if (self.yanker.map.contains(end_tracker.win)) {
+                const index = self.yanker.map.getIndex(end_tracker.win) orelse unreachable;
+                new_conn.end.win_id = duped_windows[index].id;
+            }
+            try connections.put(new_conn, {});
+        }
+    }
+
+    for (connections.keys()) |conn| try self.connman.addConnection(conn, false);
+
+    /////////////////////////////
 
     try self.addWindowsToSpawnHistory(duped_windows);
 }
