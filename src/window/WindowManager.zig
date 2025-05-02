@@ -772,6 +772,31 @@ pub fn selectAllDescendants(self: *@This()) !void {
     for (list.items) |window| try self.selection.addWindow(window);
 }
 
+pub fn selectAllConnectedWindowsRecursively(self: *@This()) !void {
+    const active_window = self.active_window orelse return;
+    var map = std.AutoArrayHashMap(*Window, void).init(self.a);
+    defer map.deinit();
+    try map.put(active_window, {});
+
+    var i: usize = 0;
+    while (i < map.count()) {
+        defer i += 1;
+        const window = map.keys()[i];
+        const tracker = self.connman.tracker_map.get(window) orelse continue;
+
+        for ([_][]*ConnectionManager.Connection{ tracker.incoming.keys(), tracker.outgoing.keys() }) |connections| {
+            for (connections) |conn| {
+                if (!conn.isVisible()) continue;
+                if (!map.contains(conn.start.win)) try map.put(conn.start.win, {});
+                if (!map.contains(conn.end.win)) try map.put(conn.end.win, {});
+            }
+        }
+    }
+
+    try self.clearSelection();
+    for (map.keys()) |win| try self.selection.addWindow(win);
+}
+
 pub fn clearSelection(self: *@This()) !void {
     self.selection.wmap.clearRetainingCapacity();
 }
