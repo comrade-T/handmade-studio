@@ -15,6 +15,19 @@ pub fn main() !void {
     defer _ = gpa_.deinit();
     const gpa = gpa_.allocator();
 
+    var env_map = try std.process.getEnvMap(gpa);
+    defer env_map.deinit();
+
+    std.debug.print("home: '{s}'\n", .{env_map.get("HOME").?});
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn tryOutLSPClients() !void {
+    var gpa_: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa_.deinit();
+    const gpa = gpa_.allocator();
+
     var c1 = try LSPClient.create(gpa);
     defer c1.destroy();
     try c1.start();

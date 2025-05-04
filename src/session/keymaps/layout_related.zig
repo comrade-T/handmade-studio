@@ -181,7 +181,7 @@ pub fn mapKeys(sess: *Session) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
 
-fn centerCameraAtActiveWindow(ctx: *anyopaque) !void {
+pub fn centerCameraAtActiveWindow(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     const active_window = wm.active_window orelse return;

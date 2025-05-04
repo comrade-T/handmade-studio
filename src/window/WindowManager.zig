@@ -67,6 +67,7 @@ visible_windows: WindowList,
 
 window_picker_normal: WindowPicker,
 selection_window_picker: WindowPicker,
+window_picker_normal_no_center_cam: WindowPicker,
 
 selection: Selection,
 
@@ -98,6 +99,7 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
 
         .window_picker_normal = WindowPicker{ .wm = self, .callback = .{ .f = setActiveWindowPickerCallback, .ctx = self } },
         .selection_window_picker = WindowPicker{ .wm = self, .callback = .{ .f = toggleWindowFromSelection, .ctx = self } },
+        .window_picker_normal_no_center_cam = WindowPicker{ .wm = self, .callback = .{ .f = setActiveWindowPickerCallbackNoCenterCam, .ctx = self } },
 
         .selection = try Selection.init(a),
 
@@ -140,6 +142,7 @@ pub fn render(self: *@This()) !void {
     self.connman.render();
 
     self.window_picker_normal.render();
+    self.window_picker_normal_no_center_cam.render();
     self.selection_window_picker.render();
 }
 
@@ -174,6 +177,10 @@ fn setActiveWindowPickerCallback(ctx: *anyopaque, window: *Window) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.setActiveWindow(window, true);
     window.centerCameraAt(self.mall);
+}
+fn setActiveWindowPickerCallbackNoCenterCam(ctx: *anyopaque, window: *Window) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.setActiveWindow(window, true);
 }
 
 pub fn undoWindowSwitch(self: *@This()) !void {

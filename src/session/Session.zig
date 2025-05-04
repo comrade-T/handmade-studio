@@ -28,7 +28,7 @@ const NotificationLine = @import("NotificationLine");
 const ConfirmationPrompt = @import("ConfirmationPrompt");
 
 const AnchorPicker = @import("AnchorPicker");
-const ip_ = @import("input_processor");
+pub const ip_ = @import("input_processor");
 pub const Callback = ip_.Callback;
 pub const UpNDownCallback = ip_.UpNDownCallback;
 pub const MappingCouncil = ip_.MappingCouncil;
