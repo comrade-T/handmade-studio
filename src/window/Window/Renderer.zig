@@ -33,6 +33,8 @@ char_y: f32 = 0,
 char_x: f32 = undefined,
 line_y: f32 = undefined,
 
+cursor_animator: ?*Window.CursorAnimator,
+
 // selection related
 last_char_info: LastestRenderedCharInfo = null,
 selection_start_x: ?f32 = null,
@@ -482,7 +484,7 @@ fn renderCharacter(self: *@This(), r: WindowSource.LineIterator.Result, colorsch
 ////////////////////////////////////////////////////////////////////////////////////////////// render cursor & visual range
 
 fn getCursorColor(self: *@This()) u32 {
-    return if (self.win_is_active)
+    return if (self.win_is_active or self.cursor_animator != null)
         self.win.defaults.main_cursor_when_active
     else
         self.win.defaults.main_cursor_when_inactive;
@@ -497,13 +499,7 @@ fn renderInLineCursor(self: *@This()) void {
     for (self.win.cursor_manager.cursors.values()) |*cursor| {
         const anchor = cursor.activeAnchor(self.win.cursor_manager);
         if (anchor.line != self.linenr or anchor.col != self.colnr) continue;
-        self.rcb.drawRectangle(
-            last_char_info.x,
-            self.char_y,
-            last_char_info.width,
-            last_char_info.font_size,
-            self.getCursorColor(),
-        );
+        self.renderCursor(last_char_info.x, last_char_info.width);
     }
 }
 
@@ -568,13 +564,7 @@ fn renderCursorDotAtLineEnd(self: *@This()) bool {
             self.updateMainCursorHorizontalVisibilityReport(info.x + info.width, info.width);
             self.updatePotentialCursorRelocationColnr(info.x + info.width, info.width);
 
-            self.rcb.drawRectangle(
-                info.x + info.width,
-                self.line_y,
-                info.width,
-                info.font_size,
-                self.getCursorColor(),
-            );
+            self.renderCursor(info.x + info.width, info.width);
         }
         return true;
     }
@@ -594,8 +584,16 @@ fn renderCursorOnEmptyLine(self: *@This()) bool {
         self.updateMainCursorHorizontalVisibilityReport(self.char_x + char_width, char_width);
         self.updatePotentialCursorRelocationColnr(self.char_x + char_width, char_width);
 
-        self.rcb.drawRectangle(self.char_x, self.line_y, char_width, self.lineHeight(), self.getCursorColor());
+        self.renderCursor(self.char_x, char_width);
     }
 
     return true;
+}
+
+fn renderCursor(self: *@This(), x: f32, char_width: f32) void {
+    const width = if (self.cursor_animator) |ca| blk: {
+        ca.update();
+        break :blk char_width * ca.progress;
+    } else char_width;
+    self.rcb.drawRectangle(x, self.line_y, width, self.lineHeight(), self.getCursorColor());
 }

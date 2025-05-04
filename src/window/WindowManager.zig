@@ -73,6 +73,8 @@ selection: Selection,
 
 yanker: Yanker,
 
+cursor_animator_map: Window.CursorAnimatorMap = .{},
+
 // temporary solution for LSP
 post_file_open_callback_func: ?*const fn (ctx: *anyopaque, win: *Window) anyerror!void = null,
 post_file_open_callback_ctx: *anyopaque = undefined,
@@ -109,11 +111,22 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
 }
 
 pub fn updateAndRender(self: *@This()) !void {
-    const windows_to_be_updated = self.updating_windows_map.keys();
-    var i: usize = windows_to_be_updated.len;
-    while (i > 0) {
-        i -= 1;
-        try windows_to_be_updated[i].update(self.a, self.qtree, &self.updating_windows_map);
+    {
+        const windows_to_be_updated = self.updating_windows_map.keys();
+        var i: usize = windows_to_be_updated.len;
+        while (i > 0) {
+            i -= 1;
+            try windows_to_be_updated[i].update(self.a, self.qtree, &self.updating_windows_map);
+        }
+    }
+    {
+        var i: usize = self.cursor_animator_map.count();
+        while (i > 0) {
+            i -= 1;
+            if (self.cursor_animator_map.values()[i].isFinished()) {
+                self.cursor_animator_map.swapRemoveAt(i);
+            }
+        }
     }
 
     try self.render();
@@ -131,7 +144,8 @@ pub fn render(self: *@This()) !void {
     for (self.visible_windows.items) |window| {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
         const is_selected = if (self.selection.wmap.get(window)) |_| true else false;
-        window.render(is_active, is_selected, self.mall, null);
+        const may_cursor_animator = self.cursor_animator_map.getPtr(window);
+        window.render(is_active, is_selected, self.mall, null, may_cursor_animator);
     }
 
     // std.debug.print("#wins: {d} | visible on screen: {d} | #windows in tree: {d}\n", .{
@@ -164,6 +178,8 @@ pub fn destroy(self: *@This()) void {
 
     self.selection.deinit();
     self.yanker.map.deinit(self.a);
+
+    self.cursor_animator_map.deinit(self.a);
 
     self.a.destroy(self);
 }
@@ -958,4 +974,22 @@ fn duplicateWindow(self: *@This(), target: *const Window, move_x_by: f32, move_y
             break :blk new_win;
         },
     };
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Animate Cursor
+
+const CursorAnimator = Window.CursorAnimator;
+pub fn triggerCursorEnterAnimation(self: *@This(), win: *Window) !void {
+    try self.cursor_animator_map.put(self.a, win, .{
+        .progress = CursorAnimator.ENTER_START,
+        .kind = .enter,
+        .lerp_time = 0.1,
+    });
+}
+pub fn triggerCursorExitAnimation(self: *@This(), win: *Window) !void {
+    try self.cursor_animator_map.put(self.a, win, .{
+        .progress = CursorAnimator.EXIT_START,
+        .kind = .exit,
+        .lerp_time = 0.3,
+    });
 }

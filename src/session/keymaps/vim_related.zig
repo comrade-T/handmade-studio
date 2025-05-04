@@ -305,6 +305,7 @@ pub fn exitInsertMode(ctx: *anyopaque) !void {
     const session = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = session.getActiveCanvasWindowManager() orelse return;
     const window = wm.active_window orelse return;
+    // FIXME: if there were no edits, the flawed logic will cause bad frees
     try window.ws.buf.ropeman.registerLastPendingToHistory();
     window.cursor_manager.moveLeft(1, &window.ws.buf.ropeman);
 }

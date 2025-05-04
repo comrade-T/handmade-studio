@@ -104,12 +104,16 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
             if (wm.active_window == null) {
                 const width, const height = wm.mall.icb.getScreenWidthHeight();
                 const x, const y = wm.mall.icb.getScreenToWorld2D(wm.mall.camera, width / 2, height / 2);
-                _ = try wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true, true);
+                const b = try wm.spawnWindow(.string, "", .{ .pos = .{ .x = x, .y = y } }, true, true);
+                try wm.triggerCursorEnterAnimation(b);
                 return;
             }
 
             const a = wm.active_window orelse return;
             const b = try wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{ .pos = .{} }, self.spawn_opts) orelse return;
+
+            try wm.triggerCursorExitAnimation(a);
+            try wm.triggerCursorEnterAnimation(b);
 
             const a_anchor, const b_anchor = switch (self.establish_connection) {
                 .none => return,

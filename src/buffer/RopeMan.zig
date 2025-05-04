@@ -813,6 +813,7 @@ test "deleteRangesMultiCursor - multiple lines - no line shifts" {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// registerLastPendingToHistory
 
+// FIXME: if there were no edits, the flawed logic will cause bad frees
 pub fn registerLastPendingToHistory(self: *@This()) !void {
     if (self.pending.items.len == 0) return;
 

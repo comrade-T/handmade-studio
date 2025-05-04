@@ -315,6 +315,7 @@ pub fn render(
     is_selected: bool,
     mall: *RenderMall,
     may_view: ?RenderMall.ScreenView,
+    cursor_animator: ?*CursorAnimator,
 ) void {
 
     ///////////////////////////// Profiling
@@ -363,6 +364,7 @@ pub fn render(
         .default_glyph = default_glyph,
         .rcb = mall.rcb,
         .mall = mall,
+        .cursor_animator = cursor_animator,
     };
     if (renderer.shiftBoundedOffsetBy()) |change_by| {
         self.attr.bounds.offset.x += change_by[0];
@@ -627,6 +629,37 @@ pub const Attributes = struct {
         bottom: f32 = 0,
         left: f32 = 0,
     };
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub const CursorAnimatorMap = std.AutoArrayHashMapUnmanaged(*Window, CursorAnimator);
+pub const CursorAnimator = struct {
+    progress: f32,
+    kind: enum { enter, exit },
+    lerp_time: f32 = 0.2,
+
+    pub const ENTER_START: f32 = 0;
+    pub const EXIT_START: f32 = 1;
+
+    pub const ENTER_TARGET: f32 = 1;
+    pub const EXIT_TARGET: f32 = 0;
+
+    pub fn update(self: *@This()) void {
+        const to: f32 = if (self.kind == .enter) ENTER_TARGET else EXIT_TARGET;
+        self.progress = RenderMall.lerp(self.progress, to, self.lerp_time);
+        self.progress = switch (self.kind) {
+            .enter => if (self.progress >= ENTER_TARGET - 0.001) ENTER_TARGET else self.progress,
+            .exit => if (self.progress <= EXIT_TARGET + 0.001) EXIT_TARGET else self.progress,
+        };
+    }
+
+    pub fn isFinished(self: *const @This()) bool {
+        return self.progress == switch (self.kind) {
+            .enter => ENTER_TARGET,
+            .exit => EXIT_TARGET,
+        };
+    }
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
