@@ -607,29 +607,29 @@ pub const SpawnRelativeeWindowOpts = struct {
     move: bool = false,
     x_by: f32 = 0,
     y_by: f32 = 0,
+    instant: bool = false,
     direction: WindowRelativeDirection = .bottom,
 };
 pub fn spawnNewWindowRelativeToActiveWindow(
     self: *@This(),
     from: WindowSource.InitFrom,
     source: []const u8,
-    win_opts: Window.SpawnOptions,
+    win_opts_: Window.SpawnOptions,
     spawn_opts: SpawnRelativeeWindowOpts,
-) !void {
-    const prev = self.active_window orelse return;
+) !?*Window {
+    const prev = self.active_window orelse return null;
 
-    _ = try self.spawnWindow(from, source, win_opts, true, true);
-    const new = self.active_window orelse unreachable;
-
-    var new_x: f32 = new.getX();
-    var new_y: f32 = new.getY();
+    // adjust positions of to-be-spawned window
+    var win_opts = win_opts_;
+    var new_x: f32 = 0;
+    var new_y: f32 = 0;
     switch (spawn_opts.direction) {
         .right => {
             new_x = prev.getX() + prev.getWidth();
             new_y = prev.getY();
         },
         .left => {
-            new_x = prev.getX() - new.getWidth();
+            new_x = prev.getX();
             new_y = prev.getY();
         },
         .bottom => {
@@ -638,36 +638,56 @@ pub fn spawnNewWindowRelativeToActiveWindow(
         },
         .top => {
             new_x = prev.getX();
-            new_y = prev.getY() - new.getHeight();
+            new_y = prev.getY();
         },
     }
+    win_opts.pos = .{ .x = new_x, .y = new_y, .lerp_time = prev.attr.pos.lerp_time };
+
+    // spawn new window
+    const new_win = try self.spawnWindow(from, source, win_opts, true, true);
+
+    // animation vs not
     new_x += spawn_opts.x_by;
     new_y += spawn_opts.y_by;
-    try new.setPositionInstantly(self.a, self.qtree, new_x, new_y);
+    if (spawn_opts.instant) {
+        switch (spawn_opts.direction) {
+            .left => new_x -= prev.getWidth(),
+            .top => new_y -= prev.getY(),
+            else => {},
+        }
+        try new_win.setPositionInstantly(self.a, self.qtree, new_x, new_y);
+    } else {
+        try new_win.setTargetPosition(self.a, self.qtree, new_x, new_y);
+        try self.updating_windows_map.put(self.a, new_win, {});
+    }
 
-    if (!spawn_opts.move) return;
+    if (spawn_opts.move) try self.moveWindowsOutOfTheWay(prev, new_win, spawn_opts);
+    return new_win;
+}
+
+fn moveWindowsOutOfTheWay(self: *@This(), prev: *Window, new_win: *Window, spawn_opts: SpawnRelativeeWindowOpts) !void {
     for (self.wmap.keys()) |window| {
-        if (window == prev or window == new) continue;
+        if (window == prev or window == new_win) continue;
         switch (spawn_opts.direction) {
             .right => {
                 if (window.getX() > prev.getX() and window.verticalIntersect(prev)) {
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, new.getWidth(), 0);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, new_win.getWidth(), 0);
                 }
             },
             .left => {
                 if (window.getX() < prev.getX() and
                     window.verticalIntersect(prev))
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, -new.getWidth(), 0);
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, -new_win.getWidth(), 0);
             },
             .bottom => {
                 if (window.getY() > prev.getY() and
                     window.horizontalIntersect(prev))
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, new.getHeight());
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, new_win.getHeight());
             },
             .top => {
                 if (window.getY() < prev.getY() and
                     window.horizontalIntersect(prev))
-                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, -new.getHeight());
+                    try window.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, -new_win.getHeight());
             },
         }
     }

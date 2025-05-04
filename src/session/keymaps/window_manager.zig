@@ -109,9 +109,7 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
             }
 
             const a = wm.active_window orelse return;
-            try wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{}, self.spawn_opts);
-
-            const b = wm.active_window orelse return;
+            const b = try wm.spawnNewWindowRelativeToActiveWindow(.string, "", .{ .pos = .{} }, self.spawn_opts) orelse return;
 
             const a_anchor, const b_anchor = switch (self.establish_connection) {
                 .none => return,

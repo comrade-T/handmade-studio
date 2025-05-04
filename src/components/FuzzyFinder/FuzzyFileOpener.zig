@@ -137,7 +137,7 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 fn spawnRelativeToActiveWindow(self: *@This(), direction: Session.WindowManager.WindowRelativeDirection) !void {
     const path = self.finder.getSelectedPath() orelse return;
     const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-    try wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
+    _ = try wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
         .subscribed_style_sets = &.{0},
     }, .{
         .direction = direction,
