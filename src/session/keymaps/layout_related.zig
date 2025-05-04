@@ -53,23 +53,44 @@ pub fn mapKeys(sess: *Session) !void {
     // move window
     const MoveByCb = struct {
         sess: *Session,
+        times_width: f32,
+        times_height: f32,
         x: f32,
         y: f32,
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-            try moveActiveWindowBy(wm, self.x, self.y);
+            const active_window = wm.active_window orelse return;
+            const x = (active_window.getWidth() * self.times_width) + self.x;
+            const y = (active_window.getHeight() * self.times_height) + self.y;
+            try moveActiveWindowBy(wm, x, y);
         }
-        pub fn init(allocator: std.mem.Allocator, sess_: *Session, x: f32, y: f32) !Session.Callback {
+        pub fn init(
+            allocator: std.mem.Allocator,
+            sess_: *Session,
+            times_width: f32,
+            times_height: f32,
+            x: f32,
+            y: f32,
+        ) !Session.Callback {
             const self = try allocator.create(@This());
-            self.* = .{ .sess = sess_, .x = x, .y = y };
+            self.* = .{ .sess = sess_, .x = x, .y = y, .times_width = times_width, .times_height = times_height };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .a }, try MoveByCb.init(a, sess, -100, 0));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .d }, try MoveByCb.init(a, sess, 100, 0));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, -100));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 100));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .a }, try MoveByCb.init(a, sess, 0, 0, -100, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .d }, try MoveByCb.init(a, sess, 0, 0, 100, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .w }, try MoveByCb.init(a, sess, 0, 0, 0, -100));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .s }, try MoveByCb.init(a, sess, 0, 0, 0, 100));
+
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .k, .a }, try MoveByCb.init(a, sess, -1, 0, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .k, .d }, try MoveByCb.init(a, sess, 1, 0, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .k, .w }, try MoveByCb.init(a, sess, 0, -1, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .k, .s }, try MoveByCb.init(a, sess, 0, 1, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .left_alt, .a }, try MoveByCb.init(a, sess, -1, 0, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .left_alt, .d }, try MoveByCb.init(a, sess, 1, 0, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .left_alt, .w }, try MoveByCb.init(a, sess, 0, -1, 0, 0));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .m, .left_alt, .s }, try MoveByCb.init(a, sess, 0, 1, 0, 0));
 
     // change window padding
     const ChangePaddingByCb = struct {
