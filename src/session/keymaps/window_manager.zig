@@ -91,11 +91,10 @@ pub fn mapKeys(sess: *Session) !void {
 }
 
 fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
-    const EstablishConnectionType = enum { none, horizontal, vertical };
     const Cb = struct {
         sess: *Session,
         spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
-        establish_connection: EstablishConnectionType,
+        anchors: []const Anchor,
 
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -115,33 +114,33 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
             try wm.triggerCursorExitAnimation(a);
             try wm.triggerCursorEnterAnimation(b);
 
-            const a_anchor, const b_anchor = switch (self.establish_connection) {
-                .none => return,
-                .horizontal => .{ Anchor.E, Anchor.W },
-                .vertical => .{ Anchor.S, Anchor.N },
-            };
-            try wm.connman.establishHardCodedPendingConnection(a, a_anchor, b, b_anchor);
+            if (self.anchors.len < 2) return;
+            try wm.connman.establishHardCodedPendingConnection(a, self.anchors[0], b, self.anchors[1]);
         }
 
         pub fn init(
             allocator: std.mem.Allocator,
             sess_: *Session,
             spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
-            establish_connection: EstablishConnectionType,
+            anchors: []const Anchor,
         ) !Session.Callback {
             const self = try allocator.create(@This());
-            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts, .establish_connection = establish_connection };
+            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts, .anchors = anchors };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
 
     const c = sess.council;
     const a = c.arena.allocator();
-    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .none));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
+    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, &.{}));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{}));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{}));
+    try c.map(NORMAL, &.{ .left_control, .space, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, &.{}));
+    try c.map(NORMAL, &.{ .space, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, &.{}));
 
-    try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .vertical));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .horizontal));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .horizontal));
+    try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, &.{ .S, .N }));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{ .N, .S }));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{ .N, .S }));
+    try c.map(NORMAL, &.{ .left_control, .space, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, &.{ .E, .W }));
+    try c.map(NORMAL, &.{ .space, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, &.{ .W, .E }));
 }

@@ -664,7 +664,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
         },
         .top => {
             new_x = prev.getX();
-            new_y = prev.getY();
+            new_y = prev.getY() - prev.getHeight();
         },
     }
     win_opts.pos = .{ .x = new_x, .y = new_y, .lerp_time = prev.attr.pos.lerp_time };
