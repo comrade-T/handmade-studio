@@ -101,7 +101,11 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
 
         .window_picker_normal = WindowPicker{ .wm = self, .callback = .{ .f = setActiveWindowPickerCallback, .ctx = self } },
         .selection_window_picker = WindowPicker{ .wm = self, .callback = .{ .f = toggleWindowFromSelection, .ctx = self } },
-        .window_picker_normal_no_center_cam = WindowPicker{ .wm = self, .callback = .{ .f = setActiveWindowPickerCallbackNoCenterCam, .ctx = self } },
+        .window_picker_normal_no_center_cam = WindowPicker{
+            .wm = self,
+            .callback = .{ .f = setActiveWindowPickerCallbackNoCenterCam, .ctx = self },
+            .hide_active_window_label = true,
+        },
 
         .selection = try Selection.init(a),
 

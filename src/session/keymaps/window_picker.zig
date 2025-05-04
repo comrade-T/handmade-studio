@@ -35,8 +35,8 @@ pub fn mapKeys(sess: *Session) !void {
         .up_ctx = sess,
     });
     try c.mapUpNDown(NORMAL, &.{ .space, .f }, .{
-        .down_f = showNormal,
-        .up_f = hideNormal,
+        .down_f = showNormalNoCenterCam,
+        .up_f = hideNormalNoCenterCam,
         .down_ctx = sess,
         .up_ctx = sess,
     });
@@ -113,6 +113,20 @@ fn hideNormal(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     try WindowPicker.hide(&wm.window_picker_normal);
+}
+
+/////////////////////////////
+
+fn showNormalNoCenterCam(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    try WindowPicker.show(&wm.window_picker_normal_no_center_cam);
+}
+
+fn hideNormalNoCenterCam(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    try WindowPicker.hide(&wm.window_picker_normal_no_center_cam);
 }
 
 /////////////////////////////
