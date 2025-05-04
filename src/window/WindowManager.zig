@@ -149,7 +149,13 @@ pub fn render(self: *@This()) !void {
         const is_active = if (self.active_window) |active_window| active_window == window else false;
         const is_selected = if (self.selection.wmap.get(window)) |_| true else false;
         const may_cursor_animator = self.cursor_animator_map.getPtr(window);
-        window.render(is_active, is_selected, self.mall, null, may_cursor_animator);
+        window.render(.{
+            .mall = self.mall,
+            .active = is_active,
+            .selected = is_selected,
+            .view = null,
+            .cursor_animator = may_cursor_animator,
+        });
     }
 
     // std.debug.print("#wins: {d} | visible on screen: {d} | #windows in tree: {d}\n", .{

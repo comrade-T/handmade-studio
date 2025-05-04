@@ -309,13 +309,17 @@ fn insertToQuadTree(self: *@This(), a: Allocator, qtree: *QuadTree) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
+pub const RenderOpts = struct {
+    active: bool = false,
+    selected: bool = false,
+    mall: *RenderMall,
+    view: ?RenderMall.ScreenView = null,
+    cursor_animator: ?*CursorAnimator = null,
+};
+
 pub fn render(
     self: *@This(),
-    is_active: bool,
-    is_selected: bool,
-    mall: *RenderMall,
-    may_view: ?RenderMall.ScreenView,
-    cursor_animator: ?*CursorAnimator,
+    opts: RenderOpts,
 ) void {
 
     ///////////////////////////// Profiling
@@ -330,25 +334,25 @@ pub fn render(
 
     ///////////////////////////// Temporary Setup
 
-    const default_font = mall.font_store.getDefaultFont() orelse unreachable;
+    const default_font = opts.mall.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = default_font.glyph_map.get('?') orelse unreachable;
 
-    const colorscheme = mall.colorscheme_store.getDefaultColorscheme() orelse unreachable;
+    const colorscheme = opts.mall.colorscheme_store.getDefaultColorscheme() orelse unreachable;
 
     ///////////////////////////// Culling & Render
 
     const view = if (self.attr.absolute)
-        mall.getAbsoluteScreenView()
+        opts.mall.getAbsoluteScreenView()
     else
-        may_view orelse mall.icb.getViewFromCamera(mall.camera);
+        opts.view orelse opts.mall.icb.getViewFromCamera(opts.mall.camera);
 
     const target_view = if (self.attr.absolute)
-        mall.getAbsoluteScreenView()
+        opts.mall.getAbsoluteScreenView()
     else
-        mall.icb.getViewFromCamera(mall.target_camera);
+        opts.mall.icb.getViewFromCamera(opts.mall.target_camera);
 
-    if (mall.camera_just_moved) {
-        mall.camera_just_moved = false;
+    if (opts.mall.camera_just_moved) {
+        opts.mall.camera_just_moved = false;
         if (self.cursor_manager.just_moved) self.cursor_manager.setJustMovedToFalse();
     }
 
@@ -356,15 +360,15 @@ pub fn render(
 
     var renderer = Renderer{
         .win = self,
-        .win_is_active = is_active,
-        .win_is_selected = is_selected,
+        .win_is_active = opts.active,
+        .win_is_selected = opts.selected,
         .view = view,
         .target_view = target_view,
         .default_font = default_font,
         .default_glyph = default_glyph,
-        .rcb = mall.rcb,
-        .mall = mall,
-        .cursor_animator = cursor_animator,
+        .rcb = opts.mall.rcb,
+        .mall = opts.mall,
+        .cursor_animator = opts.cursor_animator,
     };
     if (renderer.shiftBoundedOffsetBy()) |change_by| {
         self.attr.bounds.offset.x += change_by[0];
@@ -374,7 +378,7 @@ pub fn render(
     renderer.initialize();
     renderer.render(colorscheme);
 
-    if (is_active and !self.cursor_manager.just_moved) {
+    if (opts.active and !self.cursor_manager.just_moved) {
         const active_anchor = self.cursor_manager.mainCursor().activeAnchor(self.cursor_manager);
 
         if (renderer.potential_cursor_relocation_line) |relocation_line| {
@@ -393,7 +397,7 @@ pub fn render(
     // if (renderer.shiftViewBy()) |shift_by| {
     //     mall.rcb.changeCameraPan(mall.target_camera, shift_by[0], shift_by[1]);
     // }
-    if (self.cursor_manager.just_moved and mall.icb.cameraTargetsEqual(mall.camera, mall.target_camera)) {
+    if (self.cursor_manager.just_moved and opts.mall.icb.cameraTargetsEqual(opts.mall.camera, opts.mall.target_camera)) {
         self.cursor_manager.setJustMovedToFalse();
     }
 }

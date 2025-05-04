@@ -46,7 +46,7 @@ pub fn addInput(self: *@This(), name: []const u8, win_opts: Window.SpawnOptions,
 pub fn render(self: *@This()) void {
     for (self.inputs.values()) |input| {
         if (input.win.closed) continue;
-        input.win.render(true, false, self.mall, null, null);
+        input.win.render(.{ .active = true, .mall = self.mall });
     }
 }
 
