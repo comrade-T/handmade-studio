@@ -27,25 +27,25 @@ pub const MULTI_WIN = "MULTI_WIN";
 pub const MULTI_WIN_TO_NORMAL = Callback.Contexts{ .remove = &.{MULTI_WIN}, .add = &.{NORMAL} };
 pub const NORMAL_TO_MULTI_WIN = Callback.Contexts{ .remove = &.{NORMAL}, .add = &.{MULTI_WIN} };
 
+const FuncType = *const fn (ctx: *WindowManager) anyerror!void;
+pub const AdaptedCb = struct {
+    func: FuncType,
+    sess: *Session,
+    fn f(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+        try self.func(wm);
+    }
+    pub fn init(allocator: std.mem.Allocator, sess_: *Session, func: FuncType, contexts: Session.Callback.Contexts) !Session.Callback {
+        const self = try allocator.create(@This());
+        self.* = .{ .func = func, .sess = sess_ };
+        return Session.Callback{ .f = @This().f, .ctx = self, .contexts = contexts };
+    }
+};
+
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
     const a = c.arena.allocator();
-
-    const FuncType = *const fn (ctx: *WindowManager) anyerror!void;
-    const AdaptedCb = struct {
-        func: FuncType,
-        sess: *Session,
-        fn f(ctx: *anyopaque) !void {
-            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-            const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-            try self.func(wm);
-        }
-        pub fn init(allocator: std.mem.Allocator, sess_: *Session, func: FuncType, contexts: Session.Callback.Contexts) !Session.Callback {
-            const self = try allocator.create(@This());
-            self.* = .{ .func = func, .sess = sess_ };
-            return Session.Callback{ .f = @This().f, .ctx = self, .contexts = contexts };
-        }
-    };
 
     ///////////////////////////// Close Windows
 

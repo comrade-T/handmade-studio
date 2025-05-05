@@ -22,15 +22,19 @@ const WindowPicker = WindowManager.WindowPicker;
 const Key = Session.ip_.Key;
 
 const NORMAL = "normal";
-const MULTI_WIN = @import("window_manager.zig").MULTI_WIN;
+const wm_ = @import("window_manager.zig");
+const MULTI_WIN = wm_.MULTI_WIN;
+const WMAdapted = wm_.AdaptedCb;
 const layout_related = @import("layout_related.zig");
 
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
     const a = c.arena.allocator();
 
-    try c.map(NORMAL, &.{ .space, .f, .backslash }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .f, .q }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .f, .backslash }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .f, .q }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .f, .q }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .f, .e }, try WMAdapted.init(a, sess, WindowManager.toggleActiveWindowFromSelection, wm_.NORMAL_TO_MULTI_WIN));
 
     const AdaptedUpNDownCb = struct {
         kind: CbType,
