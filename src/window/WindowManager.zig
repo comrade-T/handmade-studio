@@ -221,11 +221,19 @@ pub fn undoWindowSwitch(self: *@This()) !void {
     self.setActiveWindow(new_win, false);
     new_win.centerCameraAt(self.mall);
 }
+pub fn undoWindowSwitchNoCenterCam(self: *@This()) !void {
+    const new_win = self.wshm.undo() orelse return;
+    self.setActiveWindow(new_win, false);
+}
 
 pub fn redoWindowSwitch(self: *@This()) !void {
     const new_win = self.wshm.redo() orelse return;
     self.setActiveWindow(new_win, false);
     new_win.centerCameraAt(self.mall);
+}
+pub fn redoWindowSwitchNoCenterCam(self: *@This()) !void {
+    const new_win = self.wshm.redo() orelse return;
+    self.setActiveWindow(new_win, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// WindowSourceHandler

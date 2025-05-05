@@ -79,8 +79,10 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_control, .left_shift, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_shift, .left_control, .z }, try AdaptedCb.init(a, sess, WindowManager.batchRedo, .{}));
 
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitchNoCenterCam, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitchNoCenterCam, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .left_shift, .comma }, try AdaptedCb.init(a, sess, WindowManager.undoWindowSwitch, .{}));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .left_shift, .period }, try AdaptedCb.init(a, sess, WindowManager.redoWindowSwitch, .{}));
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Multi Win
 
