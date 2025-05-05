@@ -33,6 +33,17 @@ wmap: std.AutoArrayHashMapUnmanaged(*Window, usize) = .{},
 last_edit: i64 = 0,
 
 pub const Windows = []const *Window;
+const JustifyEvent = struct {
+    windows: Windows,
+    x_by: []const f32,
+    y_by: []const f32,
+
+    fn free(self: *const @This(), a: Allocator) void {
+        a.free(self.windows);
+        a.free(self.x_by);
+        a.free(self.y_by);
+    }
+};
 
 pub const Event = union(enum) {
     spawn: Windows,
@@ -43,6 +54,7 @@ pub const Event = union(enum) {
     // TODO: add the rest of layout related events
 
     set_default_color: struct { windows: Windows, prev: u32, next: u32 },
+    justify: JustifyEvent,
 
     add_connection: *Connection,
     hide_connection: *Connection,
@@ -53,7 +65,7 @@ pub const Event = union(enum) {
 pub fn deinit(self: *@This()) void {
     while (self.events.len > 0) {
         const ev = self.events.pop() orelse break;
-        if (getWindowsFromEvent(ev)) |windows| self.a.free(windows);
+        cleanUpEvent(self.a, ev);
     }
     self.events.deinit(self.a);
     self.wmap.deinit(self.a);
@@ -161,7 +173,13 @@ pub fn addMoveEvent(self: *@This(), a: Allocator, windows: Windows, x_by: f32, y
 }
 
 pub fn addSetDefaultColorEvent(self: *@This(), a: Allocator, windows: Windows, prev: u32, next: u32) !AddNewEventResult {
-    return try self.addNewEvent(a, .{ .set_default_color = .{ .windows = windows, .prev = prev, .next = next } });
+    return try self.addNewEvent(a, .{
+        .set_default_color = .{ .windows = try self.a.dupe(*Window, windows), .prev = prev, .next = next },
+    });
+}
+
+pub fn addJustifyEvent(self: *@This(), a: Allocator, je: JustifyEvent) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .justify = je });
 }
 
 /////////////////////////////
@@ -207,7 +225,7 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
             defer i -= 1;
 
             const old_event = self.events.pop() orelse break;
-            defer if (getWindowsFromEvent(old_event)) |windows| self.a.free(windows);
+            defer cleanUpEvent(self.a, old_event);
 
             try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
         }
@@ -220,7 +238,7 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
         const old_event = self.events.get(0);
 
         try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
-        if (getWindowsFromEvent(self.events.get(0))) |windows| self.a.free(windows);
+        cleanUpEvent(self.a, old_event);
 
         self.events.orderedRemove(0);
     }
@@ -306,11 +324,19 @@ fn getConnectionFromEvent(ev: Event) ?*Connection {
     };
 }
 
+fn cleanUpEvent(a: Allocator, ev: Event) void {
+    switch (ev) {
+        .justify => |payload| payload.free(a),
+        else => if (getWindowsFromEvent(ev)) |windows| a.free(windows),
+    }
+}
+
 pub fn getWindowsFromEvent(ev: Event) ?Windows {
     return switch (ev) {
         .spawn, .close, .toggle_border => |windows| windows,
         .change_padding => |info| info.windows,
         .move => |info| info.windows,
+        .justify => |info| info.windows,
         else => null,
     };
 }

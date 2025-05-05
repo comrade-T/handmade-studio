@@ -168,6 +168,9 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .j }, .{ .f = alignHorizontallyToFirstConnectionFrom, .ctx = sess });
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
 
+    // justify
+    try c.map(MULTI_WIN, &.{ .space, .j }, .{ .f = justify, .ctx = sess });
+
     ///////////////////////////// yank & paste
 
     try c.map(MULTI_WIN, &.{.y}, .{ .f = Session.yankSelectedWindows, .ctx = sess, .contexts = MULTI_WIN_TO_NORMAL });
@@ -230,6 +233,12 @@ pub fn mapKeys(sess: *Session) !void {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
+
+fn justify(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    try wm.justifySelectionVertically();
+}
 
 pub fn centerCameraAtActiveWindow(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));

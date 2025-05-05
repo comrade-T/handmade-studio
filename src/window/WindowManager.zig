@@ -501,6 +501,8 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
 
         .move => |info| for (info.windows) |win|
             try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
+        .justify => |info| for (info.windows, 0..) |win, i|
+            try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by[i], -info.y_by[i]),
 
         .set_default_color => |info| for (info.windows) |win| win.setDefaultColor(info.prev),
 
@@ -538,6 +540,8 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
 
         .move => |info| for (info.windows) |win|
             try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
+        .justify => |info| for (info.windows, 0..) |win, i|
+            try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by[i], info.y_by[i]),
 
         .set_default_color => |info| for (info.windows) |win| win.setDefaultColor(info.next),
 
@@ -759,47 +763,6 @@ const Selection = struct {
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
-
-pub fn getFirstVisibleIncomingWindow(self: *@This(), win: *Window) ?*ConnectionManager.Connection {
-    const tracker = self.connman.tracker_map.get(win) orelse return null;
-    if (tracker.incoming.count() == 0) return null;
-
-    var may_visible_index: ?usize = null;
-    const keys = tracker.incoming.keys();
-    for (0..tracker.incoming.count()) |i| {
-        if (keys[i].isVisible()) {
-            may_visible_index = i;
-            break;
-        }
-    }
-
-    const visible_index = may_visible_index orelse return null;
-    return keys[visible_index];
-}
-
-const AlignConnectionKind = ConnectionManager.AlignConnectionKind;
-pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: AlignConnectionKind) !void {
-    const active_window = self.active_window orelse return;
-    var targets: []const *Window = &.{mover};
-    if (mover == active_window) targets = self.getActiveWindows() orelse return;
-
-    switch (kind) {
-        .vertical => {
-            const y_by = mover.getVerticalAlignDistance(target);
-            for (targets) |win| try win.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, y_by);
-            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, targets, 0, y_by));
-        },
-        .horizontal => {
-            const x_by = mover.getHorizontalAlignDistance(target);
-            for (targets) |win| try win.moveBy(self.a, self.qtree, &self.updating_windows_map, x_by, 0);
-            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, targets, x_by, 0));
-        },
-    }
-}
-
-/////////////////////////////
-
 pub fn toggleActiveWindowFromSelection(self: *@This()) !void {
     const active_window = self.active_window orelse return;
     try self.selection.toggleWindow(active_window);
@@ -865,6 +828,96 @@ fn toggleWindowFromSelection(ctx: *anyopaque, window: *Window) !void {
     try self.selection.toggleWindow(window);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
+
+pub fn getFirstVisibleIncomingWindow(self: *@This(), win: *Window) ?*ConnectionManager.Connection {
+    const tracker = self.connman.tracker_map.get(win) orelse return null;
+    if (tracker.incoming.count() == 0) return null;
+
+    var may_visible_index: ?usize = null;
+    const keys = tracker.incoming.keys();
+    for (0..tracker.incoming.count()) |i| {
+        if (keys[i].isVisible()) {
+            may_visible_index = i;
+            break;
+        }
+    }
+
+    const visible_index = may_visible_index orelse return null;
+    return keys[visible_index];
+}
+
+pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: ConnectionManager.AlignConnectionKind) !void {
+    const active_window = self.active_window orelse return;
+    var targets: []const *Window = &.{mover};
+    if (mover == active_window) targets = self.getActiveWindows() orelse return;
+
+    switch (kind) {
+        .vertical => {
+            const y_by = mover.getVerticalAlignDistance(target);
+            for (targets) |win| try win.moveBy(self.a, self.qtree, &self.updating_windows_map, 0, y_by);
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, targets, 0, y_by));
+        },
+        .horizontal => {
+            const x_by = mover.getHorizontalAlignDistance(target);
+            for (targets) |win| try win.moveBy(self.a, self.qtree, &self.updating_windows_map, x_by, 0);
+            self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addMoveEvent(self.a, targets, x_by, 0));
+        },
+    }
+}
+
+/////////////////////////////
+
+pub fn justifySelectionVertically(self: *@This()) !void {
+    if (self.selection.wmap.count() < 2) return;
+
+    var left: f32 = std.math.floatMax(f32);
+    var top: f32 = std.math.floatMax(f32);
+    var bottom: f32 = -std.math.floatMax(f32);
+    var total_occupied_height: f32 = 0;
+    for (self.selection.wmap.keys(), 0..) |win, i| {
+        left = @min(left, win.getTargetX());
+        top = @min(top, win.getTargetY() + win.getHeight());
+        bottom = @max(bottom, win.getTargetY());
+        if (i == 0 or i == self.selection.wmap.count() - 1) continue;
+        total_occupied_height += win.getHeight();
+    }
+    const count = @as(f32, @floatFromInt(self.selection.wmap.count() - 1));
+    const space_between = (bottom - top - total_occupied_height) / count;
+
+    const SortCtx = struct {
+        windows: []*Window,
+        pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+            return ctx.windows[a_index].getTargetY() < ctx.windows[b_index].getTargetY();
+        }
+    };
+    self.selection.wmap.sort(SortCtx{ .windows = self.selection.wmap.keys() });
+
+    var x_slice = try self.a.alloc(f32, self.selection.wmap.count());
+    var y_slice = try self.a.alloc(f32, self.selection.wmap.count());
+    for (self.selection.wmap.keys(), 0..) |curr, i| {
+        x_slice[i] = left - curr.getTargetX();
+
+        if (i == 0 or i == self.selection.wmap.count() - 1) {
+            y_slice[i] = 0;
+            continue;
+        }
+
+        const prev_win = self.selection.wmap.keys()[i - 1];
+        const prev_height = if (i == 1) 0 else prev_win.getHeight();
+        const target = prev_win.getTargetY() + prev_height + space_between;
+        y_slice[i] = target - curr.getTargetY();
+
+        try curr.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
+    }
+
+    self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addJustifyEvent(self.a, .{
+        .windows = try self.hm.a.dupe(*Window, self.selection.wmap.keys()),
+        .x_by = x_slice,
+        .y_by = y_slice,
+    }));
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Yank & Paste Selected Windows
 
 const YankedWindowsMap = std.AutoArrayHashMapUnmanaged(*Window, void);
@@ -899,8 +952,8 @@ pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center 
     if (kind == .screen_center) {
         var min_left: f32 = std.math.floatMax(f32);
         var min_top: f32 = std.math.floatMax(f32);
-        var max_right: f32 = std.math.floatMin(f32);
-        var max_bottom: f32 = std.math.floatMin(f32);
+        var max_right: f32 = -std.math.floatMax(f32);
+        var max_bottom: f32 = -std.math.floatMax(f32);
 
         for (self.yanker.map.keys()) |win| {
             min_left = @min(min_left, win.getX());

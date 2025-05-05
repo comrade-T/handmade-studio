@@ -235,9 +235,15 @@ pub fn changePaddingBy(self: *@This(), a: Allocator, qtree: *QuadTree, x_by: f32
 pub fn getX(self: *const @This()) f32 {
     return self.attr.pos.x;
 }
+pub fn getTargetX(self: *const @This()) f32 {
+    return self.attr.target_pos.x;
+}
 
 pub fn getY(self: *const @This()) f32 {
     return self.attr.pos.y;
+}
+pub fn getTargetY(self: *const @This()) f32 {
+    return self.attr.target_pos.y;
 }
 
 pub fn getContentWidth(self: *const @This()) f32 {
