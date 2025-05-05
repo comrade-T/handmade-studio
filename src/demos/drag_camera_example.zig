@@ -33,26 +33,11 @@ pub fn main() !void {
 
     ///////////////////////////// Ball
 
-    var ball_position = rl.Vector2{ .x = 0, .y = 0 };
-    var ball_target = ball_position;
-
     var cam_zoom_target = camera.zoom;
 
     ///////////////////////////// Shader
 
     var time: f32 = 0;
-
-    const imBlank = rl.genImageColor(screen_height, screen_height, rl.Color.blank);
-    const blank_texture = try rl.loadTextureFromImage(imBlank);
-    rl.unloadImage(imBlank);
-
-    const cube_shader = try rl.loadShader(null, "cubes.fs");
-    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .float);
-
-    var shader_rec_color = [3]f32{ 0, 0.8, 0.8 };
-    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "color"), &shader_rec_color, .vec3);
-
-    ///////////////////////////// Render Texture
 
     var did_draw_to_render_texture = false;
     const render_texture = try rl.loadRenderTexture(screen_height, screen_height);
@@ -71,14 +56,6 @@ pub fn main() !void {
         { // shader
             time = @floatCast(rl.getTime() / 4);
             rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .float);
-            rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .vec3);
-        }
-
-        {
-            if (rl.isMouseButtonPressed(.left)) {
-                ball_target.x = if (ball_target.x != 1000) 1000 else 0;
-            }
-            ball_position = rl.math.vector2Lerp(ball_position, ball_target, 0.05);
         }
 
         if (rl.isMouseButtonDown(.right)) {
@@ -130,12 +107,6 @@ pub fn main() !void {
                 rl.beginMode2D(camera);
                 defer rl.endMode2D();
 
-                { // shader stuffs
-                    rl.beginShaderMode(cube_shader);
-                    defer rl.endShaderMode();
-                    rl.drawTexture(blank_texture, 1200, 0, rl.Color.white);
-                }
-
                 {
                     rl.beginShaderMode(rgb_shader);
                     defer rl.endShaderMode();
@@ -152,13 +123,6 @@ pub fn main() !void {
                         rl.Color.white,
                     );
                 }
-
-                // // draw ball
-                // rl.drawCircle(@intFromFloat(ball_position.x), @intFromFloat(ball_position.y), 40, rl.Color.sky_blue);
-                //
-                // // normal raylib calls
-                // rl.drawText("okayge", 100, 100, 30, rl.Color.ray_white);
-                // rl.drawCircle(200, 500, 100, rl.Color.yellow);
 
                 // // draw border of original view
                 // rl.drawRectangleLines(0, 0, screen_width, screen_height, rl.Color.sky_blue);
@@ -193,13 +157,4 @@ fn smoothDamp(current: f32, target_: f32, current_velocity: *f32, smooth_time_: 
     }
 
     return output;
-}
-
-fn drawTextAtBottomRight(comptime fmt: []const u8, args: anytype, font_size: i32, offset: rl.Vector2) !void {
-    var buf: [1024]u8 = undefined;
-    const text = try std.fmt.bufPrintZ(&buf, fmt, args);
-    const measure = rl.measureText(text, font_size);
-    const x = screen_width - measure - @as(i32, @intFromFloat(offset.x));
-    const y = screen_height - font_size - @as(i32, @intFromFloat(offset.y));
-    rl.drawText(text, x, y, font_size, rl.Color.ray_white);
 }
