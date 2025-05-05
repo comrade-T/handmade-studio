@@ -215,6 +215,7 @@ pub fn mapKeys(sess: *Session) !void {
 
     const ChangeConnectionAnchorCb = struct {
         const Which = enum { start, end };
+        both: bool,
         which: Which,
         anchor: CM.Connection.Anchor,
         sess: *Session,
@@ -222,23 +223,48 @@ pub fn mapKeys(sess: *Session) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const wm = self.sess.getActiveCanvasWindowManager() orelse return;
             if (wm.connman.pending_connection == null) return;
-            switch (self.which) {
-                .start => wm.connman.pending_connection.?.start.anchor = self.anchor,
-                .end => wm.connman.pending_connection.?.end.anchor = self.anchor,
+
+            if (!self.both) {
+                switch (self.which) {
+                    .start => wm.connman.pending_connection.?.start.anchor = self.anchor,
+                    .end => wm.connman.pending_connection.?.end.anchor = self.anchor,
+                }
+                return;
             }
+
+            const other_anchor: CM.Connection.Anchor = switch (self.anchor) {
+                .N => .S,
+                .S => .N,
+                .W => .E,
+                .E => .W,
+            };
+            const start = if (self.which == .start) self.anchor else other_anchor;
+            const end = if (self.which == .start) other_anchor else self.anchor;
+
+            wm.connman.pending_connection.?.start.anchor = start;
+            wm.connman.pending_connection.?.end.anchor = end;
         }
-        pub fn init(allocator: std.mem.Allocator, sess_: *Session, which: Which, anchor: CM.Connection.Anchor) !Session.Callback {
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, both: bool, which: Which, anchor: CM.Connection.Anchor) !Session.Callback {
             const self = try allocator.create(@This());
-            self.* = .{ .which = which, .anchor = anchor, .sess = sess_ };
+            self.* = .{ .which = which, .anchor = anchor, .sess = sess_, .both = both };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.map(PENDING, &.{ .s, .h }, try ChangeConnectionAnchorCb.init(a, sess, .start, .W));
-    try c.map(PENDING, &.{ .s, .l }, try ChangeConnectionAnchorCb.init(a, sess, .start, .E));
-    try c.map(PENDING, &.{ .s, .k }, try ChangeConnectionAnchorCb.init(a, sess, .start, .N));
-    try c.map(PENDING, &.{ .s, .j }, try ChangeConnectionAnchorCb.init(a, sess, .start, .S));
-    try c.map(PENDING, &.{ .e, .h }, try ChangeConnectionAnchorCb.init(a, sess, .end, .W));
-    try c.map(PENDING, &.{ .e, .l }, try ChangeConnectionAnchorCb.init(a, sess, .end, .E));
-    try c.map(PENDING, &.{ .e, .k }, try ChangeConnectionAnchorCb.init(a, sess, .end, .N));
-    try c.map(PENDING, &.{ .e, .j }, try ChangeConnectionAnchorCb.init(a, sess, .end, .S));
+    try c.map(PENDING, &.{ .s, .h }, try ChangeConnectionAnchorCb.init(a, sess, false, .start, .W));
+    try c.map(PENDING, &.{ .s, .l }, try ChangeConnectionAnchorCb.init(a, sess, false, .start, .E));
+    try c.map(PENDING, &.{ .s, .k }, try ChangeConnectionAnchorCb.init(a, sess, false, .start, .N));
+    try c.map(PENDING, &.{ .s, .j }, try ChangeConnectionAnchorCb.init(a, sess, false, .start, .S));
+    try c.map(PENDING, &.{ .e, .h }, try ChangeConnectionAnchorCb.init(a, sess, false, .end, .W));
+    try c.map(PENDING, &.{ .e, .l }, try ChangeConnectionAnchorCb.init(a, sess, false, .end, .E));
+    try c.map(PENDING, &.{ .e, .k }, try ChangeConnectionAnchorCb.init(a, sess, false, .end, .N));
+    try c.map(PENDING, &.{ .e, .j }, try ChangeConnectionAnchorCb.init(a, sess, false, .end, .S));
+
+    try c.map(PENDING, &.{ .left_shift, .s, .h }, try ChangeConnectionAnchorCb.init(a, sess, true, .start, .W));
+    try c.map(PENDING, &.{ .left_shift, .s, .l }, try ChangeConnectionAnchorCb.init(a, sess, true, .start, .E));
+    try c.map(PENDING, &.{ .left_shift, .s, .k }, try ChangeConnectionAnchorCb.init(a, sess, true, .start, .N));
+    try c.map(PENDING, &.{ .left_shift, .s, .j }, try ChangeConnectionAnchorCb.init(a, sess, true, .start, .S));
+    try c.map(PENDING, &.{ .left_shift, .e, .h }, try ChangeConnectionAnchorCb.init(a, sess, true, .end, .W));
+    try c.map(PENDING, &.{ .left_shift, .e, .l }, try ChangeConnectionAnchorCb.init(a, sess, true, .end, .E));
+    try c.map(PENDING, &.{ .left_shift, .e, .k }, try ChangeConnectionAnchorCb.init(a, sess, true, .end, .N));
+    try c.map(PENDING, &.{ .left_shift, .e, .j }, try ChangeConnectionAnchorCb.init(a, sess, true, .end, .S));
 }
