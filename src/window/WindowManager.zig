@@ -757,9 +757,8 @@ const Selection = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Flicker Strike
 
-pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
-    const active_window = self.active_window orelse return null;
-    const tracker = self.connman.tracker_map.get(active_window) orelse return null;
+pub fn getFirstVisibleIncomingWindow(self: *@This(), win: *Window) ?*ConnectionManager.Connection {
+    const tracker = self.connman.tracker_map.get(win) orelse return null;
     if (tracker.incoming.count() == 0) return null;
 
     var may_visible_index: ?usize = null;
@@ -772,8 +771,7 @@ pub fn getFirstVisibleIncomingWindow(self: *@This()) ?*Window {
     }
 
     const visible_index = may_visible_index orelse return null;
-    const conn = keys[visible_index];
-    return conn.start.win;
+    return keys[visible_index];
 }
 
 const AlignConnectionKind = ConnectionManager.AlignConnectionKind;

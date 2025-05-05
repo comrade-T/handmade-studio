@@ -212,7 +212,9 @@ pub fn centerCameraAtActiveWindow(ctx: *anyopaque) !void {
 fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
-    const target = wm.getFirstVisibleIncomingWindow() orelse return;
+    const active_window = wm.active_window orelse return;
+    const conn = wm.getFirstVisibleIncomingWindow(active_window) orelse return;
+    const target = conn.start.win;
 
     wm.setActiveWindow(target, true);
     target.centerCameraAt(wm.mall);
@@ -241,7 +243,8 @@ fn alignHorizontallyToFirstConnectionTo(ctx: *anyopaque) !void {
 fn alignToFirstConnection(sess: *Session, kind: AlignConnectionKind, anchor: AlignConnectionAnchor) !void {
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     const active_window = wm.active_window orelse return;
-    const from_win = wm.getFirstVisibleIncomingWindow() orelse return;
+    const conn = wm.getFirstVisibleIncomingWindow(active_window) orelse return;
+    const from_win = conn.start.win;
 
     const mover = if (anchor == .start) active_window else from_win;
     const target = if (anchor == .start) from_win else active_window;

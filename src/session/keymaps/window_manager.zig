@@ -91,10 +91,15 @@ pub fn mapKeys(sess: *Session) !void {
 }
 
 fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
+    const AnchorKind = union(enum) {
+        none,
+        first_conn,
+        anchors: []const Anchor,
+    };
     const Cb = struct {
         sess: *Session,
         spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
-        anchors: []const Anchor,
+        anchor_kind: AnchorKind,
 
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -114,33 +119,38 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
             try wm.triggerCursorExitAnimation(a);
             try wm.triggerCursorEnterAnimation(b);
 
-            if (self.anchors.len < 2) return;
-            try wm.connman.establishHardCodedPendingConnection(a, self.anchors[0], b, self.anchors[1]);
+            switch (self.anchor_kind) {
+                .none => {},
+                .first_conn => {
+                    const conn = wm.getFirstVisibleIncomingWindow(a) orelse return;
+                    try wm.connman.establishHardCodedPendingConnection(conn.start.win, conn.start.anchor, b, conn.end.anchor);
+                },
+                .anchors => |anchors| try wm.connman.establishHardCodedPendingConnection(a, anchors[0], b, anchors[1]),
+            }
         }
 
-        pub fn init(
-            allocator: std.mem.Allocator,
-            sess_: *Session,
-            spawn_opts: WindowManager.SpawnRelativeeWindowOpts,
-            anchors: []const Anchor,
-        ) !Session.Callback {
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, spawn_opts: WindowManager.SpawnRelativeeWindowOpts, anchor_kind: AnchorKind) !Session.Callback {
             const self = try allocator.create(@This());
-            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts, .anchors = anchors };
+            self.* = .{ .sess = sess_, .spawn_opts = spawn_opts, .anchor_kind = anchor_kind };
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
 
     const c = sess.council;
     const a = c.arena.allocator();
-    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, &.{}));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{}));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{}));
-    try c.map(NORMAL, &.{ .left_control, .space, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, &.{}));
-    try c.map(NORMAL, &.{ .space, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, &.{}));
+    try c.map(NORMAL, &.{ .left_control, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .none));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .none));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .none));
+    try c.map(NORMAL, &.{ .left_control, .space, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
+    try c.map(NORMAL, &.{ .space, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .none));
 
-    try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, &.{ .S, .N }));
-    try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{ .N, .S }));
-    try c.map(NORMAL, &.{ .left_shift, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, &.{ .N, .S }));
-    try c.map(NORMAL, &.{ .left_control, .space, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, &.{ .E, .W }));
-    try c.map(NORMAL, &.{ .space, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, &.{ .W, .E }));
+    try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .{ .anchors = &.{ .S, .N } }));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .{ .anchors = &.{ .N, .S } }));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .{ .anchors = &.{ .N, .S } }));
+    try c.map(NORMAL, &.{ .left_control, .space, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .{ .anchors = &.{ .E, .W } }));
+    try c.map(NORMAL, &.{ .space, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .{ .anchors = &.{ .W, .E } }));
+
+    try c.map(NORMAL, &.{ .left_control, .left_alt, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .first_conn));
+    try c.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .first_conn));
+    try c.map(NORMAL, &.{ .left_shift, .left_control, .left_alt, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .first_conn));
 }
