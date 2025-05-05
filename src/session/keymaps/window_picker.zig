@@ -27,35 +27,42 @@ const layout_related = @import("layout_related.zig");
 
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
+    const a = c.arena.allocator();
 
-    try c.mapUpNDown(NORMAL, &.{ .space, .left_shift, .f }, .{
-        .down_f = showNormal,
-        .up_f = hideNormal,
-        .down_ctx = sess,
-        .up_ctx = sess,
-    });
-    try c.mapUpNDown(NORMAL, &.{ .space, .f }, .{
-        .down_f = showNormalNoCenterCam,
-        .up_f = hideNormalNoCenterCam,
-        .down_ctx = sess,
-        .up_ctx = sess,
-    });
     try c.map(NORMAL, &.{ .space, .f, .backslash }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
     try c.map(NORMAL, &.{ .space, .f, .q }, .{ .f = layout_related.centerCameraAtActiveWindow, .ctx = sess });
 
+    const AdaptedUpNDownCb = struct {
+        kind: CbType,
+        sess: *Session,
+        fn up(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+            try WindowPicker.hide(getPicker(wm, self.kind));
+        }
+        fn down(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+            try WindowPicker.show(getPicker(wm, self.kind));
+        }
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, kind: CbType) !Session.UpNDownCallback {
+            const self = try allocator.create(@This());
+            self.* = .{ .sess = sess_, .kind = kind };
+            return Session.UpNDownCallback{ .up_f = @This().up, .up_ctx = self, .down_f = @This().down, .down_ctx = self };
+        }
+    };
+
+    try c.mapUpNDown(NORMAL, &.{ .space, .f }, try AdaptedUpNDownCb.init(a, sess, .normal_no_center_cam));
     try mapTargetKeys(sess, NORMAL, .normal_no_center_cam, &.{ .space, .f });
+
+    try c.mapUpNDown(NORMAL, &.{ .space, .left_shift, .f }, try AdaptedUpNDownCb.init(a, sess, .normal));
     try mapTargetKeys(sess, NORMAL, .normal, &.{ .space, .left_shift, .f });
 
-    /////////////////////////////
-
-    try c.mapUpNDown(MULTI_WIN, &.{ .space, .f }, .{
-        .down_f = showMultiWin,
-        .up_f = hideMultiWin,
-        .down_ctx = sess,
-        .up_ctx = sess,
-    });
-
+    try c.mapUpNDown(MULTI_WIN, &.{ .space, .f }, try AdaptedUpNDownCb.init(a, sess, .selection));
     try mapTargetKeys(sess, MULTI_WIN, .selection, &.{ .space, .f });
+
+    try c.mapUpNDown(MULTI_WIN, &.{ .space, .a, .s }, try AdaptedUpNDownCb.init(a, sess, .vertical_justify));
+    try mapTargetKeys(sess, MULTI_WIN, .vertical_justify, &.{ .space, .a, .s });
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,7 +86,7 @@ fn mapTargetKeys(sess: *Session, mode: []const u8, comptime kind: CbType, prefix
     }
 }
 
-const CbType = enum { normal, normal_no_center_cam, selection };
+const CbType = enum { normal, normal_no_center_cam, selection, vertical_justify };
 fn makeCb(comptime kind: CbType) type {
     return struct {
         sess: *Session,
@@ -87,11 +94,7 @@ fn makeCb(comptime kind: CbType) type {
         fn f(ctx: *anyopaque) !void {
             const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
             const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-            switch (kind) {
-                .normal => try WindowPicker.executeCallback(&wm.window_picker_normal, self.index),
-                .normal_no_center_cam => try WindowPicker.executeCallback(&wm.window_picker_normal_no_center_cam, self.index),
-                .selection => try WindowPicker.executeCallback(&wm.selection_window_picker, self.index),
-            }
+            try WindowPicker.executeCallback(getPicker(wm, kind), self.index);
         }
         pub fn init(allocator: std.mem.Allocator, sess_: *Session, index: usize) !WindowManager.Callback {
             const self = try allocator.create(@This());
@@ -101,44 +104,11 @@ fn makeCb(comptime kind: CbType) type {
     };
 }
 
-/////////////////////////////
-
-fn showNormal(ctx: *anyopaque) !void {
-    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try WindowPicker.show(&wm.window_picker_normal);
-}
-
-fn hideNormal(ctx: *anyopaque) !void {
-    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try WindowPicker.hide(&wm.window_picker_normal);
-}
-
-/////////////////////////////
-
-fn showNormalNoCenterCam(ctx: *anyopaque) !void {
-    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try WindowPicker.show(&wm.window_picker_normal_no_center_cam);
-}
-
-fn hideNormalNoCenterCam(ctx: *anyopaque) !void {
-    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try WindowPicker.hide(&wm.window_picker_normal_no_center_cam);
-}
-
-/////////////////////////////
-
-fn showMultiWin(ctx: *anyopaque) !void {
-    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try WindowPicker.show(&wm.selection_window_picker);
-}
-
-fn hideMultiWin(ctx: *anyopaque) !void {
-    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
-    const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try WindowPicker.hide(&wm.selection_window_picker);
+fn getPicker(wm: *WindowManager, kind: CbType) *WindowPicker {
+    return switch (kind) {
+        .normal => &wm.window_picker_normal,
+        .normal_no_center_cam => &wm.window_picker_normal_no_center_cam,
+        .selection => &wm.selection_window_picker,
+        .vertical_justify => &wm.vertical_justify_target_picker,
+    };
 }

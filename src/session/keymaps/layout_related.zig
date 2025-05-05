@@ -237,8 +237,10 @@ pub fn mapKeys(sess: *Session) !void {
 fn justify(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try wm.justifySelectionVertically();
+    try wm.justifySelectionVertically(.{});
 }
+
+/////////////////////////////
 
 pub fn centerCameraAtActiveWindow(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));

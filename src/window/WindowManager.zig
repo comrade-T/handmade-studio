@@ -68,6 +68,7 @@ visible_windows: WindowList,
 window_picker_normal: WindowPicker,
 selection_window_picker: WindowPicker,
 window_picker_normal_no_center_cam: WindowPicker,
+vertical_justify_target_picker: WindowPicker,
 
 selection: Selection,
 
@@ -105,6 +106,11 @@ pub fn create(a: Allocator, lang_hub: *LangHub, style_store: *RenderMall) !*Wind
             .wm = self,
             .callback = .{ .f = setActiveWindowPickerCallbackNoCenterCam, .ctx = self },
             .hide_active_window_label = true,
+        },
+        .vertical_justify_target_picker = WindowPicker{
+            .wm = self,
+            .callback = .{ .f = verticalJustifyTargetPickerCallback, .ctx = self },
+            .hide_selection_window_labels = true,
         },
 
         .selection = try Selection.init(a),
@@ -168,6 +174,7 @@ pub fn render(self: *@This()) !void {
     self.window_picker_normal.render();
     self.window_picker_normal_no_center_cam.render();
     self.selection_window_picker.render();
+    self.vertical_justify_target_picker.render();
 }
 
 pub fn destroy(self: *@This()) void {
@@ -868,7 +875,29 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Conne
 
 /////////////////////////////
 
-pub fn justifySelectionVertically(self: *@This()) !void {
+fn verticalJustifyTargetPickerCallback(ctx: *anyopaque, target: *Window) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.alignAndJustifySelectionVerticallyToTarget(target);
+}
+
+fn alignAndJustifySelectionVerticallyToTarget(self: *@This(), target: *Window) !void {
+    if (self.selection.wmap.count() < 1) return;
+
+    var top: f32 = std.math.floatMax(f32);
+    var bottom: f32 = -std.math.floatMax(f32);
+    for (self.selection.wmap.keys()) |win| {
+        top = @min(top, win.getTargetY());
+        bottom = @max(bottom, win.getTargetY() + win.getHeight());
+    }
+    const selection_center = top + ((bottom - top) / 2);
+    const target_center = target.getTargetY() + (target.getHeight() / 2);
+    const y_by = target_center - selection_center;
+
+    try self.justifySelectionVertically(.{ .add_y = y_by });
+}
+
+const JustifySelectionVerticallyOpts = struct { add_x: f32 = 0, add_y: f32 = 0 };
+pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionVerticallyOpts) !void {
     if (self.selection.wmap.count() < 2) return;
 
     var left: f32 = std.math.floatMax(f32);
@@ -896,17 +925,15 @@ pub fn justifySelectionVertically(self: *@This()) !void {
     var x_slice = try self.a.alloc(f32, self.selection.wmap.count());
     var y_slice = try self.a.alloc(f32, self.selection.wmap.count());
     for (self.selection.wmap.keys(), 0..) |curr, i| {
-        x_slice[i] = left - curr.getTargetX();
+        x_slice[i] = left - curr.getTargetX() + opts.add_x;
 
         if (i == 0 or i == self.selection.wmap.count() - 1) {
-            y_slice[i] = 0;
-            continue;
+            y_slice[i] = 0 + opts.add_y;
+        } else {
+            const prev_win = self.selection.wmap.keys()[i - 1];
+            const target = prev_win.getTargetY() + prev_win.getHeight() + space_between;
+            y_slice[i] = target - curr.getTargetY();
         }
-
-        const prev_win = self.selection.wmap.keys()[i - 1];
-        const prev_height = if (i == 1) 0 else prev_win.getHeight();
-        const target = prev_win.getTargetY() + prev_height + space_between;
-        y_slice[i] = target - curr.getTargetY();
 
         try curr.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
     }

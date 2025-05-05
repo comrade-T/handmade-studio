@@ -32,6 +32,7 @@ callback: Callback,
 active: bool = false,
 
 hide_active_window_label: bool = false,
+hide_selection_window_labels: bool = false,
 use_target_camera: bool = true,
 
 pub const Callback = struct {
@@ -73,6 +74,8 @@ pub fn executeCallback(ctx: *anyopaque, index: usize) !void {
 fn renderTargetLabels(self: *const @This(), screen_rect: Rect, windows: []*Window) void {
     for (windows, 0..) |win, i| {
         if (self.hide_active_window_label and (win == self.wm.active_window)) continue;
+        if (self.hide_selection_window_labels and self.wm.selection.wmap.get(win) != null) continue;
+
         const code_point = if (i < RIGHT_HAND_CODEPOINTS.len) RIGHT_HAND_CODEPOINTS[i] else break;
 
         const r = win.getRect();
