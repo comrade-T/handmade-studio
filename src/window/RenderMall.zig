@@ -86,7 +86,14 @@ pub fn deinit(self: *@This()) void {
     self.colorschemes.deinit(self.a);
 }
 
-pub fn printMessage(self: *const @This(), message: []const u8, font_size: f32, color: u32, y_offset: f32) void {
+pub fn printMessage(
+    self: *const @This(),
+    message: []const u8,
+    font_size: f32,
+    color: u32,
+    y_offset: f32,
+    background_color: ?u32,
+) void {
     const font = self.font_store.getDefaultFont() orelse unreachable;
     const default_glyph = font.glyph_map.get('?') orelse unreachable;
 
@@ -100,6 +107,7 @@ pub fn printMessage(self: *const @This(), message: []const u8, font_size: f32, c
         const char_width = calculateGlyphWidth(font, font_size, cp.code, default_glyph);
         defer x += char_width;
 
+        if (background_color) |bg| self.rcb.drawRectangle(x, y, char_width, font_size, bg);
         self.rcb.drawCodePoint(font, cp.code, x, y, font_size, color);
     }
 }

@@ -229,7 +229,7 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .u }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.orange)));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .i }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.blue)));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .o }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.purple)));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .o }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.green)));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .p }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.green)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning

@@ -50,7 +50,7 @@ pub fn setMessage(self: *@This(), msg: []const u8) !void {
 
 pub fn render(self: *@This()) void {
     const message = self.message orelse return;
-    self.mall.printMessage(message, self.font_size, self.text_color, self.y_offset);
+    self.mall.printMessage(message, self.font_size, self.text_color, self.y_offset, 0x000000FF);
 }
 
 pub fn clearIfDurationMet(self: *@This()) void {
