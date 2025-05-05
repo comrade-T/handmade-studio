@@ -972,8 +972,13 @@ const Yanker = struct {
     }
 };
 
-pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center }) ![]const *Window {
-    if (!self.yanker.hasThingsToPaste()) return &.{};
+pub fn paste(
+    self: *@This(),
+    a: Allocator,
+    origin: *WindowManager,
+    kind: enum { in_place, screen_center },
+) ![]const *Window {
+    if (!origin.yanker.hasThingsToPaste()) return &.{};
 
     var x_by: f32, var y_by: f32 = .{ 0, 0 };
     if (kind == .screen_center) {
@@ -982,7 +987,7 @@ pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center 
         var max_right: f32 = -std.math.floatMax(f32);
         var max_bottom: f32 = -std.math.floatMax(f32);
 
-        for (self.yanker.map.keys()) |win| {
+        for (origin.yanker.map.keys()) |win| {
             min_left = @min(min_left, win.getX());
             min_top = @min(min_top, win.getY());
             max_right = @max(max_right, win.getX() + win.getWidth());
@@ -1002,9 +1007,9 @@ pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center 
 
     /////////////////////////////
 
-    var duped_windows = try a.alloc(*Window, self.yanker.map.count());
+    var duped_windows = try a.alloc(*Window, origin.yanker.map.count());
 
-    for (self.yanker.map.keys(), 0..) |target, i| {
+    for (origin.yanker.map.keys(), 0..) |target, i| {
         const new_window = try self.duplicateWindow(target, x_by, y_by);
         duped_windows[i] = new_window;
     }
@@ -1013,15 +1018,15 @@ pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center 
 
     var connections = std.AutoArrayHashMap(ConnectionManager.Connection, void).init(self.a);
     defer connections.deinit();
-    for (self.yanker.map.keys(), 0..) |win, i| {
-        const tracker = self.connman.tracker_map.get(win) orelse unreachable;
+    for (origin.yanker.map.keys(), 0..) |win, i| {
+        const tracker = origin.connman.tracker_map.get(win) orelse unreachable;
 
         for (tracker.incoming.keys()) |conn| {
             var new_conn = conn.*;
             new_conn.end.win = duped_windows[i];
 
-            if (self.yanker.map.contains(conn.start.win)) {
-                const index = self.yanker.map.getIndex(conn.start.win) orelse unreachable;
+            if (origin.yanker.map.contains(conn.start.win)) {
+                const index = origin.yanker.map.getIndex(conn.start.win) orelse unreachable;
                 new_conn.start.win = duped_windows[index];
             }
             try connections.put(new_conn, {});
@@ -1031,8 +1036,8 @@ pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center 
             var new_conn = conn.*;
             new_conn.start.win = duped_windows[i];
 
-            if (self.yanker.map.contains(conn.end.win)) {
-                const index = self.yanker.map.getIndex(conn.end.win) orelse unreachable;
+            if (origin.yanker.map.contains(conn.end.win)) {
+                const index = origin.yanker.map.getIndex(conn.end.win) orelse unreachable;
                 new_conn.end.win = duped_windows[index];
             }
             try connections.put(new_conn, {});
@@ -1043,7 +1048,7 @@ pub fn paste(self: *@This(), a: Allocator, kind: enum { in_place, screen_center 
 
     /////////////////////////////
 
-    const index = self.yanker.map.getIndex(self.active_window.?) orelse unreachable;
+    const index = origin.yanker.map.getIndex(origin.active_window.?) orelse unreachable;
     self.setActiveWindow(duped_windows[index], true);
 
     try self.addWindowsToSpawnHistory(duped_windows);

@@ -58,6 +58,7 @@ canvases: std.ArrayListUnmanaged(*Canvas) = .{},
 
 tcbmap: std.AutoHashMapUnmanaged(TriggerCallbackKey, TriggerCallback) = .{},
 
+yank_origin: ?*WindowManager = null,
 yanked_and_pasted: bool = false,
 
 pub fn mapKeys(self: *@This()) !void {
@@ -159,6 +160,10 @@ fn confirmCloseActiveCanvas(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const active_canvas = self.getActiveCanvas() orelse return;
 
+    if (self.yank_origin) |yank_origin| {
+        if (active_canvas.wm == yank_origin) self.yank_origin = null;
+    }
+
     _ = self.canvases.orderedRemove(self.active_index.?);
     active_canvas.destroy();
     self.active_index.? -|= 1;
@@ -251,7 +256,7 @@ pub fn moveByAfterMaybePaste(self: *@This(), x_by: f32, y_by: f32) !void {
         const wm = self.getActiveCanvasWindowManager() orelse return;
         try wm.yanker.yankSelectedWindows();
 
-        const duped_windows = try wm.paste(self.a, .in_place);
+        const duped_windows = try wm.paste(self.a, wm, .in_place);
         defer self.a.free(duped_windows);
 
         try wm.clearSelection();
@@ -280,12 +285,15 @@ pub fn yankSelectedWindows(ctx: *anyopaque) !void {
     const msg = try std.fmt.allocPrint(self.a, "Yanked {d} Windows", .{wm.yanker.map.count()});
     defer self.a.free(msg);
     try self.nl.setMessage(msg);
+
+    self.yank_origin = wm;
 }
 
 pub fn pasteAtScreenCenter(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const wm = self.getActiveCanvasWindowManager() orelse return;
-    const duped_windows = try wm.paste(self.a, .screen_center);
+    const origin = self.yank_origin orelse return;
+    const duped_windows = try wm.paste(self.a, origin, .screen_center);
     defer self.a.free(duped_windows);
 }
 
