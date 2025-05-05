@@ -134,6 +134,10 @@ pub fn setLimit(self: *@This(), a: Allocator, qtree: *QuadTree, may_limit: ?Curs
     try self.insertToQuadTree(a, qtree);
 }
 
+pub fn setDefaultColor(self: *@This(), color: u32) void {
+    self.defaults.color = color;
+}
+
 fn setLimitNoQuadTree(self: *@This(), may_limit: ?CursorManager.Limit) !void {
     // prevent out-of-date limits in canvas file crashing the program
     if (may_limit) |limit|
@@ -528,7 +532,7 @@ pub fn produceSpawnOptions(self: *const @This()) SpawnOptions {
         .bounds = if (self.attr.bounded) self.attr.bounds else null,
         .padding = self.attr.padding,
         .limit = self.attr.limit,
-        // .defaults = self.defaults,
+        .defaults = self.defaults,
         .subscribed_style_sets = self.subscribed_style_sets.items,
         .id = if (self.id != UNSET_WIN_ID) self.id else null,
         .bordered = self.attr.bordered,

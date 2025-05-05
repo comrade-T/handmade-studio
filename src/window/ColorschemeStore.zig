@@ -122,7 +122,7 @@ test initializeNightflyColorscheme {
     try eq(@intFromEnum(Nightfly.watermelon), store.map.get("Nightfly").?.get("boolean").?);
 }
 
-const Nightfly = enum(u32) {
+pub const Nightfly = enum(u32) {
     none = 0x000000ff,
     black = 0x011627ff,
     white = 0xc3ccdcff,

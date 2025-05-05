@@ -42,6 +42,8 @@ pub const Event = union(enum) {
     move: struct { windows: Windows, x_by: f32, y_by: f32 },
     // TODO: add the rest of layout related events
 
+    set_default_color: struct { windows: Windows, prev: u32, next: u32 },
+
     add_connection: *Connection,
     hide_connection: *Connection,
     swap_selected_connection_points: *Connection,
@@ -156,6 +158,10 @@ pub fn addMoveEvent(self: *@This(), a: Allocator, windows: Windows, x_by: f32, y
         .x_by = x_by,
         .y_by = y_by,
     } });
+}
+
+pub fn addSetDefaultColorEvent(self: *@This(), a: Allocator, windows: Windows, prev: u32, next: u32) !AddNewEventResult {
+    return try self.addNewEvent(a, .{ .set_default_color = .{ .windows = windows, .prev = prev, .next = next } });
 }
 
 /////////////////////////////

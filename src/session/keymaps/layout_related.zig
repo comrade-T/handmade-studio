@@ -22,6 +22,7 @@ const Callback = Session.Callback;
 const WindowManager = Session.WindowManager;
 const AlignConnectionKind = Session.WindowManager.ConnectionManager.AlignConnectionKind;
 const AlignConnectionAnchor = Session.WindowManager.ConnectionManager.AlignConnectionAnchor;
+const Nightfly = Session.RenderMall.ColorschemeStore.Nightfly;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -198,6 +199,34 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(MULTI_WIN, &.{ .p, .d }, try MoveByMaybePasteCb.init(a, sess, 100, 0));
     try c.map(MULTI_WIN, &.{ .p, .w }, try MoveByMaybePasteCb.init(a, sess, 0, -100));
     try c.map(MULTI_WIN, &.{ .p, .s }, try MoveByMaybePasteCb.init(a, sess, 0, 100));
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Colors
+
+    const ChangeColorCb = struct {
+        sess: *Session,
+        color: u32,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+            try setDefaultColor(wm, self.color);
+        }
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, color: u32) !Session.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .sess = sess_, .color = color };
+            return Session.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .zero }, try ChangeColorCb.init(a, sess, 0xF5F5F5F5));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .h }, try ChangeColorCb.init(a, sess, 0xFF0000F5));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .j }, try ChangeColorCb.init(a, sess, 0x0000FFF5));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .k }, try ChangeColorCb.init(a, sess, 0xFFFF00F5));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .l }, try ChangeColorCb.init(a, sess, 0x00FF00F5));
+
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .y }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.red)));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .u }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.orange)));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .i }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.blue)));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .o }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.purple)));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .o }, try ChangeColorCb.init(a, sess, @intFromEnum(Nightfly.green)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
@@ -301,6 +330,20 @@ pub fn toggleActiveWindowBounds(ctx: *anyopaque) !void {
 pub fn changeActiveWindowBoundSizeBy(wm: *WindowManager, width_by: f32, height_by: f32) void {
     const active_window = wm.active_window orelse return;
     active_window.changeBoundSizeBy(width_by, height_by);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Colors
+
+pub fn setDefaultColor(wm: *WindowManager, color: u32) !void {
+    const active_window = wm.active_window orelse return;
+    const prev = active_window.defaults.color;
+    const windows = wm.getActiveWindows() orelse return;
+    for (windows) |win| win.setDefaultColor(color);
+
+    wm.cleanUpAfterAppendingToHistory(
+        wm.a,
+        try wm.hm.addSetDefaultColorEvent(wm.a, windows, prev, color),
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Switch Active Window

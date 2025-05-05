@@ -502,6 +502,8 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
         .move => |info| for (info.windows) |win|
             try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
 
+        .set_default_color => |info| for (info.windows) |win| win.setDefaultColor(info.prev),
+
         .add_connection => |conn| conn.hide(),
         .hide_connection => |conn| conn.show(&self.connman),
         .swap_selected_connection_points => |conn| conn.swapPoints(&self.connman),
@@ -536,6 +538,8 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
 
         .move => |info| for (info.windows) |win|
             try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
+
+        .set_default_color => |info| for (info.windows) |win| win.setDefaultColor(info.next),
 
         /////////////////////////////
 
