@@ -16,7 +16,7 @@ pub fn main() !void {
     defer rl.closeWindow();
 
     rl.setTargetFPS(60);
-    rl.setExitKey(rl.KeyboardKey.key_null);
+    rl.setExitKey(rl.KeyboardKey.null);
 
     ///////////////////////////// Model
 
@@ -43,24 +43,24 @@ pub fn main() !void {
     var time: f32 = 0;
 
     const imBlank = rl.genImageColor(screen_height, screen_height, rl.Color.blank);
-    const blank_texture = rl.loadTextureFromImage(imBlank);
+    const blank_texture = try rl.loadTextureFromImage(imBlank);
     rl.unloadImage(imBlank);
 
-    const cube_shader = rl.loadShader(null, "cubes.fs");
-    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .shader_uniform_float);
+    const cube_shader = try rl.loadShader(null, "cubes.fs");
+    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .float);
 
     var shader_rec_color = [3]f32{ 0, 0.8, 0.8 };
-    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "color"), &shader_rec_color, .shader_uniform_vec3);
+    rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "color"), &shader_rec_color, .vec3);
 
     ///////////////////////////// Render Texture
 
     var did_draw_to_render_texture = false;
-    const render_texture = rl.loadRenderTexture(screen_height, screen_height);
+    const render_texture = try rl.loadRenderTexture(screen_height, screen_height);
 
-    const rgb_shader = rl.loadShader(null, "epic_rainbow.frag");
+    const rgb_shader = try rl.loadShader(null, "epic_rainbow.frag");
     const resolution = [2]f32{ screen_width, screen_height };
-    rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .shader_uniform_float);
-    rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "resolution"), &resolution, .shader_uniform_vec2);
+    rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .float);
+    rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "resolution"), &resolution, .vec3);
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
 
@@ -70,18 +70,18 @@ pub fn main() !void {
 
         { // shader
             time = @floatCast(rl.getTime() / 4);
-            rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .shader_uniform_float);
-            rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .shader_uniform_float);
+            rl.setShaderValue(rgb_shader, rl.getShaderLocation(rgb_shader, "time"), &time, .float);
+            rl.setShaderValue(cube_shader, rl.getShaderLocation(cube_shader, "uTime"), &time, .vec3);
         }
 
         {
-            if (rl.isMouseButtonPressed(.mouse_button_left)) {
+            if (rl.isMouseButtonPressed(.left)) {
                 ball_target.x = if (ball_target.x != 1000) 1000 else 0;
             }
             ball_position = rl.math.vector2Lerp(ball_position, ball_target, 0.05);
         }
 
-        if (rl.isMouseButtonDown(.mouse_button_right)) {
+        if (rl.isMouseButtonDown(.right)) {
             var delta = rl.getMouseDelta();
             delta = delta.scale(-1 / camera.zoom);
             camera.target = delta.add(camera.target);
