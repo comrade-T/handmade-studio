@@ -65,8 +65,8 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mapUpNDown(MULTI_WIN, &.{ .space, .f }, try AdaptedUpNDownCb.init(a, sess, .selection));
     try mapTargetKeys(sess, MULTI_WIN, .selection, &.{ .space, .f });
 
-    try c.mapUpNDown(MULTI_WIN, &.{ .space, .a, .s }, try AdaptedUpNDownCb.init(a, sess, .vertical_justify));
-    try mapTargetKeys(sess, MULTI_WIN, .vertical_justify, &.{ .space, .a, .s });
+    try c.mapUpNDown(MULTI_WIN, &.{ .space, .v }, try AdaptedUpNDownCb.init(a, sess, .vertical_justify));
+    try mapTargetKeys(sess, MULTI_WIN, .vertical_justify, &.{ .space, .v });
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

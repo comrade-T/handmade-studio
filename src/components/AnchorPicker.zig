@@ -139,6 +139,11 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .space, .j }, try PanCb.init(a, ap, 0, 100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .space, .h }, try PanCb.init(a, ap, -100, 0, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .space, .l }, try PanCb.init(a, ap, 100, 0, true));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .z, .k }, try PanCb.init(a, ap, 0, -100, true));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .z, .j }, try PanCb.init(a, ap, 0, 100, true));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .z, .h }, try PanCb.init(a, ap, -100, 0, true));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .z, .l }, try PanCb.init(a, ap, 100, 0, true));
+
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .k, .space, .h }, try PanCb.init(a, ap, -100, -100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .k, .space, .l }, try PanCb.init(a, ap, 100, -100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .j, .space, .h }, try PanCb.init(a, ap, -100, 100, true));

@@ -149,8 +149,11 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
     try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .{ .anchors = &.{ .S, .N } }));
     try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .{ .anchors = &.{ .N, .S } }));
     try c.map(NORMAL, &.{ .left_shift, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .{ .anchors = &.{ .N, .S } }));
+
     try c.map(NORMAL, &.{ .left_control, .space, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .{ .anchors = &.{ .E, .W } }));
-    try c.map(NORMAL, &.{ .space, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .{ .anchors = &.{ .W, .E } }));
+    try c.map(NORMAL, &.{ .space, .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .{ .anchors = &.{ .E, .W } }));
+    try c.map(NORMAL, &.{ .left_control, .space, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .{ .anchors = &.{ .W, .E } }));
+    try c.map(NORMAL, &.{ .space, .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .{ .anchors = &.{ .W, .E } }));
 
     try c.map(NORMAL, &.{ .left_control, .left_alt, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .first_conn));
     try c.map(NORMAL, &.{ .left_control, .left_shift, .left_alt, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .first_conn));
