@@ -502,20 +502,16 @@ fn getSelectedConnection(self: *@This()) ?*Connection {
 
 pub fn cycleToNextConnection(self: *@This()) !void {
     if (self.getNextAngle()) |_| self.cycle_index += 1;
-    self.seekToNextVisibleCandidate();
 }
 
 pub fn cycleToPreviousConnection(self: *@This()) !void {
     if (self.getPrevAngle()) |_| self.cycle_index -= 1;
-    self.seekToPrevVisibleCandidate();
 }
 
 pub fn cycleToNextDownConnection(self: *@This()) !void {
     const curr_angle = self.getCurrentAngle() orelse return;
     const may_prev_angle = self.getPrevAngle();
     const may_next_angle = self.getNextAngle();
-
-    defer self.seekToNextVisibleCandidate();
 
     if (curr_angle < 0) {
         if (may_prev_angle) |prev_angle| {
@@ -535,8 +531,6 @@ pub fn cycleToNextUpConnection(self: *@This()) !void {
     const may_prev_angle = self.getPrevAngle();
     const may_next_angle = self.getNextAngle();
 
-    defer self.seekToPrevVisibleCandidate();
-
     if (curr_angle < 0) {
         if (may_next_angle) |next_angle| {
             if (next_angle >= 0) return;
@@ -548,6 +542,52 @@ pub fn cycleToNextUpConnection(self: *@This()) !void {
             self.cycle_index -= 1;
         }
     }
+}
+
+fn getPrevAngle(self: *@This()) ?f32 {
+    if (self.cycle_index == 0) return null;
+    return self.cycle_map.values()[self.cycle_index - 1];
+}
+
+fn getNextAngle(self: *@This()) ?f32 {
+    if (self.cycle_index + 1 >= self.cycle_map.values().len) return null;
+    return self.cycle_map.values()[self.cycle_index + 1];
+}
+
+fn getCurrentAngle(self: *@This()) ?f32 {
+    if (self.cycle_index >= self.cycle_map.values().len) return null;
+    return self.cycle_map.values()[self.cycle_index];
+}
+
+pub fn cycleToLeftMirroredConnection(self: *@This()) !void {
+    const angle = self.getCurrentAngle() orelse return;
+    if (angle > 0) self.cycleToMirrorredConnection();
+}
+
+pub fn cycleToRightMirroredConnection(self: *@This()) !void {
+    const angle = self.getCurrentAngle() orelse return;
+    if (angle < 0) self.cycleToMirrorredConnection();
+}
+
+fn cycleToMirrorredConnection(self: *@This()) void {
+    if (self.cycle_map.values().len < 2) return;
+    const mirrored_angle = self.cycle_map.values()[self.cycle_index] * -1;
+
+    var new_cycle_index: usize = 0;
+    var min_distance: f32 = std.math.floatMax(f32);
+    for (self.cycle_map.values(), 0..) |angle, i| {
+        if (self.cycle_index == i) continue;
+
+        if ((angle >= 0 and mirrored_angle >= 0) or (angle < 0 and mirrored_angle < 0)) {
+            const d = @abs(angle - mirrored_angle);
+            if (d < min_distance) {
+                min_distance = d;
+                new_cycle_index = i;
+            }
+        }
+    }
+
+    self.cycle_index = new_cycle_index;
 }
 
 fn seekToNextVisibleCandidate(self: *@This()) void {
@@ -586,56 +626,6 @@ fn seekToPrevVisibleCandidate(self: *@This()) void {
     self.cycle_index = initial_index;
 }
 
-fn getPrevAngle(self: *@This()) ?f32 {
-    if (self.cycle_index == 0) return null;
-    return self.cycle_map.values()[self.cycle_index - 1];
-}
-
-fn getNextAngle(self: *@This()) ?f32 {
-    if (self.cycle_index + 1 >= self.cycle_map.values().len) return null;
-    return self.cycle_map.values()[self.cycle_index + 1];
-}
-
-fn getCurrentAngle(self: *@This()) ?f32 {
-    if (self.cycle_index >= self.cycle_map.values().len) return null;
-    return self.cycle_map.values()[self.cycle_index];
-}
-
-pub fn cycleToLeftMirroredConnection(self: *@This()) !void {
-    const angle = self.getCurrentAngle() orelse return;
-    if (angle > 0) self.cycleToMirrorredConnection();
-    self.seekToNextVisibleCandidate();
-}
-
-pub fn cycleToRightMirroredConnection(self: *@This()) !void {
-    const angle = self.getCurrentAngle() orelse return;
-    if (angle < 0) self.cycleToMirrorredConnection();
-    self.seekToPrevVisibleCandidate();
-}
-
-fn cycleToMirrorredConnection(self: *@This()) void {
-    if (self.cycle_map.values().len < 2) return;
-    const mirrored_angle = self.cycle_map.values()[self.cycle_index] * -1;
-
-    // TODO: handle hidden connections
-
-    var new_cycle_index: usize = 0;
-    var min_distance: f32 = std.math.floatMax(f32);
-    for (self.cycle_map.values(), 0..) |angle, i| {
-        if (self.cycle_index == i) continue;
-
-        if ((angle >= 0 and mirrored_angle >= 0) or (angle < 0 and mirrored_angle < 0)) {
-            const d = @abs(angle - mirrored_angle);
-            if (d < min_distance) {
-                min_distance = d;
-                new_cycle_index = i;
-            }
-        }
-    }
-
-    self.cycle_index = new_cycle_index;
-}
-
 ///////////////////////////// enter / exit cycling
 
 pub fn enterCycleMode(self: *@This()) !void {
@@ -657,8 +647,14 @@ fn updateCycleMap(self: *@This()) !void {
     self.cycle_map.deinit(self.wm.a);
     self.cycle_map = std.AutoArrayHashMapUnmanaged(*Connection, f32){};
 
-    for (tracker.incoming.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win));
-    for (tracker.outgoing.keys()) |c| try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win));
+    for (tracker.incoming.keys()) |c| {
+        if (!c.isVisible()) continue;
+        try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win));
+    }
+    for (tracker.outgoing.keys()) |c| {
+        if (!c.isVisible()) continue;
+        try self.cycle_map.put(self.wm.a, c, c.calculateAngle(win));
+    }
 
     const SortContext = struct {
         angles: []const f32,

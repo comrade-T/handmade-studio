@@ -169,7 +169,8 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
 
     // justify
-    try c.map(MULTI_WIN, &.{ .space, .j }, .{ .f = justify, .ctx = sess });
+    try c.map(MULTI_WIN, &.{ .space, .j }, .{ .f = justifyVertically, .ctx = sess });
+    try c.map(MULTI_WIN, &.{ .space, .left_shift, .j }, .{ .f = justifyHorizontally, .ctx = sess });
 
     ///////////////////////////// yank & paste
 
@@ -221,7 +222,7 @@ pub fn mapKeys(sess: *Session) !void {
     };
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .zero }, try ChangeColorCb.init(a, sess, 0xF5F5F5F5));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .h }, try ChangeColorCb.init(a, sess, 0xFF0000F5));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .j }, try ChangeColorCb.init(a, sess, 0x0000FFF5));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .j }, try ChangeColorCb.init(a, sess, 0x555555F5));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .k }, try ChangeColorCb.init(a, sess, 0xFFFF00F5));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .c, .l }, try ChangeColorCb.init(a, sess, 0x00FF00F5));
 
@@ -234,10 +235,15 @@ pub fn mapKeys(sess: *Session) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Positioning
 
-fn justify(ctx: *anyopaque) !void {
+fn justifyVertically(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
-    try wm.justifySelectionVertically(.{});
+    try wm.justifySelectionVertically(.{ .sync_left = true });
+}
+fn justifyHorizontally(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    try wm.justifySelectionHorizontally(.{});
 }
 
 /////////////////////////////

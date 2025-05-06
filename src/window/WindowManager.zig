@@ -901,26 +901,16 @@ fn alignAndJustifySelectionVerticallyToTarget(self: *@This(), target: *Window) !
     const target_center = target.getTargetY() + (target.getHeight() / 2);
     const y_by = target_center - selection_center;
 
-    try self.justifySelectionVertically(.{ .add_y = y_by });
+    try self.justifySelectionVertically(.{ .add_y = y_by, .sync_left = true });
 }
 
-const JustifySelectionVerticallyOpts = struct { add_x: f32 = 0, add_y: f32 = 0 };
-pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionVerticallyOpts) !void {
+const JustifySelectionOpts = struct {
+    add_x: f32 = 0,
+    add_y: f32 = 0,
+    sync_left: bool = false,
+};
+pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !void {
     if (self.selection.wmap.count() < 2) return;
-
-    var left: f32 = std.math.floatMax(f32);
-    var top: f32 = std.math.floatMax(f32);
-    var bottom: f32 = -std.math.floatMax(f32);
-    var total_occupied_height: f32 = 0;
-    for (self.selection.wmap.keys(), 0..) |win, i| {
-        left = @min(left, win.getTargetX());
-        top = @min(top, win.getTargetY() + win.getHeight());
-        bottom = @max(bottom, win.getTargetY());
-        if (i == 0 or i == self.selection.wmap.count() - 1) continue;
-        total_occupied_height += win.getHeight();
-    }
-    const count = @as(f32, @floatFromInt(self.selection.wmap.count() - 1));
-    const space_between = (bottom - top - total_occupied_height) / count;
 
     const SortCtx = struct {
         windows: []*Window,
@@ -930,10 +920,25 @@ pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionVertical
     };
     self.selection.wmap.sort(SortCtx{ .windows = self.selection.wmap.keys() });
 
+    const topmost_win = self.selection.wmap.keys()[0];
+    const botommost_win = self.selection.wmap.keys()[self.selection.wmap.count() - 1];
+    const top = topmost_win.getTargetY() + topmost_win.getHeight();
+    const bottom = botommost_win.getTargetY();
+    var left: f32 = std.math.floatMax(f32);
+    var total_occupied_height: f32 = 0;
+    for (self.selection.wmap.keys(), 0..) |win, i| {
+        left = @min(left, win.getTargetX());
+        if (i == 0 or i == self.selection.wmap.count() - 1) continue;
+        total_occupied_height += win.getHeight();
+    }
+    const count = @as(f32, @floatFromInt(self.selection.wmap.count() - 1));
+    const space_between = (bottom - top - total_occupied_height) / count;
+
     var x_slice = try self.a.alloc(f32, self.selection.wmap.count());
     var y_slice = try self.a.alloc(f32, self.selection.wmap.count());
     for (self.selection.wmap.keys(), 0..) |curr, i| {
-        x_slice[i] = left - curr.getTargetX() + opts.add_x;
+        x_slice[i] = if (opts.sync_left) left - curr.getTargetX() else 0;
+        x_slice[i] += opts.add_x;
 
         if (i == 0 or i == self.selection.wmap.count() - 1) {
             y_slice[i] = 0 + opts.add_y;
@@ -941,6 +946,53 @@ pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionVertical
             const prev_win = self.selection.wmap.keys()[i - 1];
             const target = prev_win.getTargetY() + prev_win.getHeight() + space_between;
             y_slice[i] = target - curr.getTargetY();
+        }
+
+        try curr.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
+    }
+
+    self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addJustifyEvent(self.a, .{
+        .windows = try self.hm.a.dupe(*Window, self.selection.wmap.keys()),
+        .x_by = x_slice,
+        .y_by = y_slice,
+    }));
+}
+
+pub fn justifySelectionHorizontally(self: *@This(), opts: JustifySelectionOpts) !void {
+    if (self.selection.wmap.count() < 2) return;
+
+    const SortCtx = struct {
+        windows: []*Window,
+        pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+            return ctx.windows[a_index].getTargetX() < ctx.windows[b_index].getTargetX();
+        }
+    };
+    self.selection.wmap.sort(SortCtx{ .windows = self.selection.wmap.keys() });
+
+    const leftmost_win = self.selection.wmap.keys()[0];
+    const rightmost_win = self.selection.wmap.keys()[self.selection.wmap.count() - 1];
+    const left = leftmost_win.getTargetX() + leftmost_win.getWidth();
+    const right = rightmost_win.getTargetX();
+    var total_occupied_width: f32 = 0;
+    for (self.selection.wmap.keys(), 0..) |win, i| {
+        if (i == 0 or i == self.selection.wmap.count() - 1) continue;
+        total_occupied_width += win.getWidth();
+    }
+    const count = @as(f32, @floatFromInt(self.selection.wmap.count() - 1));
+    const space_between = (right - left - total_occupied_width) / count;
+
+    var x_slice = try self.a.alloc(f32, self.selection.wmap.count());
+    var y_slice = try self.a.alloc(f32, self.selection.wmap.count());
+    for (self.selection.wmap.keys(), 0..) |curr, i| {
+        y_slice[i] = 0;
+        y_slice[i] += opts.add_y;
+
+        if (i == 0 or i == self.selection.wmap.count() - 1) {
+            x_slice[i] = 0 + opts.add_x;
+        } else {
+            const prev_win = self.selection.wmap.keys()[i - 1];
+            const target = prev_win.getTargetX() + prev_win.getWidth() + space_between;
+            x_slice[i] = target - curr.getTargetX();
         }
 
         try curr.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
