@@ -243,6 +243,7 @@ pub const RenderCallbacks = struct {
     setCameraPosition: *const fn (target_camera_: *anyopaque, x: f32, y: f32) void,
     centerCameraAt: *const fn (target_camera_: *anyopaque, x: f32, y: f32) void,
     setCamera: *const fn (camera_: *anyopaque, info: CameraInfo) void,
+    setCameraPositionFromCameraInfo: *const fn (camera_: *anyopaque, info: CameraInfo) void,
 
     beginScissorMode: *const fn (x: f32, y: f32, width: f32, height: f32) void,
     endScissorMode: *const fn () void,

@@ -334,8 +334,7 @@ const MarksMan = struct {
     }
 
     pub fn jumpToBeforeJumpMark(self: *@This(), sess: *Session) void {
-        sess.mall.rcb.setCamera(sess.mall.camera, self.before_jump_mark);
-        sess.mall.rcb.setCamera(sess.mall.target_camera, self.before_jump_mark);
+        sess.mall.rcb.setCameraPositionFromCameraInfo(sess.mall.target_camera, self.before_jump_mark);
     }
 
     pub fn saveMark(self: *@This(), sess: *Session, keyboard_key: []const u8, key: u8) void {
@@ -349,7 +348,6 @@ const MarksMan = struct {
 
     pub fn jumpToMark(self: *@This(), sess: *Session, key: u8) void {
         const info = self.marks.get(key) orelse return;
-        sess.mall.rcb.setCamera(sess.mall.camera, info);
-        sess.mall.rcb.setCamera(sess.mall.target_camera, info);
+        sess.mall.rcb.setCameraPositionFromCameraInfo(sess.mall.target_camera, info);
     }
 };

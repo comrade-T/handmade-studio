@@ -138,7 +138,7 @@ pub fn mapKeys(sess: *@This()) !void {
     try c.map(NORMAL, &.{ .space, .j, .v }, try Cb.init(a, sess, .{ .jump = 13 }));
     try c.map(NORMAL, &.{ .space, .j, .b }, try Cb.init(a, sess, .{ .jump = 14 }));
 
-    try c.map(NORMAL, &.{ .space, .m, .q }, try Cb.init(a, sess, .{ .save = .{ "j", 0 } }));
+    try c.map(NORMAL, &.{ .space, .m, .q }, try Cb.init(a, sess, .{ .save = .{ "q", 0 } }));
     try c.map(NORMAL, &.{ .space, .m, .w }, try Cb.init(a, sess, .{ .save = .{ "w", 1 } }));
     try c.map(NORMAL, &.{ .space, .m, .e }, try Cb.init(a, sess, .{ .save = .{ "e", 2 } }));
     try c.map(NORMAL, &.{ .space, .m, .r }, try Cb.init(a, sess, .{ .save = .{ "r", 3 } }));
@@ -503,7 +503,7 @@ const ExperimentalMiniMapProtoType = struct {
     }
 
     fn renderViewBounds(self: *@This(), wm: *const WindowManager, width: f32, height: f32) void {
-        const rect = wm.mall.getScreenRect(wm.mall.target_camera);
+        const rect = wm.mall.getScreenRect(wm.mall.camera);
 
         const xp = (rect.x - self.left) / self.width;
         const yp = (rect.y - self.top) / self.height;

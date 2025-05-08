@@ -33,6 +33,7 @@ pub const render_callbacks = RenderMall.RenderCallbacks{
     .beginScissorMode = beginScissorMode,
     .endScissorMode = endScissorMode,
     .setClipboardText = setClipboardText,
+    .setCameraPositionFromCameraInfo = setCameraPositionFromCameraInfo,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
@@ -110,6 +111,24 @@ pub fn setCameraPosition(target_camera_: *anyopaque, x: f32, y: f32) void {
 
     target_camera.target.x = x - diff.x;
     target_camera.target.y = y - diff.y;
+}
+
+pub fn setCameraPositionFromCameraInfo(camera_: *anyopaque, info: RenderMall.CameraInfo) void {
+    const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
+
+    const current_world = rl.getScreenToWorld2D(camera.offset, camera.*);
+    const info_world = rl.getScreenToWorld2D(.{ .x = info.offset.x, .y = info.offset.y }, camera.*);
+
+    var x_diff = info_world.x - current_world.x;
+    var y_diff = info_world.y - current_world.y;
+
+    x_diff += info.target.x;
+    y_diff += info.target.y;
+
+    camera.target.x = x_diff;
+    camera.target.y = y_diff;
+
+    camera.zoom = info.zoom;
 }
 
 pub fn centerCameraAt(target_camera_: *anyopaque, x: f32, y: f32) void {
