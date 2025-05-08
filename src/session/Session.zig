@@ -81,11 +81,10 @@ pub fn mapKeys(sess: *@This()) !void {
     try window_manager.mapKeys(sess);
 
     // Experimental
-    try c.map(NORMAL, &.{ .space, .m }, .{ .f = toggleExperimentalMinimap, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .m, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .m, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .m, .w }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .m, .s }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .j, .left_shift, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .j, .left_shift, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .j, .left_shift, .w }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .j, .left_shift, .s }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
 
     // Marks
     const Cb = struct {
@@ -114,6 +113,15 @@ pub fn mapKeys(sess: *@This()) !void {
         }
     };
 
+    try c.mapUpNDown(NORMAL, &.{ .space, .j }, .{
+        .down_f = showExperimentalMinimap,
+        .down_ctx = sess,
+        .up_f = hideExperimentalMinimap,
+        .up_ctx = sess,
+    });
+
+    try c.map(NORMAL, &.{ .space, .j, .o }, .{ .f = jumpToBeforeJumpMark, .ctx = sess });
+
     try c.map(NORMAL, &.{ .space, .j, .q }, try Cb.init(a, sess, .{ .jump = 0 }));
     try c.map(NORMAL, &.{ .space, .j, .w }, try Cb.init(a, sess, .{ .jump = 1 }));
     try c.map(NORMAL, &.{ .space, .j, .e }, try Cb.init(a, sess, .{ .jump = 2 }));
@@ -130,21 +138,21 @@ pub fn mapKeys(sess: *@This()) !void {
     try c.map(NORMAL, &.{ .space, .j, .v }, try Cb.init(a, sess, .{ .jump = 13 }));
     try c.map(NORMAL, &.{ .space, .j, .b }, try Cb.init(a, sess, .{ .jump = 14 }));
 
-    try c.map(NORMAL, &.{ .m, .q }, try Cb.init(a, sess, .{ .save = 0 }));
-    try c.map(NORMAL, &.{ .m, .w }, try Cb.init(a, sess, .{ .save = 1 }));
-    try c.map(NORMAL, &.{ .m, .e }, try Cb.init(a, sess, .{ .save = 2 }));
-    try c.map(NORMAL, &.{ .m, .r }, try Cb.init(a, sess, .{ .save = 3 }));
-    try c.map(NORMAL, &.{ .m, .t }, try Cb.init(a, sess, .{ .save = 4 }));
-    try c.map(NORMAL, &.{ .m, .a }, try Cb.init(a, sess, .{ .save = 5 }));
-    try c.map(NORMAL, &.{ .m, .s }, try Cb.init(a, sess, .{ .save = 6 }));
-    try c.map(NORMAL, &.{ .m, .d }, try Cb.init(a, sess, .{ .save = 7 }));
-    try c.map(NORMAL, &.{ .m, .f }, try Cb.init(a, sess, .{ .save = 8 }));
-    try c.map(NORMAL, &.{ .m, .g }, try Cb.init(a, sess, .{ .save = 9 }));
-    try c.map(NORMAL, &.{ .m, .z }, try Cb.init(a, sess, .{ .save = 10 }));
-    try c.map(NORMAL, &.{ .m, .x }, try Cb.init(a, sess, .{ .save = 11 }));
-    try c.map(NORMAL, &.{ .m, .c }, try Cb.init(a, sess, .{ .save = 12 }));
-    try c.map(NORMAL, &.{ .m, .v }, try Cb.init(a, sess, .{ .save = 13 }));
-    try c.map(NORMAL, &.{ .m, .b }, try Cb.init(a, sess, .{ .save = 14 }));
+    try c.map(NORMAL, &.{ .space, .m, .q }, try Cb.init(a, sess, .{ .save = 0 }));
+    try c.map(NORMAL, &.{ .space, .m, .w }, try Cb.init(a, sess, .{ .save = 1 }));
+    try c.map(NORMAL, &.{ .space, .m, .e }, try Cb.init(a, sess, .{ .save = 2 }));
+    try c.map(NORMAL, &.{ .space, .m, .r }, try Cb.init(a, sess, .{ .save = 3 }));
+    try c.map(NORMAL, &.{ .space, .m, .t }, try Cb.init(a, sess, .{ .save = 4 }));
+    try c.map(NORMAL, &.{ .space, .m, .a }, try Cb.init(a, sess, .{ .save = 5 }));
+    try c.map(NORMAL, &.{ .space, .m, .s }, try Cb.init(a, sess, .{ .save = 6 }));
+    try c.map(NORMAL, &.{ .space, .m, .d }, try Cb.init(a, sess, .{ .save = 7 }));
+    try c.map(NORMAL, &.{ .space, .m, .f }, try Cb.init(a, sess, .{ .save = 8 }));
+    try c.map(NORMAL, &.{ .space, .m, .g }, try Cb.init(a, sess, .{ .save = 9 }));
+    try c.map(NORMAL, &.{ .space, .m, .z }, try Cb.init(a, sess, .{ .save = 10 }));
+    try c.map(NORMAL, &.{ .space, .m, .x }, try Cb.init(a, sess, .{ .save = 11 }));
+    try c.map(NORMAL, &.{ .space, .m, .c }, try Cb.init(a, sess, .{ .save = 12 }));
+    try c.map(NORMAL, &.{ .space, .m, .v }, try Cb.init(a, sess, .{ .save = 13 }));
+    try c.map(NORMAL, &.{ .space, .m, .b }, try Cb.init(a, sess, .{ .save = 14 }));
 }
 
 pub fn newCanvas(self: *@This()) !*Canvas {
@@ -377,10 +385,24 @@ pub fn postFileOpenCallback(ctx: *anyopaque, win: *WindowManager.Window) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Experimental Mini Map Prototype
 
-fn toggleExperimentalMinimap(ctx: *anyopaque) !void {
+fn showExperimentalMinimap(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.experimental_minimap.toggle();
+    if (!self.experimental_minimap.visible) {
+        const canvas = self.getActiveCanvas() orelse return;
+        canvas.marksman.saveBeforeJumpMark(self);
+    }
+    self.experimental_minimap.visible = true;
 }
+fn hideExperimentalMinimap(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.experimental_minimap.visible = false;
+}
+fn jumpToBeforeJumpMark(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const canvas = self.getActiveCanvas() orelse return;
+    canvas.marksman.jumpToBeforeJumpMark(self);
+}
+
 fn increaseExperimentalMinimapRadius(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.experimental_minimap.radius += 1;

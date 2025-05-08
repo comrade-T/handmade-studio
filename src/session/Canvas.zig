@@ -326,6 +326,17 @@ const WritableMarks = struct {
 };
 const MarksMan = struct {
     marks: std.AutoArrayHashMapUnmanaged(u8, Mark) = .{},
+    before_jump_mark: Mark = .{},
+
+    pub fn saveBeforeJumpMark(self: *@This(), sess: *Session) void {
+        const info = sess.mall.icb.getCameraInfo(sess.mall.target_camera);
+        self.before_jump_mark = info;
+    }
+
+    pub fn jumpToBeforeJumpMark(self: *@This(), sess: *Session) void {
+        sess.mall.rcb.setCamera(sess.mall.camera, self.before_jump_mark);
+        sess.mall.rcb.setCamera(sess.mall.target_camera, self.before_jump_mark);
+    }
 
     pub fn saveMarkToIndex(self: *@This(), sess: *Session, key: u8) void {
         const info = sess.mall.icb.getCameraInfo(sess.mall.target_camera);
