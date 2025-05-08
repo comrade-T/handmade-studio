@@ -250,11 +250,11 @@ pub const Connection = struct {
         return !self.hidden and !self.start.win.closed and !self.end.win.closed;
     }
 
-    const Point = struct {
+    pub const Point = struct {
         win: *Window,
         anchor: Anchor = .E,
 
-        fn getPosition(self: *const @This()) error{TrackerNotFound}!?struct { f32, f32 } {
+        pub fn getPosition(self: *const @This()) error{TrackerNotFound}!?struct { f32, f32 } {
             const win = self.win;
             if (win.closed) return null;
             switch (self.anchor) {

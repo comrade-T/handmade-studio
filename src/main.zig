@@ -263,6 +263,10 @@ pub fn main() anyerror!void {
                 try session.updateAndRender();
             }
 
+            { // Experimental
+                session.experimental_minimap.render(&session);
+            }
+
             {
                 // AnchorPicker
                 anchor_picker.render();

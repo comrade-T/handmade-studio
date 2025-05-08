@@ -61,6 +61,8 @@ tcbmap: std.AutoHashMapUnmanaged(TriggerCallbackKey, TriggerCallback) = .{},
 yank_origin: ?*WindowManager = null,
 yanked_and_pasted: bool = false,
 
+experimental_minimap: ExperimentalMiniMapProtoType = .{},
+
 pub fn mapKeys(self: *@This()) !void {
     const NORMAL = "normal";
     const c = self.council;
@@ -76,6 +78,9 @@ pub fn mapKeys(self: *@This()) !void {
     try connection_manager.mapKeys(self);
     try window_picker.mapKeys(self);
     try window_manager.mapKeys(self);
+
+    // Experimental
+    try c.map(NORMAL, &.{ .space, .m }, .{ .f = toggleExperimentalMinimap, .ctx = self });
 }
 
 pub fn newCanvas(self: *@This()) !*Canvas {
@@ -96,7 +101,7 @@ pub fn updateAndRender(self: *@This()) !void {
     try active_canvas.wm.updateAndRender();
 }
 
-pub fn getActiveCanvas(self: *@This()) ?*Canvas {
+pub fn getActiveCanvas(self: *const @This()) ?*Canvas {
     const index = self.active_index orelse {
         assert(false);
         return null;
@@ -104,7 +109,7 @@ pub fn getActiveCanvas(self: *@This()) ?*Canvas {
     return self.canvases.items[index];
 }
 
-pub fn getActiveCanvasWindowManager(self: *@This()) ?*WindowManager {
+pub fn getActiveCanvasWindowManager(self: *const @This()) ?*WindowManager {
     const active_canvas = self.getActiveCanvas() orelse return null;
     return active_canvas.wm;
 }
@@ -305,3 +310,99 @@ pub fn postFileOpenCallback(ctx: *anyopaque, win: *WindowManager.Window) !void {
     _ = self;
     _ = win;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Experimental Mini Map Prototype
+
+fn toggleExperimentalMinimap(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.experimental_minimap.toggle(self);
+}
+
+const ExperimentalMiniMapProtoType = struct {
+    visible: bool = false,
+
+    left: f32 = 0,
+    right: f32 = 0,
+    top: f32 = 0,
+    bottom: f32 = 0,
+    width: f32 = 0,
+    height: f32 = 0,
+
+    const padding = 100;
+
+    pub fn render(self: *const @This(), sess: *const Session) void {
+        if (!self.visible) return;
+        const wm = sess.getActiveCanvasWindowManager() orelse return;
+
+        const swidth, const sheight = sess.mall.icb.getScreenWidthHeight();
+        sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, 0x000000ff);
+
+        /////////////////////////////
+
+        const width = swidth - (padding * 2);
+        const height = sheight - (padding * 2);
+
+        for (wm.connman.connections.keys()) |conn| {
+            if (!conn.isVisible()) continue;
+
+            const start_x, const start_y = self.getConnPosition(conn.start, width, height);
+            const end_x, const end_y = self.getConnPosition(conn.end, width, height);
+
+            wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 1, 0xffffffff);
+        }
+
+        /////////////////////////////
+
+        for (wm.wmap.keys()) |win| {
+            const xp = (win.getTargetX() - self.left) / self.width;
+            const yp = (win.getTargetY() - self.top) / self.height;
+
+            const wp = win.getWidth() / self.width;
+            const hp = win.getHeight() / self.height;
+            const ww = width * wp;
+            const wh = height * hp;
+
+            const x = padding + (width * xp) + (ww / 2);
+            const y = padding + (height * yp) + (wh / 2);
+
+            wm.mall.rcb.drawCircle(x, y, 5, win.defaults.color);
+        }
+    }
+
+    fn getConnPosition(self: *const @This(), point: WindowManager.ConnectionManager.Connection.Point, width: f32, height: f32) struct { f32, f32 } {
+        const win = point.win;
+
+        const xp = (win.getTargetX() - self.left) / self.width;
+        const yp = (win.getTargetY() - self.top) / self.height;
+        const wx = padding + (width * xp);
+        const wy = padding + (height * yp);
+
+        const wp = win.getWidth() / self.width;
+        const hp = win.getHeight() / self.height;
+        const ww = width * wp;
+        const wh = height * hp;
+
+        return .{ wx + ww / 2, wy + wh / 2 };
+    }
+
+    fn toggle(self: *@This(), sess: *Session) void {
+        self.visible = !self.visible;
+        if (!self.visible) return;
+        const wm = sess.getActiveCanvasWindowManager() orelse return;
+
+        self.left = std.math.floatMax(f32);
+        self.right = -std.math.floatMax(f32);
+        self.top = std.math.floatMax(f32);
+        self.bottom = -std.math.floatMax(f32);
+
+        for (wm.wmap.keys()) |win| {
+            self.left = @min(self.left, win.getTargetX());
+            self.right = @max(self.right, win.getTargetX() + win.getWidth());
+            self.top = @min(self.top, win.getTargetY());
+            self.bottom = @max(self.bottom, win.getTargetY() + win.getHeight());
+        }
+
+        self.width = self.right - self.left;
+        self.height = self.bottom - self.top;
+    }
+};

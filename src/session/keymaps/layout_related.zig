@@ -27,8 +27,9 @@ const Nightfly = Session.RenderMall.ColorschemeStore.Nightfly;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const NORMAL = "normal";
-const MULTI_WIN = @import("./window_manager.zig").MULTI_WIN;
-const MULTI_WIN_TO_NORMAL = @import("./window_manager.zig").MULTI_WIN_TO_NORMAL;
+const wm_ = @import("./window_manager.zig");
+const MULTI_WIN = wm_.MULTI_WIN;
+const MULTI_WIN_TO_NORMAL = wm_.MULTI_WIN_TO_NORMAL;
 
 pub fn mapKeys(sess: *Session) !void {
     const c = sess.council;
@@ -156,8 +157,10 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(NORMAL, &.{ .left_control, .k }, try SwitchActiveWinCb.init(a, sess, .top));
     try c.map(NORMAL, &.{ .left_control, .j }, try SwitchActiveWinCb.init(a, sess, .bottom));
 
-    try c.map(NORMAL, &.{ .space, .g, .p }, .{ .f = selectFirstIncomingWindow, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .g, .p }, .{ .f = selectFirstIncomingWindowNoCamMove, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .g, .left_shift, .p }, .{ .f = selectFirstIncomingWindow, .ctx = sess });
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .j }, .{ .f = centerCameraAtActiveWindow, .ctx = sess });
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .g, .e }, .{ .f = centerCameraAtActiveWindow, .ctx = sess });
 
     // toggle border
     try c.map(NORMAL, &.{ .left_control, .b }, .{ .f = toggleActiveWindowBorder, .ctx = sess });
@@ -261,9 +264,16 @@ fn selectFirstIncomingWindow(ctx: *anyopaque) !void {
     const active_window = wm.active_window orelse return;
     const conn = wm.getFirstVisibleIncomingWindow(active_window) orelse return;
     const target = conn.start.win;
-
     wm.setActiveWindow(target, true);
     target.centerCameraAt(wm.mall);
+}
+fn selectFirstIncomingWindowNoCamMove(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    const active_window = wm.active_window orelse return;
+    const conn = wm.getFirstVisibleIncomingWindow(active_window) orelse return;
+    const target = conn.start.win;
+    wm.setActiveWindow(target, true);
 }
 
 fn alignVerticallyToFirstConnectionFrom(ctx: *anyopaque) !void {
