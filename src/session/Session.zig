@@ -390,12 +390,16 @@ fn showExperimentalMinimap(ctx: *anyopaque) !void {
     if (!self.experimental_minimap.visible) {
         const canvas = self.getActiveCanvas() orelse return;
         canvas.marksman.saveBeforeJumpMark(self);
+
+        self.experimental_minimap.progress.mode = .in;
     }
     self.experimental_minimap.visible = true;
 }
 fn hideExperimentalMinimap(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.experimental_minimap.visible = false;
+
+    self.experimental_minimap.progress.mode = .out;
 }
 fn jumpToBeforeJumpMark(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -423,21 +427,52 @@ const ExperimentalMiniMapProtoType = struct {
     width: f32 = 0,
     height: f32 = 0,
 
-    const padding = 100;
+    padding: f32 = 75,
+    padding_min: f32 = 75,
+    padding_quant: f32 = 25,
+
+    progress: struct {
+        value: u8 = 0,
+        delta: u8 = 10,
+        target: u8 = 100,
+        mode: enum { in, out } = .out,
+
+        fn update(self: *@This()) void {
+            switch (self.mode) {
+                .in => {
+                    if (self.value < self.target) self.value += self.delta;
+                    self.value = @min(self.value, self.target);
+                },
+                .out => {
+                    if (self.value > 0) self.value -|= self.delta;
+                },
+            }
+        }
+    } = .{},
+
+    const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
+
+    fn updatePadding(self: *@This()) void {
+        self.padding = self.padding_min + (self.padding_quant * @as(f32, @floatFromInt(self.progress.value)) / 100);
+    }
 
     pub fn render(self: *@This(), sess: *const Session) void {
-        if (!self.visible) return;
         const wm = sess.getActiveCanvasWindowManager() orelse return;
 
+        self.progress.update();
+        self.updatePadding();
+
         const swidth, const sheight = sess.mall.icb.getScreenWidthHeight();
-        sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, 0x00000055);
+        sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, progressAlphaChannel(0x000000aa, self.progress.value));
 
         self.updateBoundsInfo(wm);
 
+        if (self.progress.value == 0) return;
+
         /////////////////////////////
 
-        const width = swidth - (padding * 2);
-        const height = sheight - (padding * 2);
+        const width = swidth - (self.padding * 2);
+        const height = sheight - (self.padding * 2);
         defer self.renderViewBounds(wm, width, height);
 
         for (wm.connman.connections.keys()) |conn| {
@@ -446,7 +481,7 @@ const ExperimentalMiniMapProtoType = struct {
             const start_x, const start_y = self.getConnPosition(conn.start, width, height);
             const end_x, const end_y = self.getConnPosition(conn.end, width, height);
 
-            wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 1, 0xffffffff);
+            wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 1, progressAlphaChannel(0xffffffff, self.progress.value));
         }
 
         /////////////////////////////
@@ -460,10 +495,10 @@ const ExperimentalMiniMapProtoType = struct {
             const ww = width * wp;
             const wh = height * hp;
 
-            const x = padding + (width * xp) + (ww / 2);
-            const y = padding + (height * yp) + (wh / 2);
+            const x = self.padding + (width * xp) + (ww / 2);
+            const y = self.padding + (height * yp) + (wh / 2);
 
-            wm.mall.rcb.drawCircle(x, y, self.radius, win.defaults.color);
+            wm.mall.rcb.drawCircle(x, y, self.radius, progressAlphaChannel(win.defaults.color, self.progress.value));
         }
     }
 
@@ -478,10 +513,10 @@ const ExperimentalMiniMapProtoType = struct {
         const w = width * wp;
         const h = height * hp;
 
-        const x = padding + (width * xp);
-        const y = padding + (height * yp);
+        const x = self.padding + (width * xp);
+        const y = self.padding + (height * yp);
 
-        wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, 0xffffffff);
+        wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, progressAlphaChannel(0xffffffff, self.progress.value));
     }
 
     fn getConnPosition(self: *const @This(), point: WindowManager.ConnectionManager.Connection.Point, width: f32, height: f32) struct { f32, f32 } {
@@ -489,8 +524,8 @@ const ExperimentalMiniMapProtoType = struct {
 
         const xp = (win.getTargetX() - self.left) / self.width;
         const yp = (win.getTargetY() - self.top) / self.height;
-        const wx = padding + (width * xp);
-        const wy = padding + (height * yp);
+        const wx = self.padding + (width * xp);
+        const wy = self.padding + (height * yp);
 
         const wp = win.getWidth() / self.width;
         const hp = win.getHeight() / self.height;

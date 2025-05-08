@@ -158,3 +158,21 @@ pub const Nightfly = enum(u32) {
     kashmir_blue = 0x4d618eff,
     plant_green = 0x2a4e57ff,
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn rgba(r: u8, g: u8, b: u8, a: u8) u32 {
+    return (@as(u32, r) << 24) | (@as(u32, g) << 16) | (@as(u32, b) << 8) | @as(u32, a);
+}
+
+pub fn progressAlphaChannel(color: u32, progress: u8) u32 {
+    const alpha: u8 = @intCast(color & 0xFF);
+    const new_alpha: u32 = @divTrunc(@as(u32, @intCast(alpha)) * @as(u32, @intCast(progress)), 100);
+    const rgb: u32 = color & 0xFFFFFF00;
+    return rgb | @as(u32, @intCast(new_alpha));
+}
+
+test {
+    try eq(progressAlphaChannel(0x00000055, 0), 0x00000000);
+    try eq(progressAlphaChannel(0x00000055, 100), 0x00000055);
+}
