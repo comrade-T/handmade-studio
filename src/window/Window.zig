@@ -462,11 +462,11 @@ fn getUpdatedLimits(curr_: ?CursorManager.Limit, ri: WindowSource.ReplaceInfo) ?
 fn isOutOfView(self: *@This(), view: ScreenView) bool {
     if (!self.attr.culling) return false;
 
-    if (self.attr.pos.x > view.end.x) return true;
-    if (self.attr.pos.y > view.end.y) return true;
+    if (self.getX() > view.end.x) return true;
+    if (self.getY() > view.end.y) return true;
 
-    if (self.attr.pos.x + self.cached.width < view.start.x) return true;
-    if (self.attr.pos.y + self.cached.height < view.start.y) return true;
+    if (self.getX() + self.getWidth() < view.start.x) return true;
+    if (self.getY() + self.getHeight() < view.start.y) return true;
 
     return false;
 }
