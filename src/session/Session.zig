@@ -63,28 +63,88 @@ yanked_and_pasted: bool = false,
 
 experimental_minimap: ExperimentalMiniMapProtoType = .{},
 
-pub fn mapKeys(self: *@This()) !void {
+pub fn mapKeys(sess: *@This()) !void {
     const NORMAL = "normal";
-    const c = self.council;
+    const c = sess.council;
+    const a = sess.council.arena.allocator();
 
-    try c.map(NORMAL, &.{ .space, .s, .c }, .{ .f = closeActiveCanvas, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .s, .n }, .{ .f = newEmptyCanvas, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .s, .c }, .{ .f = closeActiveCanvas, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .s, .n }, .{ .f = newEmptyCanvas, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .left_control, .s }, .{ .f = saveActiveCanvas, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .s, .k }, .{ .f = previousCanvas, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .s, .j }, .{ .f = nextCanvas, .ctx = sess });
 
-    try vim_related.mapKeys(self);
-    try layout_related.mapKeys(self);
-    try connection_manager.mapKeys(self);
-    try window_picker.mapKeys(self);
-    try window_manager.mapKeys(self);
+    try vim_related.mapKeys(sess);
+    try layout_related.mapKeys(sess);
+    try connection_manager.mapKeys(sess);
+    try window_picker.mapKeys(sess);
+    try window_manager.mapKeys(sess);
 
     // Experimental
-    try c.map(NORMAL, &.{ .space, .m }, .{ .f = toggleExperimentalMinimap, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .m, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .m, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .m, .w }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = self });
-    try c.map(NORMAL, &.{ .space, .m, .s }, .{ .f = increaseExperimentalMinimapRadius, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .m }, .{ .f = toggleExperimentalMinimap, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .m, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .m, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .m, .w }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .space, .m, .s }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
+
+    // Marks
+    const Cb = struct {
+        sess: *Session,
+        opts: CbOpts,
+
+        const CbOpts = union(enum) {
+            save: u8,
+            jump: u8,
+        };
+
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const canvas = self.sess.getActiveCanvas() orelse return;
+
+            switch (self.opts) {
+                .save => |idx| canvas.marksman.saveMarkToIndex(self.sess, idx),
+                .jump => |idx| canvas.marksman.jumpToMark(self.sess, idx),
+            }
+        }
+
+        pub fn init(allocator: Allocator, sess_: *Session, opts: CbOpts) !Session.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .sess = sess_, .opts = opts };
+            return Session.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+
+    try c.map(NORMAL, &.{ .space, .j, .q }, try Cb.init(a, sess, .{ .jump = 0 }));
+    try c.map(NORMAL, &.{ .space, .j, .w }, try Cb.init(a, sess, .{ .jump = 1 }));
+    try c.map(NORMAL, &.{ .space, .j, .e }, try Cb.init(a, sess, .{ .jump = 2 }));
+    try c.map(NORMAL, &.{ .space, .j, .r }, try Cb.init(a, sess, .{ .jump = 3 }));
+    try c.map(NORMAL, &.{ .space, .j, .t }, try Cb.init(a, sess, .{ .jump = 4 }));
+    try c.map(NORMAL, &.{ .space, .j, .a }, try Cb.init(a, sess, .{ .jump = 5 }));
+    try c.map(NORMAL, &.{ .space, .j, .s }, try Cb.init(a, sess, .{ .jump = 6 }));
+    try c.map(NORMAL, &.{ .space, .j, .d }, try Cb.init(a, sess, .{ .jump = 7 }));
+    try c.map(NORMAL, &.{ .space, .j, .f }, try Cb.init(a, sess, .{ .jump = 8 }));
+    try c.map(NORMAL, &.{ .space, .j, .g }, try Cb.init(a, sess, .{ .jump = 9 }));
+    try c.map(NORMAL, &.{ .space, .j, .z }, try Cb.init(a, sess, .{ .jump = 10 }));
+    try c.map(NORMAL, &.{ .space, .j, .x }, try Cb.init(a, sess, .{ .jump = 11 }));
+    try c.map(NORMAL, &.{ .space, .j, .c }, try Cb.init(a, sess, .{ .jump = 12 }));
+    try c.map(NORMAL, &.{ .space, .j, .v }, try Cb.init(a, sess, .{ .jump = 13 }));
+    try c.map(NORMAL, &.{ .space, .j, .b }, try Cb.init(a, sess, .{ .jump = 14 }));
+
+    try c.map(NORMAL, &.{ .m, .q }, try Cb.init(a, sess, .{ .save = 0 }));
+    try c.map(NORMAL, &.{ .m, .w }, try Cb.init(a, sess, .{ .save = 1 }));
+    try c.map(NORMAL, &.{ .m, .e }, try Cb.init(a, sess, .{ .save = 2 }));
+    try c.map(NORMAL, &.{ .m, .r }, try Cb.init(a, sess, .{ .save = 3 }));
+    try c.map(NORMAL, &.{ .m, .t }, try Cb.init(a, sess, .{ .save = 4 }));
+    try c.map(NORMAL, &.{ .m, .a }, try Cb.init(a, sess, .{ .save = 5 }));
+    try c.map(NORMAL, &.{ .m, .s }, try Cb.init(a, sess, .{ .save = 6 }));
+    try c.map(NORMAL, &.{ .m, .d }, try Cb.init(a, sess, .{ .save = 7 }));
+    try c.map(NORMAL, &.{ .m, .f }, try Cb.init(a, sess, .{ .save = 8 }));
+    try c.map(NORMAL, &.{ .m, .g }, try Cb.init(a, sess, .{ .save = 9 }));
+    try c.map(NORMAL, &.{ .m, .z }, try Cb.init(a, sess, .{ .save = 10 }));
+    try c.map(NORMAL, &.{ .m, .x }, try Cb.init(a, sess, .{ .save = 11 }));
+    try c.map(NORMAL, &.{ .m, .c }, try Cb.init(a, sess, .{ .save = 12 }));
+    try c.map(NORMAL, &.{ .m, .v }, try Cb.init(a, sess, .{ .save = 13 }));
+    try c.map(NORMAL, &.{ .m, .b }, try Cb.init(a, sess, .{ .save = 14 }));
 }
 
 pub fn newCanvas(self: *@This()) !*Canvas {
@@ -332,6 +392,7 @@ fn decreaseExperimentalMinimapRadius(ctx: *anyopaque) !void {
 
 const ExperimentalMiniMapProtoType = struct {
     visible: bool = false,
+    radius: f32 = 5,
 
     left: f32 = 0,
     right: f32 = 0,
@@ -339,8 +400,6 @@ const ExperimentalMiniMapProtoType = struct {
     bottom: f32 = 0,
     width: f32 = 0,
     height: f32 = 0,
-
-    radius: f32 = 5,
 
     const padding = 100;
 
@@ -357,6 +416,7 @@ const ExperimentalMiniMapProtoType = struct {
 
         const width = swidth - (padding * 2);
         const height = sheight - (padding * 2);
+        defer self.renderViewBounds(wm, width, height);
 
         for (wm.connman.connections.keys()) |conn| {
             if (!conn.isVisible()) continue;
@@ -383,6 +443,23 @@ const ExperimentalMiniMapProtoType = struct {
 
             wm.mall.rcb.drawCircle(x, y, self.radius, win.defaults.color);
         }
+    }
+
+    fn renderViewBounds(self: *@This(), wm: *const WindowManager, width: f32, height: f32) void {
+        const rect = wm.mall.getScreenRect(wm.mall.target_camera);
+
+        const xp = (rect.x - self.left) / self.width;
+        const yp = (rect.y - self.top) / self.height;
+
+        const wp = rect.width / self.width;
+        const hp = rect.height / self.height;
+        const w = width * wp;
+        const h = height * hp;
+
+        const x = padding + (width * xp);
+        const y = padding + (height * yp);
+
+        wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, 0xffffffff);
     }
 
     fn getConnPosition(self: *const @This(), point: WindowManager.ConnectionManager.Connection.Point, width: f32, height: f32) struct { f32, f32 } {

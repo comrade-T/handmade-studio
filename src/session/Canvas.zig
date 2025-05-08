@@ -38,6 +38,8 @@ camera_info: RenderMall.CameraInfo = .{},
 last_save: i64 = 0,
 path: []const u8 = "",
 
+marksman: MarksMan = .{},
+
 pub fn create(sess: *Session) !*Canvas {
     const self = try sess.a.create(@This());
     const wm = try WindowManager.create(sess.a, sess.lang_hub, sess.mall);
@@ -53,6 +55,7 @@ pub fn create(sess: *Session) !*Canvas {
 pub fn destroy(self: *@This()) void {
     if (self.path.len > 0) self.sess.a.free(self.path);
     self.wm.destroy();
+    self.marksman.marks.deinit(self.sess.a);
     self.sess.a.destroy(self);
 }
 
@@ -83,7 +86,7 @@ pub fn loadFromFile(self: *@This(), path: []const u8) !void {
     defer parsed.deinit();
 
     self.setCameraIfCanvasIsEmpty(parsed.value);
-    try loadSession(arena.allocator(), self.wm, parsed.value);
+    try self.loadSession(arena.allocator(), parsed.value);
 
     try self.setPath(path);
     self.setLastSaveTimestampToSameAsHistoryManager();
@@ -126,7 +129,9 @@ fn setCameraIfCanvasIsEmpty(self: *@This(), parsed: WritableCanvasState) void {
     }
 }
 
-fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !void {
+fn loadSession(self: *@This(), aa: Allocator, parsed: WritableCanvasState) !void {
+    const wm = self.wm;
+
     var strid_to_handler_map = std.AutoArrayHashMapUnmanaged(i128, *WindowSourceHandler){};
     for (parsed.string_sources) |str_source| {
         const handler = try WindowSourceHandler.create(wm, .string, str_source.contents, wm.lang_hub);
@@ -171,6 +176,12 @@ fn loadSession(aa: Allocator, wm: *WindowManager, parsed: WritableCanvasState) !
         }
     }
     wm.wshm.reset();
+
+    if (parsed.marks) |marks| {
+        for (0..marks.keys.len) |i| {
+            try self.marksman.marks.put(self.sess.a, marks.keys[i], marks.values[i]);
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Save
@@ -186,7 +197,7 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
     defer arena.deinit();
 
     defer self.setLastSaveTimestampToSameAsHistoryManager();
-    const canvas_state = try produceWritableCanvasState(arena.allocator(), self.wm);
+    const canvas_state = try self.produceWritableCanvasState(arena.allocator());
 
     const json_str = try std.json.stringifyAlloc(arena.allocator(), canvas_state, .{
         .whitespace = .indent_4,
@@ -205,7 +216,9 @@ fn setPath(self: *@This(), new_path: []const u8) !void {
     self.path = try self.sess.a.dupe(u8, new_path);
 }
 
-fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvasState {
+fn produceWritableCanvasState(self: *@This(), aa: Allocator) !WritableCanvasState {
+    const wm = self.wm;
+
     var string_source_list = std.ArrayListUnmanaged(StringSource){};
     var window_to_id_map = std.AutoArrayHashMapUnmanaged(*Window, i128){};
 
@@ -275,6 +288,10 @@ fn produceWritableCanvasState(aa: Allocator, wm: *WindowManager) !WritableCanvas
         .string_sources = string_source_list.items,
         .connections = connections.items,
         .active_window_id = active_window_id,
+        .marks = WritableMarks{
+            .keys = self.marksman.marks.keys(),
+            .values = self.marksman.marks.values(),
+        },
     };
 }
 
@@ -296,4 +313,28 @@ const WritableCanvasState = struct {
 
     cameraInfo: ?RenderMall.CameraInfo = null,
     active_window_id: ?Window.ID = null,
+
+    marks: ?WritableMarks = null,
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////// Mark
+
+const Mark = RenderMall.CameraInfo;
+const WritableMarks = struct {
+    keys: []const u8,
+    values: []const Mark,
+};
+const MarksMan = struct {
+    marks: std.AutoArrayHashMapUnmanaged(u8, Mark) = .{},
+
+    pub fn saveMarkToIndex(self: *@This(), sess: *Session, key: u8) void {
+        const info = sess.mall.icb.getCameraInfo(sess.mall.target_camera);
+        self.marks.put(sess.a, key, info) catch unreachable;
+    }
+
+    pub fn jumpToMark(self: *@This(), sess: *Session, key: u8) void {
+        const info = self.marks.get(key) orelse return;
+        sess.mall.rcb.setCamera(sess.mall.camera, info);
+        sess.mall.rcb.setCamera(sess.mall.target_camera, info);
+    }
 };
