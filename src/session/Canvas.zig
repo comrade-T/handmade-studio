@@ -338,9 +338,13 @@ const MarksMan = struct {
         sess.mall.rcb.setCamera(sess.mall.target_camera, self.before_jump_mark);
     }
 
-    pub fn saveMarkToIndex(self: *@This(), sess: *Session, key: u8) void {
+    pub fn saveMark(self: *@This(), sess: *Session, keyboard_key: []const u8, key: u8) void {
         const info = sess.mall.icb.getCameraInfo(sess.mall.target_camera);
         self.marks.put(sess.a, key, info) catch unreachable;
+
+        const msg = std.fmt.allocPrint(sess.a, "Saved current view to mark \"{s}\"", .{keyboard_key}) catch unreachable;
+        defer sess.a.free(msg);
+        sess.nl.setMessage(msg) catch unreachable;
     }
 
     pub fn jumpToMark(self: *@This(), sess: *Session, key: u8) void {

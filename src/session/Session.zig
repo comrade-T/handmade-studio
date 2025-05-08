@@ -92,7 +92,7 @@ pub fn mapKeys(sess: *@This()) !void {
         opts: CbOpts,
 
         const CbOpts = union(enum) {
-            save: u8,
+            save: struct { []const u8, u8 },
             jump: u8,
         };
 
@@ -101,7 +101,7 @@ pub fn mapKeys(sess: *@This()) !void {
             const canvas = self.sess.getActiveCanvas() orelse return;
 
             switch (self.opts) {
-                .save => |idx| canvas.marksman.saveMarkToIndex(self.sess, idx),
+                .save => |info| canvas.marksman.saveMark(self.sess, info[0], info[1]),
                 .jump => |idx| canvas.marksman.jumpToMark(self.sess, idx),
             }
         }
@@ -138,21 +138,21 @@ pub fn mapKeys(sess: *@This()) !void {
     try c.map(NORMAL, &.{ .space, .j, .v }, try Cb.init(a, sess, .{ .jump = 13 }));
     try c.map(NORMAL, &.{ .space, .j, .b }, try Cb.init(a, sess, .{ .jump = 14 }));
 
-    try c.map(NORMAL, &.{ .space, .m, .q }, try Cb.init(a, sess, .{ .save = 0 }));
-    try c.map(NORMAL, &.{ .space, .m, .w }, try Cb.init(a, sess, .{ .save = 1 }));
-    try c.map(NORMAL, &.{ .space, .m, .e }, try Cb.init(a, sess, .{ .save = 2 }));
-    try c.map(NORMAL, &.{ .space, .m, .r }, try Cb.init(a, sess, .{ .save = 3 }));
-    try c.map(NORMAL, &.{ .space, .m, .t }, try Cb.init(a, sess, .{ .save = 4 }));
-    try c.map(NORMAL, &.{ .space, .m, .a }, try Cb.init(a, sess, .{ .save = 5 }));
-    try c.map(NORMAL, &.{ .space, .m, .s }, try Cb.init(a, sess, .{ .save = 6 }));
-    try c.map(NORMAL, &.{ .space, .m, .d }, try Cb.init(a, sess, .{ .save = 7 }));
-    try c.map(NORMAL, &.{ .space, .m, .f }, try Cb.init(a, sess, .{ .save = 8 }));
-    try c.map(NORMAL, &.{ .space, .m, .g }, try Cb.init(a, sess, .{ .save = 9 }));
-    try c.map(NORMAL, &.{ .space, .m, .z }, try Cb.init(a, sess, .{ .save = 10 }));
-    try c.map(NORMAL, &.{ .space, .m, .x }, try Cb.init(a, sess, .{ .save = 11 }));
-    try c.map(NORMAL, &.{ .space, .m, .c }, try Cb.init(a, sess, .{ .save = 12 }));
-    try c.map(NORMAL, &.{ .space, .m, .v }, try Cb.init(a, sess, .{ .save = 13 }));
-    try c.map(NORMAL, &.{ .space, .m, .b }, try Cb.init(a, sess, .{ .save = 14 }));
+    try c.map(NORMAL, &.{ .space, .m, .q }, try Cb.init(a, sess, .{ .save = .{ "j", 0 } }));
+    try c.map(NORMAL, &.{ .space, .m, .w }, try Cb.init(a, sess, .{ .save = .{ "w", 1 } }));
+    try c.map(NORMAL, &.{ .space, .m, .e }, try Cb.init(a, sess, .{ .save = .{ "e", 2 } }));
+    try c.map(NORMAL, &.{ .space, .m, .r }, try Cb.init(a, sess, .{ .save = .{ "r", 3 } }));
+    try c.map(NORMAL, &.{ .space, .m, .t }, try Cb.init(a, sess, .{ .save = .{ "t", 4 } }));
+    try c.map(NORMAL, &.{ .space, .m, .a }, try Cb.init(a, sess, .{ .save = .{ "a", 5 } }));
+    try c.map(NORMAL, &.{ .space, .m, .s }, try Cb.init(a, sess, .{ .save = .{ "s", 6 } }));
+    try c.map(NORMAL, &.{ .space, .m, .d }, try Cb.init(a, sess, .{ .save = .{ "d", 7 } }));
+    try c.map(NORMAL, &.{ .space, .m, .f }, try Cb.init(a, sess, .{ .save = .{ "f", 8 } }));
+    try c.map(NORMAL, &.{ .space, .m, .g }, try Cb.init(a, sess, .{ .save = .{ "g", 9 } }));
+    try c.map(NORMAL, &.{ .space, .m, .z }, try Cb.init(a, sess, .{ .save = .{ "z", 10 } }));
+    try c.map(NORMAL, &.{ .space, .m, .x }, try Cb.init(a, sess, .{ .save = .{ "x", 11 } }));
+    try c.map(NORMAL, &.{ .space, .m, .c }, try Cb.init(a, sess, .{ .save = .{ "c", 12 } }));
+    try c.map(NORMAL, &.{ .space, .m, .v }, try Cb.init(a, sess, .{ .save = .{ "v", 13 } }));
+    try c.map(NORMAL, &.{ .space, .m, .b }, try Cb.init(a, sess, .{ .save = .{ "b", 14 } }));
 }
 
 pub fn newCanvas(self: *@This()) !*Canvas {
