@@ -81,6 +81,10 @@ pub fn mapKeys(self: *@This()) !void {
 
     // Experimental
     try c.map(NORMAL, &.{ .space, .m }, .{ .f = toggleExperimentalMinimap, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .m, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .m, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .m, .w }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = self });
+    try c.map(NORMAL, &.{ .space, .m, .s }, .{ .f = increaseExperimentalMinimapRadius, .ctx = self });
 }
 
 pub fn newCanvas(self: *@This()) !*Canvas {
@@ -315,7 +319,15 @@ pub fn postFileOpenCallback(ctx: *anyopaque, win: *WindowManager.Window) !void {
 
 fn toggleExperimentalMinimap(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.experimental_minimap.toggle(self);
+    self.experimental_minimap.toggle();
+}
+fn increaseExperimentalMinimapRadius(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.experimental_minimap.radius += 1;
+}
+fn decreaseExperimentalMinimapRadius(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.experimental_minimap.radius -= 1;
 }
 
 const ExperimentalMiniMapProtoType = struct {
@@ -328,14 +340,18 @@ const ExperimentalMiniMapProtoType = struct {
     width: f32 = 0,
     height: f32 = 0,
 
+    radius: f32 = 5,
+
     const padding = 100;
 
-    pub fn render(self: *const @This(), sess: *const Session) void {
+    pub fn render(self: *@This(), sess: *const Session) void {
         if (!self.visible) return;
         const wm = sess.getActiveCanvasWindowManager() orelse return;
 
         const swidth, const sheight = sess.mall.icb.getScreenWidthHeight();
-        sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, 0x000000ff);
+        sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, 0x00000055);
+
+        self.updateBoundsInfo(wm);
 
         /////////////////////////////
 
@@ -365,7 +381,7 @@ const ExperimentalMiniMapProtoType = struct {
             const x = padding + (width * xp) + (ww / 2);
             const y = padding + (height * yp) + (wh / 2);
 
-            wm.mall.rcb.drawCircle(x, y, 5, win.defaults.color);
+            wm.mall.rcb.drawCircle(x, y, self.radius, win.defaults.color);
         }
     }
 
@@ -385,11 +401,12 @@ const ExperimentalMiniMapProtoType = struct {
         return .{ wx + ww / 2, wy + wh / 2 };
     }
 
-    fn toggle(self: *@This(), sess: *Session) void {
+    fn toggle(self: *@This()) void {
         self.visible = !self.visible;
         if (!self.visible) return;
-        const wm = sess.getActiveCanvasWindowManager() orelse return;
+    }
 
+    fn updateBoundsInfo(self: *@This(), wm: *const WindowManager) void {
         self.left = std.math.floatMax(f32);
         self.right = -std.math.floatMax(f32);
         self.top = std.math.floatMax(f32);
