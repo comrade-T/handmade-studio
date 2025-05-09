@@ -830,6 +830,20 @@ pub fn selectAllConnectedWindowsRecursively(self: *@This()) !void {
     for (map.keys()) |win| try self.selection.addWindow(win);
 }
 
+pub fn selectAllChildrenOfFirstIncomingWindow(self: *@This()) !void {
+    const active_window = self.active_window orelse return;
+    const first_incoming_conn = self.getFirstVisibleIncomingWindow(active_window) orelse return;
+    try self.selectAllChildrenOfWindow(first_incoming_conn.start.win);
+}
+
+pub fn selectAllChildrenOfWindow(self: *@This(), win: *Window) !void {
+    const tracker = self.connman.tracker_map.get(win) orelse return;
+    try self.clearSelection();
+    for (tracker.outgoing.keys()) |conn| {
+        try self.selection.addWindow(conn.end.win);
+    }
+}
+
 pub fn clearSelection(self: *@This()) !void {
     self.selection.wmap.clearRetainingCapacity();
 }
@@ -860,6 +874,12 @@ pub fn getFirstVisibleIncomingWindow(self: *@This(), win: *Window) ?*ConnectionM
 
     const visible_index = may_visible_index orelse return null;
     return keys[visible_index];
+}
+
+pub fn alignAndJustifySelectionToFirstIncoming(self: *@This()) !void {
+    const active_window = self.active_window orelse return;
+    const first_incoming_conn = self.getFirstVisibleIncomingWindow(active_window) orelse return;
+    try self.alignAndJustifySelectionVerticallyToTarget(first_incoming_conn.start.win);
 }
 
 pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: ConnectionManager.AlignConnectionKind) !void {
