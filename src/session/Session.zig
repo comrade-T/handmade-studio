@@ -120,7 +120,7 @@ pub fn mapKeys(sess: *@This()) !void {
         .up_ctx = sess,
     });
 
-    try c.map(NORMAL, &.{ .apostrophe, .o }, .{ .f = jumpToBeforeJumpMark, .ctx = sess });
+    try c.map(NORMAL, &.{ .apostrophe, .j }, .{ .f = jumpToBeforeJumpMark, .ctx = sess });
 
     try c.map(NORMAL, &.{ .apostrophe, .q }, try Cb.init(a, sess, .{ .jump = 0 }));
     try c.map(NORMAL, &.{ .apostrophe, .w }, try Cb.init(a, sess, .{ .jump = 1 }));
