@@ -58,16 +58,6 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .c, .h }, try PercentageCb.init(a, ap, 25, 50));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .c, .l }, try PercentageCb.init(a, ap, 75, 50));
 
-    try c.mapUpNDown(NORMAL, &.{ .j, .semicolon }, .{ .down_f = show, .up_f = hide, .down_ctx = ap, .up_ctx = ap });
-    try c.mapUpNDown(MULTI_WIN, &.{ .j, .semicolon }, .{ .down_f = show, .up_f = hide, .down_ctx = ap, .up_ctx = ap });
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .semicolon, .space }, .{ .f = AnchorPicker.center, .ctx = ap });
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .semicolon, .c }, .{ .f = AnchorPicker.center, .ctx = ap });
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .k, .c }, .{ .f = AnchorPicker.center, .ctx = ap });
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .semicolon, .w }, try PercentageCb.init(a, ap, 50, 25));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .semicolon, .s }, try PercentageCb.init(a, ap, 50, 75));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .semicolon, .a }, try PercentageCb.init(a, ap, 25, 50));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .semicolon, .d }, try PercentageCb.init(a, ap, 75, 50));
-
     ///////////////////////////// zoom
 
     const ZoomCb = struct {
@@ -93,14 +83,8 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .k }, try ZoomCb.init(a, ap, 1.25, false));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .space, .j }, try ZoomCb.init(a, ap, 0.9, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .space, .k }, try ZoomCb.init(a, ap, 1.1, true));
-
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .q }, try ZoomCb.init(a, ap, 0.8, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .e }, try ZoomCb.init(a, ap, 1.25, false));
-
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .k, .s }, try ZoomCb.init(a, ap, 0.8, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .k, .w }, try ZoomCb.init(a, ap, 1.25, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .k, .a }, try ZoomCb.init(a, ap, 0.95, true));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .j, .k, .d }, try ZoomCb.init(a, ap, 1.05, true));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .h }, try ZoomCb.init(a, ap, 0.6, false));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .l }, try ZoomCb.init(a, ap, 1.4, false));
 
     ///////////////////////////// pan
 
@@ -129,14 +113,6 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .j }, try PanCb.init(a, ap, 0, 100, false));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .h }, try PanCb.init(a, ap, -100, 0, false));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l }, try PanCb.init(a, ap, 100, 0, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .k, .h }, try PanCb.init(a, ap, -100, -100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .k, .l }, try PanCb.init(a, ap, 100, -100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .j, .h }, try PanCb.init(a, ap, -100, 100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .j, .l }, try PanCb.init(a, ap, 100, 100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .h, .k }, try PanCb.init(a, ap, -100, -100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .h, .j }, try PanCb.init(a, ap, -100, 100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l, .k }, try PanCb.init(a, ap, 100, -100, false));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l, .j }, try PanCb.init(a, ap, 100, 100, false));
 
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .space, .k }, try PanCb.init(a, ap, 0, -100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .space, .j }, try PanCb.init(a, ap, 0, 100, true));
@@ -155,19 +131,6 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .h, .space, .j }, try PanCb.init(a, ap, -100, 100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l, .space, .k }, try PanCb.init(a, ap, 100, -100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l, .space, .j }, try PanCb.init(a, ap, 100, 100, true));
-
-    try c.map(NORMAL, &.{ .j, .w }, try PanCb.init(a, ap, 0, -100, true));
-    try c.map(NORMAL, &.{ .j, .s }, try PanCb.init(a, ap, 0, 100, true));
-    try c.map(NORMAL, &.{ .j, .a }, try PanCb.init(a, ap, -100, 0, true));
-    try c.map(NORMAL, &.{ .j, .d }, try PanCb.init(a, ap, 100, 0, true));
-    try c.map(NORMAL, &.{ .j, .w, .a }, try PanCb.init(a, ap, -100, -100, true));
-    try c.map(NORMAL, &.{ .j, .s, .a }, try PanCb.init(a, ap, -100, 100, true));
-    try c.map(NORMAL, &.{ .j, .a, .w }, try PanCb.init(a, ap, -100, -100, true));
-    try c.map(NORMAL, &.{ .j, .a, .s }, try PanCb.init(a, ap, -100, 100, true));
-    try c.map(NORMAL, &.{ .j, .w, .d }, try PanCb.init(a, ap, 100, -100, true));
-    try c.map(NORMAL, &.{ .j, .s, .d }, try PanCb.init(a, ap, 100, 100, true));
-    try c.map(NORMAL, &.{ .j, .d, .w }, try PanCb.init(a, ap, 100, -100, true));
-    try c.map(NORMAL, &.{ .j, .d, .s }, try PanCb.init(a, ap, 100, 100, true));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

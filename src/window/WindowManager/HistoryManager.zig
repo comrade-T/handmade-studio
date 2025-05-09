@@ -337,6 +337,7 @@ pub fn getWindowsFromEvent(ev: Event) ?Windows {
         .change_padding => |info| info.windows,
         .move => |info| info.windows,
         .justify => |info| info.windows,
+        .set_default_color => |info| info.windows,
         else => null,
     };
 }
