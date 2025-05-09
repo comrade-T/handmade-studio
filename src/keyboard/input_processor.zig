@@ -50,7 +50,7 @@ pub const UpNDownCallback = struct {
 const ContextMap = std.StringHashMap(*CallbackMap);
 const CallbackMap = std.AutoHashMap(u128, Callback);
 pub const Callback = struct {
-    f: *const fn (ctx: *anyopaque) anyerror!void,
+    f: F,
     ctx: *anyopaque,
 
     /// In insert mode, if you type fast enough, keys will overlap.
@@ -73,6 +73,8 @@ pub const Callback = struct {
     ignore_trigger_delay: bool = false,
 
     contexts: Contexts = .{},
+
+    pub const F = *const fn (ctx: *anyopaque) anyerror!void;
 
     pub const Contexts = struct {
         add: []const []const u8 = &.{},

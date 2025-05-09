@@ -132,6 +132,32 @@ fn mapVisualMode(sess: *Session, council: *Session.MappingCouncil) !void {
     ///////////////////////////// yank
 
     try council.map(VISUAL, &.{.y}, .{ .f = yankVisualSeletionToClipboard, .ctx = sess, .contexts = VISUAL_TO_NORMAL });
+
+    ////////////////////////////////////////////////////////////////////////////////////////////// Alternate
+
+    try map(sess, NORMAL, &.{ .v, .o }, &.{ enterVisualMode, moveCursorForwardWordEnd }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .o }, &.{moveCursorForwardWordEnd}, .{});
+    try map(sess, NORMAL, &.{ .v, .left_shift, .o }, &.{ enterVisualMode, moveCursorForwardBIGWORDEnd }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .left_shift, .o }, &.{moveCursorForwardBIGWORDEnd}, .{});
+
+    try map(sess, NORMAL, &.{ .v, .i }, &.{ enterVisualMode, moveCursorForwardWordStart }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .i }, &.{moveCursorForwardWordStart}, .{});
+    try map(sess, NORMAL, &.{ .v, .left_shift, .i }, &.{ enterVisualMode, moveCursorForwardBIGWORDStart }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .left_shift, .i }, &.{moveCursorForwardBIGWORDStart}, .{});
+
+    try map(sess, NORMAL, &.{ .v, .u }, &.{ enterVisualMode, moveCursorBackwardsWordStart }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .u }, &.{moveCursorBackwardsWordStart}, .{});
+    try map(sess, NORMAL, &.{ .v, .left_shift, .u }, &.{ enterVisualMode, moveCursorBackwardsBIGWORDStart }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .left_shift, .u }, &.{moveCursorBackwardsBIGWORDStart}, .{});
+
+    try map(sess, NORMAL, &.{ .v, .j }, &.{ enterVisualMode, moveCursorDown }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .j }, &.{moveCursorDown}, .{});
+    try map(sess, NORMAL, &.{ .v, .k }, &.{ enterVisualMode, moveCursorUp }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .k }, &.{moveCursorUp}, .{});
+    try map(sess, NORMAL, &.{ .v, .h }, &.{ enterVisualMode, moveCursorLeft }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .h }, &.{moveCursorLeft}, .{});
+    try map(sess, NORMAL, &.{ .v, .l }, &.{ enterVisualMode, moveCursorRight }, NORMAL_TO_VISUAL);
+    try map(sess, VISUAL, &.{ .v, .l }, &.{moveCursorRight}, .{});
 }
 
 fn mapInsertMode(sess: *Session, council: *Session.MappingCouncil) !void {
@@ -436,3 +462,25 @@ pub fn yankVisualSeletionToClipboard(ctx: *anyopaque) !void {
     wm.mall.rcb.setClipboardText(buffer);
     try exitVisualMode(ctx);
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Combine callbacks into 1 mapping
+
+fn map(sess: *Session, mode: []const u8, keys: []const Session.ip_.Key, funcs: []const Callback.F, contexts: Callback.Contexts) !void {
+    try sess.council.map(mode, keys, try CombineCb.init(sess.council.arena.allocator(), sess, funcs, contexts));
+}
+
+const CombineCb = struct {
+    ctx: *anyopaque,
+    funcs: []const Callback.F,
+    fn f(ctx: *anyopaque) !void {
+        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+        for (self.funcs) |func| {
+            try func(self.ctx);
+        }
+    }
+    fn init(allocator: std.mem.Allocator, ctx: *anyopaque, funcs: []const Callback.F, contexts: Callback.Contexts) !Session.Callback {
+        const self = try allocator.create(@This());
+        self.* = .{ .funcs = funcs, .ctx = ctx };
+        return Session.Callback{ .f = @This().f, .ctx = self, .contexts = contexts };
+    }
+};
