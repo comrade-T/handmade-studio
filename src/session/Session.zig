@@ -516,7 +516,7 @@ const ExperimentalMiniMapProtoType = struct {
         const x = self.padding + (width * xp);
         const y = self.padding + (height * yp);
 
-        wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, progressAlphaChannel(0xffffffff, self.progress.value));
+        wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, progressAlphaChannel(0xffffff88, self.progress.value));
     }
 
     fn getConnPosition(self: *const @This(), point: WindowManager.ConnectionManager.Connection.Point, width: f32, height: f32) struct { f32, f32 } {

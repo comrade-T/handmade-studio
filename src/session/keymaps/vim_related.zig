@@ -45,18 +45,22 @@ const G_PREFIX_TO_NORMAL = Callback.Contexts{ .remove = &.{G_PREFIX}, .add = &.{
 fn mapNormalMode(sess: *Session, c: *Session.MappingCouncil) !void {
 
     // hjkl
-    try c.map(NORMAL, &.{.j}, .{ .f = moveCursorDown, .ctx = sess });
-    try c.map(NORMAL, &.{.k}, .{ .f = moveCursorUp, .ctx = sess });
-    try c.map(NORMAL, &.{.h}, .{ .f = moveCursorLeft, .ctx = sess });
-    try c.map(NORMAL, &.{.l}, .{ .f = moveCursorRight, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .j }, .{ .f = moveCursorDown, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .k }, .{ .f = moveCursorUp, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .h }, .{ .f = moveCursorLeft, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .l }, .{ .f = moveCursorRight, .ctx = sess });
 
     // web
-    try c.map(NORMAL, &.{.w}, .{ .f = moveCursorForwardWordStart, .ctx = sess });
-    try c.map(NORMAL, &.{.e}, .{ .f = moveCursorForwardWordEnd, .ctx = sess });
-    try c.map(NORMAL, &.{.b}, .{ .f = moveCursorBackwardsWordStart, .ctx = sess });
-    try c.map(NORMAL, &.{ .left_shift, .w }, .{ .f = moveCursorForwardBIGWORDStart, .ctx = sess });
-    try c.map(NORMAL, &.{ .left_shift, .e }, .{ .f = moveCursorForwardBIGWORDEnd, .ctx = sess });
-    try c.map(NORMAL, &.{ .left_shift, .b }, .{ .f = moveCursorBackwardsBIGWORDStart, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .i }, .{ .f = moveCursorForwardWordStart, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .o }, .{ .f = moveCursorForwardWordEnd, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .u }, .{ .f = moveCursorBackwardsWordStart, .ctx = sess });
+
+    try c.map(NORMAL, &.{ .left_shift, .w, .i }, .{ .f = moveCursorForwardBIGWORDStart, .ctx = sess });
+    try c.map(NORMAL, &.{ .left_shift, .w, .o }, .{ .f = moveCursorForwardBIGWORDEnd, .ctx = sess });
+    try c.map(NORMAL, &.{ .left_shift, .w, .u }, .{ .f = moveCursorBackwardsBIGWORDStart, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .left_shift, .i }, .{ .f = moveCursorForwardBIGWORDStart, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .left_shift, .o }, .{ .f = moveCursorForwardBIGWORDEnd, .ctx = sess });
+    try c.map(NORMAL, &.{ .w, .left_shift, .u }, .{ .f = moveCursorBackwardsBIGWORDStart, .ctx = sess });
 
     // $0
     try c.map(NORMAL, &.{.zero}, .{ .f = moveCursorToFirstNonSpaceCharacterOfLine, .ctx = sess });
