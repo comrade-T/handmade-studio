@@ -48,7 +48,9 @@ pub fn updateInputState(self: *@This()) !bool {
 fn executeTriggerIfExists(self: *@This()) !bool {
     {
         const a, const b = self.council.produceFinalTrigger(self.frame);
-        if (a) |trigger| try self.council.execute(trigger, self.frame);
+
+        if (a) |trigger| try self.council.executeUpNDown(trigger, self.frame);
+
         if (b) |trigger| {
             const current_time = std.time.milliTimestamp();
             defer self.last_trigger = trigger;
