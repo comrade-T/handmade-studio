@@ -345,12 +345,13 @@ pub const MappingCouncil = struct {
 
     pub fn execute(self: *@This(), trigger: u128, frame: *InputFrame) !void {
         const report = frame.produceCandidateReport();
+        var emitted = false;
 
         const require_clarity_afterwards_cpy = self.require_clarity_afterwards;
         defer {
             if (require_clarity_afterwards_cpy == self.require_clarity_afterwards) self.require_clarity_afterwards = false;
 
-            frame.cleanUpAfterExecution();
+            frame.cleanUpAfterExecution(emitted);
         }
 
         const keys = self.active_contexts.keys();
@@ -369,6 +370,7 @@ pub const MappingCouncil = struct {
                     if (trigger_map.get(trigger)) |cb| {
                         if (report.quick == trigger and frame.downs.items.len > 1 and self.require_clarity_afterwards) return;
                         try cb.f(cb.ctx);
+                        emitted = true;
                         try self.resolveContextsAfterCallback(cb);
                         if (cb.require_clarity_afterwards) self.require_clarity_afterwards = true;
                         if (cb.always_trigger_on_down) frame.forceEmittingDownEvent();
@@ -382,6 +384,7 @@ pub const MappingCouncil = struct {
                 if (self.ups.get(context_id)) |trigger_map| {
                     if (trigger_map.get(trigger)) |cb| {
                         try cb.f(cb.ctx);
+                        emitted = true;
                         try self.resolveContextsAfterCallback(cb);
                         return;
                     }
@@ -446,58 +449,56 @@ pub const MappingCouncil = struct {
         self.lastest_context_only = false;
     }
 
-    pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) ?u128 {
+    pub fn produceFinalTrigger(self: *@This(), frame: *InputFrame) struct { ?u128, ?u128 } {
         const active_contexts = self.active_contexts.keys();
-        if (active_contexts.len == 0) return null;
+        if (active_contexts.len == 0) return .{ null, null };
 
         if (self.lastest_context_only) {
             const latest_context = active_contexts[active_contexts.len - 1];
-            if (self.produceFinalTriggerComponent(latest_context, frame)) |trigger| {
-
-                // enforcing `InputFrame.force_emitting_down` behavior
+            const a, const b = self.produceFinalTriggerComponent(latest_context, frame);
+            if (a != null or b != null) {
                 if (frame.force_emitting_down) frame.latest_event_type = .down;
-
-                return trigger;
+                return .{ a, b };
             }
-            return null;
+            return .{ null, null };
         }
 
         for (active_contexts) |context_id| {
-            if (self.produceFinalTriggerComponent(context_id, frame)) |trigger| {
-
-                // enforcing `InputFrame.force_emitting_down` behavior
+            const a, const b = self.produceFinalTriggerComponent(context_id, frame);
+            if (a != null or b != null) {
                 if (frame.force_emitting_down) frame.latest_event_type = .down;
-
-                return trigger;
+                return .{ a, b };
             }
         }
-        return null;
+        return .{ null, null };
     }
 
-    pub fn produceFinalTriggerComponent(self: *const @This(), context_id: []const u8, frame: *InputFrame) ?u128 {
-        const downs = self.downs.get(context_id) orelse return null;
-        const ups = self.ups.get(context_id) orelse return null;
+    pub fn produceFinalTriggerComponent(self: *const @This(), context_id: []const u8, frame: *InputFrame) struct { ?u128, ?u128 } {
+        const downs = self.downs.get(context_id) orelse return .{ null, null };
+        const ups = self.ups.get(context_id) orelse return .{ null, null };
 
         const r = frame.produceCandidateReport();
+        var up_n_down_trigger: ?u128 = null;
 
-        if (frame.force_emitting_down) return r.down;
+        if (frame.force_emitting_down) return .{ up_n_down_trigger, r.down };
 
         switch (frame.latest_event_type) {
-            .up => {},
-            .down => if (self.check(context_id, .up_n_down, r.down)) return r.down,
-            .none => {},
+            .down => if (self.check(context_id, .up_n_down, r.down)) {
+                up_n_down_trigger = r.down;
+            },
+            else => {},
         }
 
         if (frame.latest_event_type == .down) {
             if (frame.downs.items.len == 2 and
                 (frame.downs.items[0].key == .left_shift or frame.downs.items[0].key == .right_shift))
             {
-                return self.produceDefaultTriggerComponent(context_id, r, frame);
+                return .{ up_n_down_trigger, self.produceDefaultTriggerComponent(context_id, r, frame) };
             }
 
             if (frame.downs.items.len >= 2 and self.check(context_id, .down, r.down)) {
                 frame.emitted = true;
-                return r.down;
+                return .{ up_n_down_trigger, r.down };
             }
 
             if (!r.over_threshold and r.quick != null) {
@@ -510,12 +511,12 @@ pub const MappingCouncil = struct {
                 }
                 if (proceed) {
                     frame.emitted = true;
-                    return r.quick;
+                    return .{ up_n_down_trigger, r.quick };
                 }
             }
         }
 
-        return self.produceDefaultTriggerComponent(context_id, r, frame);
+        return .{ up_n_down_trigger, self.produceDefaultTriggerComponent(context_id, r, frame) };
     }
 
     fn produceDefaultTriggerComponent(self: *const @This(), context_id: []const u8, r: InputFrame.CandidateReport, frame: *InputFrame) ?u128 {
@@ -549,6 +550,7 @@ pub const MappingCouncil = struct {
         }
 
         const context_map = if (kind == .up) self.ups else self.downs;
+
         if (context_map.get(context_id)) |trigger_map| {
             if (trigger_map.get(trigger.?)) |_| return true;
         }
@@ -1132,8 +1134,8 @@ pub const InputFrame = struct {
         self.ups.deinit();
     }
 
-    pub fn cleanUpAfterExecution(self: *@This()) void {
-        if (!self.force_emitting_down) self.emitted = true;
+    pub fn cleanUpAfterExecution(self: *@This(), emitted: bool) void {
+        if (!self.force_emitting_down and emitted) self.emitted = true;
         self.clearKeyUps();
         self.previous_down_candidate = null;
     }

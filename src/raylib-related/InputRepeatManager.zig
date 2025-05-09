@@ -46,45 +46,51 @@ pub fn updateInputState(self: *@This()) !bool {
 }
 
 fn executeTriggerIfExists(self: *@This()) !bool {
-    if (self.council.produceFinalTrigger(self.frame)) |trigger| {
-        const current_time = std.time.milliTimestamp();
-        defer self.last_trigger = trigger;
+    {
+        const a, const b = self.council.produceFinalTrigger(self.frame);
+        if (a) |trigger| try self.council.execute(trigger, self.frame);
+        if (b) |trigger| {
+            const current_time = std.time.milliTimestamp();
+            defer self.last_trigger = trigger;
 
-        if (trigger != self.last_trigger) {
-            self.reached_trigger_delay = false;
-            self.reached_repeat_rate = false;
-            self.last_trigger_timestamp = 0;
-        }
-
-        if (self.council.triggerIgnoresDelay(trigger, self.frame)) {
-            try self.council.execute(trigger, self.frame);
-            return true;
-        }
-
-        trigger: {
-            if (self.reached_repeat_rate) {
-                if (current_time - self.last_trigger_timestamp < self.repeat_rate) return false;
-                self.last_trigger_timestamp = current_time;
-                break :trigger;
+            if (trigger != self.last_trigger) {
+                self.reached_trigger_delay = false;
+                self.reached_repeat_rate = false;
+                self.last_trigger_timestamp = 0;
             }
 
-            if (self.reached_trigger_delay) {
+            if (self.council.triggerIgnoresDelay(trigger, self.frame)) {
+                try self.council.execute(trigger, self.frame);
+                return true;
+            }
+
+            trigger: {
+                if (self.reached_repeat_rate) {
+                    if (current_time - self.last_trigger_timestamp < self.repeat_rate) return false;
+                    self.last_trigger_timestamp = current_time;
+                    break :trigger;
+                }
+
+                if (self.reached_trigger_delay) {
+                    if (current_time - self.last_trigger_timestamp < self.trigger_delay) return false;
+                    self.reached_repeat_rate = true;
+                    self.last_trigger_timestamp = current_time;
+                    break :trigger;
+                }
+
                 if (current_time - self.last_trigger_timestamp < self.trigger_delay) return false;
-                self.reached_repeat_rate = true;
+                self.reached_trigger_delay = true;
                 self.last_trigger_timestamp = current_time;
-                break :trigger;
+
+                try self.council.execute(trigger, self.frame);
+                return true;
             }
-
-            if (current_time - self.last_trigger_timestamp < self.trigger_delay) return false;
-            self.reached_trigger_delay = true;
-            self.last_trigger_timestamp = current_time;
-
-            try self.council.execute(trigger, self.frame);
-            return true;
         }
     }
 
-    if (self.council.produceFinalTrigger(self.frame)) |trigger| {
+    const a, const b = self.council.produceFinalTrigger(self.frame);
+    _ = a;
+    if (b) |trigger| {
         try self.council.execute(trigger, self.frame);
         return true;
     }
