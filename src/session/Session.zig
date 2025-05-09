@@ -92,8 +92,8 @@ pub fn mapKeys(sess: *@This()) !void {
         opts: CbOpts,
 
         const CbOpts = union(enum) {
-            save: struct { []const u8, u8 },
-            jump: u8,
+            save: struct { []const u8, u32 },
+            jump: u32,
         };
 
         fn f(ctx: *anyopaque) !void {

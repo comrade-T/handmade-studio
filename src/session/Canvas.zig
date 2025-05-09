@@ -321,11 +321,11 @@ const WritableCanvasState = struct {
 
 const Mark = RenderMall.CameraInfo;
 const WritableMarks = struct {
-    keys: []const u8,
+    keys: []const u32,
     values: []const Mark,
 };
 const MarksMan = struct {
-    marks: std.AutoArrayHashMapUnmanaged(u8, Mark) = .{},
+    marks: std.AutoArrayHashMapUnmanaged(u32, Mark) = .{},
     before_jump_mark: Mark = .{},
 
     pub fn saveBeforeJumpMark(self: *@This(), sess: *Session) void {
@@ -337,7 +337,7 @@ const MarksMan = struct {
         sess.mall.rcb.setCameraPositionFromCameraInfo(sess.mall.target_camera, self.before_jump_mark);
     }
 
-    pub fn saveMark(self: *@This(), sess: *Session, keyboard_key: []const u8, key: u8) void {
+    pub fn saveMark(self: *@This(), sess: *Session, keyboard_key: []const u8, key: u32) void {
         const info = sess.mall.icb.getCameraInfo(sess.mall.target_camera);
         self.marks.put(sess.a, key, info) catch unreachable;
 
@@ -346,7 +346,7 @@ const MarksMan = struct {
         sess.nl.setMessage(msg) catch unreachable;
     }
 
-    pub fn jumpToMark(self: *@This(), sess: *Session, key: u8) void {
+    pub fn jumpToMark(self: *@This(), sess: *Session, key: u32) void {
         const info = self.marks.get(key) orelse return;
         sess.mall.rcb.setCameraPositionFromCameraInfo(sess.mall.target_camera, info);
     }
