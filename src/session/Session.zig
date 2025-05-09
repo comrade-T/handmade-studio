@@ -113,30 +113,30 @@ pub fn mapKeys(sess: *@This()) !void {
         }
     };
 
-    try c.mapUpNDown(NORMAL, &.{ .space, .j }, .{
+    try c.mapUpNDown(NORMAL, &.{.apostrophe}, .{
         .down_f = showExperimentalMinimap,
         .down_ctx = sess,
         .up_f = hideExperimentalMinimap,
         .up_ctx = sess,
     });
 
-    try c.map(NORMAL, &.{ .space, .j, .o }, .{ .f = jumpToBeforeJumpMark, .ctx = sess });
+    try c.map(NORMAL, &.{ .apostrophe, .o }, .{ .f = jumpToBeforeJumpMark, .ctx = sess });
 
-    try c.map(NORMAL, &.{ .space, .j, .q }, try Cb.init(a, sess, .{ .jump = 0 }));
-    try c.map(NORMAL, &.{ .space, .j, .w }, try Cb.init(a, sess, .{ .jump = 1 }));
-    try c.map(NORMAL, &.{ .space, .j, .e }, try Cb.init(a, sess, .{ .jump = 2 }));
-    try c.map(NORMAL, &.{ .space, .j, .r }, try Cb.init(a, sess, .{ .jump = 3 }));
-    try c.map(NORMAL, &.{ .space, .j, .t }, try Cb.init(a, sess, .{ .jump = 4 }));
-    try c.map(NORMAL, &.{ .space, .j, .a }, try Cb.init(a, sess, .{ .jump = 5 }));
-    try c.map(NORMAL, &.{ .space, .j, .s }, try Cb.init(a, sess, .{ .jump = 6 }));
-    try c.map(NORMAL, &.{ .space, .j, .d }, try Cb.init(a, sess, .{ .jump = 7 }));
-    try c.map(NORMAL, &.{ .space, .j, .f }, try Cb.init(a, sess, .{ .jump = 8 }));
-    try c.map(NORMAL, &.{ .space, .j, .g }, try Cb.init(a, sess, .{ .jump = 9 }));
-    try c.map(NORMAL, &.{ .space, .j, .z }, try Cb.init(a, sess, .{ .jump = 10 }));
-    try c.map(NORMAL, &.{ .space, .j, .x }, try Cb.init(a, sess, .{ .jump = 11 }));
-    try c.map(NORMAL, &.{ .space, .j, .c }, try Cb.init(a, sess, .{ .jump = 12 }));
-    try c.map(NORMAL, &.{ .space, .j, .v }, try Cb.init(a, sess, .{ .jump = 13 }));
-    try c.map(NORMAL, &.{ .space, .j, .b }, try Cb.init(a, sess, .{ .jump = 14 }));
+    try c.map(NORMAL, &.{ .apostrophe, .q }, try Cb.init(a, sess, .{ .jump = 0 }));
+    try c.map(NORMAL, &.{ .apostrophe, .w }, try Cb.init(a, sess, .{ .jump = 1 }));
+    try c.map(NORMAL, &.{ .apostrophe, .e }, try Cb.init(a, sess, .{ .jump = 2 }));
+    try c.map(NORMAL, &.{ .apostrophe, .r }, try Cb.init(a, sess, .{ .jump = 3 }));
+    try c.map(NORMAL, &.{ .apostrophe, .t }, try Cb.init(a, sess, .{ .jump = 4 }));
+    try c.map(NORMAL, &.{ .apostrophe, .a }, try Cb.init(a, sess, .{ .jump = 5 }));
+    try c.map(NORMAL, &.{ .apostrophe, .s }, try Cb.init(a, sess, .{ .jump = 6 }));
+    try c.map(NORMAL, &.{ .apostrophe, .d }, try Cb.init(a, sess, .{ .jump = 7 }));
+    try c.map(NORMAL, &.{ .apostrophe, .f }, try Cb.init(a, sess, .{ .jump = 8 }));
+    try c.map(NORMAL, &.{ .apostrophe, .g }, try Cb.init(a, sess, .{ .jump = 9 }));
+    try c.map(NORMAL, &.{ .apostrophe, .z }, try Cb.init(a, sess, .{ .jump = 10 }));
+    try c.map(NORMAL, &.{ .apostrophe, .x }, try Cb.init(a, sess, .{ .jump = 11 }));
+    try c.map(NORMAL, &.{ .apostrophe, .c }, try Cb.init(a, sess, .{ .jump = 12 }));
+    try c.map(NORMAL, &.{ .apostrophe, .v }, try Cb.init(a, sess, .{ .jump = 13 }));
+    try c.map(NORMAL, &.{ .apostrophe, .b }, try Cb.init(a, sess, .{ .jump = 14 }));
 
     try c.map(NORMAL, &.{ .space, .m, .q }, try Cb.init(a, sess, .{ .save = .{ "q", 0 } }));
     try c.map(NORMAL, &.{ .space, .m, .w }, try Cb.init(a, sess, .{ .save = .{ "w", 1 } }));
