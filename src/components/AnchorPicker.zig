@@ -86,6 +86,9 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .h }, try ZoomCb.init(a, ap, 0.6, false));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .x, .l }, try ZoomCb.init(a, ap, 1.4, false));
 
+    try c.map(NORMAL, &.{ .apostrophe, .space, .q }, try ZoomCb.init(a, ap, 0.7, false));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .e }, try ZoomCb.init(a, ap, 1.3, false));
+
     ///////////////////////////// pan
 
     const PanCb = struct {
@@ -131,6 +134,21 @@ pub fn mapKeys(ap: *@This(), c: *ip.MappingCouncil) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .h, .space, .j }, try PanCb.init(a, ap, -100, 100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l, .space, .k }, try PanCb.init(a, ap, 100, -100, true));
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .z, .l, .space, .j }, try PanCb.init(a, ap, 100, 100, true));
+
+    // map
+    try c.map(NORMAL, &.{ .apostrophe, .space, .a }, try PanCb.init(a, ap, -100, 0, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .d }, try PanCb.init(a, ap, 100, 0, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .w }, try PanCb.init(a, ap, 0, -100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .s }, try PanCb.init(a, ap, 0, 100, true));
+
+    try c.map(NORMAL, &.{ .apostrophe, .space, .a, .w }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .a, .s }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .d, .w }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .d, .s }, try PanCb.init(a, ap, 100, 100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .w, .a }, try PanCb.init(a, ap, -100, -100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .s, .a }, try PanCb.init(a, ap, -100, 100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .w, .d }, try PanCb.init(a, ap, 100, -100, true));
+    try c.map(NORMAL, &.{ .apostrophe, .space, .s, .d }, try PanCb.init(a, ap, 100, 100, true));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
