@@ -840,6 +840,7 @@ pub fn selectAllChildrenOfWindow(self: *@This(), win: *Window) !void {
     const tracker = self.connman.tracker_map.get(win) orelse return;
     try self.clearSelection();
     for (tracker.outgoing.keys()) |conn| {
+        if (!conn.isVisible()) continue;
         try self.selection.addWindow(conn.end.win);
     }
 }

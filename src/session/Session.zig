@@ -487,6 +487,8 @@ const ExperimentalMiniMapProtoType = struct {
         /////////////////////////////
 
         for (wm.wmap.keys()) |win| {
+            if (win.closed) continue;
+
             const xp = (win.getTargetX() - self.left) / self.width;
             const yp = (win.getTargetY() - self.top) / self.height;
 
