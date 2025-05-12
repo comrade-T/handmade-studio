@@ -23,6 +23,7 @@ pub const render_callbacks = RenderMall.RenderCallbacks{
     .drawCodePoint = drawCodePoint,
     .drawRectangle = drawRectangle,
     .drawRectangleLines = drawRectangleLines,
+    .drawRectangleGradient = drawRectangleGradient,
     .drawCircle = drawCircle,
     .drawLine = drawLine,
     .changeCameraZoom = changeCameraZoom,
@@ -60,6 +61,31 @@ pub fn drawRectangleLines(x: f32, y: f32, width: f32, height: f32, line_thick: f
         line_thick,
         rl.Color.fromInt(color),
     );
+}
+
+pub fn drawRectangleGradient(x: f32, y: f32, width: f32, height: f32, top_left: u32, bottom_left: u32, bottom_right: u32, top_right: u32) void {
+    // TODO: add color pickers to change backgrounds
+
+    rl.drawRectangleGradientEx(
+        .{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        },
+        // rl.Color.red,
+        // rl.Color.blue,
+        // rl.Color.purple,
+        // rl.Color.yellow,
+        rl.Color.fromInt(top_left),
+        rl.Color.fromInt(bottom_left),
+        rl.Color.fromInt(bottom_right),
+        rl.Color.fromInt(top_right),
+    );
+    // _ = top_left;
+    // _ = bottom_left;
+    // _ = top_right;
+    // _ = bottom_right;
 }
 
 pub fn drawCircle(x: f32, y: f32, radius: f32, color: u32) void {

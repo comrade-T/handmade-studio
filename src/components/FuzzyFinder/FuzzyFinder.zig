@@ -184,6 +184,8 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
 pub fn render(self: *const @This()) void {
     if (!self.visible) return;
+    const width, const height = self.doi.mall.icb.getScreenWidthHeight();
+    self.doi.mall.rcb.drawRectangleGradient(0, 0, width, height, 0x000000ff, 0x000000aa, 0x00000099, 0x000000ff);
     self.renderResults(self.doi.mall.rcb);
 }
 

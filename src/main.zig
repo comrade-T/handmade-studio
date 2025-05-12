@@ -271,9 +271,6 @@ pub fn main() anyerror!void {
                 // AnchorPicker
                 anchor_picker.render();
 
-                // DepartmentOfInputs
-                doi.render();
-
                 // fuzzy_finders
                 fuzzy_file_opener.finder.render();
                 fuzzy_session_opener.finder.render();
@@ -285,6 +282,9 @@ pub fn main() anyerror!void {
 
                 // ConfirmationPrompt
                 confirmation_prompt.render();
+
+                // DepartmentOfInputs
+                doi.render();
             }
         }
     }
