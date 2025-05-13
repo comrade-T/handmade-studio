@@ -431,24 +431,7 @@ const ExperimentalMiniMapProtoType = struct {
     padding_min: f32 = 75,
     padding_quant: f32 = 25,
 
-    progress: struct {
-        value: u8 = 0,
-        delta: u8 = 10,
-        target: u8 = 100,
-        mode: enum { in, out } = .out,
-
-        fn update(self: *@This()) void {
-            switch (self.mode) {
-                .in => {
-                    if (self.value < self.target) self.value += self.delta;
-                    self.value = @min(self.value, self.target);
-                },
-                .out => {
-                    if (self.value > 0) self.value -|= self.delta;
-                },
-            }
-        }
-    } = .{},
+    progress: RenderMall.Progress = .{},
 
     const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
 

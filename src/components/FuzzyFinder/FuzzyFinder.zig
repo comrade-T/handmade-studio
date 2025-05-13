@@ -35,7 +35,6 @@ const NotificationLine = @import("NotificationLine");
 ////////////////////////////////////////////////////////////////////////////////////////////// Public
 
 a: Allocator,
-visible: bool = false,
 
 limit: u16 = 100,
 selection_index: u16 = 0,
@@ -52,6 +51,8 @@ needle: []const u8 = "",
 
 opts: FuzzyFinderCreateOptions,
 fresh: bool = true,
+
+progress: RenderMall.Progress = .{ .delta = 15 },
 
 pub fn mapKeys(self: *@This()) !void {
     const c = self.doi.council;
@@ -110,14 +111,14 @@ pub fn show(ctx: *anyopaque) !void {
     try self.updateEntries();
     try update(self, self.needle);
     assert(try self.doi.showInput(self.opts.input_name));
-    self.visible = true;
+    self.progress.mode = .in;
 }
 
 pub fn hide(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     assert(try self.doi.hideInput(self.opts.input_name));
     if (self.opts.onHide) |onHide| try onHide.f(onHide.ctx, self.needle);
-    self.visible = false;
+    self.progress.mode = .out;
 }
 
 pub fn nextItem(ctx: *anyopaque) !void {
@@ -182,31 +183,52 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render
 
-pub fn render(self: *const @This()) void {
-    if (!self.visible) return;
-    const width, const height = self.doi.mall.icb.getScreenWidthHeight();
-    self.doi.mall.rcb.drawRectangleGradient(0, 0, width, height, 0x000000ff, 0x000000aa, 0x00000099, 0x000000ff);
-    self.renderResults(self.doi.mall.rcb);
+const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
+
+pub fn render(self: *@This()) void {
+    self.progress.update();
+    self.renderFadingGradientBackground();
+    if (self.progress.value > 0) self.renderResults(self.doi.mall);
 }
 
-fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallbacks) void {
+fn renderFadingGradientBackground(self: *@This()) void {
+    const width, const height = self.doi.mall.icb.getScreenWidthHeight();
+    self.doi.mall.rcb.drawRectangleGradient(
+        0,
+        0,
+        width,
+        height,
+        progressAlphaChannel(0x000000ff, self.progress.value),
+        progressAlphaChannel(0x000000aa, self.progress.value),
+        progressAlphaChannel(0x00000099, self.progress.value),
+        progressAlphaChannel(0x000000ff, self.progress.value),
+    );
+}
+
+fn renderResults(self: *const @This(), mall: *const RenderMall) void {
     const font = self.doi.mall.font_store.getDefaultFont() orelse unreachable;
     const font_size = 30;
     const default_glyph = font.glyph_map.get('?') orelse unreachable;
 
-    const normal_color = 0xffffffff;
-    const match_color = 0xf78c6cff;
+    const normal_color = progressAlphaChannel(0xffffffff, self.progress.value);
+    const match_color = progressAlphaChannel(0xf78c6cff, self.progress.value);
 
-    const start_x = self.x;
+    const MOVE_DISTANCE = 20;
+
+    const start_x = self.x - MOVE_DISTANCE;
     const y_distance_from_input = 100;
     const start_y = self.y + y_distance_from_input;
 
-    var x: f32 = start_x;
+    var x: f32 = start_x + (MOVE_DISTANCE * @as(f32, @floatFromInt(self.progress.value)) / 100);
     var y: f32 = start_y;
 
+    _, const screen_height = mall.icb.getScreenWidthHeight();
+
     for (self.match_list.items, 0..) |match, i| {
+        if (y + font_size > screen_height) break;
+
         defer y += font_size;
-        defer x = start_x;
+        defer x = start_x + (MOVE_DISTANCE * @as(f32, @floatFromInt(self.progress.value)) / 100);
 
         var match_index: usize = 0;
         var cp_index: usize = 0;
@@ -230,7 +252,7 @@ fn renderResults(self: *const @This(), render_callbacks: RenderMall.RenderCallba
             const char_width = RenderMall.calculateGlyphWidth(font, font_size, cp.code, default_glyph);
             defer x += char_width;
 
-            render_callbacks.drawCodePoint(font, cp.code, x, y, font_size, color);
+            mall.rcb.drawCodePoint(font, cp.code, x, y, font_size, color);
         }
     }
 }
@@ -413,5 +435,3 @@ pub const BoolCallback = struct {
     f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!bool,
     ctx: *anyopaque,
 };
-
-//////////////////////////////////////////////////////////////////////////////////////////////

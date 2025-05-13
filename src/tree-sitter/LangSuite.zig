@@ -72,8 +72,11 @@ pub fn addDefaultHighlightQuery(self: *@This()) !void {
 pub fn addExperimentalEntityQuery(self: *@This()) !void {
     const patterns = switch (self.lang_choice) {
         .zig =>
-        \\ (function_declaration
-        \\   name: (identifier) @name) @contents
+        \\ ((function_declaration
+        \\   name: (identifier) @name) @contents)
+        \\
+        \\ ((variable_declaration (identifier) @name
+        \\                        (struct_declaration)) @contents)
     };
     try self.addQuery(&self.entity_queries, DEFAULT_QUERY_ID, patterns);
 }

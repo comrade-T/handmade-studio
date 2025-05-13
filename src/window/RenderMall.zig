@@ -304,7 +304,7 @@ pub fn lerp(from: f32, to: f32, time: f32) f32 {
     return from + time * (to - from);
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Rect
 
 pub const Rect = struct {
     x: f32,
@@ -348,3 +348,24 @@ pub fn getScreenRectAbsolute(self: *const @This()) Rect {
     const width, const height = self.icb.getScreenWidthHeight();
     return Rect{ .x = 0, .y = 0, .width = width, .height = height };
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Progress
+
+pub const Progress = struct {
+    value: u8 = 0,
+    delta: u8 = 10,
+    target: u8 = 100,
+    mode: enum { in, out } = .out,
+
+    pub fn update(self: *@This()) void {
+        switch (self.mode) {
+            .in => {
+                if (self.value < self.target) self.value += self.delta;
+                self.value = @min(self.value, self.target);
+            },
+            .out => {
+                if (self.value > 0) self.value -|= self.delta;
+            },
+        }
+    }
+};
