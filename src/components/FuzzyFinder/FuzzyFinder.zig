@@ -54,6 +54,8 @@ fresh: bool = true,
 
 progress: RenderMall.Progress = .{ .delta = 15 },
 
+reset_selection_index: enum { yes, no } = .yes,
+
 pub fn mapKeys(self: *@This()) !void {
     const c = self.doi.council;
     const ctx_id = self.opts.input_name;
@@ -108,10 +110,15 @@ pub fn destroy(self: *@This()) void {
 pub fn show(ctx: *anyopaque) !void {
     const self = @as(*FuzzyFinder, @ptrCast(@alignCast(ctx)));
     defer self.fresh = false;
+
+    self.reset_selection_index = .no;
     try self.updateEntries();
     try update(self, self.needle);
+
     assert(try self.doi.showInput(self.opts.input_name));
+
     if (self.opts.onShow) |cb| try cb.f(cb.ctx, self.needle);
+
     self.progress.mode = .in;
 }
 
@@ -177,10 +184,9 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
     try std.fs.cwd().deleteTree(path);
 
-    const old_selection_index = self.selection_index;
+    self.reset_selection_index = .no;
     try self.updateEntries();
     try update(self, self.needle);
-    self.selection_index = old_selection_index;
     self.keepSelectionIndexInBound();
 
     const msg = try std.fmt.allocPrint(self.a, "'{s}' has been deleted", .{duped_path});
@@ -290,9 +296,10 @@ fn getX(self: *const @This(), start_x: f32) f32 {
 
 fn update(ctx: *anyopaque, new_needle: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    defer self.reset_selection_index = .yes;
     try self.updateInternal(new_needle);
     if (self.opts.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, self.needle);
-    self.selection_index = 0;
+    if (self.reset_selection_index == .yes) self.selection_index = 0;
 }
 
 fn updateInternal(self: *@This(), new_needle: []const u8) !void {
