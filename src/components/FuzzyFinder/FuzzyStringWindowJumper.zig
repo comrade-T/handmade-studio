@@ -109,7 +109,7 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const index = self.finder.getSelectedIndex() orelse return true;
     const win = self.targets.items[index];
-    win.centerCameraAt(self.sess.mall);
+    win.centerCameraInstantlyAt(self.sess.mall);
     return true;
 }
 

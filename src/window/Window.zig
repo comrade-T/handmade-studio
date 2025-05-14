@@ -123,9 +123,20 @@ pub fn close(self: *@This()) void {
 // }
 
 pub fn centerCameraAt(self: *const @This(), mall: *const RenderMall) void {
+    const x, const y = self.getCenter();
+    mall.rcb.setCameraPosition(mall.target_camera, x, y);
+}
+
+pub fn centerCameraInstantlyAt(self: *const @This(), mall: *const RenderMall) void {
+    const x, const y = self.getCenter();
+    mall.rcb.setCameraPosition(mall.target_camera, x, y);
+    mall.rcb.setCameraPosition(mall.camera, x, y);
+}
+
+pub fn getCenter(self: *const @This()) struct { f32, f32 } {
     const win_center_x = self.getX() + self.getWidth() / 2;
     const win_center_y = self.getY() + self.getHeight() / 2;
-    mall.rcb.setCameraPosition(mall.target_camera, win_center_x, win_center_y);
+    return .{ win_center_x, win_center_y };
 }
 
 pub fn setLimit(self: *@This(), a: Allocator, qtree: *QuadTree, may_limit: ?CursorManager.Limit) !void {

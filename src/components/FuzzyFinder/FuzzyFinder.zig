@@ -290,6 +290,7 @@ fn update(ctx: *anyopaque, new_needle: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.updateInternal(new_needle);
     if (self.opts.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, self.needle);
+    self.selection_index = 0;
 }
 
 fn updateInternal(self: *@This(), new_needle: []const u8) !void {
