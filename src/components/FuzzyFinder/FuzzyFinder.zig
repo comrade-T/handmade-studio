@@ -201,7 +201,7 @@ const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
 pub fn render(self: *@This()) !void {
     self.progress.update();
     self.renderFadingGradientBackground();
-    if (self.progress.value > 0) try self.renderResults(self.doi.mall);
+    if (self.progress.value > 0) self.renderResults(self.doi.mall);
     if (self.opts.postRender) |cb| try cb.f(cb.ctx, self.needle);
 }
 
@@ -219,78 +219,119 @@ fn renderFadingGradientBackground(self: *@This()) void {
     );
 }
 
-fn renderResults(self: *const @This(), mall: *const RenderMall) !void {
-    const font = self.doi.mall.font_store.getDefaultFont() orelse unreachable;
-    const font_size = 30;
-    const default_glyph = font.glyph_map.get('?') orelse unreachable;
+fn renderResults(self: *const @This(), mall: *const RenderMall) void {
+    var renderer = Renderer.init(self, mall);
+    renderer.render(mall);
+}
 
-    const match_color = progressAlphaChannel(0xf78c6cff, self.progress.value);
+const Renderer = struct {
+    finder: *const FuzzyFinder,
 
-    const start_x = self.x - MOVE_DISTANCE;
-    const y_distance_from_input = 100;
-    const start_y = self.y + y_distance_from_input;
+    font: *const RenderMall.FontStore.Font = undefined,
+    default_glyph: RenderMall.FontStore.Font.GlyphData = undefined,
 
-    var x: f32 = self.getX(start_x);
-    var y: f32 = start_y;
+    start_x: f32 = undefined,
+    start_y: f32 = undefined,
 
-    _, const screen_height = mall.icb.getScreenWidthHeight();
+    x: f32 = undefined,
+    y: f32 = undefined,
 
-    for (self.match_list.items, 0..) |match, i| {
-        if (y + font_size > screen_height) break;
+    match_color: u32 = undefined,
+    entry_color: u32 = undefined,
 
-        var entry_color: u32 = 0xffffffff;
-        if (self.opts.getEntryColor) |cb| entry_color = try cb.f(cb.ctx, match.entry_index);
-        entry_color = progressAlphaChannel(entry_color, self.progress.value);
+    const X_ANIMATION_MOVE_DISTANCE = 20;
+    const Y_DISTANCE_FROM_INPUT = 100;
+    const ENTRY_FONTSIZE = 30;
+    const DEFAULT_ENTRY_COLOR = 0xffffffff;
 
-        const y_before_rendering_this_line = y;
-        defer if (i == self.selection_index and self.opts.render_vertical_line_at_selected_entry) {
-            const color = if (self.opts.getEntryColor != null) entry_color else match_color;
-            const thickness = 3;
-            const offset = 10;
-            const x_ = x - offset;
-            mall.rcb.drawLine(x_, y_before_rendering_this_line, x_, y, thickness, color);
-        };
+    fn init(finder: *const FuzzyFinder, mall: *const RenderMall) Renderer {
+        var self = Renderer{ .finder = finder };
+        self.font = mall.font_store.getDefaultFont() orelse unreachable;
+        self.default_glyph = self.font.glyph_map.get('?') orelse unreachable;
 
-        defer y += font_size;
-        defer x = self.getX(start_x);
+        self.start_x = self.finder.x - X_ANIMATION_MOVE_DISTANCE;
+        self.start_y = self.finder.y + Y_DISTANCE_FROM_INPUT;
+        self.x = self.getAnimatedX();
+        self.y = self.start_y;
 
+        return self;
+    }
+
+    fn render(self: *@This(), mall: *const RenderMall) void {
+        _, const screen_height = mall.icb.getScreenWidthHeight();
+
+        self.match_color = progressAlphaChannel(0xf78c6cff, self.finder.progress.value);
+
+        for (self.finder.match_list.items, 0..) |match, i| {
+            if (self.y + ENTRY_FONTSIZE > screen_height) break;
+
+            self.updateEntryColor(match);
+
+            const y_before_rendering_this_line = self.y;
+            defer self.renderVeritcalLine(mall, y_before_rendering_this_line, i);
+
+            defer self.y += ENTRY_FONTSIZE;
+            defer self.x = self.getAnimatedX();
+
+            self.renderEntry(mall, match, i);
+        }
+    }
+
+    fn renderEntry(self: *@This(), mall: *const RenderMall, match: Match, i: usize) void {
         var match_index: usize = 0;
         var cp_index: usize = 0;
 
-        var cp_iter = code_point.Iterator{ .bytes = self.entry_list.items[match.entry_index].path };
+        var cp_iter = code_point.Iterator{ .bytes = self.finder.entry_list.items[match.entry_index].path };
         while (cp_iter.next()) |cp| {
             defer cp_index += 1;
-            var color: u32 = entry_color;
+
+            var char_color: u32 = self.entry_color;
 
             pick_color: {
-                if (i == self.selection_index and self.opts.fill_selected_entry_with_matched_color) {
-                    color = match_color;
+                if (i == self.finder.selection_index and self.finder.opts.fill_selected_entry_with_matched_color) {
+                    char_color = self.match_color;
                     break :pick_color;
                 }
                 if (match_index + 1 <= match.matches.len and match.matches[match_index] == cp_index) {
-                    color = match_color;
+                    char_color = self.match_color;
                     match_index += 1;
                 }
             }
 
             if (cp.code == '\n') {
-                y += font_size;
-                x = self.getX(start_x);
+                self.y += ENTRY_FONTSIZE;
+                self.x = self.getAnimatedX();
                 continue;
             }
 
-            const char_width = RenderMall.calculateGlyphWidth(font, font_size, cp.code, default_glyph);
-            defer x += char_width;
+            const char_width = RenderMall.calculateGlyphWidth(self.font, ENTRY_FONTSIZE, cp.code, self.default_glyph);
+            defer self.x += char_width;
 
-            mall.rcb.drawCodePoint(font, cp.code, x, y, font_size, color);
+            mall.rcb.drawCodePoint(self.font, cp.code, self.x, self.y, ENTRY_FONTSIZE, char_color);
         }
     }
-}
 
-const MOVE_DISTANCE = 20;
-fn getX(self: *const @This(), start_x: f32) f32 {
-    return start_x + (MOVE_DISTANCE * @as(f32, @floatFromInt(self.progress.value)) / 100);
-}
+    const VERTICAL_LINE_THICKNESS = 3;
+    const VERTICAL_LINE_OFFSET = 10;
+    fn renderVeritcalLine(self: *const @This(), mall: *const RenderMall, y_before_rendering_this_line: f32, i: usize) void {
+        if (i == self.finder.selection_index and self.finder.opts.render_vertical_line_at_selected_entry) {
+            const color = if (self.finder.opts.getEntryColor != null) self.entry_color else self.match_color;
+            const x_ = self.x - VERTICAL_LINE_OFFSET;
+            mall.rcb.drawLine(x_, y_before_rendering_this_line, x_, self.y, VERTICAL_LINE_THICKNESS, color);
+        }
+    }
+
+    fn updateEntryColor(self: *@This(), match: Match) void {
+        var color: u32 = DEFAULT_ENTRY_COLOR;
+        if (self.finder.opts.getEntryColor) |cb| color = cb.f(cb.ctx, match.entry_index) catch DEFAULT_ENTRY_COLOR;
+        color = progressAlphaChannel(color, self.finder.progress.value);
+        self.entry_color = color;
+    }
+
+    fn getAnimatedX(self: *const @This()) f32 {
+        return self.start_x + (X_ANIMATION_MOVE_DISTANCE * @as(f32, @floatFromInt(self.finder.progress.value)) / 100);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Internal
 
