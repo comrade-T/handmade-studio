@@ -52,10 +52,9 @@ pub fn create(a: Allocator, sess: *Session, doi: *DepartmentOfInputs) !*FuzzyEnt
         .sess = sess,
         .finder = try FuzzyFinder.create(a, doi, .{
             .input_name = FEP,
-            .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
-            .updateEntries = .{ .f = updateEntries, .ctx = self },
+            .updater = .{ .f = updater, .ctx = self },
         }),
         .entity_list = Buffer.EntityList.init(a),
     };
@@ -96,7 +95,7 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn updateEntries(ctx: *anyopaque, _: []const u8) !void {
+fn updater(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     self.entity_list.clearRetainingCapacity();
 

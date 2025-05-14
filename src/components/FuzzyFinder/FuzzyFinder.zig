@@ -146,6 +146,10 @@ pub fn getSelectedIndex(self: *@This()) ?usize {
     return match.entry_index;
 }
 
+pub fn addEntryUnmanaged(self: *@This(), entry: []const u8) !void {
+    try self.entry_list.append(.{ .path = entry, .mtime = std.time.nanoTimestamp() });
+}
+
 pub fn addEntry(self: *@This(), path: []const u8) !void {
     const duped_path = try self.entry_arena.allocator().dupe(u8, path);
     try self.entry_list.append(.{ .path = duped_path, .mtime = std.time.nanoTimestamp() });
@@ -213,13 +217,11 @@ fn renderResults(self: *const @This(), mall: *const RenderMall) void {
     const normal_color = progressAlphaChannel(0xffffffff, self.progress.value);
     const match_color = progressAlphaChannel(0xf78c6cff, self.progress.value);
 
-    const MOVE_DISTANCE = 20;
-
     const start_x = self.x - MOVE_DISTANCE;
     const y_distance_from_input = 100;
     const start_y = self.y + y_distance_from_input;
 
-    var x: f32 = start_x + (MOVE_DISTANCE * @as(f32, @floatFromInt(self.progress.value)) / 100);
+    var x: f32 = self.getX(start_x);
     var y: f32 = start_y;
 
     _, const screen_height = mall.icb.getScreenWidthHeight();
@@ -228,7 +230,7 @@ fn renderResults(self: *const @This(), mall: *const RenderMall) void {
         if (y + font_size > screen_height) break;
 
         defer y += font_size;
-        defer x = start_x + (MOVE_DISTANCE * @as(f32, @floatFromInt(self.progress.value)) / 100);
+        defer x = self.getX(start_x);
 
         var match_index: usize = 0;
         var cp_index: usize = 0;
@@ -249,12 +251,23 @@ fn renderResults(self: *const @This(), mall: *const RenderMall) void {
                 }
             }
 
+            if (cp.code == '\n') {
+                y += font_size;
+                x = self.getX(start_x);
+                continue;
+            }
+
             const char_width = RenderMall.calculateGlyphWidth(font, font_size, cp.code, default_glyph);
             defer x += char_width;
 
             mall.rcb.drawCodePoint(font, cp.code, x, y, font_size, color);
         }
     }
+}
+
+const MOVE_DISTANCE = 20;
+fn getX(self: *const @This(), start_x: f32) f32 {
+    return start_x + (MOVE_DISTANCE * @as(f32, @floatFromInt(self.progress.value)) / 100);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Internal
@@ -328,7 +341,7 @@ fn updateEntries(self: *@This()) !void {
     self.entry_arena = ArenaAllocator.init(self.a);
     self.entry_list.clearRetainingCapacity();
 
-    if (self.opts.updateEntries) |cb| {
+    if (self.opts.updater) |cb| {
         try cb.f(cb.ctx, self.needle);
         return;
     }
@@ -409,7 +422,7 @@ const FuzzyFinderCreateOptions = struct {
     nl: ?*NotificationLine = null,
 
     input_name: []const u8,
-    kind: utils.AppendFileNamesRequest.Kind,
+    kind: utils.AppendFileNamesRequest.Kind = .files,
 
     onUpdate: ?Callback = null,
     onConfirm: ?BoolCallback = null,
@@ -417,7 +430,7 @@ const FuzzyFinderCreateOptions = struct {
     onHide: ?Callback = null,
     onShow: ?Callback = null,
 
-    updateEntries: ?Callback = null,
+    updater: ?Callback = null,
 
     custom_ignore_patterns: ?[]const []const u8 = null,
     ignore_ignore_patterns: ?[]const []const u8 = null,

@@ -217,6 +217,9 @@ pub fn main() anyerror!void {
     var fuzzy_entity_picker = try fuzzy_finders.FuzzyEntityPicker.create(gpa, &session, &doi);
     defer fuzzy_entity_picker.destroy();
 
+    var fuzzy_string_window_jumper = try fuzzy_finders.FuzzyStringWindowJumper.create(gpa, &session, &doi);
+    defer fuzzy_string_window_jumper.destroy();
+
     startup_ztracy_zone.End();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
@@ -276,6 +279,7 @@ pub fn main() anyerror!void {
                 fuzzy_session_opener.finder.render();
                 fuzzy_session_savior.ffc.finder.render();
                 fuzzy_entity_picker.finder.render();
+                fuzzy_string_window_jumper.finder.render();
 
                 // NotificationLine
                 notification_line.render();
