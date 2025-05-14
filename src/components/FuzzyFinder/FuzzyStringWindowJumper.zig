@@ -73,6 +73,7 @@ pub fn create(
             .getEntryColor = .{ .f = getEntryColor, .ctx = self },
             .fill_selected_entry_with_matched_color = false,
             .render_vertical_line_at_selected_entry = true,
+            .y_distance_between_entries = 10,
         }),
     };
     try self.mapKeys(doi.council);

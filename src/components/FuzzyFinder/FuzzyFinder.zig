@@ -257,20 +257,40 @@ const Renderer = struct {
         return self;
     }
 
+    fn getStartEntryIndexToRender(self: *const @This(), screen_height: f32) usize {
+        const half_of_entry_zone_height = (screen_height - self.start_y) / 2;
+        var accumulated_height: f32 = 0;
+
+        var i: usize = self.finder.selection_index + 1;
+        while (i > 0) {
+            i -= 1;
+            if (accumulated_height > half_of_entry_zone_height) break;
+            const match = self.finder.match_list.items[i];
+            const match_contents = self.finder.entry_list.items[match.entry_index].path;
+            const match_line_count = std.mem.count(u8, match_contents, "\n") + 1;
+            accumulated_height += @as(f32, @floatFromInt(match_line_count)) * ENTRY_FONTSIZE + self.finder.opts.y_distance_between_entries;
+            if (accumulated_height > half_of_entry_zone_height) return i;
+        }
+
+        return 0;
+    }
+
     fn render(self: *@This(), mall: *const RenderMall) void {
         _, const screen_height = mall.icb.getScreenWidthHeight();
+        if (self.finder.match_list.items.len == 0) return;
 
         self.match_color = progressAlphaChannel(0xf78c6cff, self.finder.progress.value);
 
-        for (self.finder.match_list.items, 0..) |match, i| {
+        for (self.getStartEntryIndexToRender(screen_height)..self.finder.match_list.items.len) |i| {
             if (self.y + ENTRY_FONTSIZE > screen_height) break;
 
+            const match = self.finder.match_list.items[i];
             self.updateEntryColor(match);
 
             const y_before_rendering_this_line = self.y;
             defer self.renderVeritcalLine(mall, y_before_rendering_this_line, i);
 
-            defer self.y += ENTRY_FONTSIZE;
+            defer self.y += ENTRY_FONTSIZE + self.finder.opts.y_distance_between_entries;
             defer self.x = self.getAnimatedX();
 
             self.renderEntry(mall, match, i);
@@ -317,7 +337,14 @@ const Renderer = struct {
         if (i == self.finder.selection_index and self.finder.opts.render_vertical_line_at_selected_entry) {
             const color = if (self.finder.opts.getEntryColor != null) self.entry_color else self.match_color;
             const x_ = self.x - VERTICAL_LINE_OFFSET;
-            mall.rcb.drawLine(x_, y_before_rendering_this_line, x_, self.y, VERTICAL_LINE_THICKNESS, color);
+            mall.rcb.drawLine(
+                x_,
+                y_before_rendering_this_line,
+                x_,
+                self.y - self.finder.opts.y_distance_between_entries,
+                VERTICAL_LINE_THICKNESS,
+                color,
+            );
         }
     }
 
@@ -498,6 +525,7 @@ const FuzzyFinderCreateOptions = struct {
     updater: ?Callback = null,
     postRender: ?Callback = null,
     getEntryColor: ?GetEntryColorCallback = null,
+    y_distance_between_entries: f32 = 0,
 
     fill_selected_entry_with_matched_color: bool = true,
     render_angle_bracket_at_selected_entry: bool = false,
