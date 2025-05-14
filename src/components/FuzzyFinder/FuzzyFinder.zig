@@ -177,8 +177,10 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
     try std.fs.cwd().deleteTree(path);
 
+    const old_selection_index = self.selection_index;
     try self.updateEntries();
     try update(self, self.needle);
+    self.selection_index = old_selection_index;
     self.keepSelectionIndexInBound();
 
     const msg = try std.fmt.allocPrint(self.a, "'{s}' has been deleted", .{duped_path});

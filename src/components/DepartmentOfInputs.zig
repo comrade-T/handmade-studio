@@ -151,6 +151,7 @@ const Input = struct {
         try c.map(cid, &.{.backspace}, .{ .f = backspace, .ctx = input });
         try c.map(cid, &.{.enter}, .{ .f = confirm, .ctx = input });
         try c.map(cid, &.{.escape}, .{ .f = cancel, .ctx = input });
+        try c.map(cid, &.{ .left_control, .l }, .{ .f = clear, .ctx = input });
     }
 
     fn triggerCallback(self: *@This(), kind: enum { update, confirm, cancel }) !void {
@@ -175,6 +176,20 @@ const Input = struct {
     fn backspace(ctx: *anyopaque) !void {
         const self = @as(*Input, @ptrCast(@alignCast(ctx)));
         const result = try self.source.deleteRanges(self.a, self.win.cursor_manager, .backspace) orelse return;
+        defer self.a.free(result);
+        try self.win.processEditResult(null, null, result, self.mall);
+        try self.triggerCallback(.update);
+    }
+
+    fn clear(ctx: *anyopaque) !void {
+        const self = @as(*Input, @ptrCast(@alignCast(ctx)));
+        defer self.win.cursor_manager.activatePointMode();
+
+        self.win.cursor_manager.moveToBeginningOfLine(&self.source.buf.ropeman);
+        self.win.cursor_manager.activateRangeMode();
+        self.win.cursor_manager.moveToEndOfLine(&self.source.buf.ropeman);
+        const result = try self.source.deleteRanges(self.a, self.win.cursor_manager, .range) orelse return;
+
         defer self.a.free(result);
         try self.win.processEditResult(null, null, result, self.mall);
         try self.triggerCallback(.update);
