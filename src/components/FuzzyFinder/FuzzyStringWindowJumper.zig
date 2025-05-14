@@ -33,7 +33,7 @@ smap: Session.StrategicMap = .{
     .background = null,
     .padding = .{
         .left = .{ .screen_percentage = 0.5, .quant = 10 },
-        .right = .{ .min = 75, .quant = 10 },
+        .right = .{ .min = 80, .quant = 20 },
         .top = .{ .screen_percentage = 0.2, .quant = 10 },
         .bottom = .{ .screen_percentage = 0.2, .quant = 10 },
     },
@@ -70,6 +70,9 @@ pub fn create(
             .onHide = .{ .f = onHide, .ctx = self },
             .updater = .{ .f = updater, .ctx = self },
             .postRender = .{ .f = postRender, .ctx = self },
+            .getEntryColor = .{ .f = getEntryColor, .ctx = self },
+            .fill_selected_entry_with_matched_color = false,
+            .render_vertical_line_at_selected_entry = true,
         }),
     };
     try self.mapKeys(doi.council);
@@ -121,4 +124,9 @@ fn postRender(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const index = self.finder.getSelectedIndex() orelse return;
     self.smap.render(self.sess, self.targets.items[index]);
+}
+
+fn getEntryColor(ctx: *anyopaque, idx: usize) !u32 {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    return self.targets.items[idx].defaults.color;
 }

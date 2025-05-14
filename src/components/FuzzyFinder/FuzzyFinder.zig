@@ -193,7 +193,7 @@ const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
 pub fn render(self: *@This()) !void {
     self.progress.update();
     self.renderFadingGradientBackground();
-    if (self.progress.value > 0) self.renderResults(self.doi.mall);
+    if (self.progress.value > 0) try self.renderResults(self.doi.mall);
     if (self.opts.postRender) |cb| try cb.f(cb.ctx, self.needle);
 }
 
@@ -211,12 +211,11 @@ fn renderFadingGradientBackground(self: *@This()) void {
     );
 }
 
-fn renderResults(self: *const @This(), mall: *const RenderMall) void {
+fn renderResults(self: *const @This(), mall: *const RenderMall) !void {
     const font = self.doi.mall.font_store.getDefaultFont() orelse unreachable;
     const font_size = 30;
     const default_glyph = font.glyph_map.get('?') orelse unreachable;
 
-    const normal_color = progressAlphaChannel(0xffffffff, self.progress.value);
     const match_color = progressAlphaChannel(0xf78c6cff, self.progress.value);
 
     const start_x = self.x - MOVE_DISTANCE;
@@ -231,6 +230,19 @@ fn renderResults(self: *const @This(), mall: *const RenderMall) void {
     for (self.match_list.items, 0..) |match, i| {
         if (y + font_size > screen_height) break;
 
+        var entry_color: u32 = 0xffffffff;
+        if (self.opts.getEntryColor) |cb| entry_color = try cb.f(cb.ctx, match.entry_index);
+        entry_color = progressAlphaChannel(entry_color, self.progress.value);
+
+        const y_before_rendering_this_line = y;
+        defer if (i == self.selection_index and self.opts.render_vertical_line_at_selected_entry) {
+            const color = if (self.opts.getEntryColor != null) entry_color else match_color;
+            const thickness = 3;
+            const offset = 10;
+            const x_ = x - offset;
+            mall.rcb.drawLine(x_, y_before_rendering_this_line, x_, y, thickness, color);
+        };
+
         defer y += font_size;
         defer x = self.getX(start_x);
 
@@ -240,10 +252,10 @@ fn renderResults(self: *const @This(), mall: *const RenderMall) void {
         var cp_iter = code_point.Iterator{ .bytes = self.entry_list.items[match.entry_index].path };
         while (cp_iter.next()) |cp| {
             defer cp_index += 1;
-            var color: u32 = normal_color;
+            var color: u32 = entry_color;
 
             pick_color: {
-                if (i == self.selection_index) {
+                if (i == self.selection_index and self.opts.fill_selected_entry_with_matched_color) {
                     color = match_color;
                     break :pick_color;
                 }
@@ -434,6 +446,11 @@ const FuzzyFinderCreateOptions = struct {
 
     updater: ?Callback = null,
     postRender: ?Callback = null,
+    getEntryColor: ?GetEntryColorCallback = null,
+
+    fill_selected_entry_with_matched_color: bool = true,
+    render_angle_bracket_at_selected_entry: bool = false,
+    render_vertical_line_at_selected_entry: bool = false,
 
     custom_ignore_patterns: ?[]const []const u8 = null,
     ignore_ignore_patterns: ?[]const []const u8 = null,
@@ -444,6 +461,11 @@ const FuzzyFinderCreateOptions = struct {
 
 pub const Callback = struct {
     f: *const fn (ctx: *anyopaque, input_result: []const u8) anyerror!void,
+    ctx: *anyopaque,
+};
+
+pub const GetEntryColorCallback = struct {
+    f: *const fn (ctx: *anyopaque, index: usize) anyerror!u32,
     ctx: *anyopaque,
 };
 
