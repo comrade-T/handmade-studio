@@ -34,6 +34,8 @@ pub const UpNDownCallback = ip_.UpNDownCallback;
 pub const MappingCouncil = ip_.MappingCouncil;
 const LSPClientManager = @import("LSPClientManager");
 
+const StrategicMap = @import("StrategicMap.zig");
+
 const vim_related = @import("keymaps/vim_related.zig");
 const layout_related = @import("keymaps/layout_related.zig");
 const connection_manager = @import("keymaps/connection_manager.zig");
@@ -61,7 +63,7 @@ tcbmap: std.AutoHashMapUnmanaged(TriggerCallbackKey, TriggerCallback) = .{},
 yank_origin: ?*WindowManager = null,
 yanked_and_pasted: bool = false,
 
-experimental_minimap: ExperimentalMiniMapProtoType = .{},
+experimental_minimap: StrategicMap = .{},
 
 pub fn mapKeys(sess: *@This()) !void {
     const NORMAL = "normal";
@@ -79,12 +81,6 @@ pub fn mapKeys(sess: *@This()) !void {
     try connection_manager.mapKeys(sess);
     try window_picker.mapKeys(sess);
     try window_manager.mapKeys(sess);
-
-    // Experimental
-    try c.map(NORMAL, &.{ .space, .j, .left_shift, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .j, .left_shift, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .j, .left_shift, .w }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
-    try c.map(NORMAL, &.{ .space, .j, .left_shift, .s }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
 
     // Marks
     const Cb = struct {
@@ -112,6 +108,10 @@ pub fn mapKeys(sess: *@This()) !void {
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
+
+    // StrategicMap
+    try c.map(NORMAL, &.{ .apostrophe, .left_shift, .a }, .{ .f = decreaseExperimentalMinimapRadius, .ctx = sess });
+    try c.map(NORMAL, &.{ .apostrophe, .left_shift, .d }, .{ .f = increaseExperimentalMinimapRadius, .ctx = sess });
 
     try c.mapUpNDown(NORMAL, &.{.apostrophe}, .{
         .down_f = showExperimentalMinimap,
@@ -387,20 +387,19 @@ pub fn postFileOpenCallback(ctx: *anyopaque, win: *WindowManager.Window) !void {
 
 fn showExperimentalMinimap(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    if (!self.experimental_minimap.visible) {
-        const canvas = self.getActiveCanvas() orelse return;
-        canvas.marksman.saveBeforeJumpMark(self);
+    if (self.experimental_minimap.isVisible()) return;
 
-        self.experimental_minimap.progress.mode = .in;
-    }
-    self.experimental_minimap.visible = true;
+    const canvas = self.getActiveCanvas() orelse return;
+    canvas.marksman.saveBeforeJumpMark(self);
+
+    self.experimental_minimap.show();
 }
+
 fn hideExperimentalMinimap(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.experimental_minimap.visible = false;
-
-    self.experimental_minimap.progress.mode = .out;
+    self.experimental_minimap.hide();
 }
+
 fn jumpToBeforeJumpMark(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     const canvas = self.getActiveCanvas() orelse return;
@@ -409,136 +408,10 @@ fn jumpToBeforeJumpMark(ctx: *anyopaque) !void {
 
 fn increaseExperimentalMinimapRadius(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.experimental_minimap.radius += 1;
+    self.experimental_minimap.incrementCircleRadiusBy(1);
 }
+
 fn decreaseExperimentalMinimapRadius(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    self.experimental_minimap.radius -= 1;
+    self.experimental_minimap.incrementCircleRadiusBy(-1);
 }
-
-const ExperimentalMiniMapProtoType = struct {
-    visible: bool = false,
-    radius: f32 = 5,
-
-    left: f32 = 0,
-    right: f32 = 0,
-    top: f32 = 0,
-    bottom: f32 = 0,
-    width: f32 = 0,
-    height: f32 = 0,
-
-    padding: f32 = 75,
-    padding_min: f32 = 75,
-    padding_quant: f32 = 25,
-
-    progress: RenderMall.Progress = .{},
-
-    const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
-
-    fn updatePadding(self: *@This()) void {
-        self.padding = self.padding_min + (self.padding_quant * @as(f32, @floatFromInt(self.progress.value)) / 100);
-    }
-
-    pub fn render(self: *@This(), sess: *const Session) void {
-        const wm = sess.getActiveCanvasWindowManager() orelse return;
-
-        self.progress.update();
-        self.updatePadding();
-
-        const swidth, const sheight = sess.mall.icb.getScreenWidthHeight();
-        sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, progressAlphaChannel(0x000000aa, self.progress.value));
-
-        self.updateBoundsInfo(wm);
-
-        if (self.progress.value == 0) return;
-
-        /////////////////////////////
-
-        const width = swidth - (self.padding * 2);
-        const height = sheight - (self.padding * 2);
-        defer self.renderViewBounds(wm, width, height);
-
-        for (wm.connman.connections.keys()) |conn| {
-            if (!conn.isVisible()) continue;
-
-            const start_x, const start_y = self.getConnPosition(conn.start, width, height);
-            const end_x, const end_y = self.getConnPosition(conn.end, width, height);
-
-            wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 1, progressAlphaChannel(0xffffffff, self.progress.value));
-        }
-
-        /////////////////////////////
-
-        for (wm.wmap.keys()) |win| {
-            if (win.closed) continue;
-
-            const xp = (win.getTargetX() - self.left) / self.width;
-            const yp = (win.getTargetY() - self.top) / self.height;
-
-            const wp = win.getWidth() / self.width;
-            const hp = win.getHeight() / self.height;
-            const ww = width * wp;
-            const wh = height * hp;
-
-            const x = self.padding + (width * xp) + (ww / 2);
-            const y = self.padding + (height * yp) + (wh / 2);
-
-            wm.mall.rcb.drawCircle(x, y, self.radius, progressAlphaChannel(win.defaults.color, self.progress.value));
-        }
-    }
-
-    fn renderViewBounds(self: *@This(), wm: *const WindowManager, width: f32, height: f32) void {
-        const rect = wm.mall.getScreenRect(wm.mall.camera);
-
-        const xp = (rect.x - self.left) / self.width;
-        const yp = (rect.y - self.top) / self.height;
-
-        const wp = rect.width / self.width;
-        const hp = rect.height / self.height;
-        const w = width * wp;
-        const h = height * hp;
-
-        const x = self.padding + (width * xp);
-        const y = self.padding + (height * yp);
-
-        wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, progressAlphaChannel(0xffffff88, self.progress.value));
-    }
-
-    fn getConnPosition(self: *const @This(), point: WindowManager.ConnectionManager.Connection.Point, width: f32, height: f32) struct { f32, f32 } {
-        const win = point.win;
-
-        const xp = (win.getTargetX() - self.left) / self.width;
-        const yp = (win.getTargetY() - self.top) / self.height;
-        const wx = self.padding + (width * xp);
-        const wy = self.padding + (height * yp);
-
-        const wp = win.getWidth() / self.width;
-        const hp = win.getHeight() / self.height;
-        const ww = width * wp;
-        const wh = height * hp;
-
-        return .{ wx + ww / 2, wy + wh / 2 };
-    }
-
-    fn toggle(self: *@This()) void {
-        self.visible = !self.visible;
-        if (!self.visible) return;
-    }
-
-    fn updateBoundsInfo(self: *@This(), wm: *const WindowManager) void {
-        self.left = std.math.floatMax(f32);
-        self.right = -std.math.floatMax(f32);
-        self.top = std.math.floatMax(f32);
-        self.bottom = -std.math.floatMax(f32);
-
-        for (wm.wmap.keys()) |win| {
-            self.left = @min(self.left, win.getTargetX());
-            self.right = @max(self.right, win.getTargetX() + win.getWidth());
-            self.top = @min(self.top, win.getTargetY());
-            self.bottom = @max(self.bottom, win.getTargetY() + win.getHeight());
-        }
-
-        self.width = self.right - self.left;
-        self.height = self.bottom - self.top;
-    }
-};
