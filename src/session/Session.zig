@@ -34,7 +34,7 @@ pub const UpNDownCallback = ip_.UpNDownCallback;
 pub const MappingCouncil = ip_.MappingCouncil;
 const LSPClientManager = @import("LSPClientManager");
 
-const StrategicMap = @import("StrategicMap.zig");
+pub const StrategicMap = @import("StrategicMap.zig");
 
 const vim_related = @import("keymaps/vim_related.zig");
 const layout_related = @import("keymaps/layout_related.zig");
@@ -65,10 +65,10 @@ yanked_and_pasted: bool = false,
 
 experimental_minimap: StrategicMap = .{
     .padding = .{
-        .left = .{ .min = 75, .quant = 25, .value = 75 },
-        .right = .{ .min = 75, .quant = 25, .value = 75 },
-        .top = .{ .min = 150, .quant = 25, .value = 150 },
-        .bottom = .{ .min = 150, .quant = 25, .value = 150 },
+        .left = .{ .min = 75, .quant = 25 },
+        .right = .{ .min = 75, .quant = 25 },
+        .top = .{ .min = 75, .quant = 25 },
+        .bottom = .{ .min = 75, .quant = 25 },
     },
 },
 

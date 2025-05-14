@@ -267,7 +267,7 @@ pub fn main() anyerror!void {
             }
 
             { // Experimental
-                session.experimental_minimap.render(&session);
+                session.experimental_minimap.render(&session, null);
             }
 
             {
@@ -275,11 +275,11 @@ pub fn main() anyerror!void {
                 anchor_picker.render();
 
                 // fuzzy_finders
-                fuzzy_file_opener.finder.render();
-                fuzzy_session_opener.finder.render();
-                fuzzy_session_savior.ffc.finder.render();
-                fuzzy_entity_picker.finder.render();
-                fuzzy_string_window_jumper.finder.render();
+                try fuzzy_file_opener.finder.render();
+                try fuzzy_session_opener.finder.render();
+                try fuzzy_session_savior.ffc.finder.render();
+                try fuzzy_entity_picker.finder.render();
+                try fuzzy_string_window_jumper.finder.render();
 
                 // NotificationLine
                 notification_line.render();

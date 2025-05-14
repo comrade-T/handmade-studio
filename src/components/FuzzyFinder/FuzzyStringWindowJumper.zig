@@ -29,6 +29,15 @@ a: Allocator,
 finder: *FuzzyFinder,
 sess: *Session,
 targets: TargetList = .{},
+smap: Session.StrategicMap = .{
+    .background = null,
+    .padding = .{
+        .left = .{ .screen_percentage = 0.5, .quant = 10 },
+        .right = .{ .min = 75, .quant = 10 },
+        .top = .{ .screen_percentage = 0.2, .quant = 10 },
+        .bottom = .{ .screen_percentage = 0.2, .quant = 10 },
+    },
+},
 
 const TargetList = std.ArrayListUnmanaged(*Session.WindowManager.Window);
 
@@ -57,8 +66,10 @@ pub fn create(
             .input_name = FSWJ,
             .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
+            .onShow = .{ .f = onShow, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
             .updater = .{ .f = updater, .ctx = self },
+            .postRender = .{ .f = postRender, .ctx = self },
         }),
     };
     try self.mapKeys(doi.council);
@@ -72,6 +83,11 @@ pub fn destroy(self: *@This()) void {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+fn onShow(ctx: *anyopaque, _: []const u8) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    self.smap.show();
+}
 
 fn updater(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
@@ -98,4 +114,11 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.finder.doi.council.removeActiveContext(FSWJ);
     try self.finder.doi.council.addActiveContext(NORMAL);
+    self.smap.hide();
+}
+
+fn postRender(ctx: *anyopaque, _: []const u8) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const index = self.finder.getSelectedIndex() orelse return;
+    self.smap.render(self.sess, self.targets.items[index]);
 }

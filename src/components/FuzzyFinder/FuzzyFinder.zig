@@ -111,6 +111,7 @@ pub fn show(ctx: *anyopaque) !void {
     try self.updateEntries();
     try update(self, self.needle);
     assert(try self.doi.showInput(self.opts.input_name));
+    if (self.opts.onShow) |cb| try cb.f(cb.ctx, self.needle);
     self.progress.mode = .in;
 }
 
@@ -189,10 +190,11 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
 const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
 
-pub fn render(self: *@This()) void {
+pub fn render(self: *@This()) !void {
     self.progress.update();
     self.renderFadingGradientBackground();
     if (self.progress.value > 0) self.renderResults(self.doi.mall);
+    if (self.opts.postRender) |cb| try cb.f(cb.ctx, self.needle);
 }
 
 fn renderFadingGradientBackground(self: *@This()) void {
@@ -431,6 +433,7 @@ const FuzzyFinderCreateOptions = struct {
     onShow: ?Callback = null,
 
     updater: ?Callback = null,
+    postRender: ?Callback = null,
 
     custom_ignore_patterns: ?[]const []const u8 = null,
     ignore_ignore_patterns: ?[]const []const u8 = null,

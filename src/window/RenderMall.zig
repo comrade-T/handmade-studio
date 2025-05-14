@@ -261,6 +261,8 @@ pub const InfoCallbacks = struct {
     getAbsoluteViewFromCamera: *const fn () ScreenView,
     cameraTargetsEqual: *const fn (a_: *anyopaque, b: *anyopaque) bool,
     getCameraInfo: *const fn (camera_: *anyopaque) CameraInfo,
+    calculateCameraTarget: *const fn (target_camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 },
+    getViewFromCameraInfo: *const fn (info: CameraInfo) ScreenView,
 };
 
 pub const ScreenView = struct {

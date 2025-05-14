@@ -17,6 +17,8 @@ pub const info_callbacks = RenderMall.InfoCallbacks{
     .cameraTargetsEqual = cameraTargetsEqual,
     .getCameraZoom = getCameraZoom,
     .getCameraInfo = getCameraInfo,
+    .calculateCameraTarget = calculateCameraTarget,
+    .getViewFromCameraInfo = getViewFromCameraInfo,
 };
 
 pub const render_callbacks = RenderMall.RenderCallbacks{
@@ -124,7 +126,11 @@ pub fn changeCameraPan(target_camera_: *anyopaque, x_by: f32, y_by: f32) void {
 
 pub fn setCameraPosition(target_camera_: *anyopaque, x: f32, y: f32) void {
     const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
+    target_camera.target.x, target_camera.target.y = calculateCameraTarget(target_camera_, x, y);
+}
 
+pub fn calculateCameraTarget(target_camera_: *anyopaque, x: f32, y: f32) struct { f32, f32 } {
+    const target_camera = @as(*rl.Camera2D, @ptrCast(@alignCast(target_camera_)));
     const center_x = @as(f32, @floatFromInt(rl.getScreenWidth())) / 2;
     const center_y = @as(f32, @floatFromInt(rl.getScreenHeight())) / 2;
     const center = rl.getScreenToWorld2D(.{ .x = center_x, .y = center_y }, target_camera.*);
@@ -135,8 +141,7 @@ pub fn setCameraPosition(target_camera_: *anyopaque, x: f32, y: f32) void {
         .y = center.y - current.y,
     };
 
-    target_camera.target.x = x - diff.x;
-    target_camera.target.y = y - diff.y;
+    return .{ x - diff.x, y - diff.y };
 }
 
 pub fn setCameraPositionFromCameraInfo(camera_: *anyopaque, info: RenderMall.CameraInfo) void {
@@ -206,13 +211,27 @@ pub fn cameraTargetsEqual(a_: *anyopaque, b_: *anyopaque) bool {
         @round(a.target.y * 100) == @round(b.target.y * 100);
 }
 
+pub fn getViewFromCameraInfo(info: RenderMall.CameraInfo) RenderMall.ScreenView {
+    const camera = rl.Camera2D{
+        .target = .{ .x = info.target.x, .y = info.target.y },
+        .offset = .{ .x = info.offset.x, .y = info.offset.y },
+        .zoom = info.zoom,
+        .rotation = info.rotation,
+    };
+    return getViewFromCameraInternal(camera);
+}
+
 pub fn getViewFromCamera(camera_: *anyopaque) RenderMall.ScreenView {
     const camera = @as(*rl.Camera2D, @ptrCast(@alignCast(camera_)));
-    const start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera.*);
+    return getViewFromCameraInternal(camera.*);
+}
+
+fn getViewFromCameraInternal(camera: rl.Camera2D) RenderMall.ScreenView {
+    const start = rl.getScreenToWorld2D(.{ .x = 0, .y = 0 }, camera);
     const end = rl.getScreenToWorld2D(.{
         .x = @as(f32, @floatFromInt(rl.getScreenWidth())),
         .y = @as(f32, @floatFromInt(rl.getScreenHeight())),
-    }, camera.*);
+    }, camera);
 
     return RenderMall.ScreenView{
         .start = .{ .x = start.x, .y = start.y },
