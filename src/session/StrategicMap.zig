@@ -25,19 +25,59 @@ const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 radius: f32 = 5,
-
-left: f32 = 0,
-right: f32 = 0,
-top: f32 = 0,
-bottom: f32 = 0,
-width: f32 = 0,
-height: f32 = 0,
-
-padding: f32 = 75,
-padding_min: f32 = 75,
-padding_quant: f32 = 25,
-
+padding: Padding,
 progress: RenderMall.Progress = .{},
+cbounds: CanvasBounds = .{},
+
+const CanvasBounds = struct {
+    left: f32 = 0,
+    right: f32 = 0,
+    top: f32 = 0,
+    bottom: f32 = 0,
+    width: f32 = 0,
+    height: f32 = 0,
+
+    fn update(self: *@This(), wm: *const WindowManager) void {
+        self.left = std.math.floatMax(f32);
+        self.right = -std.math.floatMax(f32);
+        self.top = std.math.floatMax(f32);
+        self.bottom = -std.math.floatMax(f32);
+
+        for (wm.wmap.keys()) |win| {
+            self.left = @min(self.left, win.getTargetX());
+            self.right = @max(self.right, win.getTargetX() + win.getWidth());
+            self.top = @min(self.top, win.getTargetY());
+            self.bottom = @max(self.bottom, win.getTargetY() + win.getHeight());
+        }
+
+        self.width = self.right - self.left;
+        self.height = self.bottom - self.top;
+    }
+};
+
+const Padding = struct {
+    left: PaddingSide,
+    top: PaddingSide,
+    right: PaddingSide,
+    bottom: PaddingSide,
+
+    fn update(self: *@This(), progress: u8) void {
+        self.left.update(progress);
+        self.top.update(progress);
+        self.right.update(progress);
+        self.bottom.update(progress);
+    }
+};
+
+const PaddingSide = struct {
+    value: f32,
+    min: f32,
+    quant: f32,
+
+    fn update(self: *@This(), progress: u8) void {
+        self.value = self.min + (self.quant * @as(f32, @floatFromInt(progress)) / 100);
+    }
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -58,22 +98,25 @@ pub fn incrementCircleRadiusBy(self: *@This(), by: f32) void {
 }
 
 pub fn render(self: *@This(), sess: *const Session) void {
+
+    ///////////////////////////// update state
+
     const wm = sess.getActiveCanvasWindowManager() orelse return;
 
     self.progress.update();
-    self.updatePadding();
+    self.padding.update(self.progress.value);
 
     const swidth, const sheight = sess.mall.icb.getScreenWidthHeight();
     sess.mall.rcb.drawRectangle(0, 0, swidth, sheight, progressAlphaChannel(0x000000aa, self.progress.value));
 
-    self.updateBoundsInfo(wm);
+    self.cbounds.update(wm);
 
     if (self.progress.value == 0) return;
 
-    /////////////////////////////
+    ///////////////////////////// render connections
 
-    const width = swidth - (self.padding * 2);
-    const height = sheight - (self.padding * 2);
+    const width = swidth - (self.padding.left.value + self.padding.right.value);
+    const height = sheight - (self.padding.top.value + self.padding.bottom.value);
     defer self.renderViewBounds(wm, width, height);
 
     for (wm.connman.connections.keys()) |conn| {
@@ -85,21 +128,21 @@ pub fn render(self: *@This(), sess: *const Session) void {
         wm.mall.rcb.drawLine(start_x, start_y, end_x, end_y, 1, progressAlphaChannel(0xffffffff, self.progress.value));
     }
 
-    /////////////////////////////
+    ///////////////////////////// render circles
 
     for (wm.wmap.keys()) |win| {
         if (win.closed) continue;
 
-        const xp = (win.getTargetX() - self.left) / self.width;
-        const yp = (win.getTargetY() - self.top) / self.height;
+        const xp = (win.getTargetX() - self.cbounds.left) / self.cbounds.width;
+        const yp = (win.getTargetY() - self.cbounds.top) / self.cbounds.height;
 
-        const wp = win.getWidth() / self.width;
-        const hp = win.getHeight() / self.height;
+        const wp = win.getWidth() / self.cbounds.width;
+        const hp = win.getHeight() / self.cbounds.height;
         const ww = width * wp;
         const wh = height * hp;
 
-        const x = self.padding + (width * xp) + (ww / 2);
-        const y = self.padding + (height * yp) + (wh / 2);
+        const x = self.padding.left.value + (width * xp) + (ww / 2);
+        const y = self.padding.top.value + (height * yp) + (wh / 2);
 
         wm.mall.rcb.drawCircle(x, y, self.radius, progressAlphaChannel(win.defaults.color, self.progress.value));
     }
@@ -108,16 +151,16 @@ pub fn render(self: *@This(), sess: *const Session) void {
 fn renderViewBounds(self: *@This(), wm: *const WindowManager, width: f32, height: f32) void {
     const rect = wm.mall.getScreenRect(wm.mall.camera);
 
-    const xp = (rect.x - self.left) / self.width;
-    const yp = (rect.y - self.top) / self.height;
+    const xp = (rect.x - self.cbounds.left) / self.cbounds.width;
+    const yp = (rect.y - self.cbounds.top) / self.cbounds.height;
 
-    const wp = rect.width / self.width;
-    const hp = rect.height / self.height;
+    const wp = rect.width / self.cbounds.width;
+    const hp = rect.height / self.cbounds.height;
     const w = width * wp;
     const h = height * hp;
 
-    const x = self.padding + (width * xp);
-    const y = self.padding + (height * yp);
+    const x = self.padding.left.value + (width * xp);
+    const y = self.padding.top.value + (height * yp);
 
     wm.mall.rcb.drawRectangleLines(x, y, w, h, 1, progressAlphaChannel(0xffffff88, self.progress.value));
 }
@@ -125,36 +168,15 @@ fn renderViewBounds(self: *@This(), wm: *const WindowManager, width: f32, height
 fn getConnPosition(self: *const @This(), point: WindowManager.ConnectionManager.Connection.Point, width: f32, height: f32) struct { f32, f32 } {
     const win = point.win;
 
-    const xp = (win.getTargetX() - self.left) / self.width;
-    const yp = (win.getTargetY() - self.top) / self.height;
-    const wx = self.padding + (width * xp);
-    const wy = self.padding + (height * yp);
+    const xp = (win.getTargetX() - self.cbounds.left) / self.cbounds.width;
+    const yp = (win.getTargetY() - self.cbounds.top) / self.cbounds.height;
+    const wx = self.padding.left.value + (width * xp);
+    const wy = self.padding.top.value + (height * yp);
 
-    const wp = win.getWidth() / self.width;
-    const hp = win.getHeight() / self.height;
+    const wp = win.getWidth() / self.cbounds.width;
+    const hp = win.getHeight() / self.cbounds.height;
     const ww = width * wp;
     const wh = height * hp;
 
     return .{ wx + ww / 2, wy + wh / 2 };
-}
-
-fn updateBoundsInfo(self: *@This(), wm: *const WindowManager) void {
-    self.left = std.math.floatMax(f32);
-    self.right = -std.math.floatMax(f32);
-    self.top = std.math.floatMax(f32);
-    self.bottom = -std.math.floatMax(f32);
-
-    for (wm.wmap.keys()) |win| {
-        self.left = @min(self.left, win.getTargetX());
-        self.right = @max(self.right, win.getTargetX() + win.getWidth());
-        self.top = @min(self.top, win.getTargetY());
-        self.bottom = @max(self.bottom, win.getTargetY() + win.getHeight());
-    }
-
-    self.width = self.right - self.left;
-    self.height = self.bottom - self.top;
-}
-
-fn updatePadding(self: *@This()) void {
-    self.padding = self.padding_min + (self.padding_quant * @as(f32, @floatFromInt(self.progress.value)) / 100);
 }

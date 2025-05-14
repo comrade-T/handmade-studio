@@ -63,7 +63,14 @@ tcbmap: std.AutoHashMapUnmanaged(TriggerCallbackKey, TriggerCallback) = .{},
 yank_origin: ?*WindowManager = null,
 yanked_and_pasted: bool = false,
 
-experimental_minimap: StrategicMap = .{},
+experimental_minimap: StrategicMap = .{
+    .padding = .{
+        .left = .{ .min = 75, .quant = 25, .value = 75 },
+        .right = .{ .min = 75, .quant = 25, .value = 75 },
+        .top = .{ .min = 150, .quant = 25, .value = 150 },
+        .bottom = .{ .min = 150, .quant = 25, .value = 150 },
+    },
+},
 
 pub fn mapKeys(sess: *@This()) !void {
     const NORMAL = "normal";
