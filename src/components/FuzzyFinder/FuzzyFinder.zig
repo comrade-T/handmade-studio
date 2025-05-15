@@ -112,8 +112,7 @@ pub fn show(ctx: *anyopaque) !void {
     defer self.fresh = false;
 
     self.reset_selection_index = .no;
-    try self.updateEntries();
-    try update(self, self.needle);
+    try self.refreshEntries();
 
     assert(try self.doi.showInput(self.opts.input_name));
 
@@ -426,6 +425,11 @@ fn confirm(ctx: *anyopaque, _: []const u8) !void {
             try hide(self);
         }
     }
+}
+
+pub fn refreshEntries(self: *@This()) !void {
+    try self.updateEntries();
+    try update(self, self.needle);
 }
 
 fn updateEntries(self: *@This()) !void {

@@ -22,6 +22,7 @@ const Allocator = std.mem.Allocator;
 const DepartmentOfInputs = @import("DepartmentOfInputs");
 const FuzzyFinder = @import("FuzzyFinder.zig");
 const Session = @import("Session");
+const Nightfly = Session.RenderMall.ColorschemeStore.Nightfly;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -38,6 +39,7 @@ smap: Session.StrategicMap = .{
         .bottom = .{ .screen_percentage = 0.2, .quant = 10 },
     },
 },
+filter_color: ?u32 = null,
 
 const TargetList = std.ArrayListUnmanaged(*Session.WindowManager.Window);
 
@@ -51,6 +53,13 @@ pub fn mapKeys(fswj: *@This(), c: *Session.MappingCouncil) !void {
         .contexts = .{ .remove = &.{NORMAL}, .add = &.{FSWJ} },
         .require_clarity_afterwards = true,
     });
+
+    try c.map(FSWJ, &.{ .left_alt, .space }, .{ .f = disableFilter, .ctx = fswj });
+    try c.map(FSWJ, &.{ .left_alt, .o }, .{ .f = setFilterToOnlyShowPurple, .ctx = fswj });
+    try c.map(FSWJ, &.{ .left_alt, .i }, .{ .f = setFilterToOnlyShowBlue, .ctx = fswj });
+    try c.map(FSWJ, &.{ .left_alt, .l }, .{ .f = setFilterToOnlyShowGreen, .ctx = fswj });
+    try c.map(FSWJ, &.{ .left_alt, .j }, .{ .f = setFilterToOnlyShowGray, .ctx = fswj });
+    try c.map(FSWJ, &.{ .left_alt, .k }, .{ .f = setFilterToOnlyShowYellow, .ctx = fswj });
 }
 
 pub fn create(
@@ -95,15 +104,7 @@ fn onShow(ctx: *anyopaque, _: []const u8) !void {
 
 fn updater(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-    self.targets.clearRetainingCapacity();
-
-    for (wm.wmap.keys()) |window| {
-        if (window.closed or window.ws.path.len > 0) continue;
-        const str = try window.ws.buf.ropeman.toString(self.finder.entry_arena.allocator(), .lf);
-        try self.targets.append(self.a, window);
-        try self.finder.addEntryUnmanaged(str);
-    }
+    try self.updateTargets();
 }
 
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
@@ -130,4 +131,52 @@ fn postRender(ctx: *anyopaque, _: []const u8) !void {
 fn getEntryColor(ctx: *anyopaque, idx: usize) !u32 {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     return self.targets.items[idx].defaults.color;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn setFilterToOnlyShowGreen(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(0x00FF00F5);
+}
+fn setFilterToOnlyShowYellow(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(0xFFFF00F5);
+}
+fn setFilterToOnlyShowGray(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(0x555555F5);
+}
+
+fn setFilterToOnlyShowPurple(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(@intFromEnum(Nightfly.purple));
+}
+fn setFilterToOnlyShowBlue(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(@intFromEnum(Nightfly.blue));
+}
+
+fn disableFilter(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(null);
+}
+
+fn changeFilterColorAndRefreshFinderEntries(self: *@This(), color: ?u32) !void {
+    self.filter_color = color;
+    try self.finder.refreshEntries();
+}
+
+fn updateTargets(self: *@This()) !void {
+    const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+    self.targets.clearRetainingCapacity();
+
+    for (wm.wmap.keys()) |window| {
+        if (window.closed or window.ws.path.len > 0) continue;
+        if (self.filter_color) |color| if (window.defaults.color != color) continue;
+
+        const str = try window.ws.buf.ropeman.toString(self.finder.entry_arena.allocator(), .lf);
+        try self.targets.append(self.a, window);
+        try self.finder.addEntryUnmanaged(str);
+    }
 }
