@@ -29,6 +29,14 @@ a: Allocator,
 finder: *FuzzyFinder,
 sess: *Session,
 
+previous_prefix: []const u8 = "",
+current_entries: std.ArrayListUnmanaged([]const u8) = .{},
+
+const Entry = struct {
+    kind: std.fs.File.Kind,
+    name: []const u8,
+};
+
 const NORMAL = "normal";
 const FRP = "FuzzyRootPicker";
 
@@ -65,19 +73,44 @@ pub fn create(
 
 pub fn destroy(self: *@This()) void {
     self.finder.destroy();
+    self.freePreviousPrefixIfNeeded();
+    self.clearCurrentEntries();
+    self.current_entries.deinit(self.a);
     self.a.destroy(self);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+fn clearCurrentEntries(self: *@This()) void {
+    for (self.current_entries.items) |entry| self.a.free(entry);
+    self.current_entries.clearRetainingCapacity();
+}
+
+fn freePreviousPrefixIfNeeded(self: *@This()) void {
+    if (self.previous_prefix.len > 0) self.a.free(self.previous_prefix);
+}
+
+fn setPreviousPrefix(self: *@This(), new_prefix: []const u8) !void {
+    self.freePreviousPrefixIfNeeded();
+    self.previous_prefix = try self.a.dupe(u8, new_prefix);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 fn updater(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    _ = self;
+
+    for (self.current_entries.items) |entry| {
+        const path = try std.fmt.allocPrint(self.a, "{s}{s}/", .{ self.previous_prefix, entry });
+        defer self.a.free(path);
+        try self.finder.addEntry(path);
+    }
 }
 
 fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    _ = self;
+    const path = self.finder.getSelectedPath() orelse return true;
+    std.debug.print("got path: '{s}'\n", .{path});
     return true;
 }
 
@@ -87,10 +120,11 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
     try self.finder.doi.council.addActiveContext(NORMAL);
 }
 
-fn onUpdate(ctx: *anyopaque, _: []const u8) !void {
+fn onUpdate(ctx: *anyopaque, needle: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
-    const needle = self.finder.needle;
+    /////////////////////////////
+
     var i: usize = needle.len;
     while (i > 0) {
         i -= 1;
@@ -100,11 +134,47 @@ fn onUpdate(ctx: *anyopaque, _: []const u8) !void {
         }
     }
 
-    const dir_path = needle[0..i];
-    std.debug.print("dir_path: '{s}'\n", .{dir_path});
+    const prefix = needle[0..i];
+
+    /////////////////////////////
+
+    if (prefix.len == 0) {
+        self.freePreviousPrefixIfNeeded();
+        self.previous_prefix = "";
+        return;
+    }
+
+    var dir = std.fs.openDirAbsolute(prefix, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.debug.print("file not found | TODO: handle this\n", .{});
+            return;
+        },
+        else => {
+            std.debug.print("got err: '{any}' | TODO: handle this\n", .{err});
+            return;
+        },
+    };
+    defer dir.close();
+
+    if (!std.mem.eql(u8, self.previous_prefix, prefix)) {
+        self.clearCurrentEntries();
+
+        var iter = dir.iterate();
+        while (iter.next() catch |err| {
+            std.debug.print("got err: '{any}'\n", .{err});
+            return;
+        }) |entry| {
+            try self.current_entries.append(self.a, try self.a.dupe(u8, entry.name));
+        }
+
+        try self.setPreviousPrefix(prefix);
+    }
+
+    try self.finder.updateEntries();
 }
 
 fn tab(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    _ = self;
+    const path = self.finder.getSelectedPath() orelse return;
+    try self.finder.replaceInputContents(path);
 }

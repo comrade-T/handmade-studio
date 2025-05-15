@@ -97,6 +97,8 @@ pub fn replaceInputContent(self: *@This(), input_name: []const u8, new_content: 
         input.win.cursor_manager.enterAFTERInsertMode(&input.source.buf.ropeman);
     }
 
+    try input.triggerCallback(.update);
+
     return true;
 }
 

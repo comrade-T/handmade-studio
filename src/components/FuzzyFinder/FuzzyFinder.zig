@@ -84,7 +84,7 @@ pub fn create(a: Allocator, doi: *DepartmentOfInputs, opts: FuzzyFinderCreateOpt
             .pos = .{ .x = self.x, .y = self.y },
         },
         .{
-            .onUpdate = .{ .ctx = self, .f = update },
+            .onUpdate = .{ .ctx = self, .f = onInputUpdate },
             .onConfirm = .{ .ctx = self, .f = confirm },
         },
     ));
@@ -138,6 +138,11 @@ pub fn prevItem(ctx: *anyopaque) !void {
     self.selection_index -|= 1;
 }
 
+pub fn replaceInputContents(self: *@This(), new_contents: []const u8) !void {
+    const replaced = try self.doi.replaceInputContent(self.opts.input_name, new_contents);
+    assert(replaced);
+}
+
 pub fn getSelectedPath(self: *@This()) ?[]const u8 {
     if (self.match_list.items.len == 0) return null;
     assert(self.selection_index <= self.match_list.items.len -| 1);
@@ -185,7 +190,7 @@ fn deleteSelectedItem(ctx: *anyopaque) !void {
 
     self.reset_selection_index = .no;
     try self.updateEntries();
-    try update(self, self.needle);
+    try onInputUpdate(self, self.needle);
     self.keepSelectionIndexInBound();
 
     const msg = try std.fmt.allocPrint(self.a, "'{s}' has been deleted", .{duped_path});
@@ -361,15 +366,15 @@ const Renderer = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Internal
 
-fn update(ctx: *anyopaque, new_needle: []const u8) !void {
+fn onInputUpdate(ctx: *anyopaque, new_needle: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     defer self.reset_selection_index = .yes;
-    try self.updateInternal(new_needle);
-    if (self.opts.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, self.needle);
+    if (self.opts.onUpdate) |onUpdate| try onUpdate.f(onUpdate.ctx, new_needle);
+    try self.updateMatches(new_needle);
     if (self.reset_selection_index == .yes) self.selection_index = 0;
 }
 
-fn updateInternal(self: *@This(), new_needle: []const u8) !void {
+fn updateMatches(self: *@This(), new_needle: []const u8) !void {
     defer self.keepSelectionIndexInBound();
     try self.cacheNeedle(new_needle);
 
@@ -429,10 +434,10 @@ fn confirm(ctx: *anyopaque, _: []const u8) !void {
 
 pub fn refreshEntries(self: *@This()) !void {
     try self.updateEntries();
-    try update(self, self.needle);
+    try onInputUpdate(self, self.needle);
 }
 
-fn updateEntries(self: *@This()) !void {
+pub fn updateEntries(self: *@This()) !void {
     self.entry_arena.deinit();
     self.entry_arena = ArenaAllocator.init(self.a);
     self.entry_list.clearRetainingCapacity();
