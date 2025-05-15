@@ -1335,7 +1335,7 @@ const Anchor = struct {
 
             switch (start_or_end) {
                 .start => {
-                    if (!encountered_non_spacing) continue;
+                    if (!encountered_non_spacing and cursor_col < line.len) continue;
                     if (col == 0 and char_kind == last_char_kind) return .{ .found = 0 };
 
                     switch (char_kind) {
@@ -1569,6 +1569,7 @@ test "Anchor - backwardsWord()" {
         {
             var c = Anchor{ .line = 0, .col = "/888/".len };
             try testBackwardsWord(&c, .start, .word, &ropeman, &.{
+                .{ .line = 0, .col = 4 },
                 .{ .line = 0, .col = 1 },
                 .{ .line = 0, .col = 0 },
             });
