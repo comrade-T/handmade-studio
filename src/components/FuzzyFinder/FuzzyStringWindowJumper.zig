@@ -60,6 +60,7 @@ pub fn mapKeys(fswj: *@This(), c: *Session.MappingCouncil) !void {
     try c.map(FSWJ, &.{ .left_alt, .l }, .{ .f = setFilterToOnlyShowGreen, .ctx = fswj });
     try c.map(FSWJ, &.{ .left_alt, .j }, .{ .f = setFilterToOnlyShowGray, .ctx = fswj });
     try c.map(FSWJ, &.{ .left_alt, .k }, .{ .f = setFilterToOnlyShowYellow, .ctx = fswj });
+    try c.map(FSWJ, &.{ .left_alt, .zero }, .{ .f = setFilterToOnlyShowWhite, .ctx = fswj });
 }
 
 pub fn create(
@@ -73,7 +74,6 @@ pub fn create(
         .sess = sess,
         .finder = try FuzzyFinder.create(a, doi, .{
             .input_name = FSWJ,
-            .kind = .files,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
             .onShow = .{ .f = onShow, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
@@ -112,6 +112,8 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     const index = self.finder.getSelectedIndex() orelse return true;
     const win = self.targets.items[index];
     win.centerCameraInstantlyAt(self.sess.mall);
+    const wm = self.sess.getActiveCanvasWindowManager() orelse return true;
+    wm.setActiveWindow(win, true);
     return true;
 }
 
@@ -135,6 +137,10 @@ fn getEntryColor(ctx: *anyopaque, idx: usize) !u32 {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
+fn setFilterToOnlyShowWhite(ctx: *anyopaque) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    try self.changeFilterColorAndRefreshFinderEntries(0xF5F5F5F5);
+}
 fn setFilterToOnlyShowGreen(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.changeFilterColorAndRefreshFinderEntries(0x00FF00F5);
