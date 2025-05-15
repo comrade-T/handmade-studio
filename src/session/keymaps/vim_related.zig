@@ -210,6 +210,9 @@ fn mapInsertMode(sess: *Session, council: *Session.MappingCouncil) !void {
 
     // backspace
     try council.map(INSERT, &.{.backspace}, .{ .f = backspace, .ctx = sess });
+
+    // C-W
+    try council.map(INSERT, &.{ .left_control, .w }, .{ .f = controlW, .ctx = sess });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// g prefix
@@ -303,6 +306,29 @@ pub fn delete(ctx: *anyopaque) !void {
 pub fn backspace(ctx: *anyopaque) !void {
     const session = @as(*Session, @ptrCast(@alignCast(ctx)));
     try deleteRanges(session, .backspace);
+}
+
+pub fn controlW(ctx: *anyopaque) !void {
+    const session = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = session.getActiveCanvasWindowManager() orelse return;
+    const window = wm.active_window orelse return;
+
+    if (window.cursor_manager.mainCursor().start.col == 0) {
+        try backspace(ctx);
+        return;
+    }
+
+    window.cursor_manager.activateRangeMode();
+
+    const start_line = window.cursor_manager.mainCursor().start.line;
+    window.cursor_manager.backwardsWord(.start, .word, 1, &window.ws.buf.ropeman);
+    if (window.cursor_manager.mainCursor().start.line < start_line) {
+        window.cursor_manager.moveDown(1, &window.ws.buf.ropeman);
+        window.cursor_manager.moveToBeginningOfLine(&window.ws.buf.ropeman);
+    }
+
+    window.cursor_manager.mainCursor().end.col -|= 1;
+    try delete(ctx);
 }
 
 pub fn enterInsertMode_i(ctx: *anyopaque) !void {
