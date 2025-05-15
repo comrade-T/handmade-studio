@@ -1336,7 +1336,8 @@ const Anchor = struct {
             switch (start_or_end) {
                 .start => {
                     if (!encountered_non_spacing) continue;
-                    if (col == 0) return .{ .found = 0 };
+                    if (col == 0 and char_kind == last_char_kind) return .{ .found = 0 };
+
                     switch (char_kind) {
                         .not_found => unreachable,
                         .spacing => if (last_char_kind != .not_found and last_char_kind != .spacing) return .{ .found = col + 1 },
@@ -1558,6 +1559,17 @@ test "Anchor - backwardsWord()" {
                 .{ .line = 1, .col = 7 },
                 .{ .line = 1, .col = 0 },
                 .{ .line = 0, .col = 7 },
+                .{ .line = 0, .col = 0 },
+            });
+        }
+    }
+    {
+        var ropeman = try RopeMan.initFrom(testing_allocator, .string, "/888/");
+        defer ropeman.deinit();
+        {
+            var c = Anchor{ .line = 0, .col = "/888/".len };
+            try testBackwardsWord(&c, .start, .word, &ropeman, &.{
+                .{ .line = 0, .col = 1 },
                 .{ .line = 0, .col = 0 },
             });
         }
