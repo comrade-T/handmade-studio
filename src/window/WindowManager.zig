@@ -883,10 +883,16 @@ pub fn getFirstVisibleIncomingWindow(self: *@This(), win: *Window) ?*ConnectionM
     return keys[visible_index];
 }
 
+pub fn spreadThenAlignAndJustifySelectionToFirstIncomingBy(self: *@This(), spread_y_value: f32) !void {
+    const active_window = self.active_window orelse return;
+    const first_incoming_conn = self.getFirstVisibleIncomingWindow(active_window) orelse return;
+    try self.alignAndJustifySelectionVerticallyToTarget(first_incoming_conn.start.win, spread_y_value);
+}
+
 pub fn alignAndJustifySelectionToFirstIncoming(self: *@This()) !void {
     const active_window = self.active_window orelse return;
     const first_incoming_conn = self.getFirstVisibleIncomingWindow(active_window) orelse return;
-    try self.alignAndJustifySelectionVerticallyToTarget(first_incoming_conn.start.win);
+    try self.alignAndJustifySelectionVerticallyToTarget(first_incoming_conn.start.win, 0);
 }
 
 pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: ConnectionManager.AlignConnectionKind) !void {
@@ -908,14 +914,12 @@ pub fn alignWindows(self: *@This(), mover: *Window, target: *Window, kind: Conne
     }
 }
 
-/////////////////////////////
-
 fn verticalJustifyTargetPickerCallback(ctx: *anyopaque, target: *Window) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-    try self.alignAndJustifySelectionVerticallyToTarget(target);
+    try self.alignAndJustifySelectionVerticallyToTarget(target, 0);
 }
 
-fn alignAndJustifySelectionVerticallyToTarget(self: *@This(), target: *Window) !void {
+fn alignAndJustifySelectionVerticallyToTarget(self: *@This(), target: *Window, spread_y_value: f32) !void {
     if (self.selection.wmap.count() < 1) return;
 
     var top: f32 = std.math.floatMax(f32);
@@ -928,13 +932,15 @@ fn alignAndJustifySelectionVerticallyToTarget(self: *@This(), target: *Window) !
     const target_center = target.getTargetY() + (target.getHeight() / 2);
     const y_by = target_center - selection_center;
 
-    try self.justifySelectionVertically(.{ .add_y = y_by, .sync_left = true });
+    try self.justifySelectionVertically(.{ .add_y = y_by, .sync_left = true, .spread_y_value = spread_y_value });
 }
 
 const JustifySelectionOpts = struct {
     add_x: f32 = 0,
     add_y: f32 = 0,
     sync_left: bool = false,
+
+    spread_y_value: f32 = 0,
 };
 pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !void {
     if (self.selection.wmap.count() < 2) return;
@@ -950,8 +956,8 @@ pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !v
 
     const topmost_win = self.selection.wmap.keys()[0];
     const botommost_win = self.selection.wmap.keys()[self.selection.wmap.count() - 1];
-    const top = topmost_win.getTargetY() + topmost_win.getHeight();
-    const bottom = botommost_win.getTargetY();
+    const top = topmost_win.getTargetY() + topmost_win.getHeight() - opts.spread_y_value;
+    const bottom = botommost_win.getTargetY() + opts.spread_y_value;
     var left: f32 = std.math.floatMax(f32);
     var total_occupied_height: f32 = 0;
     for (self.selection.wmap.keys(), 0..) |win, i| {
@@ -969,7 +975,8 @@ pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !v
         x_slice[i] += opts.add_x;
 
         if (i == 0 or i == self.selection.wmap.count() - 1) {
-            y_slice[i] = 0 + opts.add_y;
+            const mysterious = if (i == 0) -opts.spread_y_value else opts.spread_y_value;
+            y_slice[i] = mysterious + opts.add_y;
         } else {
             const prev_win = self.selection.wmap.keys()[i - 1];
             const target = prev_win.getTargetY() + prev_win.getHeight() + space_between;
@@ -1040,6 +1047,11 @@ pub fn justifySelectionHorizontally(self: *@This(), opts: JustifySelectionOpts) 
         .x_by = x_slice,
         .y_by = y_slice,
     }));
+}
+
+pub fn spreadSelectionVertically(self: *@This(), by: f32) !void {
+    if (self.selection.wmap.count() < 2) return;
+    try self.justifySelectionVertically(.{ .move_first_batch_by = -by * 2 });
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Yank & Paste Selected Windows

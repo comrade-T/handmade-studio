@@ -175,6 +175,25 @@ pub fn mapKeys(sess: *Session) !void {
     try c.map(MULTI_WIN, &.{ .space, .j }, .{ .f = justifyVertically, .ctx = sess });
     try c.map(MULTI_WIN, &.{ .space, .left_shift, .j }, .{ .f = justifyHorizontally, .ctx = sess });
 
+    /////////////////////////////
+
+    const SpreadVerticallyCb = struct {
+        sess: *Session,
+        by: f32,
+        fn f(ctx: *anyopaque) !void {
+            const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+            const wm = self.sess.getActiveCanvasWindowManager() orelse return;
+            try wm.spreadThenAlignAndJustifySelectionToFirstIncomingBy(self.by);
+        }
+        pub fn init(allocator: std.mem.Allocator, sess_: *Session, by: f32) !Session.Callback {
+            const self = try allocator.create(@This());
+            self.* = .{ .sess = sess_, .by = by };
+            return Session.Callback{ .f = @This().f, .ctx = self };
+        }
+    };
+    try c.map(MULTI_WIN, &.{ .left_alt, .j }, try SpreadVerticallyCb.init(a, sess, -50));
+    try c.map(MULTI_WIN, &.{ .left_alt, .k }, try SpreadVerticallyCb.init(a, sess, 50));
+
     ///////////////////////////// yank & paste
 
     try c.map(MULTI_WIN, &.{.y}, .{ .f = Session.yankSelectedWindows, .ctx = sess, .contexts = MULTI_WIN_TO_NORMAL });
