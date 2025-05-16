@@ -32,14 +32,19 @@ events: std.MultiArrayList(Event) = .{},
 wmap: std.AutoArrayHashMapUnmanaged(*Window, usize) = .{},
 last_edit: i64 = 0,
 
+// HACK: for the sake of making all callers that call `getWindowsFromEvent()` to handle batches.
+// I'm not sure that returning a `&.{windows}` is safe so I chose this way.
+_get_windows_single_batch: [1][]const *Window = undefined,
+
 pub const Windows = []const *Window;
 const JustifyEvent = struct {
-    windows: Windows,
+    window_batches: []const []const *Window,
     x_by: []const f32,
     y_by: []const f32,
 
     fn free(self: *const @This(), a: Allocator) void {
-        a.free(self.windows);
+        for (self.window_batches) |batch| a.free(batch);
+        a.free(self.window_batches);
         a.free(self.x_by);
         a.free(self.y_by);
     }
@@ -65,7 +70,7 @@ pub const Event = union(enum) {
 pub fn deinit(self: *@This()) void {
     while (self.events.len > 0) {
         const ev = self.events.pop() orelse break;
-        cleanUpEvent(self.a, ev);
+        self.cleanUpEvent(ev);
     }
     self.events.deinit(self.a);
     self.wmap.deinit(self.a);
@@ -225,7 +230,7 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
             defer i -= 1;
 
             const old_event = self.events.pop() orelse break;
-            defer cleanUpEvent(self.a, old_event);
+            defer self.cleanUpEvent(old_event);
 
             try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
         }
@@ -238,7 +243,7 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
         const old_event = self.events.get(0);
 
         try self.handleChopAndOvercap(a, &windows_to_cleanup, &connections_to_cleanup, old_event, new_event);
-        cleanUpEvent(self.a, old_event);
+        self.cleanUpEvent(old_event);
 
         self.events.orderedRemove(0);
     }
@@ -258,16 +263,18 @@ fn addNewEvent(self: *@This(), a: Allocator, new_event: Event) !AddNewEventResul
 }
 
 fn addEventToWindowMap(self: *@This(), ev: Event) !void {
-    const windows = getWindowsFromEvent(ev) orelse return;
+    const batches = self.getWindowsFromEvent(ev) orelse return;
 
-    for (windows) |win| {
-        if (!self.wmap.contains(win)) {
-            try self.wmap.put(self.a, win, 1);
-            continue;
+    for (batches) |batch| {
+        for (batch) |win| {
+            if (!self.wmap.contains(win)) {
+                try self.wmap.put(self.a, win, 1);
+                continue;
+            }
+
+            const count = self.wmap.getPtr(win) orelse continue;
+            count.* += 1;
         }
-
-        const count = self.wmap.getPtr(win) orelse continue;
-        count.* += 1;
     }
 }
 
@@ -288,12 +295,26 @@ fn handleChopAndOvercap(
 
     /////////////////////////////
 
-    const old_windows = getWindowsFromEvent(old_event) orelse unreachable;
-    assert(self.wmapContainsAllWindows(old_windows));
+    const old_batches = self.getWindowsFromEvent(old_event) orelse unreachable;
 
-    const may_new_windows = getWindowsFromEvent(new_event);
-    if (may_new_windows == null or !std.mem.eql(*Window, old_windows, may_new_windows.?)) {
-        for (old_windows) |window| {
+    assert(self.wmapContainsAllWindows(old_batches));
+    const new_batches = self.getWindowsFromEvent(new_event) orelse return;
+
+    if (old_batches.len != new_batches.len) return;
+
+    var equal = true;
+    for (0..old_batches.len) |i| {
+        const olds = old_batches[i];
+        const news = new_batches[i];
+        if (!std.mem.eql(*Window, olds, news)) {
+            equal = false;
+            break;
+        }
+    }
+    if (equal) return;
+
+    for (old_batches) |batch| {
+        for (batch) |window| {
             const count = self.wmap.getPtr(window) orelse unreachable;
             assert(count.* > 0);
 
@@ -306,8 +327,9 @@ fn handleChopAndOvercap(
     }
 }
 
-fn wmapContainsAllWindows(self: *@This(), slice: Windows) bool {
-    for (slice) |window| assert(self.wmap.contains(window));
+fn wmapContainsAllWindows(self: *@This(), batches: []const []const *Window) bool {
+    for (batches) |batch|
+        for (batch) |window| assert(self.wmap.contains(window));
     return true;
 }
 
@@ -324,20 +346,29 @@ fn getConnectionFromEvent(ev: Event) ?*Connection {
     };
 }
 
-fn cleanUpEvent(a: Allocator, ev: Event) void {
+fn cleanUpEvent(self: *@This(), ev: Event) void {
     switch (ev) {
-        .justify => |payload| payload.free(a),
-        else => if (getWindowsFromEvent(ev)) |windows| a.free(windows),
+        .justify => |payload| payload.free(self.a),
+        else => {
+            const batches = self.getWindowsFromEvent(ev) orelse return;
+            for (batches) |batch| self.a.free(batch);
+        },
     }
 }
 
-pub fn getWindowsFromEvent(ev: Event) ?Windows {
-    return switch (ev) {
+fn getWindowsFromEvent(self: *@This(), ev: Event) ?[]const []const *Window {
+    switch (ev) {
+        .justify => |info| return info.window_batches,
+        else => {},
+    }
+
+    self._get_windows_single_batch[0] = switch (ev) {
         .spawn, .close, .toggle_border => |windows| windows,
         .change_padding => |info| info.windows,
         .move => |info| info.windows,
-        .justify => |info| info.windows,
         .set_default_color => |info| info.windows,
-        else => null,
+        else => return null,
     };
+
+    return &self._get_windows_single_batch;
 }

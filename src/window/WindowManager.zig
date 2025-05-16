@@ -517,8 +517,9 @@ fn handleUndoEvent(self: *@This(), event: HistoryManager.Event) !void {
 
         .move => |info| for (info.windows) |win|
             try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by, -info.y_by),
-        .justify => |info| for (info.windows, 0..) |win, i|
-            try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by[i], -info.y_by[i]),
+        .justify => |info| for (info.window_batches, 0..) |batch, i|
+            for (batch) |win|
+                try win.moveBy(self.a, self.qtree, &self.updating_windows_map, -info.x_by[i], -info.y_by[i]),
 
         .set_default_color => |info| for (info.windows) |win| win.setDefaultColor(info.prev),
 
@@ -556,8 +557,9 @@ fn handleRedoEvent(self: *@This(), event: HistoryManager.Event) !void {
 
         .move => |info| for (info.windows) |win|
             try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by, info.y_by),
-        .justify => |info| for (info.windows, 0..) |win, i|
-            try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by[i], info.y_by[i]),
+        .justify => |info| for (info.window_batches, 0..) |batch, i|
+            for (batch) |win|
+                try win.moveBy(self.a, self.qtree, &self.updating_windows_map, info.x_by[i], info.y_by[i]),
 
         .set_default_color => |info| for (info.windows) |win| win.setDefaultColor(info.next),
 
@@ -786,11 +788,14 @@ pub fn toggleActiveWindowFromSelection(self: *@This()) !void {
 
 pub fn selectAllDescendants(self: *@This()) !void {
     const active_window = self.active_window orelse return;
+    var list = try self.getAllDescendants(self.a, active_window);
+    defer list.deinit(self.a);
+    for (list.items) |window| try self.selection.addWindow(window);
+}
 
-    var list = std.ArrayList(*Window).init(self.a);
-    defer list.deinit();
-
-    try list.append(active_window);
+pub fn getAllDescendants(self: *@This(), a: Allocator, win: *Window) !std.ArrayListUnmanaged(*Window) {
+    var list = std.ArrayListUnmanaged(*Window){};
+    try list.append(a, win);
 
     var i: usize = 0;
     while (i < list.items.len) {
@@ -799,11 +804,11 @@ pub fn selectAllDescendants(self: *@This()) !void {
         const tracker = self.connman.tracker_map.get(window) orelse continue;
         for (tracker.outgoing.keys()) |conn| {
             if (!conn.isVisible()) continue;
-            try list.append(conn.end.win);
+            try list.append(a, conn.end.win);
         }
     }
 
-    for (list.items) |window| try self.selection.addWindow(window);
+    return list;
 }
 
 pub fn selectAllConnectedWindowsRecursively(self: *@This()) !void {
@@ -933,6 +938,7 @@ const JustifySelectionOpts = struct {
 };
 pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !void {
     if (self.selection.wmap.count() < 2) return;
+    const window_batches = try self.a.alloc([]const *Window, self.selection.wmap.count());
 
     const SortCtx = struct {
         windows: []*Window,
@@ -970,11 +976,15 @@ pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !v
             y_slice[i] = target - curr.getTargetY();
         }
 
-        try curr.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
+        var windows_to_move_list = try self.getAllDescendants(self.a, curr);
+        window_batches[i] = try windows_to_move_list.toOwnedSlice(self.a);
+        for (window_batches[i]) |w| {
+            try w.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
+        }
     }
 
     self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addJustifyEvent(self.a, .{
-        .windows = try self.hm.a.dupe(*Window, self.selection.wmap.keys()),
+        .window_batches = window_batches,
         .x_by = x_slice,
         .y_by = y_slice,
     }));
@@ -982,6 +992,7 @@ pub fn justifySelectionVertically(self: *@This(), opts: JustifySelectionOpts) !v
 
 pub fn justifySelectionHorizontally(self: *@This(), opts: JustifySelectionOpts) !void {
     if (self.selection.wmap.count() < 2) return;
+    const window_batches = try self.a.alloc([]const *Window, self.selection.wmap.count());
 
     const SortCtx = struct {
         windows: []*Window,
@@ -1017,11 +1028,15 @@ pub fn justifySelectionHorizontally(self: *@This(), opts: JustifySelectionOpts) 
             x_slice[i] = target - curr.getTargetX();
         }
 
-        try curr.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
+        var windows_to_move_list = try self.getAllDescendants(self.a, curr);
+        window_batches[i] = try windows_to_move_list.toOwnedSlice(self.a);
+        for (window_batches[i]) |w| {
+            try w.moveBy(self.a, self.qtree, &self.updating_windows_map, x_slice[i], y_slice[i]);
+        }
     }
 
     self.cleanUpAfterAppendingToHistory(self.a, try self.hm.addJustifyEvent(self.a, .{
-        .windows = try self.hm.a.dupe(*Window, self.selection.wmap.keys()),
+        .window_batches = window_batches,
         .x_by = x_slice,
         .y_by = y_slice,
     }));
