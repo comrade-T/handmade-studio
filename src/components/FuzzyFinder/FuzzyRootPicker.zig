@@ -164,6 +164,7 @@ fn onUpdate(ctx: *anyopaque, needle: []const u8) !void {
             std.debug.print("got err: '{any}'\n", .{err});
             return;
         }) |entry| {
+            if (entry.kind == .file) continue;
             try self.current_entries.append(self.a, try self.a.dupe(u8, entry.name));
         }
 

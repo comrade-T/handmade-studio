@@ -134,7 +134,12 @@ fn loadSession(self: *@This(), aa: Allocator, parsed: WritableCanvasState) !void
 
     var strid_to_handler_map = std.AutoArrayHashMapUnmanaged(i128, *WindowSourceHandler){};
     for (parsed.string_sources) |str_source| {
-        const handler = try WindowSourceHandler.create(wm, .string, str_source.contents, wm.lang_hub);
+        const handler = try WindowSourceHandler.create(
+            wm,
+            .{ .string = str_source.id },
+            str_source.contents,
+            wm.lang_hub,
+        );
         try wm.handlers.put(wm.a, handler, {});
         try strid_to_handler_map.put(aa, str_source.id, handler);
     }
@@ -142,7 +147,7 @@ fn loadSession(self: *@This(), aa: Allocator, parsed: WritableCanvasState) !void
     var id_to_window_map = std.AutoArrayHashMapUnmanaged(Window.ID, *Window){};
     for (parsed.windows) |state| {
         switch (state.source) {
-            .file => |path| _ = try wm.spawnWindow(.file, path, state.opts, true, false),
+            .file => |path| _ = try wm.spawnWindow(.{ .file = path }, null, state.opts, true, false),
             .string => |string_id| {
                 const handler = strid_to_handler_map.get(string_id) orelse continue;
                 const window = try wm.spawnWindowFromHandler(handler, state.opts, true);
@@ -219,14 +224,12 @@ fn setPath(self: *@This(), new_path: []const u8) !void {
 fn produceWritableCanvasState(self: *@This(), aa: Allocator) !WritableCanvasState {
     const wm = self.wm;
 
-    var string_source_list = std.ArrayListUnmanaged(StringSource){};
-    var window_to_id_map = std.AutoArrayHashMapUnmanaged(*Window, i128){};
-
     ///////////////////////////// handle string sources
 
-    var last_id: i128 = std.math.maxInt(i128);
+    var string_source_list = std.ArrayListUnmanaged(StringSource){};
+
     for (wm.handlers.keys()) |handler| {
-        if (handler.source.from == .file) continue;
+        if (handler.source.origin == .file) continue;
 
         // only save handlers with visible windows
         var ignore_this_handler = true;
@@ -238,22 +241,11 @@ fn produceWritableCanvasState(self: *@This(), aa: Allocator) !WritableCanvasStat
         }
         if (ignore_this_handler) continue;
 
-        var id = std.time.nanoTimestamp();
-        while (true) {
-            if (id != last_id) break;
-            id = std.time.nanoTimestamp();
-        }
-        last_id = id;
-
         const contents = try handler.source.buf.ropeman.toString(aa, .lf);
         try string_source_list.append(aa, StringSource{
-            .id = id,
+            .id = handler.source.origin.string,
             .contents = contents,
         });
-
-        for (handler.windows.keys()) |window| {
-            try window_to_id_map.put(aa, window, id);
-        }
     }
 
     ///////////////////////////// handle windows
@@ -262,8 +254,7 @@ fn produceWritableCanvasState(self: *@This(), aa: Allocator) !WritableCanvasStat
 
     for (wm.wmap.keys()) |window| {
         if (window.closed) continue;
-        const string_id: ?i128 = window_to_id_map.get(window) orelse null;
-        const data = try window.produceWritableState(string_id);
+        const data = try window.produceWritableState();
         try window_state_list.append(aa, data);
     }
 

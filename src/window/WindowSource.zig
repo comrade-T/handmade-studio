@@ -31,7 +31,6 @@ const eqSlice = std.testing.expectEqualSlices;
 const assert = std.debug.assert;
 
 const Buffer = @import("Buffer");
-pub const InitFrom = Buffer.InitFrom;
 const CursorRange = Buffer.CursorRange;
 const LangSuite = @import("LangSuite");
 const CursorManager = @import("CursorManager");
@@ -39,30 +38,36 @@ const CursorManager = @import("CursorManager");
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
+origin: Origin,
 
-from: InitFrom,
-path: []const u8 = "",
-
-buf: *Buffer,
+buf: *Buffer = undefined,
 ls: ?*LangSuite = null,
 cap_list: CapList,
 
 const CapList = ArrayList([]StoredCapture);
+pub const Origin = union(enum) {
+    string: i128,
+    file: []const u8,
+};
 
-pub fn create(a: Allocator, from: InitFrom, source: []const u8, may_lang_hub: ?*LangSuite.LangHub) !*WindowSource {
+pub fn create(a: Allocator, origin: Origin, may_str_content: ?[]const u8, may_lang_hub: ?*LangSuite.LangHub) !*WindowSource {
     var self = try a.create(@This());
     self.* = WindowSource{
         .a = a,
-        .from = from,
-        .buf = try Buffer.create(a, from, source),
         .cap_list = CapList.init(a),
+        .origin = origin,
     };
-    switch (from) {
-        .string => {},
-        .file => {
+    switch (origin) {
+        .string => {
+            assert(may_str_content != null);
+            const str_content = may_str_content orelse "";
+            self.buf = try Buffer.create(a, .string, str_content);
+        },
+        .file => |path| {
             assert(may_lang_hub != null);
+            self.buf = try Buffer.create(a, .file, path);
+            self.origin.file = try self.a.dupe(u8, path);
             if (may_lang_hub) |lang_hub| {
-                self.path = try self.a.dupe(u8, source);
                 try self.initiateTreeSitterForFile(lang_hub);
                 try self.populateCapListWithAllCaptures();
             }
@@ -93,7 +98,7 @@ pub fn destroy(self: *@This()) void {
     self.buf.destroy();
     for (self.cap_list.items) |slice| self.a.free(slice);
     self.cap_list.deinit();
-    if (self.from == .file) self.a.free(self.path);
+    if (self.origin == .file) self.a.free(self.origin.file);
     self.a.destroy(self);
 }
 
@@ -105,7 +110,10 @@ pub fn getURI(self: *@This(), a: Allocator) !?[]u8 {
 }
 
 fn initiateTreeSitterForFile(self: *@This(), lang_hub: *LangSuite.LangHub) !void {
-    const lang_choice = LangSuite.getLangChoiceFromFilePath(self.path) orelse return;
+    assert(self.origin == .file);
+    if (self.origin == .string) return;
+
+    const lang_choice = LangSuite.getLangChoiceFromFilePath(self.origin.file) orelse return;
     self.ls = try lang_hub.get(lang_choice);
     try self.buf.initiateTreeSitter(self.ls.?);
 }

@@ -133,7 +133,7 @@ const Input = struct {
 
     fn create(a: Allocator, win_opts: Window.SpawnOptions, doi: *const DepartmentOfInputs, context_id: []const u8, callbacks: Callbacks) !*@This() {
         const self = try a.create(@This());
-        const source = try WindowSource.create(a, .string, "", null);
+        const source = try WindowSource.create(a, .{ .string = 0 }, "", null);
 
         self.* = Input{
             .a = a,

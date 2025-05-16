@@ -556,23 +556,17 @@ pub fn produceSpawnOptions(self: *const @This()) SpawnOptions {
     };
 }
 
-pub fn produceWritableState(self: *@This(), may_string_id: ?ID) !WritableWindowState {
+pub fn produceWritableState(self: *@This()) !WritableWindowState {
     assert(!self.closed);
     return WritableWindowState{
         .opts = self.produceSpawnOptions(),
-        .source = switch (self.ws.from) {
-            .file => .{ .file = self.ws.path },
-            .string => .{ .string = may_string_id.? },
-        },
+        .source = self.ws.origin,
     };
 }
 
 pub const WritableWindowState = struct {
     opts: Window.SpawnOptions,
-    source: union(enum) {
-        file: []const u8,
-        string: ID,
-    },
+    source: WindowSource.Origin,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Types

@@ -178,7 +178,7 @@ fn updateTargets(self: *@This()) !void {
     self.targets.clearRetainingCapacity();
 
     for (wm.wmap.keys()) |window| {
-        if (window.closed or window.ws.path.len > 0) continue;
+        if (window.closed or window.ws.origin == .file) continue;
         if (self.filter_color) |color| if (window.defaults.color != color) continue;
 
         const str = try window.ws.buf.ropeman.toString(self.finder.entry_arena.allocator(), .lf);

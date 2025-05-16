@@ -118,7 +118,7 @@ fn onConfirm(ctx: *anyopaque, _: []const u8) !bool {
     );
 
     const wm = self.sess.getActiveCanvasWindowManager() orelse return true;
-    _ = try wm.spawnWindow(.file, path, .{
+    _ = try wm.spawnWindow(.{ .file = path }, null, .{
         .pos = .{ .x = x, .y = y },
         .subscribed_style_sets = &.{0},
     }, true, true);
@@ -137,7 +137,7 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
 fn spawnRelativeToActiveWindow(self: *@This(), direction: Session.WindowManager.WindowRelativeDirection) !void {
     const path = self.finder.getSelectedPath() orelse return;
     const wm = self.sess.getActiveCanvasWindowManager() orelse return;
-    _ = try wm.spawnNewWindowRelativeToActiveWindow(.file, path, .{
+    _ = try wm.spawnNewWindowRelativeToActiveWindow(.{ .file = path }, null, .{
         .subscribed_style_sets = &.{0},
     }, .{
         .direction = direction,

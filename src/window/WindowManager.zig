@@ -53,6 +53,7 @@ active_window: ?*Window = null,
 
 handlers: WindowSourceHandlerMap = WindowSourceHandlerMap{},
 last_win_id: i128 = Window.UNSET_WIN_ID,
+last_string_source_id: i128 = 0,
 
 fmap: FilePathToHandlerMap = FilePathToHandlerMap{},
 wmap: WindowToHandlerMap = WindowToHandlerMap{},
@@ -248,10 +249,10 @@ pub const WindowSourceHandler = struct {
 
     const WindowMap = std.AutoArrayHashMapUnmanaged(*Window, void);
 
-    pub fn create(wm: *WindowManager, from: WindowSource.InitFrom, source: []const u8, lang_hub: *LangHub) !*WindowSourceHandler {
+    pub fn create(wm: *WindowManager, origin: WindowSource.Origin, may_string_source: ?[]const u8, lang_hub: *LangHub) !*WindowSourceHandler {
         const self = try wm.a.create(@This());
         self.* = WindowSourceHandler{
-            .source = try WindowSource.create(wm.a, from, source, lang_hub),
+            .source = try WindowSource.create(wm.a, origin, may_string_source, lang_hub),
             .windows = WindowMap{},
         };
         return self;
@@ -306,8 +307,8 @@ pub const WindowSourceHandler = struct {
         win.destroy(wm.a, wm.qtree);
 
         if (self.windows.values().len == 0) {
-            if (self.source.from == .file) {
-                const removed_from_fmap = wm.fmap.swapRemove(self.source.path);
+            if (self.source.origin == .file) {
+                const removed_from_fmap = wm.fmap.swapRemove(self.source.origin.file);
                 assert(removed_from_fmap);
             }
 
@@ -432,16 +433,16 @@ pub fn spawnWindowFromHandler(self: *@This(), handler: *WindowSourceHandler, opt
 
 pub fn spawnWindow(
     self: *@This(),
-    from: WindowSource.InitFrom,
-    source: []const u8,
+    origin: WindowSource.Origin,
+    may_string_source: ?[]const u8,
     opts: Window.SpawnOptions,
     make_active: bool,
     add_to_history: bool,
 ) !*Window {
 
     // if file path exists in fmap
-    if (from == .file) {
-        if (self.fmap.get(source)) |handler| {
+    if (origin == .file) {
+        if (self.fmap.get(origin.file)) |handler| {
             const window = try handler.spawnWindow(self, opts);
             try self.wmap.put(self.a, window, handler);
             if (add_to_history) try self.addWindowsToSpawnHistory(&.{window});
@@ -451,15 +452,15 @@ pub fn spawnWindow(
     }
 
     // spawn from scratch
-    var handler = try WindowSourceHandler.create(self, from, source, self.lang_hub);
+    var handler = try WindowSourceHandler.create(self, origin, may_string_source, self.lang_hub);
     try self.handlers.put(self.a, handler, {});
 
     const window = try handler.spawnWindow(self, opts);
     if (add_to_history) try self.addWindowsToSpawnHistory(&.{window});
     try self.wmap.put(self.a, window, handler);
 
-    if (from == .file) {
-        try self.fmap.put(self.a, handler.source.path, handler);
+    if (origin == .file) {
+        try self.fmap.put(self.a, handler.source.origin.file, handler);
         if (self.post_file_open_callback_func) |f| {
             try f(self.post_file_open_callback_ctx, window);
         }
@@ -661,8 +662,8 @@ pub const SpawnRelativeeWindowOpts = struct {
 };
 pub fn spawnNewWindowRelativeToActiveWindow(
     self: *@This(),
-    from: WindowSource.InitFrom,
-    source: []const u8,
+    origin: WindowSource.Origin,
+    may_string_source: ?[]const u8,
     win_opts_: Window.SpawnOptions,
     spawn_opts: SpawnRelativeeWindowOpts,
 ) !?*Window {
@@ -693,7 +694,7 @@ pub fn spawnNewWindowRelativeToActiveWindow(
     win_opts.pos = .{ .x = new_x, .y = new_y, .lerp_time = prev.attr.pos.lerp_time };
 
     // spawn new window
-    const new_win = try self.spawnWindow(from, source, win_opts, true, true);
+    const new_win = try self.spawnWindow(origin, may_string_source, win_opts, true, true);
 
     // animation vs not
     new_x += spawn_opts.x_by;
@@ -1143,12 +1144,12 @@ fn duplicateWindow(self: *@This(), target: *const Window, move_x_by: f32, move_y
     opts.pos.x += move_x_by;
     opts.pos.y += move_y_by;
 
-    return switch (target.ws.from) {
-        .file => self.spawnWindow(.file, target.ws.path, opts, false, false),
+    return switch (target.ws.origin) {
+        .file => |path| self.spawnWindow(.{ .file = path }, null, opts, false, false),
         .string => blk: {
-            const str_source = try target.ws.buf.ropeman.toString(self.a, .lf);
-            defer self.a.free(str_source);
-            const new_win = self.spawnWindow(.string, str_source, opts, false, false);
+            const str_contents = try target.ws.buf.ropeman.toString(self.a, .lf);
+            defer self.a.free(str_contents);
+            const new_win = self.spawnWindow(.{ .string = self.getNewStringSourceID() }, str_contents, opts, false, false);
             break :blk new_win;
         },
     };
@@ -1170,4 +1171,17 @@ pub fn triggerCursorExitAnimation(self: *@This(), win: *Window) !void {
         .kind = .exit,
         .lerp_time = 0.3,
     });
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+pub fn getNewStringSourceID(self: *@This()) i128 {
+    var id = std.time.nanoTimestamp();
+    while (true) {
+        if (id != self.last_win_id) break;
+        std.Thread.sleep(1);
+        id = std.time.nanoTimestamp();
+    }
+    self.last_win_id = id;
+    return id;
 }
