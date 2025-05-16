@@ -333,11 +333,16 @@ fn isWindowOnScreen(query_rect: Rect, win: *const Window) bool {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Make closest window active
 
-pub fn findClosestWindowToDirection(self: *const @This(), curr: *const Window, direction: WindowRelativeDirection) struct { f32, ?*Window } {
-    var distance: f32 = std.math.floatMax(f32);
-    var candidate: ?*Window = null;
+pub fn findClosestWindowToDirection(self: *const @This(), curr: *Window, direction: WindowRelativeDirection) struct { f32, ?*Window } {
+    var direct_distance: f32 = std.math.floatMax(f32);
+    var direct_candidate: ?*Window = null;
 
-    const curr_edge_stat = getWindowEdgeStat(curr);
+    var loose_distance: f32 = std.math.floatMax(f32);
+    var loose_candidate: ?*Window = null;
+
+    // TODO: get only visible windows from the QuadTree
+
+    const from = getWindowEdgeStat(curr);
 
     for (self.wmap.keys()) |win| {
         if (win == curr) continue;
@@ -351,18 +356,107 @@ pub fn findClosestWindowToDirection(self: *const @This(), curr: *const Window, d
         };
         if (!cond) continue;
 
-        const edge = findEdge(direction, win, curr);
-        const d = calculateTotalDistance(direction, getWindowEdgeStat(win), curr_edge_stat, edge);
-        if (d >= distance) continue;
+        const to = getWindowEdgeStat(win);
 
-        distance = d;
-        candidate = win;
+        if (calculate(direction, to, from)) |d| {
+            if (d >= direct_distance) continue;
+            direct_distance = d;
+            direct_candidate = win;
+            continue;
+        }
+
+        const edge = findEdge(direction, win, curr);
+        const d = calculateTotalDistance(direction, to, from, edge);
+        if (d >= loose_distance) continue;
+
+        loose_distance = d;
+        loose_candidate = win;
     }
 
-    return .{ distance, candidate };
+    /////////////////////////////
+
+    var linked_distance: f32 = std.math.floatMax(f32);
+    var linked_candidate: ?*Window = null;
+
+    blk: {
+        const tracker = self.connman.tracker_map.get(curr) orelse break :blk;
+        for ([_][]*ConnectionManager.Connection{ tracker.incoming.keys(), tracker.outgoing.keys() }) |connections| {
+            for (connections) |conn| {
+                if (!conn.isVisible()) continue;
+                const linked_win = if (conn.start.win == curr) conn.end.win else conn.start.win;
+
+                const to = getWindowEdgeStat(linked_win);
+                switch (direction) {
+                    .top => if (to.top > from.top) continue,
+                    .bottom => if (to.top < from.top) continue,
+                    .left => if (to.left > from.left) continue,
+                    .right => if (to.left < from.left) continue,
+                }
+
+                const start_x, const start_y = (conn.start.getPosition() catch break :blk) orelse break :blk;
+                const end_x, const end_y = (conn.end.getPosition() catch break :blk) orelse break :blk;
+
+                const dx = start_x - end_x;
+                const dy = start_y - end_y;
+                const d = @sqrt(dx * dx + dy * dy);
+
+                if (d >= linked_distance) continue;
+
+                linked_distance = d;
+                linked_candidate = linked_win;
+            }
+        }
+    }
+
+    /////////////////////////////
+
+    if (direct_candidate) |candidate| {
+        const times = direct_distance / loose_distance;
+        if (times > 3) return .{ loose_distance, loose_candidate };
+        return .{ direct_distance, candidate };
+    }
+    if (linked_candidate) |candidate| {
+        const times = linked_distance / loose_distance;
+        if (times > 3) return .{ loose_distance, loose_candidate };
+        return .{ linked_distance, candidate };
+    }
+    return .{ loose_distance, loose_candidate };
 }
 
-const WindowEdgeStat = struct { left: f32, right: f32, mid_x: f32, top: f32, bottom: f32, mid_y: f32 };
+fn calculate(direction: WindowRelativeDirection, to: WindowEdgeStat, from: WindowEdgeStat) ?f32 {
+    switch (direction) {
+        .top => if (to.top < from.top and to.horizontalIntersect(from)) return @abs(from.top - to.bottom),
+        .bottom => if (to.bottom > from.bottom and to.horizontalIntersect(from)) return @abs(to.top - from.bottom),
+        .left => if (to.left < from.left and to.verticalIntersect(from)) return @abs(from.left - to.right),
+        .right => if (to.right > from.right and to.verticalIntersect(from)) return @abs(to.left - from.right),
+    }
+
+    return null;
+}
+
+const WindowEdgeStat = struct {
+    left: f32,
+    right: f32,
+    mid_x: f32,
+    top: f32,
+    bottom: f32,
+    mid_y: f32,
+
+    fn verticalIntersect(a: @This(), b: @This()) bool {
+        return (a.top <= b.top and a.bottom >= b.top) or
+            (a.top <= b.bottom and a.bottom >= b.bottom) or
+            (b.top <= a.top and b.bottom >= a.top) or
+            (b.top <= a.bottom and b.bottom >= a.bottom);
+    }
+
+    fn horizontalIntersect(a: @This(), b: @This()) bool {
+        return (a.left <= b.left and a.right >= b.left) or
+            (a.left <= b.right and a.right >= b.right) or
+            (b.left <= a.left and b.right >= a.left) or
+            (b.left <= a.right and b.right >= a.right);
+    }
+};
+
 fn getWindowEdgeStat(win: *const Window) WindowEdgeStat {
     return WindowEdgeStat{
         .left = win.getX(),
@@ -601,7 +695,7 @@ pub fn closeAllWindows(self: *@This()) !void {
     try self.closeWindows(self.wmap.keys(), true);
 }
 
-fn findClosestWindow(self: *@This(), from: *const Window) ?*Window {
+fn findClosestWindow(self: *@This(), from: *Window) ?*Window {
     var distance: f32 = std.math.floatMax(f32);
     var candidate: ?*Window = null;
 
