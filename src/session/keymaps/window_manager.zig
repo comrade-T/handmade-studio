@@ -86,11 +86,11 @@ pub fn mapKeys(sess: *Session) !void {
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Multi Win
 
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .left_control, .j }, try AdaptedCb.init(a, sess, WindowManager.toggleActiveWindowFromSelection, NORMAL_TO_MULTI_WIN));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .left_control, .l }, try AdaptedCb.init(a, sess, WindowManager.selectAllDescendants, NORMAL_TO_MULTI_WIN));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .left_control, .a }, try AdaptedCb.init(a, sess, WindowManager.selectAllConnectedWindowsRecursively, NORMAL_TO_MULTI_WIN));
-    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .left_shift, .s }, try AdaptedCb.init(a, sess, WindowManager.selectAllChildrenOfFirstIncomingWindow, NORMAL_TO_MULTI_WIN));
-    try c.map(MULTI_WIN, &.{ .space, .v }, try AdaptedCb.init(a, sess, WindowManager.alignAndJustifySelectionToFirstIncoming, NORMAL_TO_MULTI_WIN));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_shift, .j }, try AdaptedCb.init(a, sess, WindowManager.toggleActiveWindowFromSelection, NORMAL_TO_MULTI_WIN));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_shift, .l }, try AdaptedCb.init(a, sess, WindowManager.selectAllDescendants, NORMAL_TO_MULTI_WIN));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_shift, .a }, try AdaptedCb.init(a, sess, WindowManager.selectAllConnectedWindowsRecursively, NORMAL_TO_MULTI_WIN));
+    try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .left_alt, .left_shift, .s }, try AdaptedCb.init(a, sess, WindowManager.selectAllChildrenOfFirstIncomingWindow, NORMAL_TO_MULTI_WIN));
+    try c.map(MULTI_WIN, &.{ .space, .j, .v }, try AdaptedCb.init(a, sess, WindowManager.alignAndJustifySelectionToFirstIncoming, NORMAL_TO_MULTI_WIN));
     try c.map(MULTI_WIN, &.{.escape}, try AdaptedCb.init(a, sess, WindowManager.clearSelection, MULTI_WIN_TO_NORMAL));
 
     try c.map(NORMAL, &.{.z}, .{ .f = dummy, .ctx = sess });

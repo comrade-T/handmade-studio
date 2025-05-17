@@ -172,8 +172,9 @@ pub fn mapKeys(sess: *Session) !void {
     try c.mmc(&.{ NORMAL, MULTI_WIN }, &.{ .space, .a, .k }, .{ .f = alignHorizontallyToFirstConnectionTo, .ctx = sess });
 
     // justify
-    try c.map(MULTI_WIN, &.{ .space, .j }, .{ .f = justifyVertically, .ctx = sess });
-    try c.map(MULTI_WIN, &.{ .space, .left_shift, .j }, .{ .f = justifyHorizontally, .ctx = sess });
+    try c.map(MULTI_WIN, &.{ .space, .j, .k, .v }, .{ .f = justifyVertically, .ctx = sess });
+    try c.map(MULTI_WIN, &.{ .space, .j, .k, .h }, .{ .f = justifyHorizontally, .ctx = sess });
+    try c.map(MULTI_WIN, &.{ .space, .j, .v }, .{ .f = alignAndJustifySelectionToFirstIncoming, .ctx = sess });
 
     /////////////////////////////
 
@@ -191,8 +192,8 @@ pub fn mapKeys(sess: *Session) !void {
             return Session.Callback{ .f = @This().f, .ctx = self };
         }
     };
-    try c.map(MULTI_WIN, &.{ .left_alt, .j }, try SpreadVerticallyCb.init(a, sess, -50));
-    try c.map(MULTI_WIN, &.{ .left_alt, .k }, try SpreadVerticallyCb.init(a, sess, 50));
+    try c.map(MULTI_WIN, &.{ .space, .j, .s }, try SpreadVerticallyCb.init(a, sess, -50));
+    try c.map(MULTI_WIN, &.{ .space, .j, .w }, try SpreadVerticallyCb.init(a, sess, 50));
 
     ///////////////////////////// yank & paste
 
@@ -266,6 +267,11 @@ fn justifyHorizontally(ctx: *anyopaque) !void {
     const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
     const wm = sess.getActiveCanvasWindowManager() orelse return;
     try wm.justifySelectionHorizontally(.{});
+}
+fn alignAndJustifySelectionToFirstIncoming(ctx: *anyopaque) !void {
+    const sess = @as(*Session, @ptrCast(@alignCast(ctx)));
+    const wm = sess.getActiveCanvasWindowManager() orelse return;
+    try wm.alignAndJustifySelectionToFirstIncoming();
 }
 
 /////////////////////////////
