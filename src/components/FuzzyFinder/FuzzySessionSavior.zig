@@ -41,6 +41,9 @@ on_confirm_path: []const u8 = "",
 fn triggerAfterUnnamedSave(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try FuzzyFinder.show(self.ffc.finder);
+
+    // TODO: this is a temporary fix, please consider streamlining this process
+    try self.sess.council.removeActiveContext(NORMAL);
 }
 
 pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
