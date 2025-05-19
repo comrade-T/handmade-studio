@@ -1184,29 +1184,7 @@ pub fn paste(
     if (!origin.yanker.hasThingsToPaste()) return &.{};
 
     var x_by: f32, var y_by: f32 = .{ 0, 0 };
-    if (kind == .screen_center) {
-        var min_left: f32 = std.math.floatMax(f32);
-        var min_top: f32 = std.math.floatMax(f32);
-        var max_right: f32 = -std.math.floatMax(f32);
-        var max_bottom: f32 = -std.math.floatMax(f32);
-
-        for (origin.yanker.map.keys()) |win| {
-            min_left = @min(min_left, win.getX());
-            min_top = @min(min_top, win.getY());
-            max_right = @max(max_right, win.getX() + win.getWidth());
-            max_bottom = @max(max_bottom, win.getY() + win.getHeight());
-        }
-
-        const current_center_x = min_left + ((max_right - min_left) / 2);
-        const current_center_y = min_top + ((max_bottom - min_top) / 2);
-
-        const screen_rect = self.mall.getScreenRect(self.mall.target_camera);
-        const screen_center_x = screen_rect.x + screen_rect.width / 2;
-        const screen_center_y = screen_rect.y + screen_rect.height / 2;
-
-        x_by = screen_center_x - current_center_x;
-        y_by = screen_center_y - current_center_y;
-    }
+    if (kind == .screen_center) x_by, y_by = self.getDistanceToPasteCenter(origin);
 
     /////////////////////////////
 
@@ -1254,9 +1232,39 @@ pub fn paste(
     const index = origin.yanker.map.getIndex(origin.active_window.?) orelse unreachable;
     self.setActiveWindow(duped_windows[index], true);
 
+    /////////////////////////////
+
     try self.addWindowsToSpawnHistory(duped_windows);
 
     return duped_windows;
+}
+
+fn getDistanceToPasteCenter(self: *@This(), origin: *WindowManager) struct { f32, f32 } {
+    var x_by: f32, var y_by: f32 = .{ 0, 0 };
+
+    var min_left: f32 = std.math.floatMax(f32);
+    var min_top: f32 = std.math.floatMax(f32);
+    var max_right: f32 = -std.math.floatMax(f32);
+    var max_bottom: f32 = -std.math.floatMax(f32);
+
+    for (origin.yanker.map.keys()) |win| {
+        min_left = @min(min_left, win.getX());
+        min_top = @min(min_top, win.getY());
+        max_right = @max(max_right, win.getX() + win.getWidth());
+        max_bottom = @max(max_bottom, win.getY() + win.getHeight());
+    }
+
+    const current_center_x = min_left + ((max_right - min_left) / 2);
+    const current_center_y = min_top + ((max_bottom - min_top) / 2);
+
+    const screen_rect = self.mall.getScreenRect(self.mall.target_camera);
+    const screen_center_x = screen_rect.x + screen_rect.width / 2;
+    const screen_center_y = screen_rect.y + screen_rect.height / 2;
+
+    x_by = screen_center_x - current_center_x;
+    y_by = screen_center_y - current_center_y;
+
+    return .{ x_by, y_by };
 }
 
 fn duplicateWindow(self: *@This(), target: *const Window, move_x_by: f32, move_y_by: f32) !*Window {
