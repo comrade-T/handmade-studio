@@ -364,6 +364,13 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
     var chars_rendered: i64 = 0;
     defer ztracy.PlotI("chars_rendered", chars_rendered);
 
+    ///////////////////////////// Render Background Image
+
+    if (self.win.background_image) |img| {
+        // TODO:
+        img.draw(self.mall, self.win.getX(), self.win.getY(), 0, 1);
+    }
+
     ///////////////////////////// Render Border
 
     const mall = self.mall;

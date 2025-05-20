@@ -50,8 +50,9 @@ pub fn drawTexture(tex: *anyopaque, x: f32, y: f32, rotation: f32, scale: f32) v
     rl.drawTextureEx(texture.*, .{ .x = x, .y = y }, rotation, scale, rl.Color.white);
 }
 
-pub fn unloadTexture(tex: *anyopaque) void {
+pub fn unloadTexture(a: std.mem.Allocator, tex: *anyopaque) void {
     const texture = @as(*rl.Texture2D, @ptrCast(@alignCast(tex)));
+    defer a.destroy(texture);
     rl.unloadTexture(texture.*);
 }
 

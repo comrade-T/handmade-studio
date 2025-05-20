@@ -259,7 +259,7 @@ pub const WindowSourceHandler = struct {
     }
 
     fn destroy(self: *@This(), wm: *WindowManager) void {
-        for (self.windows.keys()) |window| window.destroy(wm.a, wm.qtree);
+        for (self.windows.keys()) |window| window.destroy(wm.mall, wm.a, wm.qtree);
         self.windows.deinit(wm.a);
         self.source.destroy();
         wm.a.destroy(self);
@@ -304,7 +304,7 @@ pub const WindowSourceHandler = struct {
         const removed_from_wmap = wm.wmap.swapRemove(win);
         assert(removed_from_wmap);
 
-        win.destroy(wm.a, wm.qtree);
+        win.destroy(wm.mall, wm.a, wm.qtree);
 
         if (self.windows.values().len == 0) {
             if (self.source.origin == .file) {

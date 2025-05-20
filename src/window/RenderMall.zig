@@ -252,7 +252,7 @@ pub const RenderCallbacks = struct {
     setClipboardText: *const fn (text: [:0]const u8) void,
 
     drawTexture: *const fn (tex: *anyopaque, x: f32, y: f32, rotation: f32, scale: f32) void,
-    unloadTexture: *const fn (tex: *anyopaque) void,
+    unloadTexture: *const fn (a: Allocator, tex: *anyopaque) void,
     loadImage: *const fn (a: Allocator, path: [:0]const u8) anyerror!Image,
 };
 
@@ -383,14 +383,16 @@ pub const Image = struct {
     height: u32,
     texture: *anyopaque,
 
-    pub fn create(mall: *const RenderMall, path: []const u8) !void {
+    pub fn create(mall: *const RenderMall, path: []const u8) !*Image {
+        const self = try mall.a.create(@This());
         const pathZ = std.fmt.allocPrintZ(mall.a, "{s}", .{path});
         defer mall.a.free(pathZ);
-        return try mall.rcb.loadImage(mall.a, path);
+        self.* = try mall.rcb.loadImage(mall.a, path);
+        return self;
     }
 
     pub fn destroy(self: *@This(), mall: *const RenderMall) void {
-        mall.rcb.unloadTexture(self.texture);
+        mall.rcb.unloadTexture(mall.a, self.texture);
         mall.a.destroy(self);
     }
 

@@ -57,6 +57,8 @@ subscribed_style_sets: SubscribedStyleSets,
 cursor_manager: *CursorManager,
 closed: bool = false,
 
+background_image: ?*RenderMall.Image = null,
+
 id: ID = UNSET_WIN_ID,
 
 pub fn create(
@@ -102,11 +104,12 @@ pub fn create(
     return self;
 }
 
-pub fn destroy(self: *@This(), may_qtree_a: ?Allocator, may_qtree: ?*QuadTree) void {
+pub fn destroy(self: *@This(), mall: *const RenderMall, may_qtree_a: ?Allocator, may_qtree: ?*QuadTree) void {
     if (may_qtree) |qtree| assert(qtree.remove(may_qtree_a.?, self, self.getRect()).removed);
     self.cached.deinit(self.a);
     self.subscribed_style_sets.deinit(self.a);
     self.cursor_manager.destroy();
+    if (self.background_image) |img| img.destroy(mall);
     self.a.destroy(self);
 }
 

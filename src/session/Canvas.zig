@@ -206,6 +206,7 @@ pub fn saveAs(self: *@This(), path: []const u8) !void {
 
     const json_str = try std.json.stringifyAlloc(arena.allocator(), canvas_state, .{
         .whitespace = .indent_4,
+        .emit_null_optional_fields = false,
     });
     try writeToFile(json_str, path);
 

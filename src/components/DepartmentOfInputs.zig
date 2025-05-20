@@ -239,7 +239,7 @@ const Input = struct {
 
     fn destroy(self: *@This(), context_id: []const u8, c: *MappingCouncil) void {
         self.source.destroy();
-        self.win.destroy(null, null);
+        self.win.destroy(self.mall, null, null);
         assert(c.unmapEntireContext(context_id));
         self.a.destroy(self);
     }
