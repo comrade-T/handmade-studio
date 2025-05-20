@@ -15,7 +15,7 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const StyleStore = @This();
+const RenderMall = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -61,8 +61,8 @@ pub fn init(
     rcb: RenderCallbacks,
     camera: *anyopaque,
     target_camera: *anyopaque,
-) StyleStore {
-    return StyleStore{
+) RenderMall {
+    return RenderMall{
         .a = a,
 
         .font_store = font_store,
@@ -170,7 +170,7 @@ fn createMockFontStore(a: Allocator) !FontStore {
     return font_store;
 }
 
-pub fn createStyleStoreForTesting(a: Allocator) !*StyleStore {
+pub fn createStyleStoreForTesting(a: Allocator) !*RenderMall {
     const font_store = try a.create(FontStore);
     font_store.* = try createMockFontStore(a);
 
@@ -178,13 +178,13 @@ pub fn createStyleStoreForTesting(a: Allocator) !*StyleStore {
     colorscheme_store.* = try ColorschemeStore.init(a);
     try colorscheme_store.initializeNightflyColorscheme();
 
-    const style_store = try a.create(StyleStore);
-    style_store.* = StyleStore.init(a, font_store, colorscheme_store);
+    const style_store = try a.create(RenderMall);
+    style_store.* = RenderMall.init(a, font_store, colorscheme_store);
 
     return style_store;
 }
 
-pub fn freeTestStyleStore(a: Allocator, style_store: *StyleStore) void {
+pub fn freeTestStyleStore(a: Allocator, style_store: *RenderMall) void {
     style_store.font_store.deinit();
     a.destroy(style_store.font_store);
 
@@ -197,7 +197,7 @@ pub fn freeTestStyleStore(a: Allocator, style_store: *StyleStore) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test StyleStore {
+test RenderMall {
     // setup font_store
     var font_store = try FontStore.init(testing_allocator);
     defer font_store.deinit();
@@ -211,7 +211,7 @@ test StyleStore {
     try colorscheme_store.initializeNightflyColorscheme();
 
     // style_store
-    var style_store = StyleStore.init(testing_allocator, &font_store, &colorscheme_store);
+    var style_store = RenderMall.init(testing_allocator, &font_store, &colorscheme_store);
     defer style_store.deinit();
 
     // addFontStyle()
@@ -250,6 +250,10 @@ pub const RenderCallbacks = struct {
     endScissorMode: *const fn () void,
 
     setClipboardText: *const fn (text: [:0]const u8) void,
+
+    drawTexture: *const fn (tex: *anyopaque, x: f32, y: f32, rotation: f32, scale: f32) void,
+    unloadTexture: *const fn (tex: *anyopaque) void,
+    loadImage: *const fn (a: Allocator, path: [:0]const u8) anyerror!Image,
 };
 
 pub const InfoCallbacks = struct {
@@ -369,5 +373,28 @@ pub const Progress = struct {
                 if (self.value > 0) self.value -|= self.delta;
             },
         }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////// Image / Texture
+
+pub const Image = struct {
+    width: u32,
+    height: u32,
+    texture: *anyopaque,
+
+    pub fn create(mall: *const RenderMall, path: []const u8) !void {
+        const pathZ = std.fmt.allocPrintZ(mall.a, "{s}", .{path});
+        defer mall.a.free(pathZ);
+        return try mall.rcb.loadImage(mall.a, path);
+    }
+
+    pub fn destroy(self: *@This(), mall: *const RenderMall) void {
+        mall.rcb.unloadTexture(self.texture);
+        mall.a.destroy(self);
+    }
+
+    pub fn draw(self: *const @This(), mall: *const RenderMall, x: f32, y: f32, rotation: f32, scale: f32) void {
+        mall.rcb.drawTexture(self.texture, x, y, rotation, scale);
     }
 };

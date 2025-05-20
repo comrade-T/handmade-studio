@@ -37,9 +37,33 @@ pub const render_callbacks = RenderMall.RenderCallbacks{
     .endScissorMode = endScissorMode,
     .setClipboardText = setClipboardText,
     .setCameraPositionFromCameraInfo = setCameraPositionFromCameraInfo,
+
+    .drawTexture = drawTexture,
+    .unloadTexture = unloadTexture,
+    .loadImage = loadImage,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Render Callbacks
+
+pub fn drawTexture(tex: *anyopaque, x: f32, y: f32, rotation: f32, scale: f32) void {
+    const texture = @as(*rl.Texture2D, @ptrCast(@alignCast(tex)));
+    rl.drawTextureEx(texture.*, .{ .x = x, .y = y }, rotation, scale, rl.Color.white);
+}
+
+pub fn unloadTexture(tex: *anyopaque) void {
+    const texture = @as(*rl.Texture2D, @ptrCast(@alignCast(tex)));
+    rl.unloadTexture(texture.*);
+}
+
+pub fn loadImage(a: std.mem.Allocator, path: [:0]const u8) !RenderMall.Image {
+    const tex = try a.create(rl.Texture2D);
+    tex.* = try rl.loadTexture(path);
+    return RenderMall.Image{
+        .texture = tex,
+        .width = @intCast(tex.width),
+        .height = @intCast(tex.height),
+    };
+}
 
 pub fn drawCodePoint(font: *const FontStore.Font, code_point: u21, x: f32, y: f32, font_size: f32, color: u32) void {
     std.debug.assert(font.rl_font != null);

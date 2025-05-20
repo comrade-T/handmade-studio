@@ -44,6 +44,9 @@ fn triggerAfterUnnamedSave(ctx: *anyopaque) !void {
 
     // TODO: this is a temporary fix, please consider streamlining this process
     try self.sess.council.removeActiveContext(NORMAL);
+
+    // TODO: this is a temporary fix, please consider streamlining this process
+    self.sess.council.require_clarity_afterwards = true;
 }
 
 pub fn mapKeys(ffs: *@This(), c: *ip.MappingCouncil) !void {
