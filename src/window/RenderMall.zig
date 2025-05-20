@@ -379,15 +379,15 @@ pub const Progress = struct {
 ////////////////////////////////////////////////////////////////////////////////////////////// Image / Texture
 
 pub const Image = struct {
-    width: u32,
-    height: u32,
+    width: f32,
+    height: f32,
     texture: *anyopaque,
 
     pub fn create(mall: *const RenderMall, path: []const u8) !*Image {
         const self = try mall.a.create(@This());
-        const pathZ = std.fmt.allocPrintZ(mall.a, "{s}", .{path});
+        const pathZ = try std.fmt.allocPrintZ(mall.a, "{s}", .{path});
         defer mall.a.free(pathZ);
-        self.* = try mall.rcb.loadImage(mall.a, path);
+        self.* = try mall.rcb.loadImage(mall.a, pathZ);
         return self;
     }
 

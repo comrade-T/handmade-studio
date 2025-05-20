@@ -366,10 +366,7 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
 
     ///////////////////////////// Render Background Image
 
-    if (self.win.background_image) |img| {
-        // TODO:
-        img.draw(self.mall, self.win.getX(), self.win.getY(), 0, 1);
-    }
+    if (self.win.background_image) |img| self.renderBackgroundImage(img);
 
     ///////////////////////////// Render Border
 
@@ -603,4 +600,12 @@ fn renderCursor(self: *@This(), x: f32, char_width: f32) void {
         break :blk char_width * ca.progress;
     } else char_width;
     self.rcb.drawRectangle(x, self.line_y, width, self.lineHeight(), self.getCursorColor());
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Image
+
+fn renderBackgroundImage(self: *@This(), img: *const RenderMall.Image) void {
+    // TODO:
+
+    img.draw(self.mall, self.win.getX(), self.win.getY(), 0, 1);
 }

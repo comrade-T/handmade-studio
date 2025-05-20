@@ -61,8 +61,8 @@ pub fn loadImage(a: std.mem.Allocator, path: [:0]const u8) !RenderMall.Image {
     tex.* = try rl.loadTexture(path);
     return RenderMall.Image{
         .texture = tex,
-        .width = @intCast(tex.width),
-        .height = @intCast(tex.height),
+        .width = @floatFromInt(tex.width),
+        .height = @floatFromInt(tex.height),
     };
 }
 

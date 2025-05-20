@@ -223,6 +223,9 @@ pub fn main() anyerror!void {
     var fuzzy_root_picker = try fuzzy_finders.FuzzyRootPicker.create(gpa, &session, &doi);
     defer fuzzy_root_picker.destroy();
 
+    var fuzzy_img_bg_chooser = try fuzzy_finders.FuzzyImageBackgroundChooser.create(gpa, &session, &doi);
+    defer fuzzy_img_bg_chooser.destroy();
+
     startup_ztracy_zone.End();
 
     ////////////////////////////////////////////////////////////////////////////////////////////// Main Loop
@@ -284,6 +287,7 @@ pub fn main() anyerror!void {
                 try fuzzy_entity_picker.finder.render();
                 try fuzzy_string_window_jumper.finder.render();
                 try fuzzy_root_picker.finder.render();
+                try fuzzy_img_bg_chooser.finder.render();
 
                 // NotificationLine
                 notification_line.render();
