@@ -364,10 +364,6 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
     var chars_rendered: i64 = 0;
     defer ztracy.PlotI("chars_rendered", chars_rendered);
 
-    ///////////////////////////// Render Background Image
-
-    if (self.win.background_image) |img| self.renderBackgroundImage(img);
-
     ///////////////////////////// Render Border
 
     const mall = self.mall;
@@ -387,20 +383,34 @@ pub fn render(self: *@This(), colorscheme: *const ColorschemeStore.Colorscheme) 
 
     ///////////////////////////// Scissoring
 
-    if (win.attr.bounded) {
+    { // scissoring and rendering background_image
+        defer mall.rcb.endScissorMode();
+
+        const camera_zoom = mall.icb.getCameraZoom(mall.camera);
         const screen_x, const screen_y = mall.icb.getWorldToScreen2D(mall.camera, win.getX(), win.getY());
+        const screen_width = win.getWidth() * camera_zoom;
+        const screen_height = win.getHeight() * camera_zoom;
+        mall.rcb.beginScissorMode(screen_x, screen_y, screen_width, screen_height);
+
+        if (self.win.background_image) |img| self.renderBackgroundImage(img);
+    }
+
+    if (win.attr.bounded) {
+        const screen_x, const screen_y = mall.icb.getWorldToScreen2D(
+            mall.camera,
+            win.attr.pos.x + win.attr.padding.left,
+            win.attr.pos.y + win.attr.padding.top,
+        );
 
         const camera_zoom = mall.icb.getCameraZoom(mall.camera);
 
-        const screen_width = (win.attr.bounds.width - win.attr.padding.right) * camera_zoom;
-        const screen_height = (win.attr.bounds.height - win.attr.padding.bottom) * camera_zoom;
+        const screen_width = (win.attr.bounds.width - win.attr.padding.left - win.attr.padding.right) * camera_zoom;
+        const screen_height = (win.attr.bounds.height - win.attr.padding.top - win.attr.padding.bottom) * camera_zoom;
 
         mall.rcb.beginScissorMode(screen_x, screen_y, screen_width, screen_height);
     }
 
-    defer if (win.attr.bounded) {
-        mall.rcb.endScissorMode();
-    };
+    defer if (win.attr.bounded) mall.rcb.endScissorMode();
 
     ///////////////////////////// Text Rendering
 
@@ -605,7 +615,26 @@ fn renderCursor(self: *@This(), x: f32, char_width: f32) void {
 ////////////////////////////////////////////////////////////////////////////////////////////// Image
 
 fn renderBackgroundImage(self: *@This(), img: *const RenderMall.Image) void {
-    // TODO:
+    const win_width = self.win.getWidth();
+    const win_height = self.win.getHeight();
+    const img_aspect = img.width / img.height;
+    const win_aspect = win_width / win_height;
 
-    img.draw(self.mall, self.win.getX(), self.win.getY(), 0, 1);
+    var scale: f32 = undefined;
+
+    if (img_aspect > win_aspect) {
+        // Image is wider than the window, scale by height
+        scale = win_height / img.height;
+    } else {
+        // Image is taller or equal in aspect ratio, scale by width
+        scale = win_width / img.width;
+    }
+
+    const scaled_width = img.width * scale;
+    const scaled_height = img.height * scale;
+
+    const offset_x = (win_width - scaled_width) / 2;
+    const offset_y = (win_height - scaled_height) / 2;
+
+    img.draw(self.mall, self.win.getX() + offset_x, self.win.getY() + offset_y, 0, scale);
 }
