@@ -101,6 +101,12 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
     }, zig_build_test_step);
 
+    const neo_ropeman = addTestableModule(&bops, "src/buffer/NeoRopeMan.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+    }, zig_build_test_step);
+    _ = neo_ropeman;
+
     const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
         .{ .name = "mvzr", .module = mvzr },
         .{ .name = "ztracy", .module = ztracy.module("root") },

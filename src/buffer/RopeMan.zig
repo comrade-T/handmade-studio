@@ -31,8 +31,8 @@ const assert = std.debug.assert;
 const rcr = @import("RcRope.zig");
 const code_point = rcr.code_point;
 pub const RcNode = rcr.RcNode;
-pub const CursorRange = rcr.CursorRange;
-pub const CursorPoint = rcr.CursorPoint;
+pub const CursorRange = rcr.EditRange;
+pub const CursorPoint = rcr.EditPoint;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

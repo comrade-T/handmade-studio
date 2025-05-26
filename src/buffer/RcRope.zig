@@ -420,11 +420,11 @@ const InsertCharsCtx = struct {
 };
 
 const InsertCharsError = error{ OutOfMemory, InputLenZero, ColumnOutOfBounds };
-pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, chars: []const u8, destination: CursorPoint) InsertCharsError!struct { usize, usize, RcNode } {
+pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, chars: []const u8, destination: EditPoint) InsertCharsError!struct { usize, usize, RcNode } {
     if (chars.len == 0) return error.InputLenZero;
     var self = self_;
 
-    var rest = if (chars.len == 1)
+    var rest = if (chars.len == 1 and chars[0] != '\n')
         SINGLE_CHARS[chars[0]]
     else
         // TODO: ideally in the future this will reference a string from some sort of "PastedStringsManager"
@@ -1093,7 +1093,7 @@ const DeleteCharsCtx = struct {
     }
 };
 
-pub fn deleteChars(self: RcNode, a: Allocator, destination: CursorPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
+pub fn deleteChars(self: RcNode, a: Allocator, destination: EditPoint, count: usize) error{ OutOfMemory, Stop, NotFound }!RcNode {
     assert(count > 0);
     var ctx = DeleteCharsCtx{ .a = a, .col = destination.col, .count = count };
     const result = try walkFromLineBegin(a, self, destination.line, DeleteCharsCtx.walker, &ctx);
@@ -1251,7 +1251,7 @@ const GetGetNocOfRangeCtx = struct {
     }
 };
 
-pub fn getNocOfRange(node: RcNode, start: CursorPoint, end: CursorPoint) usize {
+pub fn getNocOfRange(node: RcNode, start: EditPoint, end: EditPoint) usize {
     assert(end.line >= start.line);
     assert(end.line > start.line or (start.line == end.line and start.col <= end.col));
     if (start.line == end.line) return end.col - start.col;
@@ -3170,7 +3170,7 @@ const GetRangeCtx = struct {
     }
 };
 
-pub fn getRange(node: RcNode, start: CursorPoint, end: ?CursorPoint, buf: []u8) []const u8 {
+pub fn getRange(node: RcNode, start: EditPoint, end: ?EditPoint, buf: []u8) []const u8 {
     const num_of_lines = node.value.weights().bols;
     if (start.line > num_of_lines -| 1) return "";
 
@@ -3278,7 +3278,7 @@ test "getRange() with end point" {
     try testGetRange("hello\nworld", "world", .{ .line = 1, .col = 0 }, .{ .line = 1, .col = 1000 }, 1024);
 }
 
-fn testGetRange(source: []const u8, expected_str: []const u8, start: CursorPoint, end: ?CursorPoint, comptime buf_size: usize) !void {
+fn testGetRange(source: []const u8, expected_str: []const u8, start: EditPoint, end: ?EditPoint, comptime buf_size: usize) !void {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
     var buf: [buf_size]u8 = undefined;
@@ -3288,7 +3288,7 @@ fn testGetRange(source: []const u8, expected_str: []const u8, start: CursorPoint
     try eqStr(expected_str, result);
 }
 
-fn testGetRangeNoEnd(source: []const u8, expected_str: []const u8, start: CursorPoint, comptime buf_size: usize) !void {
+fn testGetRangeNoEnd(source: []const u8, expected_str: []const u8, start: EditPoint, comptime buf_size: usize) !void {
     try testGetRange(source, expected_str, start, null, buf_size);
 }
 
@@ -4095,28 +4095,28 @@ const Weights = struct {
     }
 };
 
-pub const CursorPoint = struct {
+pub const EditPoint = struct {
     line: usize,
     col: usize,
 
-    pub fn cmp(_: void, a: CursorPoint, b: CursorPoint) bool {
+    pub fn cmp(_: void, a: EditPoint, b: EditPoint) bool {
         if (a.line < b.line) return true;
         if (a.line == b.line and a.col < b.col) return true;
         return false;
     }
 };
 
-pub const CursorRange = struct {
-    start: CursorPoint,
-    end: CursorPoint,
+pub const EditRange = struct {
+    start: EditPoint,
+    end: EditPoint,
 
     pub fn isEmpty(self: *const @This()) bool {
         return self.start.line == self.end.line and self.start.col == self.end.col;
     }
 
-    pub fn cmp(_: void, a: CursorRange, b: CursorRange) bool {
-        assert(std.sort.isSorted(CursorPoint, &.{ a.start, a.end }, {}, CursorPoint.cmp));
-        assert(std.sort.isSorted(CursorPoint, &.{ b.start, b.end }, {}, CursorPoint.cmp));
+    pub fn cmp(_: void, a: EditRange, b: EditRange) bool {
+        assert(std.sort.isSorted(EditPoint, &.{ a.start, a.end }, {}, EditPoint.cmp));
+        assert(std.sort.isSorted(EditPoint, &.{ b.start, b.end }, {}, EditPoint.cmp));
 
         if (a.start.line < b.start.line) return true;
         if (a.start.line == b.start.line) {
