@@ -205,8 +205,10 @@ const progressAlphaChannel = RenderMall.ColorschemeStore.progressAlphaChannel;
 pub fn render(self: *@This()) !void {
     self.progress.update();
     self.renderFadingGradientBackground();
-    if (self.progress.value > 0) self.renderResults(self.doi.mall);
-    if (self.opts.postRender) |cb| try cb.f(cb.ctx, self.needle);
+    if (self.progress.value > 0) {
+        self.renderResults(self.doi.mall);
+        if (self.opts.postRender) |cb| try cb.f(cb.ctx, self.needle);
+    }
 }
 
 fn renderFadingGradientBackground(self: *@This()) void {

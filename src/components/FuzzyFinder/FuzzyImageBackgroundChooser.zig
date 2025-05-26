@@ -33,6 +33,9 @@ sess: *Session,
 previous_prefix: []const u8 = "",
 current_entries: std.ArrayListUnmanaged(Entry) = .{},
 
+previous_image_path: []const u8 = "",
+previous_image: ?*RenderMall.Image = null,
+
 const Entry = struct {
     kind: std.fs.File.Kind,
     path: []const u8,
@@ -66,6 +69,7 @@ pub fn create(
             .onHide = .{ .f = onHide, .ctx = self },
             .updater = .{ .f = updater, .ctx = self },
             .onUpdate = .{ .f = onUpdate, .ctx = self },
+            .postRender = .{ .f = postRender, .ctx = self },
         }),
     };
     try self.mapKeys(doi.council);
@@ -77,6 +81,12 @@ pub fn destroy(self: *@This()) void {
     self.freePreviousPrefixIfNeeded();
     self.clearCurrentEntries();
     self.current_entries.deinit(self.a);
+
+    if (self.previous_image_path.len > 0) {
+        self.a.free(self.previous_image_path);
+        self.previous_image.?.destroy(self.sess.mall);
+    }
+
     self.a.destroy(self);
 }
 
@@ -129,6 +139,37 @@ fn onHide(ctx: *anyopaque, _: []const u8) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
     try self.finder.doi.council.removeActiveContext(FIBC);
     try self.finder.doi.council.addActiveContext(NORMAL);
+}
+
+fn postRender(ctx: *anyopaque, _: []const u8) !void {
+    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    const path = self.finder.getSelectedPath() orelse return;
+
+    if (!std.mem.eql(u8, path, self.previous_image_path)) {
+        if (self.previous_image_path.len > 0) {
+            self.a.free(self.previous_image_path);
+            self.previous_image.?.destroy(self.sess.mall);
+            self.previous_image_path = "";
+        }
+
+        {
+            var proceed = false;
+            for ([_][]const u8{ ".png", ".jpg" }) |needle| {
+                if (std.mem.endsWith(u8, path, needle)) {
+                    proceed = true;
+                    break;
+                }
+            }
+            if (!proceed) return;
+        }
+
+        self.previous_image_path = try self.a.dupe(u8, path);
+        self.previous_image = try RenderMall.Image.create(self.sess.mall, path);
+    }
+
+    if (self.previous_image) |img| {
+        img.draw(self.sess.mall, 400, 400, 0, 1);
+    }
 }
 
 fn onUpdate(ctx: *anyopaque, needle: []const u8) !void {
