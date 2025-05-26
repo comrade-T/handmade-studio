@@ -424,7 +424,12 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_arena: *ArenaAllocator, 
     if (chars.len == 0) return error.InputLenZero;
     var self = self_;
 
-    var rest = try content_arena.allocator().dupe(u8, chars);
+    var rest = if (chars.len == 1)
+        SINGLE_CHARS[chars[0]]
+    else
+        // TODO: ideally in the future this will reference a string from some sort of "PastedStringsManager"
+        try content_arena.allocator().dupe(u8, chars);
+
     var chunk = rest;
     var line = destination.line;
     var col = destination.col;
@@ -4199,3 +4204,25 @@ fn releaseChildrenRecursive(self: *const Node, a: Allocator) void {
     if (self.branch.right.strongCount() == 1) releaseChildrenRecursive(self.branch.right.value, a);
     self.branch.right.release(a);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const SINGLE_CHARS = [_][]const u8{
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 0-15
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 16-31
+    " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", // 32-47
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", // 48-63
+    "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", // 64-79
+    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", // 80-95
+    "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", // 96-111
+    "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "", // 112-127
+    // Remaining values (128-255) are non-readable in ASCII, so they will be empty strings
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 128-143
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 144-159
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 160-175
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 176-191
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 192-207
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 208-223
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 224-239
+    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 240-255
+};
