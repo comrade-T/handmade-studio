@@ -17,10 +17,6 @@
             .url = "https://github.com/comrade-T/raylib-zig/archive/devel.tar.gz",
             .hash = "raylib_zig-5.6.0-dev-KE8REAsxBQDVav1TfNd2kdJcuK5w4AqI_fq2ggBl8IWP",
         },
-        .ztracy = .{
-            .url = "https://github.com/zig-gamedev/ztracy/archive/main.tar.gz",
-            .hash = "ztracy-0.14.0-dev-zHJSq08NFwD4iNq3K_gFxZ7Y8mMQ5wVM494x8c4R2sMz",
-        },
         .mvzr = .{
             .url = "https://github.com/mnemnion/mvzr/archive/refs/tags/v0.3.3.tar.gz",
             .hash = "mvzr-0.3.2-ZSOky95lAQA00lXTN_g8JWoBuh8pw-jyzmCWAqlu1h8L",
@@ -28,6 +24,10 @@
         .lsp_codegen = .{
             .url = "git+https://github.com/zigtools/zig-lsp-codegen.git#6bbaefedc9a34308fbea573e1043c325ea4d9632",
             .hash = "lsp_codegen-0.1.0-CMjjo8lYCQDFSvieYT3OeuLrs8ZRTS-TzzfrDDDcD-h1",
+        },
+        .ztracy = .{
+            .url = "git+https://github.com/zig-gamedev/ztracy.git#be3d003f29d59d72e68e493ab531374ab474a795",
+            .hash = "ztracy-0.14.0-dev-zHJSq1oQFwCAq2LhbqsBUmZAipMzsD8UfKL5Etc_OJMb",
         },
     },
 

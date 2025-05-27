@@ -197,9 +197,15 @@ pub fn save(self: *@This()) !bool {
     return true;
 }
 
-pub fn saveAs(self: *@This(), path: []const u8) !void {
+pub fn saveAs(self: *@This(), path_: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+
+    var path = path_;
+    defer if (path.len != path_.len) self.sess.a.free(path);
+    if (!std.mem.endsWith(u8, path_, ".json")) {
+        path = try std.fmt.allocPrint(self.sess.a, "{s}.json", .{path_});
+    }
 
     defer self.setLastSaveTimestampToSameAsHistoryManager();
     const canvas_state = try self.produceWritableCanvasState(arena.allocator());
