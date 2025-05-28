@@ -86,7 +86,7 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
     if (self.finder.getSelectedPath()) |path| {
-        if (try self.executeFileCallback(path, false)) return true;
+        if (try self.executeFileCallback(path)) return true;
 
         assert(try self.finder.doi.replaceInputContent(self.opts.name, path));
         self.cleanUpNewFileOrigin();
@@ -95,23 +95,24 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     }
 
     try self.createFile(self.new_file_origin, input_contents);
-    _ = try self.executeFileCallback(input_contents, false);
+    _ = try self.executeFileCallback(input_contents);
     return true;
 }
 
 fn forceConfirm(ctx: *anyopaque) !void {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+    if (self.opts.force_file_callback) |cb| {
+        _ = try cb.f(cb.ctx, self.finder.needle);
+        try FuzzyFinder.hide(self.finder);
+        return;
+    }
+
     try self.createFile("", self.finder.needle);
-    _ = try self.executeFileCallback(self.finder.needle, true);
     try FuzzyFinder.hide(self.finder);
 }
 
-fn executeFileCallback(self: *@This(), path: []const u8, forced: bool) !bool {
+fn executeFileCallback(self: *@This(), path: []const u8) !bool {
     if (isFile(path)) {
-        if (self.opts.force_file_callback) |cb| blk: {
-            if (!forced) break :blk;
-            return try cb.f(cb.ctx, path);
-        }
         if (self.opts.file_callback) |cb| return try cb.f(cb.ctx, path);
     }
     return false;
