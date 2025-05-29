@@ -85,8 +85,8 @@ pub fn destroy(self: *@This()) void {
 fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
     const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
 
-    if (self.finder.getSelectedPath()) |path| {
-        if (try self.executeFileCallback(path)) return true;
+    if (self.finder.getSelectedPath()) |path| blk: {
+        if (!isDir(path)) break :blk;
 
         assert(try self.finder.doi.replaceInputContent(self.opts.name, path));
         self.cleanUpNewFileOrigin();
@@ -94,8 +94,9 @@ fn onConfirm(ctx: *anyopaque, input_contents: []const u8) !bool {
         return false;
     }
 
+    if (self.opts.file_callback) |cb| return try cb.f(cb.ctx, input_contents);
+
     try self.createFile(self.new_file_origin, input_contents);
-    _ = try self.executeFileCallback(input_contents);
     return true;
 }
 
@@ -109,13 +110,6 @@ fn forceConfirm(ctx: *anyopaque) !void {
 
     try self.createFile("", self.finder.needle);
     try FuzzyFinder.hide(self.finder);
-}
-
-fn executeFileCallback(self: *@This(), path: []const u8) !bool {
-    if (isFile(path)) {
-        if (self.opts.file_callback) |cb| return try cb.f(cb.ctx, path);
-    }
-    return false;
 }
 
 fn onHide(ctx: *anyopaque, _: []const u8) !void {
@@ -134,11 +128,11 @@ fn cleanUpNewFileOrigin(self: *@This()) void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn isFile(path: []const u8) bool {
+fn isDir(path: []const u8) bool {
     const file = std.fs.cwd().openFile(path, .{}) catch return false;
     defer file.close();
     const stat = file.stat() catch return false;
-    return stat.kind == .file;
+    return stat.kind == .directory;
 }
 
 fn createFile(self: *@This(), origin_: []const u8, new_file_path: []const u8) !void {
