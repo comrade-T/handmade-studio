@@ -17,11 +17,51 @@
 
 const NeoRopeMan = @This();
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 const rcr = @import("RcRope.zig");
+pub const RcNode = rcr.RcNode;
+pub const EditRange = rcr.EditRange;
+pub const EditPoint = rcr.EditPoint;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test {
-    try std.testing.expectEqual(1, 1);
+arena: std.heap.ArenaAllocator,
+root: RcNode = undefined,
+pending: ListOfRoots = .{},
+history: ListOfRoots = .{},
+
+const ListOfRoots = std.ArrayListUnmanaged(RcNode);
+pub const InitFrom = enum { string, file };
+
+pub fn initFrom(a: Allocator, from: InitFrom, source: []const u8) !NeoRopeMan {
+    var ropeman = try NeoRopeMan.init(a);
+    switch (from) {
+        .string => ropeman.root = try rcr.Node.fromString(ropeman.a, &ropeman.arena, source),
+        .file => ropeman.root = try rcr.Node.fromFile(ropeman.a, &ropeman.arena, source),
+    }
+
+    try ropeman.history.append(ropeman.root);
+
+    return ropeman;
+}
+
+pub fn deinit(self: *@This()) void {
+    rcr.freeRcNodes(self.a, self.pending.items);
+    self.pending.deinit();
+    rcr.freeRcNodes(self.a, self.history.items);
+    self.history.deinit();
+    self.arena.deinit();
+}
+
+fn init(a: Allocator) !NeoRopeMan {
+    return NeoRopeMan{ .arena = std.heap.ArenaAllocator.init(a) };
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test "size matters" {
+    try std.testing.expectEqual(32, @sizeOf(std.heap.ArenaAllocator));
+    try std.testing.expectEqual(24, @sizeOf(ListOfRoots));
+    try std.testing.expectEqual(8, @sizeOf(RcNode));
 }
