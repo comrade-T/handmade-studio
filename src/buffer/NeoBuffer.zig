@@ -20,13 +20,14 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const idc_if_it_leaks = std.heap.page_allocator;
 const assert = std.debug.assert;
+const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
 const rcr = @import("NeoRcRope.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-index: usize = 0,
+index: u32 = 0,
 edits: ListOfEdits = .{},
 
 const ListOfEdits = std.ArrayListUnmanaged(Edit);
@@ -88,26 +89,48 @@ const InsertCharsRequest = struct {
     parent_index: u32,
     edit_type: EditType,
 
+    chars: []const u8,
     start_byte: u32,
     start_line: u32,
     start_col: u32,
 };
 
-pub fn insertChars(self: *@This(), a: Allocator, content_allocator: Allocator, chars: []const u8, req: InsertCharsRequest) !rcr.InsertCharsResult {
-    const result = try rcr.insertChars(self.getCurrentRoot(), a, content_allocator, chars, .{
+pub fn insertChars(self: *@This(), a: Allocator, content_allocator: Allocator, req: InsertCharsRequest) ![]const u8 {
+    const result = try rcr.insertChars(self.getCurrentRoot(), a, content_allocator, req.chars, .{
         .line = @intCast(req.start_line),
         .col = @intCast(req.start_col),
     });
 
     try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
-        .root = balance(a, result.node),
+        .root = try balance(a, result.node),
         .old_start_byte = req.start_byte,
         .old_end_byte = req.start_byte,
         .new_start_byte = req.start_byte,
-        .new_end_byte = req.start_byte + chars.len,
+        .new_end_byte = req.start_byte + @as(u32, @intCast(req.chars.len)),
     });
 
-    return result;
+    return result.allocated_str;
+}
+
+test insertChars {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
+    defer buf.deinit(a);
+
+    _ = try buf.insertChars(a, arena.allocator(), InsertCharsRequest{
+        .parent_index = buf.index,
+        .edit_type = .registered,
+        .chars = "// ",
+        .start_byte = 0,
+        .start_line = 0,
+        .start_col = 0,
+    });
+
+    try eq(2, buf.edits.items.len);
+    try eqStr("// hello world", try buf.toString(idc_if_it_leaks, .lf));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Delete
@@ -126,22 +149,119 @@ const DeleteRangeRequest = struct {
 
 pub fn deleteRange(self: *@This(), a: Allocator, req: DeleteRangeRequest) !void {
     const noc = rcr.getNocOfRange(
-        self.getCurrentRoot().value,
+        self.getCurrentRoot(),
         .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
         .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
     );
-    const new_root = rcr.deleteChars(self.getCurrentRoot().value, a, .{
+    const new_root = try rcr.deleteChars(
+        self.getCurrentRoot(),
+        a,
         .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
-        .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
-    }, noc);
+        noc,
+    );
 
     try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
-        .root = balance(a, new_root),
+        .root = try balance(a, new_root),
         .old_start_byte = req.start_byte,
         .old_end_byte = req.end_byte,
         .new_start_byte = req.start_byte,
         .new_end_byte = req.start_byte,
     });
+}
+
+test deleteRange {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
+    defer buf.deinit(a);
+
+    _ = try buf.deleteRange(a, DeleteRangeRequest{
+        .parent_index = buf.index,
+        .edit_type = .registered,
+
+        .start_byte = 5,
+        .end_byte = 10,
+        .start_line = 0,
+        .start_col = 5,
+        .end_line = 0,
+        .end_col = 10,
+    });
+
+    try eq(2, buf.edits.items.len);
+    try eqStr("hellod", try buf.toString(idc_if_it_leaks, .lf));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Replace
+
+const ReplaceRangeRequest = struct {
+    parent_index: u32,
+    edit_type: EditType,
+
+    chars: []const u8,
+    start_byte: u32,
+    end_byte: u32,
+    start_line: u32,
+    start_col: u32,
+    end_line: u32,
+    end_col: u32,
+};
+
+pub fn replaceRange(self: *@This(), a: Allocator, content_allocator: Allocator, req: ReplaceRangeRequest) ![]const u8 {
+    const noc = rcr.getNocOfRange(
+        self.getCurrentRoot(),
+        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
+        .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
+    );
+    const after_delete_root = try rcr.deleteChars(
+        self.getCurrentRoot(),
+        a,
+        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
+        noc,
+    );
+    const balanced_after_delete_root = try balance(a, after_delete_root);
+    defer rcr.freeRcNode(a, balanced_after_delete_root);
+
+    const insert_result = try rcr.insertChars(balanced_after_delete_root, a, content_allocator, req.chars, .{
+        .line = @intCast(req.start_line),
+        .col = @intCast(req.start_col),
+    });
+
+    try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
+        .root = try balance(a, insert_result.node),
+        .old_start_byte = req.start_byte,
+        .old_end_byte = req.end_byte,
+        .new_start_byte = req.start_byte,
+        .new_end_byte = req.start_byte + @as(u32, @intCast(req.chars.len)),
+    });
+
+    return insert_result.allocated_str;
+}
+
+test replaceRange {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
+    defer buf.deinit(a);
+
+    _ = try buf.replaceRange(a, arena.allocator(), ReplaceRangeRequest{
+        .parent_index = buf.index,
+        .edit_type = .registered,
+
+        .chars = "goo",
+        .start_byte = 6,
+        .end_byte = 10,
+        .start_line = 0,
+        .start_col = 6,
+        .end_line = 0,
+        .end_col = 10,
+    });
+
+    try eq(2, buf.edits.items.len);
+    try eqStr("hello good", try buf.toString(idc_if_it_leaks, .lf));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Getters
@@ -161,9 +281,9 @@ fn addEditToHistory(self: *@This(), a: Allocator, edit_type: EditType, parent_in
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Private
 
-fn balance(a: Allocator, new_root: rcr.RcNode) !rcr.RcNode {
-    const is_rebalanced, const balanced_root = try rcr.balance(a, new_root);
-    if (is_rebalanced) rcr.freeRcNode(a, new_root);
+fn balance(a: Allocator, node: rcr.RcNode) !rcr.RcNode {
+    const is_rebalanced, const balanced_root = try rcr.balance(a, node);
+    if (is_rebalanced) rcr.freeRcNode(a, node);
     return balanced_root;
 }
 
