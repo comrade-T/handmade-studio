@@ -36,7 +36,7 @@ pub fn init(a: Allocator, ts_lang: *const ts.Language, pattern_string: []const u
     var self = StoredQuery{};
     self.arena = std.heap.ArenaAllocator.init(a);
     self.pattern_string = try self.arena.allocator().dupe(u8, pattern_string);
-    self.query = try ts.Query.create(ts_lang, pattern_string);
+    self.query = try ts.Query.create(ts_lang, self.pattern_string);
 
     var patterns = std.ArrayList(PredicateMap).init(self.arena.allocator());
 
