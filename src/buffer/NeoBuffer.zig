@@ -270,6 +270,10 @@ pub fn toString(self: *const @This(), a: Allocator, eol_mode: rcr.EolMode) ![]co
     return self.getCurrentRoot().value.toString(a, eol_mode);
 }
 
+pub fn getRange(self: *const @This(), start: rcr.EditPoint, end: ?rcr.EditPoint, buf: []u8) ![]const u8 {
+    return rcr.getRange(self.getCurrentRoot(), start, end, buf);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// History
 
 fn addEditToHistory(self: *@This(), a: Allocator, edit_type: EditType, parent_index: u32, edit: Edit) !void {
