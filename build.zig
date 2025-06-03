@@ -96,10 +96,14 @@ pub fn build(b: *std.Build) void {
 
     const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
 
-    const neo_rc_rope = addTestableModule(&bops, "src/buffer/NeoRcRope.zig", &.{
+    _ = addTestableModule(&bops, "src/buffer/NeoRcRope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
-    _ = neo_rc_rope;
+
+    const neo_buffer = addTestableModule(&bops, "src/buffer/NeoBuffer.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+    }, zig_build_test_step);
+    _ = neo_buffer;
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },

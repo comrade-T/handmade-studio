@@ -1,0 +1,175 @@
+// This file is part of Handmade Studio.
+//
+// Handmade Studio is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// Handmade Studio is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Handmade Studio. If not, see <http://www.gnu.org/licenses/>.
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const NeoBuffer = @This();
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const idc_if_it_leaks = std.heap.page_allocator;
+const assert = std.debug.assert;
+const eqStr = std.testing.expectEqualStrings;
+
+const rcr = @import("NeoRcRope.zig");
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+index: usize = 0,
+edits: ListOfEdits = .{},
+
+const ListOfEdits = std.ArrayListUnmanaged(Edit);
+const NULL_PARENT_INDEX = std.math.maxInt(u32);
+const Edit = struct {
+    parent_index: u32 = NULL_PARENT_INDEX,
+    root: rcr.RcNode,
+    old_start_byte: u32,
+    old_end_byte: u32,
+    new_start_byte: u32,
+    new_end_byte: u32,
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////// Init
+
+pub fn initFromFile(a: Allocator, content_allocator: Allocator, path: []const u8) !NeoBuffer {
+    const root = try rcr.Node.fromFile(a, content_allocator, path);
+    return try init(a, root);
+}
+
+pub fn initFromString(a: Allocator, content_allocator: Allocator, str: []const u8) !NeoBuffer {
+    const root = try rcr.Node.fromString(a, content_allocator, str);
+    return try init(a, root);
+}
+
+test initFromString {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
+    defer buf.deinit(a);
+
+    try eqStr("hello world", try buf.toString(idc_if_it_leaks, .lf));
+}
+
+fn init(a: Allocator, root: rcr.RcNode) !NeoBuffer {
+    var self = NeoBuffer{};
+    try self.edits.append(a, Edit{
+        .root = root,
+        .old_start_byte = 0,
+        .old_end_byte = 0,
+        .new_start_byte = 0,
+        .new_end_byte = root.value.weights().len,
+    });
+    return self;
+}
+
+pub fn deinit(self: *@This(), a: Allocator) void {
+    for (self.edits.items) |edit| rcr.freeRcNode(a, edit.root);
+    self.edits.deinit(a);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Insert
+
+const EditType = enum { interim, registered };
+
+const InsertCharsRequest = struct {
+    parent_index: u32,
+    edit_type: EditType,
+
+    start_byte: u32,
+    start_line: u32,
+    start_col: u32,
+};
+
+pub fn insertChars(self: *@This(), a: Allocator, content_allocator: Allocator, chars: []const u8, req: InsertCharsRequest) !rcr.InsertCharsResult {
+    const result = try rcr.insertChars(self.getCurrentRoot(), a, content_allocator, chars, .{
+        .line = @intCast(req.start_line),
+        .col = @intCast(req.start_col),
+    });
+
+    try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
+        .root = balance(a, result.node),
+        .old_start_byte = req.start_byte,
+        .old_end_byte = req.start_byte,
+        .new_start_byte = req.start_byte,
+        .new_end_byte = req.start_byte + chars.len,
+    });
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Delete
+
+const DeleteRangeRequest = struct {
+    parent_index: u32,
+    edit_type: EditType,
+
+    start_byte: u32,
+    end_byte: u32,
+    start_line: u32,
+    start_col: u32,
+    end_line: u32,
+    end_col: u32,
+};
+
+pub fn deleteRange(self: *@This(), a: Allocator, req: DeleteRangeRequest) !void {
+    const noc = rcr.getNocOfRange(
+        self.getCurrentRoot().value,
+        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
+        .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
+    );
+    const new_root = rcr.deleteChars(self.getCurrentRoot().value, a, .{
+        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
+        .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
+    }, noc);
+
+    try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
+        .root = balance(a, new_root),
+        .old_start_byte = req.start_byte,
+        .old_end_byte = req.end_byte,
+        .new_start_byte = req.start_byte,
+        .new_end_byte = req.start_byte,
+    });
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Getters
+
+pub fn toString(self: *const @This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
+    return self.getCurrentRoot().value.toString(a, eol_mode);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// History
+
+fn addEditToHistory(self: *@This(), a: Allocator, edit_type: EditType, parent_index: u32, edit: Edit) !void {
+    defer self.index += 1;
+    try self.edits.append(a, edit);
+    if (edit_type == .interim) return;
+    self.edits.items[self.edits.items.len - 1].parent_index = parent_index;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Private
+
+fn balance(a: Allocator, new_root: rcr.RcNode) !rcr.RcNode {
+    const is_rebalanced, const balanced_root = try rcr.balance(a, new_root);
+    if (is_rebalanced) rcr.freeRcNode(a, new_root);
+    return balanced_root;
+}
+
+fn getCurrentRoot(self: *const @This()) rcr.RcNode {
+    assert(self.edits.items.len > 0);
+    assert(self.index < self.edits.items.len);
+
+    return self.edits.items[self.index].root;
+}

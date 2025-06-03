@@ -435,7 +435,7 @@ const InsertCharsCtx = struct {
 };
 
 const InsertCharsError = error{ OutOfMemory, InputLenZero, ColumnOutOfBounds };
-const InsertCharsResult = struct {
+pub const InsertCharsResult = struct {
     allocated_str: []const u8,
     new_line: usize,
     new_col: usize,
