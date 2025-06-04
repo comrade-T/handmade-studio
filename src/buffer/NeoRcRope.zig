@@ -271,10 +271,18 @@ pub const Node = union(enum) {
     }
 
     test fromString {
-        // without bol
+        var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
+        defer content_arena.deinit();
+
         {
-            var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
-            defer content_arena.deinit();
+            const root = try Node.fromString(testing_allocator, content_arena.allocator(), "");
+            defer freeRcNode(testing_allocator, root);
+            try eqStr(
+                \\1 B| ``
+            , try debugStr(idc_if_it_leaks, root));
+            try eq(true, root.value.* == .leaf);
+        }
+        {
             const root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
             defer freeRcNode(testing_allocator, root);
             try eqStr(
@@ -998,7 +1006,7 @@ test "insertChars - testing free order after inserting one character after anoth
     try freeBackAndForth("hello venus\nand mars");
 }
 
-fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []const u8) !ArrayList(RcNode) {
+fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []const u8, should_balance: bool) !ArrayList(RcNode) {
     var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
     var node = try Node.fromString(a, content_allocator, "");
     try list.append(node);
@@ -1007,6 +1015,13 @@ fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []
     for (str) |char| {
         const result = try insertChars(node, a, content_allocator, &.{char}, .{ .line = line, .col = col });
         line, col, node = .{ result.new_line, result.new_col, result.node };
+        if (should_balance) {
+            const is_balanced, const balanced_node = try balance(a, node);
+            if (is_balanced) {
+                freeRcNode(a, node);
+                node = balanced_node;
+            }
+        }
         try list.append(result.node);
     }
     return list;
@@ -1016,7 +1031,7 @@ fn freeBackAndForth(str: []const u8) !void {
     {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
-        var iterations = try insertCharOneAfterAnother(testing_allocator, content_arena.allocator(), str);
+        var iterations = try insertCharOneAfterAnother(testing_allocator, content_arena.allocator(), str, false);
         defer iterations.deinit();
         for (0..iterations.items.len) |i| freeRcNode(testing_allocator, iterations.items[i]);
     }
@@ -1024,7 +1039,7 @@ fn freeBackAndForth(str: []const u8) !void {
     {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
-        var iterations = try insertCharOneAfterAnother(testing_allocator, content_arena.allocator(), str);
+        var iterations = try insertCharOneAfterAnother(testing_allocator, content_arena.allocator(), str, false);
         defer iterations.deinit();
 
         for (0..iterations.items.len) |i_| {
@@ -3044,7 +3059,7 @@ test getByteOffsetOfPosition {
 
     {
         const source = "1\n22\n333\n4444";
-        const nodes = try insertCharOneAfterAnother(idc_if_it_leaks, arena.allocator(), source);
+        const nodes = try insertCharOneAfterAnother(idc_if_it_leaks, arena.allocator(), source, false);
         const root = nodes.items[nodes.items.len - 1];
         const root_debug_str =
             \\13 4/13/10
@@ -3411,7 +3426,275 @@ test getNumOfCharsInLine {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Iterate character by character
 
-// TODO:
+const CHARACTER_ITERATOR_MAX_DEPTH = 32;
+const BranchSide = enum { left, right };
+const CharacterForwardIteratorError = error{RootTooDeep};
+
+pub const CharacterForwardIterator = struct {
+    branches: [CHARACTER_ITERATOR_MAX_DEPTH]*Node = undefined,
+    branch_sides: [CHARACTER_ITERATOR_MAX_DEPTH]BranchSide = undefined,
+    branches_len: usize = 0,
+
+    leaf: ?*Node = null,
+    leaf_byte_offset: u32 = 0,
+
+    pub fn init(root: *Node) CharacterForwardIteratorError!CharacterForwardIterator {
+        if (root.weights().depth > CHARACTER_ITERATOR_MAX_DEPTH) return error.RootTooDeep;
+        var self = CharacterForwardIterator{};
+
+        switch (root.*) {
+            .branch => {
+                self.branches[0] = root;
+                self.branch_sides[0] = .left;
+                self.branches_len = 1;
+                self.traverseLatestBranchLeftSide();
+            },
+            .leaf => self.leaf = root,
+        }
+
+        return self;
+    }
+
+    pub fn next(self: *@This()) ?u21 {
+        if (self.leaf == null) {
+            switch (self.getLatestBranchSide()) {
+                .left => self.flipLatestBranchToRightSide(),
+                .right => {
+                    if (self.branches_len == 1) return null;
+                    self.branches_len -= 1;
+                    return self.next();
+                },
+            }
+        }
+
+        const result = self.nextCharInLeaf();
+        if (result.exhausted) {
+            self.leaf = null;
+            self.leaf_byte_offset = 0;
+        }
+        return result.code_point;
+    }
+
+    fn nextCharInLeaf(self: *@This()) NextCharInLeafResult {
+        assert(self.leaf != null);
+        assert(self.leaf.?.* == .leaf);
+
+        if (self.leaf) |leaf_node| {
+            const leaf = leaf_node.leaf;
+
+            var iter = code_point.Iterator{ .bytes = leaf.buf, .i = self.leaf_byte_offset };
+            if (iter.next()) |cp| {
+                self.leaf_byte_offset += cp.len;
+                return NextCharInLeafResult{
+                    .exhausted = !leaf.eol and self.leaf_byte_offset >= leaf.buf.len,
+                    .code_point = cp.code,
+                };
+            }
+
+            if (leaf_node.leaf.eol) return NextCharInLeafResult{ .exhausted = true, .code_point = '\n' };
+        }
+
+        return NextCharInLeafResult{ .exhausted = true, .code_point = null };
+    }
+
+    fn flipLatestBranchToRightSide(self: *@This()) void {
+        self.branch_sides[self.branches_len - 1] = .right;
+        const latest_branch = self.getLatestBranch();
+        switch (latest_branch.branch.right.value.*) {
+            .leaf => self.setLeaf(latest_branch.branch.right.value),
+            .branch => {
+                self.appendBranch(latest_branch.branch.right.value);
+                self.traverseLatestBranchLeftSide();
+            },
+        }
+    }
+
+    fn traverseLatestBranchLeftSide(self: *@This()) void {
+        const latest_branch = self.getLatestBranch();
+        switch (latest_branch.branch.left.value.*) {
+            .leaf => self.setLeaf(latest_branch.branch.left.value),
+            .branch => {
+                self.appendBranch(latest_branch.branch.left.value);
+                self.traverseLatestBranchLeftSide();
+            },
+        }
+    }
+
+    fn setLeaf(self: *@This(), node: *Node) void {
+        self.leaf = node;
+        self.leaf_byte_offset = 0;
+    }
+
+    fn appendBranch(self: *@This(), node: *Node) void {
+        self.branches[self.branches_len] = node;
+        self.branch_sides[self.branches_len] = .left;
+        self.branches_len += 1;
+    }
+
+    const NextCharInLeafResult = struct {
+        code_point: ?u21 = null,
+        exhausted: bool = false,
+    };
+
+    fn getLatestBranch(self: *const @This()) *Node {
+        return self.branches[self.branches_len - 1];
+    }
+
+    fn getLatestBranchSide(self: *const @This()) BranchSide {
+        return self.branch_sides[self.branches_len - 1];
+    }
+};
+
+test CharacterForwardIterator {
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+    {
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\nworld");
+        try testCharacterForwardIterator(root.value, "hello\nworld");
+    }
+    { // works with right-skewed tree
+        const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "hello\nworld", false);
+        try eqStr(
+            \\11 2/11/10
+            \\  1 B| `h` Rc:10
+            \\  10 1/10/9
+            \\    1 `e` Rc:9
+            \\    9 1/9/8
+            \\      1 `l` Rc:8
+            \\      8 1/8/7
+            \\        1 `l` Rc:7
+            \\        7 1/7/6
+            \\          1 `o` Rc:6
+            \\          6 1/6/5
+            \\            1 `` |E Rc:6
+            \\            5 1/5/5
+            \\              1 B| `w` Rc:4
+            \\              4 0/4/4
+            \\                1 `o` Rc:3
+            \\                3 0/3/3
+            \\                  1 `r` Rc:2
+            \\                  2 0/2/2
+            \\                    1 `l`
+            \\                    1 `d`
+        , try debugStr(arena.allocator(), roots.items[roots.items.len - 1]));
+        try testCharacterForwardIterator(roots.items[roots.items.len - 1].value, "hello\nworld");
+    }
+    { // works with left-skewed tree
+        const roots = try insertCharOneAfterAnotherAtTheBeginning(arena.allocator(), arena.allocator(), "hello\nworld", null);
+        try eqStr(
+            \\11 2/11/10
+            \\  10 2/10/9
+            \\    9 2/9/8
+            \\      8 2/8/7
+            \\        7 2/7/6
+            \\          6 1/6/5
+            \\            5 1/5/5
+            \\              4 1/4/4
+            \\                3 1/3/3
+            \\                  2 1/2/2
+            \\                    1 B| `h`
+            \\                    1 `e`
+            \\                  1 `l` Rc:2
+            \\                1 `l` Rc:3
+            \\              1 `o` Rc:4
+            \\            1 `` |E Rc:5
+            \\          1 B| `w` Rc:6
+            \\        1 `o` Rc:7
+            \\      1 `r` Rc:8
+            \\    1 `l` Rc:9
+            \\  1 `d` Rc:10
+        , try debugStr(arena.allocator(), roots.items[roots.items.len - 1]));
+        try testCharacterForwardIterator(roots.items[roots.items.len - 1].value, "hello\nworld");
+    }
+    { // works with whatever this is
+        const roots_a = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "\nworld", false);
+        const roots_b = try insertCharOneAfterAnotherAtTheBeginning(arena.allocator(), arena.allocator(), "hello", roots_a.items[roots_a.items.len - 1]);
+        try eqStr(
+            \\7 2/11/10
+            \\  6 1/6/5
+            \\    5 1/5/5
+            \\      4 1/4/4
+            \\        3 1/3/3
+            \\          2 1/2/2
+            \\            1 B| `h`
+            \\            1 `e`
+            \\          1 `l` Rc:2
+            \\        1 `l` Rc:3
+            \\      1 `o` Rc:4
+            \\    1 `` |E Rc:5
+            \\  5 1/5/5 Rc:6
+            \\    1 B| `w` Rc:4
+            \\    4 0/4/4
+            \\      1 `o` Rc:3
+            \\      3 0/3/3
+            \\        1 `r` Rc:2
+            \\        2 0/2/2
+            \\          1 `l`
+            \\          1 `d`
+        , try debugStr(arena.allocator(), roots_b.items[roots_b.items.len - 1]));
+        try testCharacterForwardIterator(roots_b.items[roots_b.items.len - 1].value, "hello\nworld");
+    }
+    { // works with balanced tree
+        const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "hello\nworld", true);
+        try eqStr(
+            \\6 2/11/10 Rc:0
+            \\  3 1/3/3 Rc:6
+            \\    2 1/2/2 Rc:3
+            \\      1 B| `h` Rc:3
+            \\      1 `e` Rc:2
+            \\    1 `l` Rc:3
+            \\  5 1/8/7 Rc:0
+            \\    3 1/4/3 Rc:2
+            \\      2 0/2/2 Rc:5
+            \\        1 `l` Rc:2
+            \\        1 `o`
+            \\      2 1/2/1 Rc:2
+            \\        1 `` |E Rc:4
+            \\        1 B| `w` Rc:2
+            \\    4 0/4/4
+            \\      1 `o` Rc:3
+            \\      3 0/3/3
+            \\        1 `r` Rc:2
+            \\        2 0/2/2
+            \\          1 `l`
+            \\          1 `d`
+        , try debugStr(arena.allocator(), roots.items[roots.items.len - 1]));
+        try testCharacterForwardIterator(roots.items[roots.items.len - 1].value, "hello\nworld");
+    }
+}
+
+fn testCharacterForwardIterator(root: *Node, expected: []const u8) !void {
+    var iter = try CharacterForwardIterator.init(root);
+    var cp_iter = code_point.Iterator{ .bytes = expected };
+    while (true) {
+        const iter_result = iter.next();
+        const cp_iter_result = cp_iter.next();
+
+        if (iter_result == null) {
+            try eq(null, cp_iter_result);
+            return;
+        }
+
+        // std.debug.print("iter_result: '{c}'\n", .{@as(u8, @intCast(iter_result.?))});
+        try eq(cp_iter_result.?.code, iter_result.?);
+    }
+}
+
+fn insertCharOneAfterAnotherAtTheBeginning(a: Allocator, content_allocator: Allocator, str: []const u8, may_root: ?RcNode) !ArrayList(RcNode) {
+    var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
+    var node = if (may_root) |root| root else try Node.fromString(a, content_allocator, "");
+    try list.append(node);
+
+    var i: usize = str.len;
+    while (i > 0) {
+        i -= 1;
+        const result = try insertChars(node, a, content_allocator, &.{str[i]}, .{ .line = 0, .col = 0 });
+        node = result.node;
+        try list.append(result.node);
+    }
+
+    return list;
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
