@@ -3457,6 +3457,8 @@ pub const CharacterForwardIterator = struct {
 
     pub fn next(self: *@This()) ?u21 {
         if (self.leaf == null) {
+            if (self.branches_len == 0) return null;
+
             switch (self.getLatestBranchSide()) {
                 .left => self.flipLatestBranchToRightSide(),
                 .right => {
@@ -3548,10 +3550,33 @@ pub const CharacterForwardIterator = struct {
 test CharacterForwardIterator {
     var arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer arena.deinit();
+
+    {
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), "");
+        try eq(true, root.value.* == .leaf);
+        try eqStr(
+            \\1 B| ``
+        , try debugStr(arena.allocator(), root));
+        try testCharacterForwardIterator(root.value, "");
+    }
+    {
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello");
+        try eq(true, root.value.* == .leaf);
+        try eqStr(
+            \\1 B| `hello`
+        , try debugStr(arena.allocator(), root));
+        try testCharacterForwardIterator(root.value, "hello");
+    }
     {
         const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\nworld");
+        try eqStr(
+            \\2 2/11/10
+            \\  1 B| `hello` |E
+            \\  1 B| `world`
+        , try debugStr(arena.allocator(), root));
         try testCharacterForwardIterator(root.value, "hello\nworld");
     }
+
     { // works with right-skewed tree
         const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "hello\nworld", false);
         try eqStr(
