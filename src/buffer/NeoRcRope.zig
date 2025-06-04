@@ -1012,8 +1012,11 @@ fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []
     try list.append(node);
     var line: usize = 0;
     var col: usize = 0;
-    for (str) |char| {
-        const result = try insertChars(node, a, content_allocator, &.{char}, .{ .line = line, .col = col });
+
+    var cp_iter = code_point.Iterator{ .bytes = str };
+    while (cp_iter.next()) |cp| {
+        const chars = str[cp.offset .. cp.offset + cp.len];
+        const result = try insertChars(node, a, content_allocator, chars, .{ .line = line, .col = col });
         line, col, node = .{ result.new_line, result.new_col, result.node };
         if (should_balance) {
             const is_balanced, const balanced_node = try balance(a, node);
@@ -1024,6 +1027,7 @@ fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []
         }
         try list.append(result.node);
     }
+
     return list;
 }
 
@@ -3428,7 +3432,7 @@ test getNumOfCharsInLine {
 
 const CHARACTER_ITERATOR_MAX_DEPTH = 32;
 const BranchSide = enum { left, right };
-const CharacterForwardIteratorError = error{ RootTooDeep, OffsetOutOfBounds };
+const CharacterForwardIteratorError = error{ RootTooDeep, OffsetOutOfBounds, OffsetInMiddleOfUnicodeCharacter };
 
 pub const CharacterForwardIterator = struct {
     branches: [CHARACTER_ITERATOR_MAX_DEPTH]*const Node = undefined,
@@ -3451,6 +3455,11 @@ pub const CharacterForwardIterator = struct {
                 self.leaf = root;
                 self.leaf_byte_offset = offset;
             },
+        }
+
+        assert(self.leaf != null);
+        if (self.peekNextCharInLeaf().offset_in_middle_of_unicode_character) {
+            return error.OffsetInMiddleOfUnicodeCharacter;
         }
 
         return self;
@@ -3508,6 +3517,14 @@ pub const CharacterForwardIterator = struct {
     }
 
     fn nextCharInLeaf(self: *@This()) NextCharInLeafResult {
+        const result = self.peekNextCharInLeaf();
+        assert(!result.offset_in_middle_of_unicode_character);
+        if (result.code_point_len) |cp_len| self.leaf_byte_offset += cp_len;
+        return result;
+    }
+
+    const UNICODE_REPLACEMENT_CODE_POINT = 0xfffd;
+    fn peekNextCharInLeaf(self: *@This()) NextCharInLeafResult {
         assert(self.leaf != null);
         assert(self.leaf.?.* == .leaf);
 
@@ -3516,10 +3533,13 @@ pub const CharacterForwardIterator = struct {
 
             var iter = code_point.Iterator{ .bytes = leaf.buf, .i = self.leaf_byte_offset };
             if (iter.next()) |cp| {
-                self.leaf_byte_offset += cp.len;
+                if (cp.code == UNICODE_REPLACEMENT_CODE_POINT) {
+                    return NextCharInLeafResult{ .offset_in_middle_of_unicode_character = true };
+                }
                 return NextCharInLeafResult{
-                    .exhausted = !leaf.eol and self.leaf_byte_offset >= leaf.buf.len,
+                    .exhausted = !leaf.eol and self.leaf_byte_offset + cp.len >= leaf.buf.len,
                     .code_point = cp.code,
+                    .code_point_len = cp.len,
                 };
             }
 
@@ -3565,7 +3585,9 @@ pub const CharacterForwardIterator = struct {
 
     const NextCharInLeafResult = struct {
         code_point: ?u21 = null,
+        code_point_len: ?u3 = null,
         exhausted: bool = false,
+        offset_in_middle_of_unicode_character: bool = false,
     };
 
     fn getLatestBranch(self: *const @This()) *const Node {
@@ -3784,6 +3806,40 @@ test CharacterForwardIterator {
         try testCharacterForwardIterator(root, "", 11);
         try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 12));
     }
+
+    { // works with unicode characters
+        const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "hello 안녕\nworld 👋!", false);
+        const root = roots.items[roots.items.len - 1].value;
+        try testCharacterForwardIterator(root, "hello 안녕\nworld 👋!", 0);
+        try testCharacterForwardIterator(root, "ello 안녕\nworld 👋!", 1);
+        try testCharacterForwardIterator(root, "llo 안녕\nworld 👋!", 2);
+        try testCharacterForwardIterator(root, "lo 안녕\nworld 👋!", 3);
+        try testCharacterForwardIterator(root, "o 안녕\nworld 👋!", 4);
+        try testCharacterForwardIterator(root, " 안녕\nworld 👋!", 5);
+        try testCharacterForwardIterator(root, "안녕\nworld 👋!", 6);
+
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 7));
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 8));
+        try testCharacterForwardIterator(root, "녕\nworld 👋!", 9);
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 10));
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 11));
+        try testCharacterForwardIterator(root, "\nworld 👋!", 12);
+
+        try testCharacterForwardIterator(root, "world 👋!", 13);
+        try testCharacterForwardIterator(root, "orld 👋!", 14);
+        try testCharacterForwardIterator(root, "rld 👋!", 15);
+        try testCharacterForwardIterator(root, "ld 👋!", 16);
+        try testCharacterForwardIterator(root, "d 👋!", 17);
+        try testCharacterForwardIterator(root, " 👋!", 18);
+        try testCharacterForwardIterator(root, "👋!", 19);
+
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 20));
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 21));
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 22));
+        try testCharacterForwardIterator(root, "!", 23);
+        try testCharacterForwardIterator(root, "", 24);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 25));
+    }
 }
 
 fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) !void {
@@ -3792,24 +3848,24 @@ fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) 
     var count: usize = 0;
     while (true) {
         defer count += 1;
+        errdefer {
+            const print_iter = CharacterForwardIterator.init(root, offset) catch unreachable;
+            std.debug.print("failed at count: {d}\n", .{count});
+            std.debug.print("===============================\n", .{});
+            for (0..print_iter.branches_len) |i| {
+                const branch = iter.branches[i];
+                std.debug.print("depth: {d} | '{s}'\n", .{
+                    branch.weights().depth,
+                    Node.toString(branch, idc_if_it_leaks, .lf) catch unreachable,
+                });
+            }
+            std.debug.print("===============================\n", .{});
+        }
 
         const iter_result = iter.next();
         const cp_iter_result = cp_iter.next();
 
         if (iter_result == null) {
-            errdefer {
-                const print_iter = CharacterForwardIterator.init(root, offset) catch unreachable;
-                std.debug.print("failed at count: {d}\n", .{count});
-                std.debug.print("===============================\n", .{});
-                for (0..print_iter.branches_len) |i| {
-                    const branch = iter.branches[i];
-                    std.debug.print("depth: {d} | '{s}'\n", .{
-                        branch.weights().depth,
-                        Node.toString(branch, idc_if_it_leaks, .lf) catch unreachable,
-                    });
-                }
-                std.debug.print("===============================\n", .{});
-            }
             try eq(null, cp_iter_result);
             return;
         }
