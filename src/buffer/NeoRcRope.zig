@@ -3428,31 +3428,61 @@ test getNumOfCharsInLine {
 
 const CHARACTER_ITERATOR_MAX_DEPTH = 32;
 const BranchSide = enum { left, right };
-const CharacterForwardIteratorError = error{RootTooDeep};
+const CharacterForwardIteratorError = error{ RootTooDeep, OffsetOutOfBounds };
 
 pub const CharacterForwardIterator = struct {
-    branches: [CHARACTER_ITERATOR_MAX_DEPTH]*Node = undefined,
+    branches: [CHARACTER_ITERATOR_MAX_DEPTH]*const Node = undefined,
     branch_sides: [CHARACTER_ITERATOR_MAX_DEPTH]BranchSide = undefined,
     branches_len: usize = 0,
 
-    leaf: ?*Node = null,
+    leaf: ?*const Node = null,
     leaf_byte_offset: u32 = 0,
 
-    pub fn init(root: *Node) CharacterForwardIteratorError!CharacterForwardIterator {
-        if (root.weights().depth > CHARACTER_ITERATOR_MAX_DEPTH) return error.RootTooDeep;
+    pub fn init(root: *const Node, offset: u32) CharacterForwardIteratorError!CharacterForwardIterator {
+        const root_weights = root.weights();
+        if (root_weights.depth > CHARACTER_ITERATOR_MAX_DEPTH) return error.RootTooDeep;
+        if (offset > root_weights.len) return error.OffsetOutOfBounds;
+
         var self = CharacterForwardIterator{};
 
         switch (root.*) {
-            .branch => {
-                self.branches[0] = root;
-                self.branch_sides[0] = .left;
-                self.branches_len = 1;
-                self.traverseLatestBranchLeftSide();
+            .branch => self.traverseOffset(root, offset),
+            .leaf => {
+                self.leaf = root;
+                self.leaf_byte_offset = offset;
             },
-            .leaf => self.leaf = root,
         }
 
         return self;
+    }
+
+    fn traverseOffset(self: *@This(), node: *const Node, offset: u32) void {
+        switch (node.*) {
+            .branch => |*branch| {
+                const left_len = branch.left.value.weights().len;
+                const pick_left = left_len > offset;
+                const branch_side = if (pick_left) BranchSide.left else BranchSide.right;
+
+                self.branches[self.branches_len] = node;
+                self.branch_sides[self.branches_len] = branch_side;
+                self.branches_len += 1;
+
+                const child = switch (branch_side) {
+                    .left => branch.left.value,
+                    .right => branch.right.value,
+                };
+                const new_offset = switch (branch_side) {
+                    .left => offset,
+                    .right => offset - left_len,
+                };
+                self.traverseOffset(child, new_offset);
+            },
+
+            .leaf => {
+                self.leaf = node;
+                self.leaf_byte_offset = offset;
+            },
+        }
     }
 
     pub fn next(self: *@This()) ?u21 {
@@ -3522,12 +3552,12 @@ pub const CharacterForwardIterator = struct {
         }
     }
 
-    fn setLeaf(self: *@This(), node: *Node) void {
+    fn setLeaf(self: *@This(), node: *const Node) void {
         self.leaf = node;
         self.leaf_byte_offset = 0;
     }
 
-    fn appendBranch(self: *@This(), node: *Node) void {
+    fn appendBranch(self: *@This(), node: *const Node) void {
         self.branches[self.branches_len] = node;
         self.branch_sides[self.branches_len] = .left;
         self.branches_len += 1;
@@ -3538,7 +3568,7 @@ pub const CharacterForwardIterator = struct {
         exhausted: bool = false,
     };
 
-    fn getLatestBranch(self: *const @This()) *Node {
+    fn getLatestBranch(self: *const @This()) *const Node {
         return self.branches[self.branches_len - 1];
     }
 
@@ -3557,7 +3587,7 @@ test CharacterForwardIterator {
         try eqStr(
             \\1 B| ``
         , try debugStr(arena.allocator(), root));
-        try testCharacterForwardIterator(root.value, "");
+        try testCharacterForwardIterator(root.value, "", 0);
     }
     {
         const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello");
@@ -3565,7 +3595,11 @@ test CharacterForwardIterator {
         try eqStr(
             \\1 B| `hello`
         , try debugStr(arena.allocator(), root));
-        try testCharacterForwardIterator(root.value, "hello");
+        try testCharacterForwardIterator(root.value, "ello", 1);
+        try testCharacterForwardIterator(root.value, "llo", 2);
+        try testCharacterForwardIterator(root.value, "o", 4);
+        try testCharacterForwardIterator(root.value, "", 5);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root.value, 6));
     }
     {
         const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\nworld");
@@ -3574,11 +3608,24 @@ test CharacterForwardIterator {
             \\  1 B| `hello` |E
             \\  1 B| `world`
         , try debugStr(arena.allocator(), root));
-        try testCharacterForwardIterator(root.value, "hello\nworld");
+        try testCharacterForwardIterator(root.value, "hello\nworld", 0);
+        try testCharacterForwardIterator(root.value, "ello\nworld", 1);
+        try testCharacterForwardIterator(root.value, "llo\nworld", 2);
+        try testCharacterForwardIterator(root.value, "lo\nworld", 3);
+        try testCharacterForwardIterator(root.value, "o\nworld", 4);
+        try testCharacterForwardIterator(root.value, "\nworld", 5);
+        try testCharacterForwardIterator(root.value, "world", 6);
+        try testCharacterForwardIterator(root.value, "orld", 7);
+        try testCharacterForwardIterator(root.value, "rld", 8);
+        try testCharacterForwardIterator(root.value, "ld", 9);
+        try testCharacterForwardIterator(root.value, "d", 10);
+        try testCharacterForwardIterator(root.value, "", 11);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root.value, 12));
     }
 
     { // works with right-skewed tree
         const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "hello\nworld", false);
+        const root = roots.items[roots.items.len - 1].value;
         try eqStr(
             \\11 2/11/10
             \\  1 B| `h` Rc:10
@@ -3602,10 +3649,23 @@ test CharacterForwardIterator {
             \\                    1 `l`
             \\                    1 `d`
         , try debugStr(arena.allocator(), roots.items[roots.items.len - 1]));
-        try testCharacterForwardIterator(roots.items[roots.items.len - 1].value, "hello\nworld");
+        try testCharacterForwardIterator(root, "hello\nworld", 0);
+        try testCharacterForwardIterator(root, "ello\nworld", 1);
+        try testCharacterForwardIterator(root, "llo\nworld", 2);
+        try testCharacterForwardIterator(root, "lo\nworld", 3);
+        try testCharacterForwardIterator(root, "o\nworld", 4);
+        try testCharacterForwardIterator(root, "\nworld", 5);
+        try testCharacterForwardIterator(root, "world", 6);
+        try testCharacterForwardIterator(root, "orld", 7);
+        try testCharacterForwardIterator(root, "rld", 8);
+        try testCharacterForwardIterator(root, "ld", 9);
+        try testCharacterForwardIterator(root, "d", 10);
+        try testCharacterForwardIterator(root, "", 11);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 12));
     }
     { // works with left-skewed tree
         const roots = try insertCharOneAfterAnotherAtTheBeginning(arena.allocator(), arena.allocator(), "hello\nworld", null);
+        const root = roots.items[roots.items.len - 1].value;
         try eqStr(
             \\11 2/11/10
             \\  10 2/10/9
@@ -3629,7 +3689,19 @@ test CharacterForwardIterator {
             \\    1 `l` Rc:9
             \\  1 `d` Rc:10
         , try debugStr(arena.allocator(), roots.items[roots.items.len - 1]));
-        try testCharacterForwardIterator(roots.items[roots.items.len - 1].value, "hello\nworld");
+        try testCharacterForwardIterator(root, "hello\nworld", 0);
+        try testCharacterForwardIterator(root, "ello\nworld", 1);
+        try testCharacterForwardIterator(root, "llo\nworld", 2);
+        try testCharacterForwardIterator(root, "lo\nworld", 3);
+        try testCharacterForwardIterator(root, "o\nworld", 4);
+        try testCharacterForwardIterator(root, "\nworld", 5);
+        try testCharacterForwardIterator(root, "world", 6);
+        try testCharacterForwardIterator(root, "orld", 7);
+        try testCharacterForwardIterator(root, "rld", 8);
+        try testCharacterForwardIterator(root, "ld", 9);
+        try testCharacterForwardIterator(root, "d", 10);
+        try testCharacterForwardIterator(root, "", 11);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 12));
     }
     { // works with whatever this is
         const roots_a = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "\nworld", false);
@@ -3657,10 +3729,24 @@ test CharacterForwardIterator {
             \\          1 `l`
             \\          1 `d`
         , try debugStr(arena.allocator(), roots_b.items[roots_b.items.len - 1]));
-        try testCharacterForwardIterator(roots_b.items[roots_b.items.len - 1].value, "hello\nworld");
+        const root = roots_b.items[roots_b.items.len - 1].value;
+        try testCharacterForwardIterator(root, "hello\nworld", 0);
+        try testCharacterForwardIterator(root, "ello\nworld", 1);
+        try testCharacterForwardIterator(root, "llo\nworld", 2);
+        try testCharacterForwardIterator(root, "lo\nworld", 3);
+        try testCharacterForwardIterator(root, "o\nworld", 4);
+        try testCharacterForwardIterator(root, "\nworld", 5);
+        try testCharacterForwardIterator(root, "world", 6);
+        try testCharacterForwardIterator(root, "orld", 7);
+        try testCharacterForwardIterator(root, "rld", 8);
+        try testCharacterForwardIterator(root, "ld", 9);
+        try testCharacterForwardIterator(root, "d", 10);
+        try testCharacterForwardIterator(root, "", 11);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 12));
     }
     { // works with balanced tree
         const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "hello\nworld", true);
+        const root = roots.items[roots.items.len - 1].value;
         try eqStr(
             \\6 2/11/10 Rc:0
             \\  3 1/3/3 Rc:6
@@ -3684,18 +3770,46 @@ test CharacterForwardIterator {
             \\          1 `l`
             \\          1 `d`
         , try debugStr(arena.allocator(), roots.items[roots.items.len - 1]));
-        try testCharacterForwardIterator(roots.items[roots.items.len - 1].value, "hello\nworld");
+        try testCharacterForwardIterator(root, "hello\nworld", 0);
+        try testCharacterForwardIterator(root, "ello\nworld", 1);
+        try testCharacterForwardIterator(root, "llo\nworld", 2);
+        try testCharacterForwardIterator(root, "lo\nworld", 3);
+        try testCharacterForwardIterator(root, "o\nworld", 4);
+        try testCharacterForwardIterator(root, "\nworld", 5);
+        try testCharacterForwardIterator(root, "world", 6);
+        try testCharacterForwardIterator(root, "orld", 7);
+        try testCharacterForwardIterator(root, "rld", 8);
+        try testCharacterForwardIterator(root, "ld", 9);
+        try testCharacterForwardIterator(root, "d", 10);
+        try testCharacterForwardIterator(root, "", 11);
+        try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 12));
     }
 }
 
-fn testCharacterForwardIterator(root: *Node, expected: []const u8) !void {
-    var iter = try CharacterForwardIterator.init(root);
+fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) !void {
+    var iter = try CharacterForwardIterator.init(root, offset);
     var cp_iter = code_point.Iterator{ .bytes = expected };
+    var count: usize = 0;
     while (true) {
+        defer count += 1;
+
         const iter_result = iter.next();
         const cp_iter_result = cp_iter.next();
 
         if (iter_result == null) {
+            errdefer {
+                const print_iter = CharacterForwardIterator.init(root, offset) catch unreachable;
+                std.debug.print("failed at count: {d}\n", .{count});
+                std.debug.print("===============================\n", .{});
+                for (0..print_iter.branches_len) |i| {
+                    const branch = iter.branches[i];
+                    std.debug.print("depth: {d} | '{s}'\n", .{
+                        branch.weights().depth,
+                        Node.toString(branch, idc_if_it_leaks, .lf) catch unreachable,
+                    });
+                }
+                std.debug.print("===============================\n", .{});
+            }
             try eq(null, cp_iter_result);
             return;
         }
