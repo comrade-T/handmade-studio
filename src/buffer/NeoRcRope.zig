@@ -3428,11 +3428,11 @@ test getNumOfCharsInLine {
     try eq(10, getNumOfCharsInLine(root, 1));
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Iterate character by character
+////////////////////////////////////////////////////////////////////////////////////////////// CharacterForwardIterator
 
 const CHARACTER_ITERATOR_MAX_DEPTH = 32;
 const BranchSide = enum { left, right };
-const CharacterForwardIteratorError = error{ RootTooDeep, OffsetOutOfBounds, OffsetInMiddleOfUnicodeCharacter };
+const CharacterIteratorError = error{ RootTooDeep, OffsetOutOfBounds, OffsetInMiddleOfUnicodeCharacter };
 const UNICODE_REPLACEMENT_CODE_POINT = 0xfffd;
 
 pub const CharacterForwardIterator = struct {
@@ -3443,7 +3443,7 @@ pub const CharacterForwardIterator = struct {
     leaf: ?*const Node = null,
     leaf_byte_offset: u32 = 0,
 
-    pub fn init(root: *const Node, offset: u32) CharacterForwardIteratorError!CharacterForwardIterator {
+    pub fn init(root: *const Node, offset: u32) CharacterIteratorError!CharacterForwardIterator {
         const root_weights = root.weights();
         if (root_weights.depth > CHARACTER_ITERATOR_MAX_DEPTH) return error.RootTooDeep;
         if (offset > root_weights.len) return error.OffsetOutOfBounds;
@@ -3451,7 +3451,7 @@ pub const CharacterForwardIterator = struct {
         var self = CharacterForwardIterator{};
 
         switch (root.*) {
-            .branch => self.traverseOffset(root, offset),
+            .branch => characterIteratortraverseOffset(&self, root, offset),
             .leaf => {
                 self.leaf = root;
                 self.leaf_byte_offset = offset;
@@ -3466,40 +3466,11 @@ pub const CharacterForwardIterator = struct {
         return self;
     }
 
-    fn traverseOffset(self: *@This(), node: *const Node, offset: u32) void {
-        switch (node.*) {
-            .branch => |*branch| {
-                const left_len = branch.left.value.weights().len;
-                const pick_left = left_len > offset;
-                const branch_side = if (pick_left) BranchSide.left else BranchSide.right;
-
-                self.branches[self.branches_len] = node;
-                self.branch_sides[self.branches_len] = branch_side;
-                self.branches_len += 1;
-
-                const child = switch (branch_side) {
-                    .left => branch.left.value,
-                    .right => branch.right.value,
-                };
-                const new_offset = switch (branch_side) {
-                    .left => offset,
-                    .right => offset - left_len,
-                };
-                self.traverseOffset(child, new_offset);
-            },
-
-            .leaf => {
-                self.leaf = node;
-                self.leaf_byte_offset = offset;
-            },
-        }
-    }
-
     pub fn next(self: *@This()) ?u21 {
         if (self.leaf == null) {
             if (self.branches_len == 0) return null;
 
-            switch (self.getLatestBranchSide()) {
+            switch (getLatestBranchSide(self)) {
                 .left => self.flipLatestBranchToRightSide(),
                 .right => {
                     if (self.branches_len == 1) return null;
@@ -3517,14 +3488,14 @@ pub const CharacterForwardIterator = struct {
         return result.code_point;
     }
 
-    fn nextCharInLeaf(self: *@This()) NextCharInLeafResult {
+    fn nextCharInLeaf(self: *@This()) CharInLeafResult {
         const result = self.peekNextCharInLeaf();
         assert(!result.offset_in_middle_of_unicode_character);
         if (result.code_point_len) |cp_len| self.leaf_byte_offset += cp_len;
         return result;
     }
 
-    fn peekNextCharInLeaf(self: *@This()) NextCharInLeafResult {
+    fn peekNextCharInLeaf(self: *const @This()) CharInLeafResult {
         assert(self.leaf != null);
         assert(self.leaf.?.* == .leaf);
 
@@ -3534,70 +3505,103 @@ pub const CharacterForwardIterator = struct {
             var iter = code_point.Iterator{ .bytes = leaf.buf, .i = self.leaf_byte_offset };
             if (iter.next()) |cp| {
                 if (cp.code == UNICODE_REPLACEMENT_CODE_POINT and cp.len == 1) {
-                    return NextCharInLeafResult{ .offset_in_middle_of_unicode_character = true };
+                    return CharInLeafResult{ .offset_in_middle_of_unicode_character = true };
                 }
-                return NextCharInLeafResult{
+                return CharInLeafResult{
                     .exhausted = !leaf.eol and self.leaf_byte_offset + cp.len >= leaf.buf.len,
                     .code_point = cp.code,
                     .code_point_len = cp.len,
                 };
             }
 
-            if (leaf_node.leaf.eol) return NextCharInLeafResult{ .exhausted = true, .code_point = '\n' };
+            if (leaf.eol) return CharInLeafResult{ .exhausted = true, .code_point = '\n' };
         }
 
-        return NextCharInLeafResult{ .exhausted = true, .code_point = null };
+        return CharInLeafResult{ .exhausted = true, .code_point = null };
     }
 
     fn flipLatestBranchToRightSide(self: *@This()) void {
         self.branch_sides[self.branches_len - 1] = .right;
-        const latest_branch = self.getLatestBranch();
+        const latest_branch = getLatestBranch(self);
         switch (latest_branch.branch.right.value.*) {
-            .leaf => self.setLeaf(latest_branch.branch.right.value),
+            .leaf => self.setLeafStart(latest_branch.branch.right.value),
             .branch => {
-                self.appendBranch(latest_branch.branch.right.value);
+                appendBranch(self, latest_branch.branch.right.value, .left);
                 self.traverseLatestBranchLeftSide();
             },
         }
     }
 
     fn traverseLatestBranchLeftSide(self: *@This()) void {
-        const latest_branch = self.getLatestBranch();
+        const latest_branch = getLatestBranch(self);
         switch (latest_branch.branch.left.value.*) {
-            .leaf => self.setLeaf(latest_branch.branch.left.value),
+            .leaf => self.setLeafStart(latest_branch.branch.left.value),
             .branch => {
-                self.appendBranch(latest_branch.branch.left.value);
+                appendBranch(self, latest_branch.branch.left.value, .left);
                 self.traverseLatestBranchLeftSide();
             },
         }
     }
 
-    fn setLeaf(self: *@This(), node: *const Node) void {
+    fn setLeafStart(self: *@This(), node: *const Node) void {
         self.leaf = node;
         self.leaf_byte_offset = 0;
     }
-
-    fn appendBranch(self: *@This(), node: *const Node) void {
-        self.branches[self.branches_len] = node;
-        self.branch_sides[self.branches_len] = .left;
-        self.branches_len += 1;
-    }
-
-    const NextCharInLeafResult = struct {
-        code_point: ?u21 = null,
-        code_point_len: ?u3 = null,
-        exhausted: bool = false,
-        offset_in_middle_of_unicode_character: bool = false,
-    };
-
-    fn getLatestBranch(self: *const @This()) *const Node {
-        return self.branches[self.branches_len - 1];
-    }
-
-    fn getLatestBranchSide(self: *const @This()) BranchSide {
-        return self.branch_sides[self.branches_len - 1];
-    }
 };
+
+///////////////////////////// shared code between CharacterForwardIterator and CharacterBackwardsIterator
+
+const CharInLeafResult = struct {
+    code_point: ?u21 = null,
+    code_point_len: ?u3 = null,
+    exhausted: bool = false,
+    offset_in_middle_of_unicode_character: bool = false,
+};
+
+fn characterIteratortraverseOffset(self: anytype, node: *const Node, offset: u32) void {
+    switch (node.*) {
+        .branch => |*branch| {
+            const left_len = branch.left.value.weights().len;
+            const pick_left = left_len > offset;
+            const branch_side = if (pick_left) BranchSide.left else BranchSide.right;
+
+            self.branches[self.branches_len] = node;
+            self.branch_sides[self.branches_len] = branch_side;
+            self.branches_len += 1;
+
+            const child = switch (branch_side) {
+                .left => branch.left.value,
+                .right => branch.right.value,
+            };
+            const new_offset = switch (branch_side) {
+                .left => offset,
+                .right => offset - left_len,
+            };
+            characterIteratortraverseOffset(self, child, new_offset);
+        },
+
+        .leaf => {
+            self.leaf = node;
+            self.leaf_byte_offset = offset;
+        },
+    }
+}
+
+fn appendBranch(self: anytype, node: *const Node, side: BranchSide) void {
+    self.branches[self.branches_len] = node;
+    self.branch_sides[self.branches_len] = side;
+    self.branches_len += 1;
+}
+
+fn getLatestBranch(self: anytype) *const Node {
+    return self.branches[self.branches_len - 1];
+}
+
+fn getLatestBranchSide(self: anytype) BranchSide {
+    return self.branch_sides[self.branches_len - 1];
+}
+
+/////////////////////////////
 
 test "UNICODE_REPLACEMENT_CODE_POINT's len is 3" {
     var cp_iter = code_point.Iterator{ .bytes = "�" };
@@ -3656,6 +3660,22 @@ test CharacterForwardIterator {
         try testCharacterForwardIterator(root.value, "d", 10);
         try testCharacterForwardIterator(root.value, "", 11);
         try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root.value, 12));
+    }
+    {
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\n\nworld");
+        try eqStr(
+            \\3 3/12/10
+            \\  1 B| `hello` |E
+            \\  2 2/6/5
+            \\    1 B| `` |E
+            \\    1 B| `world`
+        , try debugStr(arena.allocator(), root));
+        try testCharacterForwardIterator(root.value, "hello\n\nworld", 0);
+        try testCharacterForwardIterator(root.value, "o\n\nworld", 4);
+        try testCharacterForwardIterator(root.value, "\n\nworld", 5);
+        try testCharacterForwardIterator(root.value, "\nworld", 6);
+        try testCharacterForwardIterator(root.value, "world", 7);
+        try testCharacterForwardIterator(root.value, "d", 11);
     }
 
     { // works with right-skewed tree
@@ -3870,28 +3890,68 @@ test CharacterForwardIterator {
     }
 }
 
-fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) !void {
-    var iter = try CharacterForwardIterator.init(root, offset);
+fn testCharacterIterator(T: type, method: anytype, root: *Node, expected: []const u8, offset: u32) !void {
+    var iter = try T.init(root, offset);
     var cp_iter = code_point.Iterator{ .bytes = expected };
     var count: usize = 0;
     while (true) {
         defer count += 1;
-        errdefer {
-            const print_iter = CharacterForwardIterator.init(root, offset) catch unreachable;
-            std.debug.print("failed at count: {d}\n", .{count});
-            std.debug.print("===============================\n", .{});
-            for (0..print_iter.branches_len) |i| {
-                const branch = iter.branches[i];
-                std.debug.print("depth: {d} | '{s}'\n", .{
-                    branch.weights().depth,
-                    Node.toString(branch, idc_if_it_leaks, .lf) catch unreachable,
-                });
-            }
-            std.debug.print("===============================\n", .{});
-        }
-
-        const iter_result = iter.next();
+        const iter_result = method(&iter);
         const cp_iter_result = cp_iter.next();
+
+        errdefer {
+            std.debug.print("failed at count: {d}\n", .{count});
+
+            {
+                var iter_buf: [5]u8 = undefined;
+                const iter_str = if (iter_result) |cp| blk: {
+                    const len = std.unicode.utf8Encode(cp, &iter_buf) catch unreachable;
+                    break :blk iter_buf[0..len];
+                } else "null";
+
+                var cp_iter_buf: [5]u8 = undefined;
+                const cp_iter_str = if (cp_iter_result) |cp| blk: {
+                    const len = std.unicode.utf8Encode(cp.code, &cp_iter_buf) catch unreachable;
+                    break :blk cp_iter_buf[0..len];
+                } else "null";
+
+                std.debug.print("expected: '{s}' | got: '{s}'\n", .{ cp_iter_str, iter_str });
+            }
+
+            {
+                std.debug.print("===============================\n", .{});
+                var print_iter = T.init(root, offset) catch unreachable;
+                var i: usize = 0;
+                while (method(&print_iter)) |code| {
+                    defer i += 1;
+                    if (i > expected.len) unreachable;
+                    var iter_buf: [5]u8 = undefined;
+                    const len = std.unicode.utf8Encode(code, &iter_buf) catch unreachable;
+                    std.debug.print("i: {d} | str: '{s}'\n", .{ i, iter_buf[0..len] });
+                }
+                std.debug.print("===============================\n", .{});
+            }
+
+            {
+                std.debug.print("\n===============================\n", .{});
+                const print_iter = T.init(root, offset) catch unreachable;
+                for (0..print_iter.branches_len) |i| {
+                    const branch = iter.branches[i];
+                    std.debug.print("depth: {d} | '{s}'\n", .{
+                        branch.weights().depth,
+                        Node.toString(branch, idc_if_it_leaks, .lf) catch unreachable,
+                    });
+                }
+                std.debug.print("--------\n", .{});
+                if (print_iter.leaf) |leaf_node| {
+                    std.debug.print("leaf_buf: '{s}'\n", .{leaf_node.leaf.buf});
+                    std.debug.print("eol: '{any}'\n", .{leaf_node.leaf.eol});
+                } else {
+                    std.debug.print("NO LEAF FOUND\n", .{});
+                }
+                std.debug.print("===============================\n", .{});
+            }
+        }
 
         if (iter_result == null) {
             try eq(null, cp_iter_result);
@@ -3903,20 +3963,234 @@ fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) 
     }
 }
 
+fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) !void {
+    try testCharacterIterator(CharacterForwardIterator, CharacterForwardIterator.next, root, expected, offset);
+}
+
 fn insertCharOneAfterAnotherAtTheBeginning(a: Allocator, content_allocator: Allocator, str: []const u8, may_root: ?RcNode) !ArrayList(RcNode) {
     var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
     var node = if (may_root) |root| root else try Node.fromString(a, content_allocator, "");
     try list.append(node);
 
-    var i: usize = str.len;
+    var i: u32 = @intCast(str.len);
     while (i > 0) {
         i -= 1;
-        const result = try insertChars(node, a, content_allocator, &.{str[i]}, .{ .line = 0, .col = 0 });
-        node = result.node;
-        try list.append(result.node);
+        var cp_iter = code_point.Iterator{ .bytes = str, .i = i };
+        if (cp_iter.next()) |cp| {
+            if (cp.code == UNICODE_REPLACEMENT_CODE_POINT and cp.len == 1) continue;
+            const char = str[i .. i + cp.len];
+            const result = try insertChars(node, a, content_allocator, char, .{ .line = 0, .col = 0 });
+            node = result.node;
+            try list.append(result.node);
+        }
     }
 
     return list;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// CharacterBackwardsIterator
+
+const CharacterBackwardsIterator = struct {
+    branches: [CHARACTER_ITERATOR_MAX_DEPTH]*const Node = undefined,
+    branch_sides: [CHARACTER_ITERATOR_MAX_DEPTH]BranchSide = undefined,
+    branches_len: usize = 0,
+
+    leaf: ?*const Node = null,
+    leaf_byte_offset: u32 = 0,
+
+    pub fn init(root: *const Node, offset: u32) CharacterIteratorError!CharacterBackwardsIterator {
+        const root_weights = root.weights();
+        if (root_weights.depth > CHARACTER_ITERATOR_MAX_DEPTH) return error.RootTooDeep;
+        if (offset > root_weights.len) return error.OffsetOutOfBounds;
+
+        var self = CharacterBackwardsIterator{};
+
+        switch (root.*) {
+            .branch => characterIteratortraverseOffset(&self, root, offset),
+            .leaf => {
+                self.leaf = root;
+                self.leaf_byte_offset = offset;
+            },
+        }
+
+        return self;
+    }
+
+    pub fn prev(self: *@This()) ?u21 {
+        if (self.leaf == null) {
+            if (self.branches_len == 0) return null;
+
+            switch (getLatestBranchSide(self)) {
+                .left => {
+                    if (self.branches_len == 1) return null;
+                    self.branches_len -= 1;
+                    return self.prev();
+                },
+                .right => self.flipLatestBranchToLeftSide(),
+            }
+        }
+
+        const result = self.prevCharInLeaf();
+
+        // this happens when starting offset is at the start of a leaf
+        if (result.code_point == null and self.branches_len > 0) {
+            self.leaf = null;
+            return self.prev();
+        }
+
+        if (result.exhausted) self.leaf = null;
+
+        return result.code_point;
+    }
+
+    fn prevCharInLeaf(self: *@This()) CharInLeafResult {
+        assert(self.leaf != null);
+        assert(self.leaf.?.* == .leaf);
+
+        if (self.leaf) |leaf_node| {
+            const leaf = leaf_node.leaf;
+
+            if (self.leaf_byte_offset == leaf.weights().len and leaf.eol) {
+                self.leaf_byte_offset -= 1;
+                return CharInLeafResult{
+                    .exhausted = leaf.buf.len == 0,
+                    .code_point = '\n',
+                    .code_point_len = 1,
+                };
+            }
+
+            while (true) {
+                if (self.leaf_byte_offset == 0 or leaf.buf.len == 0) return CharInLeafResult{ .exhausted = true, .code_point = null };
+
+                self.leaf_byte_offset -= 1;
+                var iter = code_point.Iterator{ .bytes = leaf.buf, .i = self.leaf_byte_offset };
+
+                if (iter.next()) |cp| {
+                    if (cp.code == UNICODE_REPLACEMENT_CODE_POINT and cp.len == 1) continue;
+
+                    return CharInLeafResult{
+                        .exhausted = self.leaf_byte_offset == 0,
+                        .code_point = cp.code,
+                        .code_point_len = cp.len,
+                    };
+                }
+            }
+        }
+
+        return CharInLeafResult{ .exhausted = true, .code_point = null };
+    }
+
+    fn flipLatestBranchToLeftSide(self: *@This()) void {
+        self.branch_sides[self.branches_len - 1] = .left;
+        const latest_branch = getLatestBranch(self);
+        switch (latest_branch.branch.left.value.*) {
+            .leaf => self.setLeafEnd(latest_branch.branch.left.value),
+            .branch => {
+                appendBranch(self, latest_branch.branch.left.value, .right);
+                self.traverseLatestBranchRightSide();
+            },
+        }
+    }
+
+    fn traverseLatestBranchRightSide(self: *@This()) void {
+        const latest_branch = getLatestBranch(self);
+        switch (latest_branch.branch.right.value.*) {
+            .leaf => self.setLeafEnd(latest_branch.branch.right.value),
+            .branch => {
+                appendBranch(self, latest_branch.branch.right.value, .right);
+                self.traverseLatestBranchRightSide();
+            },
+        }
+    }
+
+    fn setLeafEnd(self: *@This(), node: *const Node) void {
+        self.leaf = node;
+        self.leaf_byte_offset = node.weights().len;
+    }
+};
+
+test CharacterBackwardsIterator {
+    var arena = std.heap.ArenaAllocator.init(testing_allocator);
+    defer arena.deinit();
+
+    {
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), "");
+        try testCharacterBackwardsIterator(root.value, "", 0);
+    }
+    {
+        const str = "hello\n\nworld";
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), str);
+        try eqStr(
+            \\3 3/12/10
+            \\  1 B| `hello` |E
+            \\  2 2/6/5
+            \\    1 B| `` |E
+            \\    1 B| `world`
+        , try debugStr(arena.allocator(), root));
+        try testCharacterBackwardsIterator(root.value, "dlrow\n\nolleh", str.len);
+        try testCharacterBackwardsIterator(root.value, "lrow\n\nolleh", str.len - 1);
+        try testCharacterBackwardsIterator(root.value, "row\n\nolleh", str.len - 2);
+        try testCharacterBackwardsIterator(root.value, "ow\n\nolleh", str.len - 3);
+        try testCharacterBackwardsIterator(root.value, "w\n\nolleh", str.len - 4);
+        try testCharacterBackwardsIterator(root.value, "\n\nolleh", str.len - 5);
+        try testCharacterBackwardsIterator(root.value, "\nolleh", str.len - 6);
+        try testCharacterBackwardsIterator(root.value, "olleh", str.len - 7);
+        try testCharacterBackwardsIterator(root.value, "lleh", str.len - 8);
+        try testCharacterBackwardsIterator(root.value, "h", str.len - 11);
+        try testCharacterBackwardsIterator(root.value, "", str.len - 12);
+    }
+
+    const str_with_unicode = "hello 안녕\n\nworld 👋!";
+    {
+        const root = try Node.fromString(arena.allocator(), arena.allocator(), str_with_unicode);
+        try testCharacterBackwardsIteratorBatch(root.value);
+    }
+    { // works with right-skewed tree
+        const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), str_with_unicode, false);
+        try testCharacterBackwardsIteratorBatch(roots.items[roots.items.len - 1].value);
+    }
+    { // works with left-skewed tree
+        const roots = try insertCharOneAfterAnotherAtTheBeginning(arena.allocator(), arena.allocator(), str_with_unicode, null);
+        try testCharacterBackwardsIteratorBatch(roots.items[roots.items.len - 1].value);
+    }
+    { // works with whatever this is
+        const roots_a = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "\nworld 👋!", false);
+        const roots_b = try insertCharOneAfterAnotherAtTheBeginning(arena.allocator(), arena.allocator(), "hello 안녕\n", roots_a.items[roots_a.items.len - 1]);
+        try testCharacterBackwardsIteratorBatch(roots_b.items[roots_b.items.len - 1].value);
+    }
+    { // works with balanced tree
+        const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), str_with_unicode, true);
+        try testCharacterBackwardsIteratorBatch(roots.items[roots.items.len - 1].value);
+    }
+}
+
+fn testCharacterBackwardsIteratorBatch(root: *Node) !void {
+    const str = "hello 안녕\n\nworld 👋!";
+    try shouldErr(error.OffsetOutOfBounds, CharacterBackwardsIterator.init(root, str.len + 1));
+    try testCharacterBackwardsIterator(root, "!👋 dlrow\n\n녕안 olleh", str.len);
+    try testCharacterBackwardsIterator(root, "👋 dlrow\n\n녕안 olleh", str.len - 1);
+    try testCharacterBackwardsIterator(root, "👋 dlrow\n\n녕안 olleh", str.len - 2);
+    try testCharacterBackwardsIterator(root, "👋 dlrow\n\n녕안 olleh", str.len - 3);
+    try testCharacterBackwardsIterator(root, "👋 dlrow\n\n녕안 olleh", str.len - 4);
+    try testCharacterBackwardsIterator(root, " dlrow\n\n녕안 olleh", str.len - 5);
+    try testCharacterBackwardsIterator(root, "dlrow\n\n녕안 olleh", str.len - 6);
+    try testCharacterBackwardsIterator(root, "w\n\n녕안 olleh", str.len - 10);
+    try testCharacterBackwardsIterator(root, "\n\n녕안 olleh", str.len - 11);
+    try testCharacterBackwardsIterator(root, "\n녕안 olleh", str.len - 12);
+    try testCharacterBackwardsIterator(root, "녕안 olleh", str.len - 13);
+    try testCharacterBackwardsIterator(root, "녕안 olleh", str.len - 14);
+    try testCharacterBackwardsIterator(root, "녕안 olleh", str.len - 15);
+    try testCharacterBackwardsIterator(root, "안 olleh", str.len - 16);
+    try testCharacterBackwardsIterator(root, "안 olleh", str.len - 17);
+    try testCharacterBackwardsIterator(root, "안 olleh", str.len - 18);
+    try testCharacterBackwardsIterator(root, " olleh", str.len - 19);
+    try testCharacterBackwardsIterator(root, "olleh", str.len - 20);
+    try testCharacterBackwardsIterator(root, "h", str.len - 24);
+    try testCharacterBackwardsIterator(root, "", str.len - 25);
+}
+
+fn testCharacterBackwardsIterator(root: *Node, expected: []const u8, offset: u32) !void {
+    try testCharacterIterator(CharacterBackwardsIterator, CharacterBackwardsIterator.prev, root, expected, offset);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
