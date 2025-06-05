@@ -3433,6 +3433,7 @@ test getNumOfCharsInLine {
 const CHARACTER_ITERATOR_MAX_DEPTH = 32;
 const BranchSide = enum { left, right };
 const CharacterForwardIteratorError = error{ RootTooDeep, OffsetOutOfBounds, OffsetInMiddleOfUnicodeCharacter };
+const UNICODE_REPLACEMENT_CODE_POINT = 0xfffd;
 
 pub const CharacterForwardIterator = struct {
     branches: [CHARACTER_ITERATOR_MAX_DEPTH]*const Node = undefined,
@@ -3523,7 +3524,6 @@ pub const CharacterForwardIterator = struct {
         return result;
     }
 
-    const UNICODE_REPLACEMENT_CODE_POINT = 0xfffd;
     fn peekNextCharInLeaf(self: *@This()) NextCharInLeafResult {
         assert(self.leaf != null);
         assert(self.leaf.?.* == .leaf);
@@ -3533,7 +3533,7 @@ pub const CharacterForwardIterator = struct {
 
             var iter = code_point.Iterator{ .bytes = leaf.buf, .i = self.leaf_byte_offset };
             if (iter.next()) |cp| {
-                if (cp.code == UNICODE_REPLACEMENT_CODE_POINT) {
+                if (cp.code == UNICODE_REPLACEMENT_CODE_POINT and cp.len == 1) {
                     return NextCharInLeafResult{ .offset_in_middle_of_unicode_character = true };
                 }
                 return NextCharInLeafResult{
@@ -3598,6 +3598,19 @@ pub const CharacterForwardIterator = struct {
         return self.branch_sides[self.branches_len - 1];
     }
 };
+
+test "UNICODE_REPLACEMENT_CODE_POINT's len is 3" {
+    var cp_iter = code_point.Iterator{ .bytes = "�" };
+    try eq(3, cp_iter.next().?.len);
+}
+
+test "code_point.Iterator returns UNICODE_REPLACEMENT_CODE_POINT with len `1` on OffsetInMiddleOfUnicodeCharacter" {
+    const str = "안";
+    var cp_iter = code_point.Iterator{ .bytes = str, .i = 1 };
+    const result = cp_iter.next();
+    try eq(1, result.?.len);
+    try eq(UNICODE_REPLACEMENT_CODE_POINT, result.?.code);
+}
 
 test CharacterForwardIterator {
     var arena = std.heap.ArenaAllocator.init(testing_allocator);
@@ -3839,6 +3852,21 @@ test CharacterForwardIterator {
         try testCharacterForwardIterator(root, "!", 23);
         try testCharacterForwardIterator(root, "", 24);
         try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root, 25));
+    }
+
+    { // UNICODE_REPLACEMENT_CODE_POINT works as normal
+        const roots = try insertCharOneAfterAnother(arena.allocator(), arena.allocator(), "� hello 안녕", false);
+        const root = roots.items[roots.items.len - 1].value;
+        try testCharacterForwardIterator(root, "� hello 안녕", 0);
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 1));
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 2));
+        try testCharacterForwardIterator(root, " hello 안녕", 3);
+        try testCharacterForwardIterator(root, "hello 안녕", 4);
+        try testCharacterForwardIterator(root, "o 안녕", 8);
+        try testCharacterForwardIterator(root, "안녕", 10);
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 11));
+        try shouldErr(error.OffsetInMiddleOfUnicodeCharacter, CharacterForwardIterator.init(root, 12));
+        try testCharacterForwardIterator(root, "녕", 13);
     }
 }
 
