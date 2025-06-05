@@ -36,8 +36,7 @@ const NotificationLine = @import("NotificationLine");
 
 a: Allocator,
 
-limit: u16 = 100,
-selection_index: u16 = 0,
+selection_index: u32 = 0,
 x: f32 = 100,
 y: f32 = 100,
 
@@ -387,7 +386,7 @@ fn updateMatches(self: *@This(), new_needle: []const u8) !void {
     // fuzzig will crash if needle is an empty string
     if (self.needle.len == 0) {
         for (self.entry_list.items, 0..) |entry, i| {
-            if (i >= self.limit) break;
+            if (i >= self.opts.limit) break;
             try self.match_list.append(Match{
                 .entry_index = i,
                 .score = 0,
@@ -407,7 +406,7 @@ fn updateMatches(self: *@This(), new_needle: []const u8) !void {
     defer searcher.deinit();
 
     for (self.entry_list.items, 0..) |entry, i| {
-        if (i >= self.limit) break;
+        if (i >= self.opts.limit) break;
 
         const match = searcher.scoreMatches(entry.path, self.needle);
         if (match.score) |score| try self.match_list.append(Match{
@@ -523,6 +522,8 @@ const Match = struct {
 const FuzzyFinderCreateOptions = struct {
     cp: ?*ConfirmationPrompt = null,
     nl: ?*NotificationLine = null,
+
+    limit: u32 = 100,
 
     input_name: []const u8,
     kind: utils.AppendFileNamesRequest.Kind = .files,

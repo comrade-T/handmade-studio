@@ -3958,7 +3958,6 @@ fn testCharacterIterator(T: type, method: anytype, root: *Node, expected: []cons
             return;
         }
 
-        // std.debug.print("iter_result: '{c}'\n", .{@as(u8, @intCast(iter_result.?))});
         try eq(cp_iter_result.?.code, iter_result.?);
     }
 }

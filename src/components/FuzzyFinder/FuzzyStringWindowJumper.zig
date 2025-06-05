@@ -74,6 +74,7 @@ pub fn create(
         .sess = sess,
         .finder = try FuzzyFinder.create(a, doi, .{
             .input_name = FSWJ,
+            .limit = 1024 * 1024,
             .onConfirm = .{ .f = onConfirm, .ctx = self },
             .onShow = .{ .f = onShow, .ctx = self },
             .onHide = .{ .f = onHide, .ctx = self },
