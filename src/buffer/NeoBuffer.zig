@@ -274,6 +274,10 @@ pub fn getRange(self: *const @This(), start: rcr.EditPoint, end: ?rcr.EditPoint,
     return rcr.getRange(self.getCurrentRoot(), start, end, buf);
 }
 
+pub fn getNumOfCharsInLine(self: *const @This(), line: usize) usize {
+    return rcr.getNumOfCharsInLine(self.getCurrentRoot(), line);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// History
 
 fn addEditToHistory(self: *@This(), a: Allocator, edit_type: EditType, parent_index: u32, edit: Edit) !void {

@@ -280,7 +280,12 @@ const Predicate = union(enum) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Match
 
-pub fn nextMatch(self: *@This(), query_cursor: *ts.Query.Cursor, buffer: *const NeoBuffer) ?ts.Query.Match {
+const NextMatchResult = struct {
+    all_matched: bool,
+    match: ?ts.Query.Match = null,
+};
+
+pub fn nextMatch(self: *@This(), query_cursor: *ts.Query.Cursor, buffer: *const NeoBuffer) ?NextMatchResult {
     const match = query_cursor.nextMatch() orelse return null;
 
     const predicates_map = self.patterns[match.pattern_index];
@@ -296,9 +301,10 @@ pub fn nextMatch(self: *@This(), query_cursor: *ts.Query.Cursor, buffer: *const 
         );
 
         if (predicates_map.get(cap.id)) |predicates| {
-            for (predicates.items) |p| if (!p.eval(node_contents)) return null;
+            for (predicates.items) |p|
+                if (!p.eval(node_contents)) return NextMatchResult{ .all_matched = false };
         }
     }
 
-    return match;
+    return NextMatchResult{ .all_matched = true, .match = match };
 }
