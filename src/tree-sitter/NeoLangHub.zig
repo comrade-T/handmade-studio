@@ -205,6 +205,12 @@ const LongCapture = struct {
     capture_id: u8,
 };
 
+fn captureLessThan(_: void, a: anytype, b: anytype) bool {
+    if (a.start_col < b.start_col) return true;
+    if (a.start_col == b.start_col) return a.end_col < b.end_col;
+    return false;
+}
+
 test {
     try eq(255, MAX_INT_U8);
     try eq(4_294_967_295, MAX_INT_U32);
@@ -220,25 +226,34 @@ const MAX_INT_U32 = std.math.maxInt(u32);
 const MAX_INT_U8 = std.math.maxInt(u8);
 
 const GetCapturesResult = struct {
-    std: []const []const StdCapture = &.{},
-    longmap: LongCapturesMap = .{},
+    std: []const []const []const StdCapture = &.{},
+    long: []const LongCapturesMap = &.{},
 };
 
-fn getCaptures(self: *@This(), buf: *const Buffer, start_line: u32, end_line: u32) !GetCapturesResult {
+fn getCaptures(self: *@This(), buf: *const Buffer, tree: *ts.Tree, langsuite: *const NeoLangSuite, start_line: u32, end_line: u32) !GetCapturesResult {
     var result = GetCapturesResult{};
-    const tree = self.buftreemap.get(buf) orelse return result;
-    const langsuite = try self.getLangSuite(.{ .language = tree.getLanguage() });
 
-    const StdCapturesList = std.ArrayListUnmanaged(StdCapture);
-    var stdArrayList = try std.ArrayListUnmanaged(StdCapturesList).initCapacity(self.a, end_line - start_line + 1);
-    defer stdArrayList.deinit(self.a);
-    for (start_line..end_line + 1) |i| try result.stdmap.put(i, StdCapturesList{});
+    const CodePath = enum { std, long };
+    var code_paths = try self.a.alloc(CodePath, end_line - start_line + 1);
+    defer self.a.free(code_paths);
+    for (start_line..end_line + 1, 0..) |linenr, i| {
+        const noc = buf.getNumOfCharsInLine(linenr);
+        code_paths[i] = if (noc > MAX_INT_U8) .long else .std;
+    }
 
-    const LongCapturesList = std.ArrayListUnmanaged(LongCapture);
-    var longmap = std.AutoHashMapUnmanaged(u32, LongCapturesList){};
-    defer longmap.deinit(self.a);
+    var qstd_list = try std.ArrayListUnmanaged([]const []const StdCapture).initCapacity(self.a, langsuite.queries.items.len);
+    var qlong_list = try std.ArrayListUnmanaged(LongCapturesMap).initCapacity(self.a, langsuite.queries.items.len);
 
     for (langsuite.queries.items) |sq| {
+        const StdCapturesList = std.ArrayListUnmanaged(StdCapture);
+        var stdArrayList = try std.ArrayListUnmanaged(StdCapturesList).initCapacity(self.a, end_line - start_line + 1);
+        defer stdArrayList.deinit(self.a);
+        for (start_line..end_line + 1) |i| try result.stdmap.put(i, StdCapturesList{});
+
+        const LongCapturesList = std.ArrayListUnmanaged(LongCapture);
+        var longListMap = std.AutoHashMapUnmanaged(u32, LongCapturesList){};
+        defer longListMap.deinit(self.a);
+
         var cursor = try ts.Query.Cursor.create();
         cursor.execute(sq.query, tree.getRootNode());
         cursor.setPointRange(
@@ -252,47 +267,50 @@ fn getCaptures(self: *@This(), buf: *const Buffer, start_line: u32, end_line: u3
 
             for (match.captures()) |cap| {
                 const capture_group_name = sq.query.getCaptureNameForId(cap.id);
-                assert(capture_group_name.len > 0);
                 if (capture_group_name[0] == '_') continue;
-
                 const start = cap.node.getStartPoint();
                 const end = cap.node.getEndPoint();
-                const noc = buf.getNumOfCharsInLine();
 
-                if (noc > MAX_INT_U8) {
-                    for (start.row..end.row + 1) |linenr| {
-                        if (!longmap.contains(linenr)) try longmap.put(self.a, linenr, LongCapturesList{});
-                        var list = longmap.getPtr(linenr) orelse unreachable;
-                        try list.append(self.a, LongCapture{
+                for (start.row..end.row + 1, 0..) |linenr, i| {
+                    switch (code_paths[i]) {
+                        .std => try stdArrayList.items[i].append(self.a, StdCapture{
                             .capture_id = @intCast(cap.id),
-                            .start_col = if (linenr == start.row) start.column else 0,
-                            .end_col = if (linenr == end.row) end.column else MAX_INT_U32,
-                        });
+                            .start_col = if (linenr == start.row) @intCast(start.column) else 0,
+                            .end_col = if (linenr == end.row) @intCast(end.column) else MAX_INT_U8,
+                        }),
+                        .long => {
+                            if (!longListMap.contains(linenr)) try longListMap.put(self.a, linenr, LongCapturesList{});
+                            var list = longListMap.getPtr(linenr) orelse unreachable;
+                            try list.append(self.a, LongCapture{
+                                .capture_id = @intCast(cap.id),
+                                .start_col = if (linenr == start.row) start.column else 0,
+                                .end_col = if (linenr == end.row) end.column else MAX_INT_U32,
+                            });
+                        },
                     }
-                    continue;
-                }
-
-                for (start.row..end.row + 1) |linenr| {
-                    const idx: usize = linenr - @as(usize, @intCast(start_line));
-                    try stdArrayList.items[idx].append(self.a, StdCapture{
-                        .capture_id = @intCast(cap.id),
-                        .start_col = if (linenr == start.row) @intCast(start.column) else 0,
-                        .end_col = if (linenr == end.row) @intCast(end.column) else MAX_INT_U32,
-                    });
                 }
             }
         }
+
+        var stdSliceList = try std.ArrayListUnmanaged([]const StdCapture).initCapacity(self.a, end_line - start_line + 1);
+        for (stdArrayList.items) |cap_list| {
+            std.mem.sort(StdCapture, cap_list.items, {}, captureLessThan);
+            try stdSliceList.append(self.a, try cap_list.toOwnedSlice());
+        }
+        try qstd_list.append(try stdSliceList.toOwnedSlice(self.a));
+
+        var longmap = LongCapturesMap{};
+        var iter = longListMap.iterator();
+        while (iter.next()) |entry| {
+            var cap_list = entry.value_ptr;
+            std.mem.sort(LongCapture, cap_list.items, {}, captureLessThan);
+            try longmap.put(self.a, entry.key_ptr.*, try cap_list.toOwnedSlice(self.a));
+        }
+        try qlong_list.append(self.a, longmap);
     }
 
-    var stdSliceList = try std.ArrayListUnmanaged([]const StdCapture).initCapacity(self.a, end_line - start_line + 1);
-    for (stdArrayList.items) |cap_list| try stdSliceList.append(self.a, try cap_list.toOwnedSlice());
-    result.std = try stdSliceList.toOwnedSlice(self.a);
-
-    var iter = longmap.iterator();
-    while (iter.next()) |entry| {
-        var list = entry.value_ptr;
-        try result.longmap.put(self.a, entry.key_ptr.*, try list.toOwnedSlice(self.a));
-    }
-
-    return result;
+    return GetCapturesResult{
+        .std = try qstd_list.toOwnedSlice(self.a),
+        .long = try qlong_list.toOwnedSlice(self.a),
+    };
 }
