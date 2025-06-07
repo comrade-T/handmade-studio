@@ -104,6 +104,14 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
     }, zig_build_test_step);
 
+    const neo_langhub = addTestableModule(&bops, "src/tree-sitter/NeoLangHub.zig", &.{
+        .{ .name = "mvzr", .module = mvzr },
+        .{ .name = "ztracy", .module = ztracy.module("root") },
+        .{ .name = "NeoBuffer", .module = neo_buffer.module },
+        ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+    }, zig_build_test_step);
+    neo_langhub.module.linkLibrary(tree_sitter);
+
     const neo_window_source = addTestableModule(&bops, "src/window/NeoWindowSource.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "NeoBuffer", .module = neo_buffer.module },
