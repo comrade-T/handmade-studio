@@ -22,15 +22,15 @@ const Allocator = std.mem.Allocator;
 pub const ts = @import("bindings.zig");
 pub const NeoStoredQuery = @import("NeoStoredQuery.zig");
 
-pub const SupportedLanguages = enum { zig };
+pub const SupportedLanguage = enum { zig };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
-map: std.AutoArrayHashMap(SupportedLanguages, NeoLangSuite),
+map: std.AutoArrayHashMapUnmanaged(*const ts.Language, NeoLangSuite) = .{},
 
 pub fn init(a: Allocator) !NeoLangHub {
-    return NeoLangHub{ .a = a, .map = std.AutoArrayHashMap(SupportedLanguages, *NeoLangSuite).init(a) };
+    return NeoLangHub{ .a = a };
 }
 
 pub fn deinit(self: *@This()) void {
@@ -38,33 +38,42 @@ pub fn deinit(self: *@This()) void {
     self.map.deinit();
 }
 
-pub fn get(self: *@This(), lang_choice: SupportedLanguages) !*NeoLangSuite {
-    if (!self.map.contains(lang_choice)) {
-        var ls = try NeoLangSuite.init(lang_choice);
-        try ls.addDefaultHighlightQuery();
-        try self.map.put(lang_choice, ls);
+const GetLangSuiteRequest = union(enum) {
+    language: *const ts.Language,
+    lang_choice: SupportedLanguage,
+};
+
+pub fn getLangSuite(self: *@This(), req: GetLangSuiteRequest) !*NeoLangSuite {
+    const language = switch (req) {
+        .language => |lang| lang,
+        .lang_choice => |lang_choice| switch (lang_choice) {
+            .zig => try ts.Language.get("zig"),
+        },
+    };
+
+    if (!self.map.contains(language)) {
+        var langsuite = try NeoLangSuite.init(language);
+        try langsuite.addDefaultHighlightQuery();
+        try self.map.put(self.a, language, langsuite);
     }
-    return self.map.get(lang_choice) orelse unreachable;
+    return self.map.getPtr(language) orelse unreachable;
 }
 
-pub fn getLangChoiceFromFilePath(path: []const u8) ?SupportedLanguages {
-    if (std.mem.endsWith(u8, path, ".zig")) return SupportedLanguages.zig;
+pub fn getLangChoiceFromFilePath(path: []const u8) ?SupportedLanguage {
+    if (std.mem.endsWith(u8, path, ".zig")) return SupportedLanguage.zig;
     return null;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// NeoLangSuite
 
 const NeoLangSuite = struct {
-    language: *const ts.Language,
-    queries: std.ArrayListUnmanaged(NeoStoredQuery),
+    parser: *ts.Parser,
+    queries: std.ArrayListUnmanaged(NeoStoredQuery) = .{},
 
-    pub fn init(lang_choice: SupportedLanguages) !NeoLangSuite {
-        return NeoLangSuite{
-            .language = switch (lang_choice) {
-                .zig => try ts.Language.get("zig"),
-            },
-            .queries = .{},
-        };
+    pub fn init(language: *const ts.Language) !NeoLangSuite {
+        const parser = try ts.Parser.create();
+        try parser.setLanguage(language);
+        return NeoLangSuite{ .parser = parser };
     }
 
     pub fn deinit(self: *@This(), a: Allocator) void {
@@ -80,7 +89,8 @@ const NeoLangSuite = struct {
     }
 
     pub fn addQuery(self: *@This(), a: Allocator, pattern_string: []const u8) !void {
-        const sq = try NeoStoredQuery.init(a, self.language, pattern_string);
+        const language = try self.parser.getLanguage() orelse unreachable;
+        const sq = try NeoStoredQuery.init(a, language, pattern_string);
         try self.queries.append(a, sq);
     }
 };
