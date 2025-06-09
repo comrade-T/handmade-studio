@@ -23,7 +23,8 @@ const assert = std.debug.assert;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
-const rcr = @import("NeoRcRope.zig");
+pub const rcr = @import("NeoRcRope.zig");
+pub const InsertManager = @import("InsertManager.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -43,14 +44,14 @@ const Edit = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Init
 
-pub fn initFromFile(a: Allocator, content_allocator: Allocator, path: []const u8) !NeoBuffer {
-    const root = try rcr.Node.fromFile(a, content_allocator, path);
-    return try init(a, root);
+pub fn initFromFile(a: Allocator, insert_manager: *InsertManager, path: []const u8) !NeoBuffer {
+    const allocated_str, const root = try rcr.Node.fromFile(a, insert_manager.a, path);
+    return create(a, insert_manager, allocated_str, root);
 }
 
-pub fn initFromString(a: Allocator, content_allocator: Allocator, str: []const u8) !NeoBuffer {
-    const root = try rcr.Node.fromString(a, content_allocator, str);
-    return try init(a, root);
+pub fn initFromString(a: Allocator, insert_manager: *InsertManager, str: []const u8) !NeoBuffer {
+    const allocated_str, const root = try rcr.Node.fromString(a, insert_manager.a, str);
+    return create(a, insert_manager, allocated_str, root);
 }
 
 test initFromString {
@@ -64,8 +65,9 @@ test initFromString {
     try eqStr("hello world", try buf.toString(idc_if_it_leaks, .lf));
 }
 
-fn init(a: Allocator, root: rcr.RcNode) !NeoBuffer {
-    var self = NeoBuffer{};
+fn create(a: Allocator, insert_manager: *InsertManager, allocated_str: []const u8, root: rcr.RcNode) !*NeoBuffer {
+    const self = try a.create(NeoBuffer);
+    self.* = NeoBuffer{};
     try self.edits.append(a, Edit{
         .root = root,
         .old_start_byte = 0,
@@ -73,19 +75,21 @@ fn init(a: Allocator, root: rcr.RcNode) !NeoBuffer {
         .new_start_byte = 0,
         .new_end_byte = root.value.weights().len,
     });
+    try insert_manager.initBuffer(self, allocated_str);
     return self;
 }
 
-pub fn deinit(self: *@This(), a: Allocator) void {
+pub fn destroy(self: *@This(), a: Allocator) void {
     for (self.edits.items) |edit| rcr.freeRcNode(a, edit.root);
     self.edits.deinit(a);
+    a.destroy(self);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Insert
 
 const EditType = enum { interim, registered };
 
-const InsertCharsRequest = struct {
+pub const InsertCharsRequest = struct {
     parent_index: u32,
     edit_type: EditType,
 
@@ -95,8 +99,8 @@ const InsertCharsRequest = struct {
     start_col: u32,
 };
 
-pub fn insertChars(self: *@This(), a: Allocator, content_allocator: Allocator, req: InsertCharsRequest) ![]const u8 {
-    const result = try rcr.insertChars(self.getCurrentRoot(), a, content_allocator, req.chars, .{
+pub fn insertChars(self: *@This(), a: Allocator, req: InsertCharsRequest) ![]const u8 {
+    const result = try rcr.insertChars(self.getCurrentRoot(), a, req.chars, .{
         .line = @intCast(req.start_line),
         .col = @intCast(req.start_col),
     });
@@ -295,7 +299,7 @@ fn balance(a: Allocator, node: rcr.RcNode) !rcr.RcNode {
     return balanced_root;
 }
 
-fn getCurrentRoot(self: *const @This()) rcr.RcNode {
+pub fn getCurrentRoot(self: *const @This()) rcr.RcNode {
     assert(self.edits.items.len > 0);
     assert(self.index < self.edits.items.len);
 

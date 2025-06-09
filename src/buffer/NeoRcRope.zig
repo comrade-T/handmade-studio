@@ -233,10 +233,10 @@ pub const Node = union(enum) {
         var arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
         defer arena.deinit();
 
-        const root = try Node.fromString(idc_if_it_leaks, arena.allocator(), "hello world");
+        _, const root = try Node.fromString(idc_if_it_leaks, arena.allocator(), "hello world");
         try eqStr("hello world", try root.value.toString(idc_if_it_leaks, .lf));
 
-        const r1 = try insertChars(root, idc_if_it_leaks, arena.allocator(), "// ", .{ .line = 0, .col = 0 });
+        const r1 = try insertChars(root, idc_if_it_leaks, "// ", .{ .line = 0, .col = 0 });
         try eqStr("// hello world", try r1.node.value.toString(idc_if_it_leaks, .lf));
     }
 
@@ -258,12 +258,12 @@ pub const Node = union(enum) {
 
     ///////////////////////////// Load
 
-    pub fn fromString(a: Allocator, content_allocator: Allocator, source: []const u8) !RcNode {
+    pub fn fromString(a: Allocator, content_allocator: Allocator, source: []const u8) !FromReaderResult {
         var stream = std.io.fixedBufferStream(source);
         return Node.fromReader(a, content_allocator, stream.reader(), source.len);
     }
 
-    pub fn fromFile(a: Allocator, content_allocator: Allocator, path: []const u8) !RcNode {
+    pub fn fromFile(a: Allocator, content_allocator: Allocator, path: []const u8) !FromReaderResult {
         const file = try std.fs.cwd().openFile(path, .{ .mode = .read_only });
         defer file.close();
         const stat = try file.stat();
@@ -275,7 +275,7 @@ pub const Node = union(enum) {
         defer content_arena.deinit();
 
         {
-            const root = try Node.fromString(testing_allocator, content_arena.allocator(), "");
+            _, const root = try Node.fromString(testing_allocator, content_arena.allocator(), "");
             defer freeRcNode(testing_allocator, root);
             try eqStr(
                 \\1 B| ``
@@ -283,7 +283,7 @@ pub const Node = union(enum) {
             try eq(true, root.value.* == .leaf);
         }
         {
-            const root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
+            _, const root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
             defer freeRcNode(testing_allocator, root);
             try eqStr(
                 \\2 2/11/10
@@ -293,7 +293,8 @@ pub const Node = union(enum) {
         }
     }
 
-    fn fromReader(a: Allocator, content_allocator: Allocator, reader: anytype, buffer_size: usize) !RcNode {
+    const FromReaderResult = struct { []const u8, RcNode };
+    fn fromReader(a: Allocator, content_allocator: Allocator, reader: anytype, buffer_size: usize) !FromReaderResult {
         const buf = try content_allocator.alloc(u8, buffer_size);
 
         const read_size = try reader.read(buf);
@@ -304,7 +305,7 @@ pub const Node = union(enum) {
 
         const leaves = try createLeavesByNewLine(a, buf);
         defer a.free(leaves);
-        return try mergeLeaves(a, leaves);
+        return .{ buf, try mergeLeaves(a, leaves) };
     }
 
     fn createLeavesByNewLine(a: std.mem.Allocator, buf: []const u8) ![]RcNode {
@@ -367,26 +368,6 @@ pub const Node = union(enum) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const SINGLE_CHARS = [_][]const u8{
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 0-15
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 16-31
-    " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", // 32-47
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", // 48-63
-    "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", // 64-79
-    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", // 80-95
-    "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", // 96-111
-    "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "", // 112-127
-    // Remaining values (128-255) are non-readable in ASCII, so they will be empty strings
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 128-143
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 144-159
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 160-175
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 176-191
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 192-207
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 208-223
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 224-239
-    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 240-255
-};
-
 const InsertCharsCtx = struct {
     a: Allocator,
     col: usize,
@@ -444,25 +425,15 @@ const InsertCharsCtx = struct {
 
 const InsertCharsError = error{ OutOfMemory, InputLenZero, ColumnOutOfBounds };
 pub const InsertCharsResult = struct {
-    allocated_str: []const u8,
     new_line: usize,
     new_col: usize,
     node: RcNode,
 };
 const EMPTY_STR = "";
-pub fn insertChars(self_: RcNode, a: Allocator, content_allocator: Allocator, chars: []const u8, destination: EditPoint) InsertCharsError!InsertCharsResult {
+pub fn insertChars(self_: RcNode, a: Allocator, chars: []const u8, destination: EditPoint) InsertCharsError!InsertCharsResult {
     if (chars.len == 0) return error.InputLenZero;
     var self = self_;
-
-    var allocated_str: []const u8 = EMPTY_STR;
-    var rest = if (chars.len == 1 and chars[0] != '\n')
-        SINGLE_CHARS[chars[0]]
-    else blk: {
-        const duped = try content_allocator.dupe(u8, chars);
-        allocated_str = duped;
-        break :blk duped;
-    };
-
+    var rest = chars;
     var chunk = rest;
     var line = destination.line;
     var col = destination.col;
@@ -504,12 +475,7 @@ pub fn insertChars(self_: RcNode, a: Allocator, content_allocator: Allocator, ch
         }
     }
 
-    return InsertCharsResult{
-        .allocated_str = allocated_str,
-        .new_line = line,
-        .new_col = col,
-        .node = self,
-    };
+    return InsertCharsResult{ .new_line = line, .new_col = col, .node = self };
 }
 
 test "insertChars - single insertion at beginning" {
@@ -518,7 +484,7 @@ test "insertChars - single insertion at beginning" {
         var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
         defer content_arena.deinit();
 
-        const old_root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
+        _, const old_root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
         defer freeRcNode(testing_allocator, old_root);
         try eqStr(
             \\2 2/11/10
@@ -527,7 +493,7 @@ test "insertChars - single insertion at beginning" {
         , try debugStr(idc_if_it_leaks, old_root));
 
         {
-            const result = try insertChars(old_root, testing_allocator, content_arena.allocator(), "ok ", .{ .line = 0, .col = 0 });
+            const result = try insertChars(old_root, testing_allocator, "ok ", .{ .line = 0, .col = 0 });
             defer freeRcNode(testing_allocator, result.node);
 
             try eqStr(
@@ -553,7 +519,7 @@ test "insertChars - single insertion at beginning" {
         defer content_arena.deinit();
 
         // before
-        const old_root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
+        _, const old_root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello\nworld");
         try eqStr(
             \\2 2/11/10
             \\  1 B| `hello` |E
@@ -561,7 +527,7 @@ test "insertChars - single insertion at beginning" {
         , try debugStr(idc_if_it_leaks, old_root));
 
         // after insertChars()
-        const result = try insertChars(old_root, testing_allocator, content_arena.allocator(), "ok ", .{ .line = 0, .col = 0 });
+        const result = try insertChars(old_root, testing_allocator, "ok ", .{ .line = 0, .col = 0 });
         {
             try eqStr(
                 \\2 2/11/10
@@ -600,10 +566,10 @@ test "insertChars - insert in middle of leaf" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello");
+    _, const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello");
 
     // `hello` -> `he3llo`
-    const r1 = try insertChars(original, testing_allocator, content_arena.allocator(), "3", .{ .line = 0, .col = 2 });
+    const r1 = try insertChars(original, testing_allocator, "3", .{ .line = 0, .col = 2 });
     try eq(.{ 0, 3 }, .{ r1.new_line, r1.new_col });
     try eqStr(
         \\3 1/6/6
@@ -614,7 +580,7 @@ test "insertChars - insert in middle of leaf" {
     , try debugStr(idc_if_it_leaks, r1.node));
 
     // `he3llo` -> `he3ll0o`
-    const r2 = try insertChars(r1.node, testing_allocator, content_arena.allocator(), "0", .{ .line = 0, .col = 5 });
+    const r2 = try insertChars(r1.node, testing_allocator, "0", .{ .line = 0, .col = 5 });
     try eq(.{ 0, 6 }, .{ r2.new_line, r2.new_col });
     try eqStr(
         \\5 1/7/7
@@ -629,7 +595,7 @@ test "insertChars - insert in middle of leaf" {
     , try debugStr(idc_if_it_leaks, r2.node));
 
     // `he3ll0o` -> `he3ll\n0o`
-    const r3 = try insertChars(r2.node, testing_allocator, content_arena.allocator(), "\n", .{ .line = 0, .col = 5 });
+    const r3 = try insertChars(r2.node, testing_allocator, "\n", .{ .line = 0, .col = 5 });
     try eq(.{ 1, 0 }, .{ r3.new_line, r3.new_col });
     try eqStr(
         \\6 2/8/7
@@ -656,13 +622,13 @@ test "insertChars - multiple insertions from empty string" {
     const a = testing_allocator;
 
     // original
-    const r0 = try Node.fromString(a, content_arena.allocator(), "");
+    _, const r0 = try Node.fromString(a, content_arena.allocator(), "");
     try eqStr(
         \\1 B| ``
     , try debugStr(idc_if_it_leaks, r0));
 
     // 1st edit
-    const res1 = try insertChars(r0, a, content_arena.allocator(), "h", .{ .line = 0, .col = 0 });
+    const res1 = try insertChars(r0, a, "h", .{ .line = 0, .col = 0 });
     {
         try eqStr(
             \\1 B| ``
@@ -677,7 +643,7 @@ test "insertChars - multiple insertions from empty string" {
     }
 
     // 2st edit
-    const res2 = try insertChars(res1.node, a, content_arena.allocator(), "e", .{ .line = res1.new_line, .col = res1.new_col });
+    const res2 = try insertChars(res1.node, a, "e", .{ .line = res1.new_line, .col = res1.new_col });
     {
         try eqStr(
             \\1 B| ``
@@ -697,7 +663,7 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, res2.node));
     }
 
-    const res3 = try insertChars(res2.node, a, content_arena.allocator(), "l", .{ .line = res2.new_line, .col = res2.new_col });
+    const res3 = try insertChars(res2.node, a, "l", .{ .line = res2.new_line, .col = res2.new_col });
     // 3rd edit
     {
         try eqStr(
@@ -726,7 +692,7 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, res3.node));
     }
 
-    const res4 = try insertChars(res3.node, a, content_arena.allocator(), "3", .{ .line = 0, .col = 1 });
+    const res4 = try insertChars(res3.node, a, "3", .{ .line = 0, .col = 1 });
     // 4rd edit
     {
         try eqStr(
@@ -765,7 +731,7 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, res4.node));
     }
 
-    const res5 = try insertChars(res4.node, a, content_arena.allocator(), "// ", .{ .line = 0, .col = 0 });
+    const res5 = try insertChars(res4.node, a, "// ", .{ .line = 0, .col = 0 });
     {
         try eq(.{ 0, 3 }, .{ res5.new_line, res5.new_col });
         try eqStr(
@@ -781,7 +747,7 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, res5.node));
     }
 
-    const res6a = try insertChars(res5.node, a, content_arena.allocator(), "o", .{ .line = 0, .col = 7 });
+    const res6a = try insertChars(res5.node, a, "o", .{ .line = 0, .col = 7 });
     {
         try eq(.{ 0, 8 }, .{ res6a.new_line, res6a.new_col });
         try eqStr( // h3elo
@@ -799,7 +765,7 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, res6a.node));
     }
 
-    const res6b = try insertChars(res5.node, a, content_arena.allocator(), "x", .{ .line = 0, .col = 6 });
+    const res6b = try insertChars(res5.node, a, "x", .{ .line = 0, .col = 6 });
     {
         try eq(.{ 0, 7 }, .{ res6b.new_line, res6b.new_col });
         try eqStr( // h3exl
@@ -817,7 +783,7 @@ test "insertChars - multiple insertions from empty string" {
         , try debugStr(idc_if_it_leaks, res6b.node));
     }
 
-    const res6c = try insertChars(res5.node, a, content_arena.allocator(), "x", .{ .line = 0, .col = 5 });
+    const res6c = try insertChars(res5.node, a, "x", .{ .line = 0, .col = 5 });
     {
         try eq(.{ 0, 6 }, .{ res6c.new_line, res6c.new_col });
         try eqStr( // h3xel
@@ -858,10 +824,10 @@ test "insertChars - abcd" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const acd = try Node.fromString(testing_allocator, content_arena.allocator(), "ACD");
+    _, const acd = try Node.fromString(testing_allocator, content_arena.allocator(), "ACD");
     defer freeRcNode(testing_allocator, acd);
 
-    const abcd = try insertChars(acd, testing_allocator, content_arena.allocator(), "B", .{ .line = 0, .col = 1 });
+    const abcd = try insertChars(acd, testing_allocator, "B", .{ .line = 0, .col = 1 });
     defer freeRcNode(testing_allocator, abcd.node);
     const abcd_dbg =
         \\3 1/4/4
@@ -873,7 +839,7 @@ test "insertChars - abcd" {
     try eqStr(abcd_dbg, try debugStr(idc_if_it_leaks, abcd.node));
 
     {
-        const eabcd = try insertChars(abcd.node, testing_allocator, content_arena.allocator(), "E", .{ .line = 0, .col = 0 });
+        const eabcd = try insertChars(abcd.node, testing_allocator, "E", .{ .line = 0, .col = 0 });
         defer freeRcNode(testing_allocator, eabcd.node);
         const eabcd_dbg =
             \\3 1/5/5
@@ -888,7 +854,7 @@ test "insertChars - abcd" {
     }
 
     {
-        const abcde = try insertChars(abcd.node, testing_allocator, content_arena.allocator(), "E", .{ .line = 0, .col = 4 });
+        const abcde = try insertChars(abcd.node, testing_allocator, "E", .{ .line = 0, .col = 4 });
         defer freeRcNode(testing_allocator, abcde.node);
         const abcde_dbg =
             \\4 1/5/5
@@ -909,13 +875,13 @@ test "insertChars - with newline \n" {
     const a = testing_allocator;
 
     // original
-    const r0 = try Node.fromString(a, content_arena.allocator(), "hello venus");
+    _, const r0 = try Node.fromString(a, content_arena.allocator(), "hello venus");
     try eqStr(
         \\1 B| `hello venus`
     , try debugStr(idc_if_it_leaks, r0));
 
     // 1st edit
-    const res1 = try insertChars(r0, a, content_arena.allocator(), "\n", .{ .line = 0, .col = 11 });
+    const res1 = try insertChars(r0, a, "\n", .{ .line = 0, .col = 11 });
     {
         try eqStr(
             \\1 B| `hello venus`
@@ -932,7 +898,7 @@ test "insertChars - with newline \n" {
     }
 
     // 2nd edit
-    const res2 = try insertChars(res1.node, a, content_arena.allocator(), "ok", .{ .line = 1, .col = 0 });
+    const res2 = try insertChars(res1.node, a, "ok", .{ .line = 1, .col = 0 });
     {
         try eqStr(
             \\3 2/12/11
@@ -955,7 +921,7 @@ test "insertChars - with newline \n" {
     }
 
     // 3rd edit
-    const res3 = try insertChars(res2.node, a, content_arena.allocator(), "\nfine", .{ .line = res2.new_line, .col = res2.new_col });
+    const res3 = try insertChars(res2.node, a, "\nfine", .{ .line = res2.new_line, .col = res2.new_col });
     {
         try eqStr(
             \\3 2/12/11
@@ -1008,7 +974,7 @@ test "insertChars - testing free order after inserting one character after anoth
 
 fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []const u8, should_balance: bool) !ArrayList(RcNode) {
     var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
-    var node = try Node.fromString(a, content_allocator, "");
+    _, var node = try Node.fromString(a, content_allocator, "");
     try list.append(node);
     var line: usize = 0;
     var col: usize = 0;
@@ -1016,7 +982,7 @@ fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []
     var cp_iter = code_point.Iterator{ .bytes = str };
     while (cp_iter.next()) |cp| {
         const chars = str[cp.offset .. cp.offset + cp.len];
-        const result = try insertChars(node, a, content_allocator, chars, .{ .line = line, .col = col });
+        const result = try insertChars(node, a, chars, .{ .line = line, .col = col });
         line, col, node = .{ result.new_line, result.new_col, result.node };
         if (should_balance) {
             const is_balanced, const balanced_node = try balance(a, node);
@@ -1155,7 +1121,7 @@ test "deleteChars - basics" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const original = try Node.fromString(testing_allocator, content_arena.allocator(), "1234567");
+    _, const original = try Node.fromString(testing_allocator, content_arena.allocator(), "1234567");
     defer freeRcNode(testing_allocator, original);
 
     {
@@ -1199,7 +1165,7 @@ test "deleteChars - multiple lines" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello venus\nhello world\nhello kitty");
+    _, const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello venus\nhello world\nhello kitty");
     try eqStr(
         \\3 3/35/33
         \\  1 B| `hello venus` |E
@@ -1233,7 +1199,7 @@ test "deleteChars - it leaked somehow" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello venus\nhello world\nhello kitty");
+    _, const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello venus\nhello world\nhello kitty");
     try eqStr(
         \\3 3/35/33
         \\  1 B| `hello venus` |E
@@ -1322,7 +1288,7 @@ test getNocOfRange {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello venus\nhello world\nhello kitty");
+    _, const original = try Node.fromString(testing_allocator, content_arena.allocator(), "hello venus\nhello world\nhello kitty");
     defer freeRcNode(testing_allocator, original);
 
     const edit = try deleteChars(original, testing_allocator, .{ .line = 0, .col = 5 }, 1);
@@ -1445,20 +1411,20 @@ test balance {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const root = try Node.fromString(testing_allocator, content_arena.allocator(), "");
+    _, const root = try Node.fromString(testing_allocator, content_arena.allocator(), "");
 
-    const res1 = try insertChars(root, testing_allocator, content_arena.allocator(), "1", .{ .line = 0, .col = 0 });
+    const res1 = try insertChars(root, testing_allocator, "1", .{ .line = 0, .col = 0 });
     try eq(.{ false, res1.node }, try balance(testing_allocator, res1.node));
 
-    const res2 = try insertChars(res1.node, testing_allocator, content_arena.allocator(), "2", .{ .line = 0, .col = 1 });
+    const res2 = try insertChars(res1.node, testing_allocator, "2", .{ .line = 0, .col = 1 });
     try eq(.{ false, res1.node }, try balance(testing_allocator, res1.node));
 
-    const res3 = try insertChars(res2.node, testing_allocator, content_arena.allocator(), "3", .{ .line = 0, .col = 2 });
+    const res3 = try insertChars(res2.node, testing_allocator, "3", .{ .line = 0, .col = 2 });
     try eq(.{ false, res1.node }, try balance(testing_allocator, res1.node));
 
     ///////////////////////////// e4
 
-    const res4 = try insertChars(res3.node, testing_allocator, content_arena.allocator(), "4", .{ .line = 0, .col = 3 });
+    const res4 = try insertChars(res3.node, testing_allocator, "4", .{ .line = 0, .col = 3 });
     try eqStr( // unbalanced
         \\4 1/4/4
         \\  1 B| `1` Rc:3
@@ -1485,7 +1451,7 @@ test balance {
 
     // ///////////////////////////// e5
 
-    const res5 = try insertChars(res4.node, testing_allocator, content_arena.allocator(), "5", .{ .line = 0, .col = 4 });
+    const res5 = try insertChars(res4.node, testing_allocator, "5", .{ .line = 0, .col = 4 });
     try eqStr( // unbalanced
         \\5 1/5/5
         \\  1 B| `1` Rc:5
@@ -1516,7 +1482,7 @@ test balance {
 
     // ///////////////////////////// e6
 
-    const res6 = try insertChars(res5.node, testing_allocator, content_arena.allocator(), "6", .{ .line = 0, .col = 5 });
+    const res6 = try insertChars(res5.node, testing_allocator, "6", .{ .line = 0, .col = 5 });
     try eqStr( // unbalanced
         \\6 1/6/6
         \\  1 B| `1` Rc:7
@@ -1556,17 +1522,17 @@ test "insert at beginning then balance, one character at a time" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello world");
+    _, const root = try Node.fromString(testing_allocator, content_arena.allocator(), "hello world");
 
-    const res1 = try insertChars(root, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res1 = try insertChars(root, testing_allocator, "/", .{ .line = 0, .col = 0 });
     try eq(.{ false, res1.node }, try balance(testing_allocator, res1.node));
 
-    const res2 = try insertChars(res1.node, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res2 = try insertChars(res1.node, testing_allocator, "/", .{ .line = 0, .col = 0 });
     try eq(.{ false, res2.node }, try balance(testing_allocator, res2.node));
 
     ///////////////////////////// e3
 
-    const res3 = try insertChars(res2.node, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res3 = try insertChars(res2.node, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNodes(testing_allocator, &.{ root, res1.node, res2.node });
     try eqStr(
         \\4 1/14/14
@@ -1595,7 +1561,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e4
 
-    const res4 = try insertChars(e3b, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res4 = try insertChars(e3b, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e3b);
     try eqStr(
         \\4 1/15/15
@@ -1614,7 +1580,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e5
 
-    const res5 = try insertChars(res4.node, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res5 = try insertChars(res4.node, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, res4.node);
     try eqStr(
         \\5 1/16/16
@@ -1651,7 +1617,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e6
 
-    const res6 = try insertChars(e5b, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res6 = try insertChars(e5b, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e5b);
     try eqStr(
         \\5 1/17/17
@@ -1692,7 +1658,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e7
 
-    const res7 = try insertChars(e6b, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res7 = try insertChars(e6b, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e6b);
     // We can clearly see the imbalance `3 vs 1`.
     // I'll leave it there for now, see if it resolves itself after a few more balances.
@@ -1719,7 +1685,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e8
 
-    const res8 = try insertChars(res7.node, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res8 = try insertChars(res7.node, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, res7.node);
     try eqStr(
         \\6 1/19/19
@@ -1768,7 +1734,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e9
 
-    const res9 = try insertChars(e8b, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res9 = try insertChars(e8b, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e8b);
     try eqStr(
         \\5 1/20/20
@@ -1797,7 +1763,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e10
 
-    const res10 = try insertChars(res9.node, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res10 = try insertChars(res9.node, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, res9.node);
     try eqStr(
         \\6 1/21/21
@@ -1854,7 +1820,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e11
 
-    const res11 = try insertChars(e10b, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res11 = try insertChars(e10b, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e10b);
     try eqStr(
         \\6 1/22/22
@@ -1887,7 +1853,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e12
 
-    const res12 = try insertChars(res11.node, testing_allocator, content_arena.allocator(), "/", .{ .line = 0, .col = 0 });
+    const res12 = try insertChars(res11.node, testing_allocator, "/", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, res11.node);
     try eqStr(
         \\7 1/23/23
@@ -1952,7 +1918,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e13
 
-    const res13 = try insertChars(e12b, testing_allocator, content_arena.allocator(), "a", .{ .line = 0, .col = 0 });
+    const res13 = try insertChars(e12b, testing_allocator, "a", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, e12b);
     try eqStr(
         \\6 1/24/24
@@ -1989,7 +1955,7 @@ test "insert at beginning then balance, one character at a time" {
 
     // ///////////////////////////// e14
 
-    const res14 = try insertChars(res13.node, testing_allocator, content_arena.allocator(), "a", .{ .line = 0, .col = 0 });
+    const res14 = try insertChars(res13.node, testing_allocator, "a", .{ .line = 0, .col = 0 });
     freeRcNode(testing_allocator, res13.node);
     try eqStr(
         \\7 1/25/25
@@ -2069,14 +2035,14 @@ test "insert 'a' one after another to a string" {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const root = try Node.fromFile(testing_allocator, content_arena.allocator(), "src/window/fixtures/dummy_3_lines.zig");
+    _, const root = try Node.fromFile(testing_allocator, content_arena.allocator(), "src/window/fixtures/dummy_3_lines.zig");
 
     var list = ArrayList(RcNode).init(testing_allocator);
     defer list.deinit();
 
     ///////////////////////////// e1
 
-    const res1 = try insertChars(root, testing_allocator, content_arena.allocator(), "1", .{ .line = 0, .col = 0 });
+    const res1 = try insertChars(root, testing_allocator, "1", .{ .line = 0, .col = 0 });
     try list.append(root);
     try eqStr(
         \\4 4/74/71
@@ -2094,7 +2060,7 @@ test "insert 'a' one after another to a string" {
 
     ///////////////////////////// e2
 
-    const res2 = try insertChars(res1.node, testing_allocator, content_arena.allocator(), "2", .{ .line = res1.new_line, .col = res1.new_col });
+    const res2 = try insertChars(res1.node, testing_allocator, "2", .{ .line = res1.new_line, .col = res1.new_col });
     try list.append(res1.node);
     try eqStr(
         \\5 4/75/72
@@ -2131,7 +2097,7 @@ test "insert 'a' one after another to a string" {
 
     // ///////////////////////////// e3
 
-    const res3 = try insertChars(e2b, testing_allocator, content_arena.allocator(), "3", .{ .line = res2.new_line, .col = res2.new_col });
+    const res3 = try insertChars(e2b, testing_allocator, "3", .{ .line = res2.new_line, .col = res2.new_col });
     try list.append(e2b);
     try eqStr(
         \\5 4/76/73
@@ -2172,7 +2138,7 @@ test "insert 'a' one after another to a string" {
 
     // ///////////////////////////// e4
 
-    const res4 = try insertChars(e3b, testing_allocator, content_arena.allocator(), "4", .{ .line = res3.new_line, .col = res3.new_col });
+    const res4 = try insertChars(e3b, testing_allocator, "4", .{ .line = res3.new_line, .col = res3.new_col });
     try list.append(e3b);
     try eqStr(
         \\5 4/77/74
@@ -2196,7 +2162,7 @@ test "insert 'a' one after another to a string" {
 
     // ///////////////////////////// e5
 
-    const res5 = try insertChars(res4.node, testing_allocator, content_arena.allocator(), "5", .{ .line = res4.new_line, .col = res4.new_col });
+    const res5 = try insertChars(res4.node, testing_allocator, "5", .{ .line = res4.new_line, .col = res4.new_col });
     try list.append(res4.node);
     try eqStr(
         \\6 4/78/75
@@ -2245,7 +2211,7 @@ test "insert 'a' one after another to a string" {
 
     // ///////////////////////////// e6
 
-    const res6 = try insertChars(e5b, testing_allocator, content_arena.allocator(), "6", .{ .line = res5.new_line, .col = res5.new_col });
+    const res6 = try insertChars(e5b, testing_allocator, "6", .{ .line = res5.new_line, .col = res5.new_col });
     try list.append(e5b);
     try eqStr(
         \\5 4/79/76
@@ -2273,7 +2239,7 @@ test "insert 'a' one after another to a string" {
 
     // ///////////////////////////// e7
 
-    const res7 = try insertChars(res6.node, testing_allocator, content_arena.allocator(), "7", .{ .line = res6.new_line, .col = res6.new_col });
+    const res7 = try insertChars(res6.node, testing_allocator, "7", .{ .line = res6.new_line, .col = res6.new_col });
     try list.append(res6.node);
     try eqStr(
         \\6 4/80/77
@@ -2330,7 +2296,7 @@ test "insert 'a' one after another to a string" {
 
     // ///////////////////////////// e8
 
-    const res8 = try insertChars(e7b, testing_allocator, content_arena.allocator(), "8", .{ .line = res7.new_line, .col = res7.new_col });
+    const res8 = try insertChars(e7b, testing_allocator, "8", .{ .line = res7.new_line, .col = res7.new_col });
     try list.append(e7b);
     try eqStr(
         \\6 4/81/78
@@ -2362,7 +2328,7 @@ test "insert 'a' one after another to a string" {
 
     // ////////////////////////////////////////////////////////// e9
 
-    const res9 = try insertChars(res8.node, testing_allocator, content_arena.allocator(), "9", .{ .line = res8.new_line, .col = res8.new_col });
+    const res9 = try insertChars(res8.node, testing_allocator, "9", .{ .line = res8.new_line, .col = res8.new_col });
     try list.append(res8.node);
 
     try eqStr(
@@ -2513,9 +2479,9 @@ test rotateLeft {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const acd = try Node.fromString(testing_allocator, content_arena.allocator(), "ACD");
-    const abcd = try insertChars(acd, testing_allocator, content_arena.allocator(), "B", .{ .line = 0, .col = 1 });
-    const abcde = try insertChars(abcd.node, testing_allocator, content_arena.allocator(), "E", .{ .line = 0, .col = 4 });
+    _, const acd = try Node.fromString(testing_allocator, content_arena.allocator(), "ACD");
+    const abcd = try insertChars(acd, testing_allocator, "B", .{ .line = 0, .col = 1 });
+    const abcde = try insertChars(abcd.node, testing_allocator, "E", .{ .line = 0, .col = 4 });
 
     // sanity check
     {
@@ -2598,10 +2564,10 @@ test rotateRight {
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
 
-    const def = try Node.fromString(testing_allocator, content_arena.allocator(), "DEF");
-    const cdef = try insertChars(def, testing_allocator, content_arena.allocator(), "C", .{ .line = 0, .col = 0 });
-    const bcdef = try insertChars(cdef.node, testing_allocator, content_arena.allocator(), "B", .{ .line = 0, .col = 0 });
-    const abcdef = try insertChars(bcdef.node, testing_allocator, content_arena.allocator(), "A", .{ .line = 0, .col = 0 });
+    _, const def = try Node.fromString(testing_allocator, content_arena.allocator(), "DEF");
+    const cdef = try insertChars(def, testing_allocator, "C", .{ .line = 0, .col = 0 });
+    const bcdef = try insertChars(cdef.node, testing_allocator, "B", .{ .line = 0, .col = 0 });
+    const abcdef = try insertChars(bcdef.node, testing_allocator, "A", .{ .line = 0, .col = 0 });
 
     // sanity check
     {
@@ -2783,14 +2749,14 @@ test getPositionFromByteOffset {
     var arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer arena.deinit();
     {
-        const root = try Node.fromString(a, arena.allocator(), "123456789");
+        _, const root = try Node.fromString(a, arena.allocator(), "123456789");
         try eq(.{ 0, 0 }, getPositionFromByteOffset(root, 0));
         try eq(.{ 0, 1 }, getPositionFromByteOffset(root, 1));
         try eq(.{ 0, 5 }, getPositionFromByteOffset(root, 5));
     }
     {
         const source = "one\ntwo\nthree\nfour";
-        const root = try Node.fromString(a, arena.allocator(), source);
+        _, const root = try Node.fromString(a, arena.allocator(), source);
 
         try eq(.{ 0, 0 }, getPositionFromByteOffset(root, 0));
         try eq(0, getByteOffsetOfPosition(root, 0, 0));
@@ -2955,7 +2921,7 @@ test getByteOffsetOfPosition {
     var arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer arena.deinit();
     {
-        const root = try Node.fromString(a, arena.allocator(), "Hello World!");
+        _, const root = try Node.fromString(a, arena.allocator(), "Hello World!");
         try shouldErr(error.LineOutOfBounds, getByteOffsetOfPosition(root, 3, 0));
         try shouldErr(error.LineOutOfBounds, getByteOffsetOfPosition(root, 2, 0));
         try eq(0, getByteOffsetOfPosition(root, 0, 0));
@@ -2967,7 +2933,7 @@ test getByteOffsetOfPosition {
     }
     {
         const source = "one\ntwo\nthree\nfour";
-        const root = try Node.fromString(a, arena.allocator(), source);
+        _, const root = try Node.fromString(a, arena.allocator(), source);
 
         try eqStr("o", source[0..1]);
         try eq(0, getByteOffsetOfPosition(root, 0, 0));
@@ -3153,9 +3119,9 @@ test getByteOffsetOfPosition {
 }
 
 fn __inputCharsOneAfterAnotherAt0Position(a: Allocator, content_allocator: Allocator, chars: []const u8) !RcNode {
-    var root = try Node.fromString(a, content_allocator, "");
+    _, var root = try Node.fromString(a, content_allocator, "");
     for (0..chars.len) |i| {
-        const result = try insertChars(root, a, content_allocator, chars[i .. i + 1], .{ .line = 0, .col = 0 });
+        const result = try insertChars(root, a, chars[i .. i + 1], .{ .line = 0, .col = 0 });
         root = result.node;
     }
     return root;
@@ -3278,10 +3244,10 @@ test "getRange no end" {
         defer content_arena.deinit();
         var buf: [1024]u8 = undefined;
 
-        const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "const a = 10;");
-        const r1 = try insertChars(root, idc_if_it_leaks, content_arena.allocator(), ";", .{ .line = 0, .col = 12 });
-        const r2 = try insertChars(r1.node, idc_if_it_leaks, content_arena.allocator(), "/", .{ .line = 0, .col = 13 });
-        const r3 = try insertChars(r2.node, idc_if_it_leaks, content_arena.allocator(), "/", .{ .line = 0, .col = 14 });
+        _, const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "const a = 10;");
+        const r1 = try insertChars(root, idc_if_it_leaks, ";", .{ .line = 0, .col = 12 });
+        const r2 = try insertChars(r1.node, idc_if_it_leaks, "/", .{ .line = 0, .col = 13 });
+        const r3 = try insertChars(r2.node, idc_if_it_leaks, "/", .{ .line = 0, .col = 14 });
 
         try eqStr("const a = 10;//;", try r3.node.value.toString(idc_if_it_leaks, .lf));
         try eqStr("//;", getRange(r3.node, .{ .line = 0, .col = 13 }, null, &buf));
@@ -3315,8 +3281,8 @@ test "getRange() with end point" {
         defer content_arena.deinit();
         var buf: [1024]u8 = undefined;
 
-        const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "const num = 10;");
-        const r1 = try insertChars(root, idc_if_it_leaks, content_arena.allocator(), "X", .{ .line = 0, .col = 6 });
+        _, const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "const num = 10;");
+        const r1 = try insertChars(root, idc_if_it_leaks, "X", .{ .line = 0, .col = 6 });
 
         try eqStr("const Xnum = 10;", try r1.node.value.toString(idc_if_it_leaks, .lf));
         try eqStr("Xnum", getRange(r1.node, .{ .line = 0, .col = 6 }, .{ .line = 0, .col = 10 }, &buf));
@@ -3332,7 +3298,7 @@ fn testGetRange(source: []const u8, expected_str: []const u8, start: EditPoint, 
     var content_arena = std.heap.ArenaAllocator.init(testing_allocator);
     defer content_arena.deinit();
     var buf: [buf_size]u8 = undefined;
-    const root = try Node.fromString(testing_allocator, content_arena.allocator(), source);
+    _, const root = try Node.fromString(testing_allocator, content_arena.allocator(), source);
     defer freeRcNode(testing_allocator, root);
     const result = getRange(root, start, end, &buf);
     try eqStr(expected_str, result);
@@ -3365,7 +3331,7 @@ pub fn getLineAlloc(a: Allocator, node: RcNode, line: usize, capacity: usize) ![
 
 test getLineAlloc {
     var content_arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
-    const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "hello\nworld");
+    _, const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "hello\nworld");
     try eqStr("hello", try getLineAlloc(idc_if_it_leaks, root, 0, 1024));
     try eqStr("world", try getLineAlloc(idc_if_it_leaks, root, 1, 1024));
 }
@@ -3423,7 +3389,7 @@ pub fn getNumOfCharsInLine(node: RcNode, line: usize) usize {
 
 test getNumOfCharsInLine {
     var content_arena = std.heap.ArenaAllocator.init(idc_if_it_leaks);
-    const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "hello\nsuper nova");
+    _, const root = try Node.fromString(idc_if_it_leaks, content_arena.allocator(), "hello\nsuper nova");
     try eq(5, getNumOfCharsInLine(root, 0));
     try eq(10, getNumOfCharsInLine(root, 1));
 }
@@ -3621,7 +3587,7 @@ test CharacterForwardIterator {
     defer arena.deinit();
 
     {
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), "");
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), "");
         try eq(true, root.value.* == .leaf);
         try eqStr(
             \\1 B| ``
@@ -3629,7 +3595,7 @@ test CharacterForwardIterator {
         try testCharacterForwardIterator(root.value, "", 0);
     }
     {
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello");
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello");
         try eq(true, root.value.* == .leaf);
         try eqStr(
             \\1 B| `hello`
@@ -3641,7 +3607,7 @@ test CharacterForwardIterator {
         try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root.value, 6));
     }
     {
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\nworld");
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\nworld");
         try eqStr(
             \\2 2/11/10
             \\  1 B| `hello` |E
@@ -3662,7 +3628,7 @@ test CharacterForwardIterator {
         try shouldErr(error.OffsetOutOfBounds, CharacterForwardIterator.init(root.value, 12));
     }
     {
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\n\nworld");
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), "hello\n\nworld");
         try eqStr(
             \\3 3/12/10
             \\  1 B| `hello` |E
@@ -3968,7 +3934,10 @@ fn testCharacterForwardIterator(root: *Node, expected: []const u8, offset: u32) 
 
 fn insertCharOneAfterAnotherAtTheBeginning(a: Allocator, content_allocator: Allocator, str: []const u8, may_root: ?RcNode) !ArrayList(RcNode) {
     var list = try ArrayList(RcNode).initCapacity(a, str.len + 1);
-    var node = if (may_root) |root| root else try Node.fromString(a, content_allocator, "");
+    var node = if (may_root) |root| root else blk: {
+        _, const node_ = try Node.fromString(a, content_allocator, "");
+        break :blk node_;
+    };
     try list.append(node);
 
     var i: u32 = @intCast(str.len);
@@ -3978,7 +3947,7 @@ fn insertCharOneAfterAnotherAtTheBeginning(a: Allocator, content_allocator: Allo
         if (cp_iter.next()) |cp| {
             if (cp.code == UNICODE_REPLACEMENT_CODE_POINT and cp.len == 1) continue;
             const char = str[i .. i + cp.len];
-            const result = try insertChars(node, a, content_allocator, char, .{ .line = 0, .col = 0 });
+            const result = try insertChars(node, a, char, .{ .line = 0, .col = 0 });
             node = result.node;
             try list.append(result.node);
         }
@@ -4113,12 +4082,12 @@ test CharacterBackwardsIterator {
     defer arena.deinit();
 
     {
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), "");
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), "");
         try testCharacterBackwardsIterator(root.value, "", 0);
     }
     {
         const str = "hello\n\nworld";
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), str);
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), str);
         try eqStr(
             \\3 3/12/10
             \\  1 B| `hello` |E
@@ -4141,7 +4110,7 @@ test CharacterBackwardsIterator {
 
     const str_with_unicode = "hello 안녕\n\nworld 👋!";
     {
-        const root = try Node.fromString(arena.allocator(), arena.allocator(), str_with_unicode);
+        _, const root = try Node.fromString(arena.allocator(), arena.allocator(), str_with_unicode);
         try testCharacterBackwardsIteratorBatch(root.value);
     }
     { // works with right-skewed tree
