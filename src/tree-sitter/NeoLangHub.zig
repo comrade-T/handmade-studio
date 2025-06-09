@@ -33,7 +33,8 @@ pub const SupportedLanguage = enum { zig };
 a: Allocator,
 langmap: std.AutoHashMapUnmanaged(*const ts.Language, NeoLangSuite) = .{},
 
-treemap: std.AutoHashMapUnmanaged(*const Buffer, std.ArrayListUnmanaged(*ts.Tree)),
+trees: std.AutoHashMapUnmanaged(*const Buffer, std.ArrayListUnmanaged(*ts.Tree)),
+captures: std.AutoHashMapUnmanaged(*const ts.Tree, CapturesOfTreeMap),
 
 pub fn init(a: Allocator) !NeoLangHub {
     return NeoLangHub{ .a = a };
@@ -248,12 +249,12 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree: *con
     var long_lines_map = std.AutoHashMapUnmanaged(u32, std.ArrayListUnmanaged(LongCapture)){};
     defer long_lines_map.deinit(self.a);
 
+    ///////////////////////////// put things to containers
+
     const langsuite = try self.getLangSuite(.{ .language = tree.getLanguage() });
     for (langsuite.queries.items, 0..) |sq, query_id| {
-
-        ///////////////////////////// put things to containers
-
         var cursor = try ts.Query.Cursor.create();
+        defer cursor.destroy();
         cursor.execute(sq.query, tree.getRootNode());
         cursor.setPointRange(
             .{ .row = start_line, .column = 0 },
@@ -326,7 +327,7 @@ fn captureLessThan(_: void, a: anytype, b: anytype) bool {
 const MAX_CELL_OVERLAP_ASSUMPTION = 32;
 const CaptureIterator = struct {
     result_ids_buf: [MAX_CELL_OVERLAP_ASSUMPTION]Result = undefined,
-    capture_starts: u8 = 0,
+    captures_start: u8 = 0,
     col: u32 = 0,
 
     const Result = struct {
@@ -334,8 +335,26 @@ const CaptureIterator = struct {
         capture_id: CaptureID,
     };
 
-    pub fn next(self: *@This()) ?[]Result {
-        _ = self;
-        // TODO:
+    pub fn next(self: *@This(), captures: Captures) []Result {
+        defer self.col += 1;
+        return switch (captures) {
+            .std => |std_captures| self.next_(std_captures),
+            .long => |long_captures| self.next_(long_captures),
+        };
+    }
+
+    fn next_(self: *@This(), captures: anytype) []Result {
+        var ids_index: usize = 0;
+        for (captures[self.captures_start..], 0..) |cap, i| {
+            if (cap.start_col > self.col) break;
+            if (cap.end_col <= self.col) {
+                self.captures_start = i + 1;
+                continue;
+            }
+            self.ids_buf[ids_index] = Result{ .capture_id = cap.capture_id, .query_id = cap.query_index };
+            ids_index += 1;
+        }
+
+        return self.ids_buf[0..ids_index];
     }
 };
