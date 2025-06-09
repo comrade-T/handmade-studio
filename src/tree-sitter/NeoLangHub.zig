@@ -188,17 +188,22 @@ pub fn clearInjections(self: *@This(), buf: *const Buffer) void {
     _ = self.injectmap.remove(buf);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Captures
+////////////////////////////////////////////////////////////////////////////////////////////// Get Captures
+
+const CaptureID = u8;
+const QueryID = u8;
 
 const StdCapture = struct {
     start_col: u8,
     end_col: u8,
-    capture_id: u16,
+    query_id: QueryID,
+    capture_id: CaptureID,
 };
 const LongCapture = struct {
     start_col: u32,
     end_col: u32,
-    capture_id: u16,
+    query_id: QueryID,
+    capture_id: CaptureID,
 };
 
 const Captures = union(enum) {
@@ -207,27 +212,24 @@ const Captures = union(enum) {
 };
 const CapturedLines = std.ArrayListUnmanaged(Captures);
 
-const CaptureKey = struct {
-    buf: *const Buffer,
-    tree_index: u32,
-    query_index: u32,
-};
-const CaptureMap = std.AutoHashMapUnmanaged(CaptureKey, CapturedLines);
+const CapturesOfTreeMap = std.AutoHashMapUnmanaged(*const ts.Tree, CapturedLines);
 
 const MAX_INT_U32 = std.math.maxInt(u32);
 const MAX_INT_U8 = std.math.maxInt(u8);
 
 test {
-    try eq(16, @sizeOf(CaptureKey));
-    try eq(true, std.meta.hasUniqueRepresentation(CaptureKey));
+    try eq(4, @sizeOf(StdCapture));
+    try eq(12, @sizeOf(LongCapture));
 
     try eq(16, @sizeOf([]const StdCapture));
     try eq(24, @sizeOf(Captures));
 }
 
-fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree_index: u32, start_line: u32, end_line: u32) !?CaptureMap {
-    var result = CaptureMap{};
+fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree: *const ts.Tree, start_line: u32, end_line: u32) !CapturesOfTreeMap {
+    var result = CapturesOfTreeMap{};
     const num_of_lines_to_process = end_line - start_line + 1;
+
+    ///////////////////////////// precompute code paths
 
     const CodePath = enum { std, long };
     var code_paths = try self.a.alloc(CodePath, num_of_lines_to_process);
@@ -237,22 +239,17 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree_index
         code_paths[i] = if (noc > MAX_INT_U8) .long else .std;
     }
 
-    const tree_list = self.treemap.get(buf) orelse return null;
-    assert(tree_list.items.len > tree_index);
-    if (tree_list.items.len <= tree_index) return;
-    const tree = tree_list.items[tree_index];
+    ///////////////////////////// set up containers
+
+    var std_lines_list = try std.ArrayListUnmanaged(std.ArrayListUnmanaged(StdCapture)).initCapacity(self.a, num_of_lines_to_process);
+    defer std_lines_list.deinit(self.a);
+    for (start_line..end_line + 1) |_| try std_lines_list.append(self.a, std.ArrayListUnmanaged(StdCapture){});
+
+    var long_lines_map = std.AutoHashMapUnmanaged(u32, std.ArrayListUnmanaged(LongCapture)){};
+    defer long_lines_map.deinit(self.a);
+
     const langsuite = try self.getLangSuite(.{ .language = tree.getLanguage() });
-
     for (langsuite.queries.items, 0..) |sq, query_id| {
-
-        ///////////////////////////// setup containers
-
-        var std_lines_list = try std.ArrayListUnmanaged(std.ArrayListUnmanaged(StdCapture)).initCapacity(self.a, num_of_lines_to_process);
-        defer std_lines_list.deinit(self.a);
-        for (start_line..end_line + 1) |_| try std_lines_list.append(self.a, std.ArrayListUnmanaged(StdCapture){});
-
-        var long_lines_map = std.AutoHashMapUnmanaged(u32, std.ArrayListUnmanaged(LongCapture)){};
-        defer long_lines_map.deinit(self.a);
 
         ///////////////////////////// put things to containers
 
@@ -276,6 +273,7 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree_index
                 for (start.row..end.row + 1, 0..) |linenr, i| {
                     switch (code_paths[i]) {
                         .std => try std_lines_list.items[i].append(self.a, StdCapture{
+                            .query_id = query_id,
                             .capture_id = @intCast(cap.id),
                             .start_col = if (linenr == start.row) @intCast(start.column) else 0,
                             .end_col = if (linenr == end.row) @intCast(end.column) else MAX_INT_U8,
@@ -284,6 +282,7 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree_index
                             if (!long_lines_map.contains(linenr)) try long_lines_map.put(self.a, linenr, std.ArrayListUnmanaged(LongCapture){});
                             var list = long_lines_map.getPtr(linenr) orelse unreachable;
                             try list.append(self.a, LongCapture{
+                                .query_id = query_id,
                                 .capture_id = @intCast(cap.id),
                                 .start_col = if (linenr == start.row) start.column else 0,
                                 .end_col = if (linenr == end.row) end.column else MAX_INT_U32,
@@ -293,26 +292,25 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree_index
                 }
             }
         }
-
-        ///////////////////////////// pack up containers
-
-        const key = CaptureKey{ .buf = buf, .tree_index = tree_index, .query_index = query_id };
-        var captured_lines = CapturedLines{};
-        for (start_line..end_line + 1, 0..) |linenr, i| {
-            switch (code_paths[i]) {
-                .std => {
-                    std.mem.sort(StdCapture, std_lines_list.items[i].items, {}, captureLessThan);
-                    captured_lines.append(self.a, .{ .std = try std_lines_list.items[i].toOwnedSlice() });
-                },
-                .long => {
-                    var list = long_lines_map.getPtr(linenr) orelse unreachable;
-                    std.mem.sort(StdCapture, list.items, {}, captureLessThan);
-                    captured_lines.append(self.a, .{ .long = try list.toOwnedSlice(self.a) });
-                },
-            }
-        }
-        try result.put(self.a, key, captured_lines);
     }
+
+    ///////////////////////////// pack up containers
+
+    var captured_lines = CapturedLines{};
+    for (start_line..end_line + 1, 0..) |linenr, i| {
+        switch (code_paths[i]) {
+            .std => {
+                std.mem.sort(StdCapture, std_lines_list.items[i].items, {}, captureLessThan);
+                captured_lines.append(self.a, .{ .std = try std_lines_list.items[i].toOwnedSlice() });
+            },
+            .long => {
+                var list = long_lines_map.getPtr(linenr) orelse unreachable;
+                std.mem.sort(StdCapture, list.items, {}, captureLessThan);
+                captured_lines.append(self.a, .{ .long = try list.toOwnedSlice(self.a) });
+            },
+        }
+    }
+    try result.put(self.a, tree, captured_lines);
 
     return result;
 }
@@ -322,3 +320,22 @@ fn captureLessThan(_: void, a: anytype, b: anytype) bool {
     if (a.start_col == b.start_col) return a.end_col < b.end_col;
     return false;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Captures Iterator
+
+const MAX_CELL_OVERLAP_ASSUMPTION = 32;
+const CaptureIterator = struct {
+    result_ids_buf: [MAX_CELL_OVERLAP_ASSUMPTION]Result = undefined,
+    capture_starts: u8 = 0,
+    col: u32 = 0,
+
+    const Result = struct {
+        query_id: QueryID,
+        capture_id: CaptureID,
+    };
+
+    pub fn next(self: *@This()) ?[]Result {
+        _ = self;
+        // TODO:
+    }
+};
