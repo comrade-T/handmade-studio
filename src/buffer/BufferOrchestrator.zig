@@ -27,15 +27,25 @@ const rcr = Buffer.rcr;
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 a: Allocator,
-
 strmap: std.AutoArrayHashMapUnmanaged(*Buffer, std.ArrayListUnmanaged([]const u8)) = .{},
+pending: ?PendingEdit = null,
 
-num_of_strings_to_clean_up: usize = 0,
-active_buffer: ?*Buffer = null,
-active_root: ?rcr.RcNode,
-pending_roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
+const PendingEdit = struct {
+    buf: *Buffer,
 
-// TODO: we have another problem: the user can move outside of the "ideal insert zone" and mess things up for us
+    initial_root: rcr.RcNode,
+    initial_edit_points: []const rcr.EditPoint,
+
+    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
+
+    num_of_strings_allocated: usize = 0,
+
+    fn deinit(self: *@This(), a: Allocator) void {
+        a.free(self.initial_edit_points);
+        rcr.freeRcNodes(a, self.roots.items);
+        self.roots.deinit(self.a);
+    }
+};
 
 pub fn deinit(self: *@This()) void {
     var iter = self.strmap.iterator();
@@ -45,9 +55,14 @@ pub fn deinit(self: *@This()) void {
         for (list.items) |str| self.a.free(str);
     }
 
-    rcr.freeRcNodes(self.a, self.pending_roots.items);
-    self.pending_roots.deinit(self.a);
+    if (self.pending) |*pending| pending.deinit();
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+// pub fn createBuffer(self: *@This()) !*Buffer {
+//     // TODO:
+// }
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -66,40 +81,52 @@ pub fn removeBuffer(self: *@This(), buf: *Buffer) !void {
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn startInsertMode(self: *@This(), buf: *Buffer) void {
+pub fn startInsertMode(self: *@This(), buf: *Buffer, initial_edit_points: []const rcr.EditPoint) !void {
     assert(self.num_of_strings_to_clean_up == 0);
-    self.active_buffer = buf;
-    self.active_root = buf.getCurrentRoot();
+    self.pending = PendingEdit{
+        .buf = buf,
+        .initial_root = buf.getCurrentRoot(),
+        .initial_edit_points = try self.a.dupe(rcr.EditPoint, initial_edit_points),
+    };
+}
+
+pub fn exitInsertMode(self: *@This()) !void {
+    assert(self.pending != null);
+    const pending = &(self.pending orelse return);
+    defer {
+        pending.deinit();
+        self.pending = null;
+    }
+
+    // TODO:
 }
 
 pub fn insertChars(self: *@This(), chars: []const u8, cursor_iter: anytype) !void {
+    assert(self.pending != null);
+    const pending = &(self.pending orelse return);
+
     const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
-    var latest_root = if (self.pending_roots.items.len > 0)
-        self.pending_roots.getLast()
+    var latest_root = if (pending.roots.items.len > 0)
+        pending.roots.getLast()
     else
-        self.active_root orelse return;
+        pending.root orelse return;
 
     while (cursor_iter.next()) |point| {
         const result = try rcr.insertChars(latest_root, self.a, allocated_str, point);
         latest_root = result.node;
-        try self.pending_roots.append(self.a, latest_root);
+        try self.pending.roots.append(self.a, latest_root);
     }
 }
 
 fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
-    assert(self.active_buffer != null);
-    assert(self.latest_root != null);
-
-    const buf = self.active_buffer orelse return null;
-    assert(self.strmap.contains(buf));
-
+    assert(self.pending != null);
     return if (chars.len == 1)
         SINGLE_CHARS[chars[0]]
     else blk: {
         const str = try self.a.dupe(u8, chars);
-        var list = self.strmap.get(buf) orelse unreachable;
+        var list = self.strmap.get(self.pending.?.buf) orelse unreachable;
         try list.append(self.a, str);
-        self.num_of_strings_to_clean_up += 1;
+        self.pending.?.num_of_strings_allocated += 1;
         break :blk str;
     };
 }

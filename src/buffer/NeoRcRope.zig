@@ -425,8 +425,8 @@ const InsertCharsCtx = struct {
 
 const InsertCharsError = error{ OutOfMemory, InputLenZero, ColumnOutOfBounds };
 pub const InsertCharsResult = struct {
-    new_line: usize,
-    new_col: usize,
+    new_line: u32,
+    new_col: u32,
     node: RcNode,
 };
 const EMPTY_STR = "";
@@ -982,7 +982,10 @@ fn insertCharOneAfterAnother(a: Allocator, content_allocator: Allocator, str: []
     var cp_iter = code_point.Iterator{ .bytes = str };
     while (cp_iter.next()) |cp| {
         const chars = str[cp.offset .. cp.offset + cp.len];
-        const result = try insertChars(node, a, chars, .{ .line = line, .col = col });
+        const result = try insertChars(node, a, chars, .{
+            .line = @intCast(line),
+            .col = @intCast(col),
+        });
         line, col, node = .{ result.new_line, result.new_col, result.node };
         if (should_balance) {
             const is_balanced, const balanced_node = try balance(a, node);
@@ -4222,8 +4225,8 @@ const Weights = struct {
 };
 
 pub const EditPoint = struct {
-    line: usize,
-    col: usize,
+    line: u32,
+    col: u32,
 
     pub fn cmp(_: void, a: EditPoint, b: EditPoint) bool {
         if (a.line < b.line) return true;
