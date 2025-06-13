@@ -94,17 +94,18 @@ pub fn removeBuffer(self: *@This(), buf: *Buffer) !void {
 
 const CanonEvent = struct {
     first_cursor_current_byte: u32 = undefined,
-    initial_byte_offsets: []const u32 = undefined,
+    initial_byte_ranges: []const ByteRange = undefined,
+    inserted_string: []const u8 = "",
 
     fn init(a: Allocator, iter: anytype) !CanonEvent {
         var ev = CanonEvent{};
         ev.initial_byte_offsets = try a.alloc(u32, iter.len);
 
         var i: usize = 0;
-        while (iter.next()) |byte_offset| {
+        while (iter.next()) |byte_range| {
             defer i += 1;
-            if (i == 0) ev.first_cursor_current_byte = byte_offset;
-            ev.initial_byte_offsets[i] = byte_offset;
+            if (i == 0) ev.first_cursor_current_byte = byte_range.start;
+            ev.initial_byte_ranges[i] = byte_range;
         }
 
         return ev;
@@ -114,10 +115,27 @@ const CanonEvent = struct {
         a.free(self.initial_byte_offsets);
     }
 
+    fn insertChars(self: *@This(), a: Allocator, chars: []const u8) !void {
+        const new_str = try std.fmt.allocPrint(a, "{s}{s}", .{ self.inserted_string, chars });
+        a.free(self.inserted_string);
+        self.inserted_string = new_str;
+    }
+    fn deleteCharsAtTheEnd(self: *@This(), a: Allocator, number_of_chars: u32) !void {
+        assert(number_of_chars <= self.inserted_string.len);
+        const new_str = try std.fmt.allocPrint(a, "{s}", .{self.inserted_string[0 .. self.inserted_string.len - number_of_chars]});
+        a.free(self.inserted_string);
+        self.inserted_string = new_str;
+    }
+
     fn check(self: *const @This(), number_of_cursors: u32, first_cursor_byte_offset: u32) bool {
         if (number_of_cursors != self.initial_byte_offsets.len) return false;
         return first_cursor_byte_offset != self.first_cursor_current_byte;
     }
+};
+
+pub const ByteRange = struct {
+    start: u32,
+    end: u32,
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////
