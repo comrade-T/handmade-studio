@@ -61,7 +61,7 @@ pub fn createBufferFromString(self: *@This(), str: []const u8) !*Buffer {
 
 fn createBuffer(self: *@This(), allocated_str: []const u8, root: rcr.RcNode) !*Buffer {
     const buf = try Buffer.create(self.a, root);
-    try self.initBuffer(buf, allocated_str);
+    try self.addBuffer(buf, allocated_str);
     return buf;
 }
 
@@ -77,7 +77,7 @@ test createBuffer {
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn initBuffer(self: *@This(), buf: *Buffer, allocated_str: []const u8) !void {
+pub fn addBuffer(self: *@This(), buf: *Buffer, allocated_str: []const u8) !void {
     try self.strmap.put(self.a, buf, try std.ArrayListUnmanaged([]const u8).initCapacity(self.a, 1));
     var list = self.strmap.getPtr(buf) orelse unreachable;
     try list.append(self.a, allocated_str);
@@ -89,6 +89,49 @@ pub fn removeBuffer(self: *@This(), buf: *Buffer) !void {
     defer list.deinit(self.a);
     for (list.items) |str| self.a.free(str);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const CanonEvent = struct {
+    trackers: []Tracker,
+
+    fn init(a: Allocator, iter: anytype) !CanonEvent {
+        const trackers = try a.alloc(Tracker, iter.len);
+        var i: usize = 0;
+        while (iter.next()) |byte_offset| {
+            defer i += 1;
+            trackers[i] = Tracker{
+                .start_byte = byte_offset,
+                .current_byte = byte_offset,
+            };
+        }
+    }
+
+    fn deinit(self: *@This(), a: Allocator) void {
+        a.free(self.trackers);
+    }
+
+    fn decrementBy(self: *@This(), by: u32) void {
+        for (self.trackers) |*tracker| tracker.current_byte -= by;
+    }
+    fn incrementBy(self: *@This(), by: u32) void {
+        for (self.trackers) |*tracker| tracker.current_byte += by;
+    }
+
+    fn check(self: *const @This(), iter: anytype) bool {
+        if (iter.len != self.trackers.len) return false;
+        for (self.trackers) |tracker| if (!tracker.check(iter.next())) return false;
+    }
+
+    const Tracker = struct {
+        start_byte: u32,
+        current_byte: u32,
+
+        fn check(self: *const @This(), byte_offet: u32) bool {
+            return self.byte_offet == byte_offet;
+        }
+    };
+};
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
