@@ -15,11 +15,13 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const InsertManager = @This();
+const Orchestrator = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const eql = std.mem.eql;
+const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
+const idc_if_it_leaks = std.heap.page_allocator;
 
 const Buffer = @import("NeoBuffer.zig");
 const rcr = Buffer.rcr;
@@ -30,45 +32,54 @@ a: Allocator,
 strmap: std.AutoArrayHashMapUnmanaged(*Buffer, std.ArrayListUnmanaged([]const u8)) = .{},
 pending: ?PendingEdit = null,
 
-const PendingEdit = struct {
-    buf: *Buffer,
-
-    initial_root: rcr.RcNode,
-    initial_edit_points: []const rcr.EditPoint,
-
-    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
-
-    num_of_strings_allocated: usize = 0,
-
-    fn deinit(self: *@This(), a: Allocator) void {
-        a.free(self.initial_edit_points);
-        rcr.freeRcNodes(a, self.roots.items);
-        self.roots.deinit(self.a);
-    }
-};
-
 pub fn deinit(self: *@This()) void {
     var iter = self.strmap.iterator();
     while (iter.next()) |entry| {
+        const buf = entry.key_ptr.*;
+        defer buf.destroy(self.a);
+
         var list = entry.value_ptr;
         defer list.deinit(self.a);
         for (list.items) |str| self.a.free(str);
     }
+    self.strmap.deinit(self.a);
 
-    if (self.pending) |*pending| pending.deinit();
+    if (self.pending) |*pending| pending.deinit(self.a);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-// pub fn createBuffer(self: *@This()) !*Buffer {
-//     // TODO:
-// }
+pub fn createBufferFromFile(self: *@This(), path: []const u8) !*Buffer {
+    const allocated_str, const root = try rcr.Node.fromFile(self.a, self.a, path);
+    return self.createBuffer(allocated_str, root);
+}
+
+pub fn createBufferFromString(self: *@This(), str: []const u8) !*Buffer {
+    const allocated_str, const root = try rcr.Node.fromString(self.a, self.a, str);
+    return self.createBuffer(allocated_str, root);
+}
+
+fn createBuffer(self: *@This(), allocated_str: []const u8, root: rcr.RcNode) !*Buffer {
+    const buf = try Buffer.create(self.a, root);
+    try self.initBuffer(buf, allocated_str);
+    return buf;
+}
+
+test createBuffer {
+    const a = std.testing.allocator;
+    var orchestrator = Orchestrator{ .a = a };
+    defer orchestrator.deinit();
+
+    const buf = try orchestrator.createBufferFromString("hello world");
+    try eq(1, orchestrator.strmap.get(buf).?.items.len);
+    try eqStr("hello world", try buf.toString(std.heap.page_allocator, .lf));
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn initBuffer(self: *@This(), buf: *Buffer, allocated_str: []const u8) !void {
     try self.strmap.put(self.a, buf, try std.ArrayListUnmanaged([]const u8).initCapacity(self.a, 1));
-    var list = self.strmap.get(buf) orelse unreachable;
+    var list = self.strmap.getPtr(buf) orelse unreachable;
     try list.append(self.a, allocated_str);
 }
 
@@ -130,6 +141,25 @@ fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
         break :blk str;
     };
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const PendingEdit = struct {
+    buf: *Buffer,
+
+    initial_root: rcr.RcNode,
+    initial_edit_points: []const rcr.EditPoint,
+
+    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
+
+    num_of_strings_allocated: usize = 0,
+
+    fn deinit(self: *@This(), a: Allocator) void {
+        a.free(self.initial_edit_points);
+        rcr.freeRcNodes(a, self.roots.items);
+        self.roots.deinit(a);
+    }
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

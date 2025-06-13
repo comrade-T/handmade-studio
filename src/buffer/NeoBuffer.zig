@@ -24,7 +24,6 @@ const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 
 pub const rcr = @import("NeoRcRope.zig");
-pub const InsertManager = @import("InsertManager.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -50,28 +49,7 @@ test {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Init
 
-pub fn initFromFile(a: Allocator, insert_manager: *InsertManager, path: []const u8) !NeoBuffer {
-    const allocated_str, const root = try rcr.Node.fromFile(a, insert_manager.a, path);
-    return create(a, insert_manager, allocated_str, root);
-}
-
-pub fn initFromString(a: Allocator, insert_manager: *InsertManager, str: []const u8) !NeoBuffer {
-    const allocated_str, const root = try rcr.Node.fromString(a, insert_manager.a, str);
-    return create(a, insert_manager, allocated_str, root);
-}
-
-// test initFromString {
-//     const a = std.testing.allocator;
-//     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-//     defer arena.deinit();
-//
-//     var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
-//     defer buf.deinit(a);
-//
-//     try eqStr("hello world", try buf.toString(idc_if_it_leaks, .lf));
-// }
-
-fn create(a: Allocator, insert_manager: *InsertManager, allocated_str: []const u8, root: rcr.RcNode) !*NeoBuffer {
+pub fn create(a: Allocator, root: rcr.RcNode) !*NeoBuffer {
     const self = try a.create(NeoBuffer);
     self.* = NeoBuffer{};
     try self.edits.append(a, Edit{
@@ -81,7 +59,6 @@ fn create(a: Allocator, insert_manager: *InsertManager, allocated_str: []const u
         .new_start_byte = 0,
         .new_end_byte = root.value.weights().len,
     });
-    try insert_manager.initBuffer(self, allocated_str);
     return self;
 }
 
