@@ -93,44 +93,31 @@ pub fn removeBuffer(self: *@This(), buf: *Buffer) !void {
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const CanonEvent = struct {
-    trackers: []Tracker,
+    first_cursor_current_byte: u32 = undefined,
+    initial_byte_offsets: []const u32 = undefined,
 
     fn init(a: Allocator, iter: anytype) !CanonEvent {
-        const trackers = try a.alloc(Tracker, iter.len);
+        var ev = CanonEvent{};
+        ev.initial_byte_offsets = try a.alloc(u32, iter.len);
+
         var i: usize = 0;
         while (iter.next()) |byte_offset| {
             defer i += 1;
-            trackers[i] = Tracker{
-                .start_byte = byte_offset,
-                .current_byte = byte_offset,
-            };
+            if (i == 0) ev.first_cursor_current_byte = byte_offset;
+            ev.initial_byte_offsets[i] = byte_offset;
         }
+
+        return ev;
     }
 
     fn deinit(self: *@This(), a: Allocator) void {
-        a.free(self.trackers);
+        a.free(self.initial_byte_offsets);
     }
 
-    fn decrementBy(self: *@This(), by: u32) void {
-        for (self.trackers) |*tracker| tracker.current_byte -= by;
+    fn check(self: *const @This(), number_of_cursors: u32, first_cursor_byte_offset: u32) bool {
+        if (number_of_cursors != self.initial_byte_offsets.len) return false;
+        return first_cursor_byte_offset != self.first_cursor_current_byte;
     }
-    fn incrementBy(self: *@This(), by: u32) void {
-        for (self.trackers) |*tracker| tracker.current_byte += by;
-    }
-
-    fn check(self: *const @This(), iter: anytype) bool {
-        if (iter.len != self.trackers.len) return false;
-        for (self.trackers) |tracker| if (!tracker.check(iter.next())) return false;
-    }
-
-    const Tracker = struct {
-        start_byte: u32,
-        current_byte: u32,
-
-        fn check(self: *const @This(), byte_offet: u32) bool {
-            return self.byte_offet == byte_offet;
-        }
-    };
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////
