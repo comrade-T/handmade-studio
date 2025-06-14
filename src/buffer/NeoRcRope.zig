@@ -3404,6 +3404,11 @@ const BranchSide = enum { left, right };
 const CharacterIteratorError = error{ RootTooDeep, OffsetOutOfBounds, OffsetInMiddleOfUnicodeCharacter };
 const UNICODE_REPLACEMENT_CODE_POINT = 0xfffd;
 
+const CharacterIteratorResult = struct {
+    code: u21,
+    len: u3,
+};
+
 pub const CharacterForwardIterator = struct {
     branches: [CHARACTER_ITERATOR_MAX_DEPTH]*const Node = undefined,
     branch_sides: [CHARACTER_ITERATOR_MAX_DEPTH]BranchSide = undefined,
@@ -3435,7 +3440,7 @@ pub const CharacterForwardIterator = struct {
         return self;
     }
 
-    pub fn next(self: *@This()) ?u21 {
+    pub fn next(self: *@This()) ?CharacterIteratorResult {
         if (self.leaf == null) {
             if (self.branches_len == 0) return null;
 
@@ -3454,13 +3459,13 @@ pub const CharacterForwardIterator = struct {
             self.leaf = null;
             self.leaf_byte_offset = 0;
         }
-        return result.code_point;
+        return result.iter_result;
     }
 
     fn nextCharInLeaf(self: *@This()) CharInLeafResult {
         const result = self.peekNextCharInLeaf();
         assert(!result.offset_in_middle_of_unicode_character);
-        if (result.code_point_len) |cp_len| self.leaf_byte_offset += cp_len;
+        if (result.iter_result) |res| self.leaf_byte_offset += res.len;
         return result;
     }
 
@@ -3478,15 +3483,14 @@ pub const CharacterForwardIterator = struct {
                 }
                 return CharInLeafResult{
                     .exhausted = !leaf.eol and self.leaf_byte_offset + cp.len >= leaf.buf.len,
-                    .code_point = cp.code,
-                    .code_point_len = cp.len,
+                    .iter_result = .{ .code = cp.code, .len = cp.len },
                 };
             }
 
-            if (leaf.eol) return CharInLeafResult{ .exhausted = true, .code_point = '\n' };
+            if (leaf.eol) return CharInLeafResult{ .exhausted = true, .iter_result = .{ .code = '\n', .len = 1 } };
         }
 
-        return CharInLeafResult{ .exhausted = true, .code_point = null };
+        return CharInLeafResult{ .exhausted = true };
     }
 
     fn flipLatestBranchToRightSide(self: *@This()) void {
@@ -3521,8 +3525,7 @@ pub const CharacterForwardIterator = struct {
 ///////////////////////////// shared code between CharacterForwardIterator and CharacterBackwardsIterator
 
 const CharInLeafResult = struct {
-    code_point: ?u21 = null,
-    code_point_len: ?u3 = null,
+    iter_result: ?CharacterIteratorResult = null,
     exhausted: bool = false,
     offset_in_middle_of_unicode_character: bool = false,
 };
@@ -3874,7 +3877,7 @@ fn testCharacterIterator(T: type, method: anytype, root: *Node, expected: []cons
             {
                 var iter_buf: [5]u8 = undefined;
                 const iter_str = if (iter_result) |cp| blk: {
-                    const len = std.unicode.utf8Encode(cp, &iter_buf) catch unreachable;
+                    const len = std.unicode.utf8Encode(cp.code, &iter_buf) catch unreachable;
                     break :blk iter_buf[0..len];
                 } else "null";
 
@@ -3891,11 +3894,11 @@ fn testCharacterIterator(T: type, method: anytype, root: *Node, expected: []cons
                 std.debug.print("===============================\n", .{});
                 var print_iter = T.init(root, offset) catch unreachable;
                 var i: usize = 0;
-                while (method(&print_iter)) |code| {
+                while (method(&print_iter)) |cp| {
                     defer i += 1;
                     if (i > expected.len) unreachable;
                     var iter_buf: [5]u8 = undefined;
-                    const len = std.unicode.utf8Encode(code, &iter_buf) catch unreachable;
+                    const len = std.unicode.utf8Encode(cp.code, &iter_buf) catch unreachable;
                     std.debug.print("i: {d} | str: '{s}'\n", .{ i, iter_buf[0..len] });
                 }
                 std.debug.print("===============================\n", .{});
@@ -3927,7 +3930,7 @@ fn testCharacterIterator(T: type, method: anytype, root: *Node, expected: []cons
             return;
         }
 
-        try eq(cp_iter_result.?.code, iter_result.?);
+        try eq(cp_iter_result.?.code, iter_result.?.code);
     }
 }
 
@@ -3961,7 +3964,7 @@ fn insertCharOneAfterAnotherAtTheBeginning(a: Allocator, content_allocator: Allo
 
 ////////////////////////////////////////////////////////////////////////////////////////////// CharacterBackwardsIterator
 
-const CharacterBackwardsIterator = struct {
+pub const CharacterBackwardsIterator = struct {
     branches: [CHARACTER_ITERATOR_MAX_DEPTH]*const Node = undefined,
     branch_sides: [CHARACTER_ITERATOR_MAX_DEPTH]BranchSide = undefined,
     branches_len: usize = 0,
@@ -3987,7 +3990,7 @@ const CharacterBackwardsIterator = struct {
         return self;
     }
 
-    pub fn prev(self: *@This()) ?u21 {
+    pub fn prev(self: *@This()) ?CharacterIteratorResult {
         if (self.leaf == null) {
             if (self.branches_len == 0) return null;
 
@@ -4004,14 +4007,14 @@ const CharacterBackwardsIterator = struct {
         const result = self.prevCharInLeaf();
 
         // this happens when starting offset is at the start of a leaf
-        if (result.code_point == null and self.branches_len > 0) {
+        if (result.iter_result == null and self.branches_len > 0) {
             self.leaf = null;
             return self.prev();
         }
 
         if (result.exhausted) self.leaf = null;
 
-        return result.code_point;
+        return result.iter_result;
     }
 
     fn prevCharInLeaf(self: *@This()) CharInLeafResult {
@@ -4023,15 +4026,11 @@ const CharacterBackwardsIterator = struct {
 
             if (self.leaf_byte_offset == leaf.weights().len and leaf.eol) {
                 self.leaf_byte_offset -= 1;
-                return CharInLeafResult{
-                    .exhausted = leaf.buf.len == 0,
-                    .code_point = '\n',
-                    .code_point_len = 1,
-                };
+                return CharInLeafResult{ .exhausted = leaf.buf.len == 0, .iter_result = .{ .code = '\n', .len = 1 } };
             }
 
             while (true) {
-                if (self.leaf_byte_offset == 0 or leaf.buf.len == 0) return CharInLeafResult{ .exhausted = true, .code_point = null };
+                if (self.leaf_byte_offset == 0 or leaf.buf.len == 0) return CharInLeafResult{ .exhausted = true };
 
                 self.leaf_byte_offset -= 1;
                 var iter = code_point.Iterator{ .bytes = leaf.buf, .i = self.leaf_byte_offset };
@@ -4041,14 +4040,13 @@ const CharacterBackwardsIterator = struct {
 
                     return CharInLeafResult{
                         .exhausted = self.leaf_byte_offset == 0,
-                        .code_point = cp.code,
-                        .code_point_len = cp.len,
+                        .iter_result = .{ .code = cp.code, .len = cp.len },
                     };
                 }
             }
         }
 
-        return CharInLeafResult{ .exhausted = true, .code_point = null };
+        return CharInLeafResult{ .exhausted = true };
     }
 
     fn flipLatestBranchToLeftSide(self: *@This()) void {
