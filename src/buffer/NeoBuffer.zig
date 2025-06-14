@@ -33,7 +33,7 @@ edits: ListOfEdits = .{},
 pub const NULL_PARENT_INDEX = std.math.maxInt(u32);
 const ListOfEdits = std.ArrayListUnmanaged(Edit);
 const Edit = struct {
-    parent_index: u32 = NULL_PARENT_INDEX,
+    parent_index: u32,
     root: rcr.RcNode,
     old_start_byte: u32,
     old_end_byte: u32,
@@ -56,6 +56,7 @@ pub fn create(a: Allocator, root: rcr.RcNode) !*NeoBuffer {
     const self = try a.create(NeoBuffer);
     self.* = NeoBuffer{};
     try self.edits.append(a, Edit{
+        .parent_index = NULL_PARENT_INDEX,
         .root = root,
         .old_start_byte = 0,
         .old_end_byte = 0,
@@ -130,6 +131,7 @@ pub fn addEdit(self: *@This(), a: Allocator, req: AddEditRequest) !void {
     });
 
     try self.edits.append(a, Edit{
+        .parent_index = req.parent_index,
         .root = try balance(a, insert_result.node),
         .old_start_byte = req.old_start_byte,
         .old_end_byte = req.old_end_byte,

@@ -304,7 +304,10 @@ pub fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: an
 test insertChars {
     var orchestrator = Orchestrator{ .a = std.testing.allocator };
     defer orchestrator.deinit();
-    { // insert 1 single multi-bytes string
+
+    ///////////////////////////// Single Cursor
+
+    { // insert 1 single multi-bytes string at the beginning of the Buffer
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
@@ -318,6 +321,8 @@ test insertChars {
 
         try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
     }
     { // insert multiple single-byte strings
         const buf = try orchestrator.createBufferFromString("hello world");
@@ -341,6 +346,115 @@ test insertChars {
 
         try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
+    }
+    { // insert 1 single-byte string in the middle of the Buffer
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        {
+            var edit_byte_offset_iter = MockIterator(u32){ .items = &.{5} };
+            try orchestrator.insertChars(",", &edit_byte_offset_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("hello, world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+    }
+    { // insert 1 single-byte string in the middle of the Buffer, then insert 1 multi-bytes string to the start of the Buffer
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        {
+            var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+            try orchestrator.startInsertMode(buf, &byte_range_iter);
+            {
+                var edit_byte_offset_iter = MockIterator(u32){ .items = &.{5} };
+                try orchestrator.insertChars(",", &edit_byte_offset_iter);
+            }
+            try orchestrator.exitInsertMode();
+
+            try eqStr("hello, world", try buf.toString(std.heap.page_allocator, .lf));
+            try eq(2, buf.edits.items.len);
+        }
+
+        {
+            var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.startInsertMode(buf, &byte_range_iter);
+            {
+                var edit_byte_offset_iter = MockIterator(u32){ .items = &.{0} };
+                try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            }
+            {
+                var edit_byte_offset_iter = MockIterator(u32){ .items = &.{1} };
+                try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            }
+            {
+                var edit_byte_offset_iter = MockIterator(u32){ .items = &.{2} };
+                try orchestrator.insertChars(" ", &edit_byte_offset_iter);
+            }
+            try orchestrator.exitInsertMode();
+
+            try eqStr("// hello, world", try buf.toString(std.heap.page_allocator, .lf));
+            try eq(3, buf.edits.items.len);
+        }
+
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+        try eq(1, buf.edits.items[2].parent_index);
+    }
+
+    ///////////////////////////// Multi Cursor
+
+    { // using 2 cursors, insert 1 single-byte string at the beginning and middle of the Buffer
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 0, .end = 0 },
+            .{ .start = 5, .end = 5 },
+        } };
+        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        {
+            var edit_byte_offset_iter = MockIterator(u32){ .items = &.{ 0, 5 } };
+            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("|hello| world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
+    }
+
+    { // using 2 cursors, insert 1 single-byte string at the beginning and middle of the Buffer 2 times in 1 insert mode session
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        {
+            var byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 0, .end = 0 },
+                .{ .start = 5, .end = 5 },
+            } };
+            try orchestrator.startInsertMode(buf, &byte_range_iter);
+            {
+                var edit_byte_offset_iter = MockIterator(u32){ .items = &.{ 0, 5 } };
+                try orchestrator.insertChars("(", &edit_byte_offset_iter);
+            }
+            {
+                var edit_byte_offset_iter = MockIterator(u32){ .items = &.{ 1, 7 } };
+                try orchestrator.insertChars(")", &edit_byte_offset_iter);
+            }
+            try orchestrator.exitInsertMode();
+        }
+
+        try eqStr("()hello() world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
     }
 }
 
