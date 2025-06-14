@@ -30,10 +30,10 @@ pub const rcr = @import("NeoRcRope.zig");
 index: usize = 0,
 edits: ListOfEdits = .{},
 
+pub const NULL_PARENT_INDEX = std.math.maxInt(u32);
 const ListOfEdits = std.ArrayListUnmanaged(Edit);
-const NULL_PARENT_INDEX = std.math.maxInt(u32);
 const Edit = struct {
-    parent_index: u32 = NULL_PARENT_INDEX,
+    parent_index: usize = NULL_PARENT_INDEX,
     root: rcr.RcNode,
     old_start_byte: u32,
     old_end_byte: u32,
@@ -42,6 +42,9 @@ const Edit = struct {
 };
 
 test {
+    try eq(8, @alignOf(Edit));
+    try eq(32, @sizeOf(Edit));
+
     try eq(8, @alignOf(NeoBuffer));
     try eq(24, @sizeOf(ListOfEdits));
     try eq(32, @sizeOf(NeoBuffer));
@@ -68,109 +71,6 @@ pub fn destroy(self: *@This(), a: Allocator) void {
     a.destroy(self);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Insert
-
-const EditType = enum { interim, registered };
-
-pub const InsertCharsRequest = struct {
-    parent_index: u32,
-    edit_type: EditType,
-
-    chars: []const u8,
-    start_byte: u32,
-    start_line: u32,
-    start_col: u32,
-};
-
-pub fn insertChars(self: *@This(), a: Allocator, req: InsertCharsRequest) ![]const u8 {
-    const result = try rcr.insertChars(self.getCurrentRoot(), a, req.chars, .{
-        .line = @intCast(req.start_line),
-        .col = @intCast(req.start_col),
-    });
-
-    try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
-        .root = try balance(a, result.node),
-        .old_start_byte = req.start_byte,
-        .old_end_byte = req.start_byte,
-        .new_start_byte = req.start_byte,
-        .new_end_byte = req.start_byte + @as(u32, @intCast(req.chars.len)),
-    });
-
-    return result.allocated_str;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Delete
-
-const DeleteRangeRequest = struct {
-    parent_index: u32,
-    edit_type: EditType,
-
-    start_byte: u32,
-    end_byte: u32,
-    start_line: u32,
-    start_col: u32,
-    end_line: u32,
-    end_col: u32,
-};
-
-pub fn deleteRange(self: *@This(), a: Allocator, req: DeleteRangeRequest) !void {
-    const new_root = try rcr.deleteRange(
-        self.getCurrentRoot(),
-        a,
-        .{ .line = req.start_line, .col = req.start_col },
-        .{ .line = req.end_line, .col = req.end_col },
-    );
-
-    try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
-        .root = try balance(a, new_root),
-        .old_start_byte = req.start_byte,
-        .old_end_byte = req.end_byte,
-        .new_start_byte = req.start_byte,
-        .new_end_byte = req.start_byte,
-    });
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Replace
-
-const ReplaceRangeRequest = struct {
-    parent_index: u32,
-    edit_type: EditType,
-
-    chars: []const u8,
-    start_byte: u32,
-    end_byte: u32,
-    start_line: u32,
-    start_col: u32,
-    end_line: u32,
-    end_col: u32,
-};
-
-pub fn replaceRange(self: *@This(), a: Allocator, content_allocator: Allocator, req: ReplaceRangeRequest) ![]const u8 {
-    const after_delete_root = try rcr.deleteChars(
-        self.getCurrentRoot(),
-        a,
-        .{ .line = req.start_line, .col = req.start_col },
-        .{ .line = req.end_line, .col = req.end_col },
-    );
-    const balanced_after_delete_root = try balance(a, after_delete_root);
-    defer rcr.freeRcNode(a, balanced_after_delete_root);
-
-    const insert_result = try rcr.insertChars(balanced_after_delete_root, a, content_allocator, req.chars, .{
-        .line = @intCast(req.start_line),
-        .col = @intCast(req.start_col),
-    });
-
-    try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
-        .root = try balance(a, insert_result.node),
-        .old_start_byte = req.start_byte,
-        .old_end_byte = req.end_byte,
-        .new_start_byte = req.start_byte,
-        .new_end_byte = req.start_byte + @as(u32, @intCast(req.chars.len)),
-    });
-
-    return insert_result.allocated_str;
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Getters
 
 pub fn toString(self: *const @This(), a: Allocator, eol_mode: rcr.EolMode) ![]const u8 {
@@ -185,26 +85,62 @@ pub fn getNumOfCharsInLine(self: *const @This(), line: usize) usize {
     return rcr.getNumOfCharsInLine(self.getCurrentRoot(), line);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// History
-
-fn addEditToHistory(self: *@This(), a: Allocator, edit_type: EditType, parent_index: u32, edit: Edit) !void {
-    defer self.index += 1;
-    try self.edits.append(a, edit);
-    if (edit_type == .interim) return;
-    self.edits.items[self.edits.items.len - 1].parent_index = parent_index;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////// Private
-
-fn balance(a: Allocator, node: rcr.RcNode) !rcr.RcNode {
-    const is_rebalanced, const balanced_root = try rcr.balance(a, node);
-    if (is_rebalanced) rcr.freeRcNode(a, node);
-    return balanced_root;
-}
-
 pub fn getCurrentRoot(self: *const @This()) rcr.RcNode {
     assert(self.edits.items.len > 0);
     assert(self.index < self.edits.items.len);
 
     return self.edits.items[self.index].root;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// Add Edit
+
+pub const AddEditRequest = struct {
+    parent_index: u32,
+    chars: []const u8,
+
+    old_start_byte: u32,
+    old_end_byte: u32,
+    new_start_byte: u32,
+    new_end_byte: u32,
+
+    delete_start_line: u32,
+    delete_start_col: u32,
+    delete_end_line: u32,
+    delete_end_col: u32,
+};
+
+pub fn addEdit(self: *@This(), a: Allocator, req: AddEditRequest) !void {
+    const should_delete = !(self.delete_start_line == self.delete_end_line and self.delete_start_col == self.delete_end_col);
+
+    const balanced_after_delete_root = if (should_delete) blk: {
+        const after_delete_root = try rcr.deleteRange(
+            self.getCurrentRoot(),
+            a,
+            .{ .line = req.delete_start_line, .col = req.delete_start_line },
+            .{ .line = req.delete_end_line, .col = req.delete_end_col },
+        );
+        const balanced = try balance(a, after_delete_root);
+        break :blk balanced;
+    } else self.getCurrentRoot();
+    defer if (should_delete) rcr.freeRcNode(a, balanced_after_delete_root);
+
+    const insert_result = try rcr.insertChars(balanced_after_delete_root, a, req.chars, .{
+        .line = @intCast(req.delete_start_line),
+        .col = @intCast(req.delete_start_col),
+    });
+
+    try self.edits.append(a, Edit{
+        .root = try balance(a, insert_result.node),
+        .old_start_byte = req.old_start_byte,
+        .old_end_byte = req.old_end_byte,
+        .new_start_byte = req.new_start_byte,
+        .new_end_byte = req.new_end_byte,
+    });
+    self.index = self.edits.items.len - 1;
+}
+
+fn balance(a: Allocator, node: rcr.RcNode) !rcr.RcNode {
+    const is_rebalanced, const balanced_root = try rcr.balance(a, node);
+    if (is_rebalanced) rcr.freeRcNode(a, node);
+    return balanced_root;
 }

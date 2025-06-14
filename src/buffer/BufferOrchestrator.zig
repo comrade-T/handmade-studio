@@ -44,7 +44,7 @@ pub fn deinit(self: *@This()) void {
     }
     self.strmap.deinit(self.a);
 
-    if (self.pending) |*pending| pending.deinit(self.a);
+    if (self.pending) |*pending| pending.deinit();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -66,8 +66,7 @@ fn createBuffer(self: *@This(), allocated_str: []const u8, root: rcr.RcNode) !*B
 }
 
 test createBuffer {
-    const a = std.testing.allocator;
-    var orchestrator = Orchestrator{ .a = a };
+    var orchestrator = Orchestrator{ .a = std.testing.allocator };
     defer orchestrator.deinit();
 
     const buf = try orchestrator.createBufferFromString("hello world");
@@ -97,6 +96,7 @@ const PendingEdit = struct {
     buf: *Buffer,
 
     first_cursor_current_byte: u32 = undefined,
+    first_cursor_lowest_byte: u32 = undefined,
     initial_byte_ranges: []const ByteRange = undefined,
     inserted_string: []const u8 = "",
 
@@ -110,20 +110,24 @@ const PendingEdit = struct {
             .buf = buf,
             .initial_root = buf.getCurrentRoot(),
         };
-        ev.initial_byte_offsets = try a.alloc(u32, cursor_byte_range_iter.len);
+        var initial_byte_ranges = try a.alloc(ByteRange, cursor_byte_range_iter.len());
 
         var i: usize = 0;
         while (cursor_byte_range_iter.next()) |byte_range| {
             defer i += 1;
-            if (i == 0) ev.first_cursor_current_byte = byte_range.start;
-            ev.initial_byte_ranges[i] = byte_range;
+            if (i == 0) {
+                ev.first_cursor_current_byte = byte_range.start;
+                ev.first_cursor_lowest_byte = byte_range.start;
+            }
+            initial_byte_ranges[i] = byte_range;
         }
 
+        ev.initial_byte_ranges = initial_byte_ranges;
         return ev;
     }
 
     fn deinit(self: *@This()) void {
-        self.a.free(self.initial_byte_offsets);
+        self.a.free(self.initial_byte_ranges);
         rcr.freeRcNodes(self.a, self.roots.items);
         self.roots.deinit(self.a);
     }
@@ -147,11 +151,10 @@ const PendingEdit = struct {
     }
 
     fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: anytype) !void {
-        assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
-        if (cursor_edit_point_iter.len != self.initial_byte_ranges.len) unreachable;
+        assert(cursor_edit_point_iter.len() == self.initial_byte_ranges.len);
 
         // update PendingEdit state
-        self.first_cursor_current_byte += chars.len;
+        self.first_cursor_current_byte += @intCast(chars.len);
 
         const new_str = try std.fmt.allocPrint(self.a, "{s}{s}", .{ self.inserted_string, chars });
         self.a.free(self.inserted_string);
@@ -160,16 +163,16 @@ const PendingEdit = struct {
         // call `rcr.insertChars()`
         const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
         while (cursor_edit_point_iter.next()) |point| {
+
+            // TODO: deal with shifting byte offsets in multi cursor edits
+
             const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, point);
-            try self.pending.roots.append(self.a, result.node);
+            try self.roots.append(self.a, result.node);
         }
     }
 
     fn deleteCharsAtTheEnd(self: *@This(), number_of_chars_to_delete: u32, cursor_edit_point_iter: anytype) !void {
-        // TODO: deal with shifting byte offsets in multi cursor edits
-
         assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
-        if (cursor_edit_point_iter.len != self.initial_byte_ranges.len) unreachable;
 
         // update PendingEdit state
         var number_of_bytes_to_delete: u32 = 0;
@@ -183,6 +186,7 @@ const PendingEdit = struct {
 
         assert(number_of_bytes_to_delete <= self.inserted_string.len);
         self.first_cursor_current_byte -= number_of_bytes_to_delete;
+        self.first_cursor_lowest_byte = @min(self.first_cursor_lowest_byte, self.first_cursor_current_byte);
 
         const new_str = try std.fmt.allocPrint(self.a, "{s}", .{self.inserted_string[0 .. self.inserted_string.len - number_of_bytes_to_delete]});
         self.a.free(self.inserted_string);
@@ -190,17 +194,19 @@ const PendingEdit = struct {
 
         // call `rcr.deleteChars()`
         while (cursor_edit_point_iter.next()) |point| {
+
+            // TODO: deal with shifting byte offsets in multi cursor edits
+
             const result = try rcr.deleteChars(self.getLatestRoot(), self.a, point, number_of_chars_to_delete);
             try self.roots.append(self.a, result.node);
         }
     }
 
     fn getLatestRoot(self: *const @This()) rcr.RcNode {
-        return if (self.roots.items.len > 0) self.roots.getLast() else self.root;
+        return if (self.roots.items.len > 0) self.roots.getLast() else self.initial_root;
     }
 
     fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
-        assert(self.pending != null);
         return if (chars.len == 1)
             SINGLE_CHARS[chars[0]]
         else blk: {
@@ -213,6 +219,37 @@ const PendingEdit = struct {
     fn check(self: *const @This(), number_of_cursors: u32, first_cursor_byte_offset: u32) bool {
         if (number_of_cursors != self.initial_byte_offsets.len) return false;
         return first_cursor_byte_offset != self.first_cursor_current_byte;
+    }
+
+    fn finalizeChangesToBuffer(self: *const @This()) !void {
+        // TODO: deal with shifting byte offsets in multi cursor edits
+
+        const num_of_bytes_deleted_from_start_anchor = self.initial_byte_ranges[0].start - self.first_cursor_lowest_byte;
+
+        for (self.initial_byte_ranges, 0..) |initial_byte_range, i| {
+            const parent_index = if (i == self.initial_byte_ranges.len - 1) self.buf.index else Buffer.NULL_PARENT_INDEX;
+
+            const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
+            const delete_start_line, const delete_start_col = rcr.getPositionFromByteOffset(self.initial_root, delete_start_byte_offset);
+            const delete_end_line, const delete_end_col = rcr.getPositionFromByteOffset(self.initial_root, initial_byte_range.end);
+
+            const edit_request = Buffer.AddEditRequest{
+                .parent_index = parent_index,
+                .chars = self.inserted_string,
+
+                .old_start_byte = initial_byte_range.start,
+                .old_end_byte = initial_byte_range.end,
+                .new_start_byte = delete_start_byte_offset,
+                .new_end_byte = delete_start_byte_offset + self.inserted_string.len,
+
+                .delete_start_line = delete_start_line,
+                .delete_start_col = delete_start_col,
+                .delete_end_line = delete_end_line,
+                .delete_end_col = delete_end_col,
+            };
+
+            try self.buf.addEdit(self.a, edit_request);
+        }
     }
 };
 
@@ -228,30 +265,62 @@ pub fn startInsertMode(self: *@This(), buf: *Buffer, cursor_byte_range_iter: any
     self.pending = try PendingEdit.init(self.a, buf, cursor_byte_range_iter);
 }
 
+pub fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: anytype) !void {
+    assert(self.pending != null);
+    try self.pending.?.insertChars(chars, cursor_edit_point_iter);
+}
+
+test insertChars {
+    var orchestrator = Orchestrator{ .a = std.testing.allocator };
+    defer orchestrator.deinit();
+    const buf = try orchestrator.createBufferFromString("hello world");
+
+    var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+    try orchestrator.startInsertMode(buf, &byte_range_iter);
+    {
+        var edit_points_iter = MockIterator(rcr.EditPoint){ .items = &.{.{ .line = 0, .col = 0 }} };
+        try orchestrator.insertChars("// ", &edit_points_iter);
+    }
+    try orchestrator.exitInsertMode();
+
+    try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
+}
+
 pub fn clear(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
     try self.startInsertMode(buf, cursor_byte_range_iter);
-    self.pending.?.clear();
+    try self.pending.?.clear();
 }
 
 pub fn exitInsertMode(self: *@This()) !void {
     assert(self.pending != null);
     const pending = &(self.pending orelse return);
-    pending.deinit();
-    self.pending = null;
+
+    // TODO:
+
+    defer {
+        pending.deinit();
+        self.pending = null;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const MockPointsIterator = struct {
-    points: []const rcr.EditPoint,
-    index: usize,
+fn MockIterator(T: type) type {
+    return struct {
+        items: []const T,
+        index: usize = 0,
 
-    fn next(self: *@This()) ?Buffer.rcr.EditPoint {
-        defer self.index += 1;
-        if (self.index >= self.points.len) return null;
-        return self.points[self.index];
-    }
-};
+        fn next(self: *@This()) ?T {
+            defer self.index += 1;
+            if (self.index >= self.items.len) return null;
+            return self.items[self.index];
+        }
+
+        fn len(self: *const @This()) usize {
+            return self.items.len;
+        }
+    };
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -273,3 +342,9 @@ const SINGLE_CHARS = [_][]const u8{
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 224-239
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", // 240-255
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+test {
+    std.testing.refAllDeclsRecursive(Buffer);
+}
