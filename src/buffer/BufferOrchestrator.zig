@@ -92,17 +92,28 @@ pub fn removeBuffer(self: *@This(), buf: *Buffer) !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-const CanonEvent = struct {
+const PendingEdit = struct {
+    a: Allocator,
+    buf: *Buffer,
+
     first_cursor_current_byte: u32 = undefined,
     initial_byte_ranges: []const ByteRange = undefined,
     inserted_string: []const u8 = "",
 
-    fn init(a: Allocator, iter: anytype) !CanonEvent {
-        var ev = CanonEvent{};
-        ev.initial_byte_offsets = try a.alloc(u32, iter.len);
+    initial_root: rcr.RcNode,
+    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
+    strlist: std.ArrayListUnmanaged([]const u8) = .{},
+
+    fn init(a: Allocator, buf: *Buffer, cursor_byte_range_iter: anytype) !PendingEdit {
+        var ev = PendingEdit{
+            .a = a,
+            .buf = buf,
+            .initial_root = buf.getCurrentRoot(),
+        };
+        ev.initial_byte_offsets = try a.alloc(u32, cursor_byte_range_iter.len);
 
         var i: usize = 0;
-        while (iter.next()) |byte_range| {
+        while (cursor_byte_range_iter.next()) |byte_range| {
             defer i += 1;
             if (i == 0) ev.first_cursor_current_byte = byte_range.start;
             ev.initial_byte_ranges[i] = byte_range;
@@ -111,20 +122,72 @@ const CanonEvent = struct {
         return ev;
     }
 
-    fn deinit(self: *@This(), a: Allocator) void {
-        a.free(self.initial_byte_offsets);
+    fn deinit(self: *@This()) void {
+        self.a.free(self.initial_byte_offsets);
+        rcr.freeRcNodes(self.a, self.roots.items);
+        self.roots.deinit(self.a);
     }
 
-    fn insertChars(self: *@This(), a: Allocator, chars: []const u8) !void {
-        const new_str = try std.fmt.allocPrint(a, "{s}{s}", .{ self.inserted_string, chars });
-        a.free(self.inserted_string);
+    fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: anytype) !void {
+        assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
+        if (cursor_edit_point_iter.len != self.initial_byte_ranges.len) unreachable;
+
+        // update PendingEdit state
+        self.first_cursor_current_byte += chars.len;
+
+        const new_str = try std.fmt.allocPrint(self.a, "{s}{s}", .{ self.inserted_string, chars });
+        self.a.free(self.inserted_string);
         self.inserted_string = new_str;
+
+        // call `rcr.insertChars()`
+        const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
+        while (cursor_edit_point_iter.next()) |point| {
+            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, point);
+            try self.pending.roots.append(self.a, result.node);
+        }
     }
-    fn deleteCharsAtTheEnd(self: *@This(), a: Allocator, number_of_chars: u32) !void {
-        assert(number_of_chars <= self.inserted_string.len);
-        const new_str = try std.fmt.allocPrint(a, "{s}", .{self.inserted_string[0 .. self.inserted_string.len - number_of_chars]});
-        a.free(self.inserted_string);
+
+    fn deleteCharsAtTheEnd(self: *@This(), number_of_chars_to_delete: u32, cursor_edit_point_iter: anytype) !void {
+        assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
+        if (cursor_edit_point_iter.len != self.initial_byte_ranges.len) unreachable;
+
+        // update PendingEdit state
+        var number_of_bytes_to_delete: u32 = 0;
+        var i: u32 = 0;
+        var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot(), self.first_cursor_current_byte);
+        while (backwards_char_iter.prev()) |cp| {
+            defer i += 1;
+            if (i == number_of_chars_to_delete) break;
+            number_of_bytes_to_delete += cp.len;
+        }
+
+        assert(number_of_bytes_to_delete <= self.inserted_string.len);
+        self.first_cursor_current_byte -= number_of_bytes_to_delete;
+
+        const new_str = try std.fmt.allocPrint(self.a, "{s}", .{self.inserted_string[0 .. self.inserted_string.len - number_of_bytes_to_delete]});
+        self.a.free(self.inserted_string);
         self.inserted_string = new_str;
+
+        // call `rcr.deleteChars()`
+        while (cursor_edit_point_iter.next()) |point| {
+            const result = try rcr.deleteChars(self.getLatestRoot(), self.a, point, number_of_chars_to_delete);
+            try self.pending.roots.append(self.a, result.node);
+        }
+    }
+
+    fn getLatestRoot(self: *const @This()) rcr.RcNode {
+        return if (self.roots.items.len > 0) self.roots.getLast() else self.root;
+    }
+
+    fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
+        assert(self.pending != null);
+        return if (chars.len == 1)
+            SINGLE_CHARS[chars[0]]
+        else blk: {
+            const str = try self.a.dupe(u8, chars);
+            try self.strlist.append(self.a, str);
+            break :blk str;
+        };
     }
 
     fn check(self: *const @This(), number_of_cursors: u32, first_cursor_byte_offset: u32) bool {
@@ -140,74 +203,16 @@ pub const ByteRange = struct {
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn startInsertMode(self: *@This(), buf: *Buffer, initial_edit_points: []const rcr.EditPoint) !void {
-    assert(self.num_of_strings_to_clean_up == 0);
-    self.pending = PendingEdit{
-        .buf = buf,
-        .initial_root = buf.getCurrentRoot(),
-        .initial_edit_points = try self.a.dupe(rcr.EditPoint, initial_edit_points),
-    };
+pub fn startInsertMode(self: *@This(), buf: *Buffer, cursor_iter: anytype) !void {
+    self.pending = try PendingEdit.init(self.a, buf, cursor_iter);
 }
 
 pub fn exitInsertMode(self: *@This()) !void {
     assert(self.pending != null);
     const pending = &(self.pending orelse return);
-    defer {
-        pending.deinit();
-        self.pending = null;
-    }
-
-    // TODO:
+    pending.deinit();
+    self.pending = null;
 }
-
-pub fn insertChars(self: *@This(), chars: []const u8, cursor_iter: anytype) !void {
-    assert(self.pending != null);
-    const pending = &(self.pending orelse return);
-
-    const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
-    var latest_root = if (pending.roots.items.len > 0)
-        pending.roots.getLast()
-    else
-        pending.root orelse return;
-
-    while (cursor_iter.next()) |point| {
-        const result = try rcr.insertChars(latest_root, self.a, allocated_str, point);
-        latest_root = result.node;
-        try self.pending.roots.append(self.a, latest_root);
-    }
-}
-
-fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
-    assert(self.pending != null);
-    return if (chars.len == 1)
-        SINGLE_CHARS[chars[0]]
-    else blk: {
-        const str = try self.a.dupe(u8, chars);
-        var list = self.strmap.get(self.pending.?.buf) orelse unreachable;
-        try list.append(self.a, str);
-        self.pending.?.num_of_strings_allocated += 1;
-        break :blk str;
-    };
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
-const PendingEdit = struct {
-    buf: *Buffer,
-
-    initial_root: rcr.RcNode,
-    initial_edit_points: []const rcr.EditPoint,
-
-    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
-
-    num_of_strings_allocated: usize = 0,
-
-    fn deinit(self: *@This(), a: Allocator) void {
-        a.free(self.initial_edit_points);
-        rcr.freeRcNodes(a, self.roots.items);
-        self.roots.deinit(a);
-    }
-};
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
