@@ -153,8 +153,8 @@ const PendingEdit = struct {
         }
     }
 
-    fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: anytype) !void {
-        assert(cursor_edit_point_iter.len() == self.initial_byte_ranges.len);
+    fn insertChars(self: *@This(), chars: []const u8, cursor_byte_offset_iter: anytype) !void {
+        assert(cursor_byte_offset_iter.len() == self.initial_byte_ranges.len);
 
         // update PendingEdit state
         self.first_cursor_current_byte += @intCast(chars.len);
@@ -165,11 +165,19 @@ const PendingEdit = struct {
 
         // call `rcr.insertChars()`
         const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
-        while (cursor_edit_point_iter.next()) |point| {
+        const num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor();
+        var total_number_of_shifted_bytes: i64 = 0;
 
-            // TODO: deal with shifting byte offsets in multi cursor edits
+        for (self.initial_byte_ranges) |initial_byte_range| {
+            const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
+            const number_of_shifted_bytes = self.inserted_string.len + (initial_byte_range.end - delete_start_byte_offset);
+            defer total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
 
-            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, point);
+            const byte_offset = cursor_byte_offset_iter.next() orelse unreachable;
+            const adjusted_byte_offset = @as(i64, @intCast(byte_offset)) + total_number_of_shifted_bytes;
+            const line, const col = try rcr.getPositionFromByteOffset(self.getLatestRoot(), @intCast(adjusted_byte_offset));
+
+            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, .{ .line = line, .col = col });
             try self.roots.append(self.a, result.node);
         }
     }
@@ -235,7 +243,7 @@ const PendingEdit = struct {
         } else "";
 
         const official_parent_index = self.buf.index;
-        const num_of_bytes_deleted_from_start_anchor = self.initial_byte_ranges[0].start - self.first_cursor_lowest_byte;
+        const num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor();
         var total_number_of_shifted_bytes: i64 = 0;
 
         for (self.initial_byte_ranges, 0..) |initial_byte_range, i| {
@@ -243,9 +251,8 @@ const PendingEdit = struct {
 
             const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
 
-            var number_of_shifted_bytes: i64 = 0;
-            if (i > 0) number_of_shifted_bytes = @as(i64, @intCast(self.inserted_string.len)) + (initial_byte_range.end - delete_start_byte_offset);
-            total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
+            const number_of_shifted_bytes = self.inserted_string.len + (initial_byte_range.end - delete_start_byte_offset);
+            defer total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
 
             const adjusted_delete_start_byte: i64 = @as(i64, @intCast(delete_start_byte_offset)) + total_number_of_shifted_bytes;
             const delete_start_line, const delete_start_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_start_byte));
@@ -271,6 +278,10 @@ const PendingEdit = struct {
             try self.buf.addEdit(self.a, edit_request);
         }
     }
+
+    fn getNumOfbytesDeletedFromStartAnchor(self: *const @This()) u32 {
+        return self.initial_byte_ranges[0].start - self.first_cursor_lowest_byte;
+    }
 };
 
 pub const ByteRange = struct {
@@ -293,17 +304,44 @@ pub fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: an
 test insertChars {
     var orchestrator = Orchestrator{ .a = std.testing.allocator };
     defer orchestrator.deinit();
-    const buf = try orchestrator.createBufferFromString("hello world");
+    { // insert 1 single multi-bytes string
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
 
-    var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-    try orchestrator.startInsertMode(buf, &byte_range_iter);
-    {
-        var edit_points_iter = MockIterator(rcr.EditPoint){ .items = &.{.{ .line = 0, .col = 0 }} };
-        try orchestrator.insertChars("// ", &edit_points_iter);
+        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        {
+            var edit_byte_offset_iter = MockIterator(u32){ .items = &.{0} };
+            try orchestrator.insertChars("// ", &edit_byte_offset_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
     }
-    try orchestrator.exitInsertMode();
+    { // insert multiple single-byte strings
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
 
-    try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
+        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        {
+            var edit_byte_offset_iter = MockIterator(u32){ .items = &.{0} };
+            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+        }
+        {
+            var edit_byte_offset_iter = MockIterator(u32){ .items = &.{1} };
+            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+        }
+        {
+            var edit_byte_offset_iter = MockIterator(u32){ .items = &.{2} };
+            try orchestrator.insertChars(" ", &edit_byte_offset_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+    }
 }
 
 pub fn clear(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
