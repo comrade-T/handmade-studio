@@ -129,7 +129,10 @@ const PendingEdit = struct {
     fn deinit(self: *@This()) void {
         self.a.free(self.initial_byte_ranges);
         rcr.freeRcNodes(self.a, self.roots.items);
+        for (self.strlist.items) |str| self.a.free(str);
+        self.strlist.deinit(self.a);
         self.roots.deinit(self.a);
+        if (self.inserted_string.len > 0) self.a.free(self.inserted_string);
     }
 
     fn clear(self: *@This()) !void {
@@ -221,26 +224,43 @@ const PendingEdit = struct {
         return first_cursor_byte_offset != self.first_cursor_current_byte;
     }
 
-    fn finalizeChangesToBuffer(self: *const @This()) !void {
-        // TODO: deal with shifting byte offsets in multi cursor edits
+    fn finalizeChangesToBuffer(self: *const @This(), orchestrator: *Orchestrator) !void {
+        if (self.initial_byte_ranges.len == 0) return;
 
+        const allocated_str = if (self.inserted_string.len > 0) blk: {
+            const str = try self.a.dupe(u8, self.inserted_string);
+            var list = orchestrator.strmap.getPtr(self.buf) orelse unreachable;
+            try list.append(self.a, str);
+            break :blk str;
+        } else "";
+
+        const official_parent_index = self.buf.index;
         const num_of_bytes_deleted_from_start_anchor = self.initial_byte_ranges[0].start - self.first_cursor_lowest_byte;
+        var total_number_of_shifted_bytes: i64 = 0;
 
         for (self.initial_byte_ranges, 0..) |initial_byte_range, i| {
-            const parent_index = if (i == self.initial_byte_ranges.len - 1) self.buf.index else Buffer.NULL_PARENT_INDEX;
+            const parent_index = if (i == self.initial_byte_ranges.len - 1) official_parent_index else Buffer.NULL_PARENT_INDEX;
 
             const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
-            const delete_start_line, const delete_start_col = rcr.getPositionFromByteOffset(self.initial_root, delete_start_byte_offset);
-            const delete_end_line, const delete_end_col = rcr.getPositionFromByteOffset(self.initial_root, initial_byte_range.end);
+
+            var number_of_shifted_bytes: i64 = 0;
+            if (i > 0) number_of_shifted_bytes = @as(i64, @intCast(self.inserted_string.len)) + (initial_byte_range.end - delete_start_byte_offset);
+            total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
+
+            const adjusted_delete_start_byte: i64 = @as(i64, @intCast(delete_start_byte_offset)) + total_number_of_shifted_bytes;
+            const delete_start_line, const delete_start_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_start_byte));
+
+            const adjusted_delete_end_byte: i64 = @as(i64, @intCast(initial_byte_range.end)) + total_number_of_shifted_bytes;
+            const delete_end_line, const delete_end_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_end_byte));
 
             const edit_request = Buffer.AddEditRequest{
                 .parent_index = parent_index,
-                .chars = self.inserted_string,
+                .chars = allocated_str,
 
                 .old_start_byte = initial_byte_range.start,
                 .old_end_byte = initial_byte_range.end,
-                .new_start_byte = delete_start_byte_offset,
-                .new_end_byte = delete_start_byte_offset + self.inserted_string.len,
+                .new_start_byte = @intCast(@as(i64, @intCast(delete_start_byte_offset)) + total_number_of_shifted_bytes),
+                .new_end_byte = @intCast(@as(i64, @intCast(delete_start_byte_offset + self.inserted_string.len)) + total_number_of_shifted_bytes),
 
                 .delete_start_line = delete_start_line,
                 .delete_start_col = delete_start_col,
@@ -293,14 +313,9 @@ pub fn clear(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !voi
 
 pub fn exitInsertMode(self: *@This()) !void {
     assert(self.pending != null);
-    const pending = &(self.pending orelse return);
-
-    // TODO:
-
-    defer {
-        pending.deinit();
-        self.pending = null;
-    }
+    try self.pending.?.finalizeChangesToBuffer(self);
+    self.pending.?.deinit();
+    self.pending = null;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

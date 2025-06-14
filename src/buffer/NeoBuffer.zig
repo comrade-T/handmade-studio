@@ -27,13 +27,13 @@ pub const rcr = @import("NeoRcRope.zig");
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-index: usize = 0,
+index: u32 = 0,
 edits: ListOfEdits = .{},
 
 pub const NULL_PARENT_INDEX = std.math.maxInt(u32);
 const ListOfEdits = std.ArrayListUnmanaged(Edit);
 const Edit = struct {
-    parent_index: usize = NULL_PARENT_INDEX,
+    parent_index: u32 = NULL_PARENT_INDEX,
     root: rcr.RcNode,
     old_start_byte: u32,
     old_end_byte: u32,
@@ -110,7 +110,7 @@ pub const AddEditRequest = struct {
 };
 
 pub fn addEdit(self: *@This(), a: Allocator, req: AddEditRequest) !void {
-    const should_delete = !(self.delete_start_line == self.delete_end_line and self.delete_start_col == self.delete_end_col);
+    const should_delete = !(req.delete_start_line == req.delete_end_line and req.delete_start_col == req.delete_end_col);
 
     const balanced_after_delete_root = if (should_delete) blk: {
         const after_delete_root = try rcr.deleteRange(
@@ -136,7 +136,7 @@ pub fn addEdit(self: *@This(), a: Allocator, req: AddEditRequest) !void {
         .new_start_byte = req.new_start_byte,
         .new_end_byte = req.new_end_byte,
     });
-    self.index = self.edits.items.len - 1;
+    self.index = @as(u32, @intCast(self.edits.items.len)) - 1;
 }
 
 fn balance(a: Allocator, node: rcr.RcNode) !rcr.RcNode {
