@@ -117,22 +117,26 @@ pub fn addEdit(self: *@This(), a: Allocator, req: AddEditRequest) !void {
         const after_delete_root = try rcr.deleteRange(
             self.getCurrentRoot(),
             a,
-            .{ .line = req.delete_start_line, .col = req.delete_start_line },
+            .{ .line = req.delete_start_line, .col = req.delete_start_col },
             .{ .line = req.delete_end_line, .col = req.delete_end_col },
         );
         const balanced = try balance(a, after_delete_root);
         break :blk balanced;
     } else self.getCurrentRoot();
-    defer if (should_delete) rcr.freeRcNode(a, balanced_after_delete_root);
+    defer if (should_delete and req.chars.len > 0) rcr.freeRcNode(a, balanced_after_delete_root);
 
-    const insert_result = try rcr.insertChars(balanced_after_delete_root, a, req.chars, .{
-        .line = @intCast(req.delete_start_line),
-        .col = @intCast(req.delete_start_col),
-    });
+    var inserted_root = balanced_after_delete_root;
+    if (req.chars.len > 0) {
+        const res = try rcr.insertChars(balanced_after_delete_root, a, req.chars, .{
+            .line = @intCast(req.delete_start_line),
+            .col = @intCast(req.delete_start_col),
+        });
+        inserted_root = res.node;
+    }
 
     try self.edits.append(a, Edit{
         .parent_index = req.parent_index,
-        .root = try balance(a, insert_result.node),
+        .root = try balance(a, inserted_root),
         .old_start_byte = req.old_start_byte,
         .old_end_byte = req.old_end_byte,
         .new_start_byte = req.new_start_byte,

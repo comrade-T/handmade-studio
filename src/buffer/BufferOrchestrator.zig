@@ -154,7 +154,6 @@ const PendingEdit = struct {
     }
 
     fn insertChars(self: *@This(), chars: []const u8, cursor_byte_range_iter: anytype) !void {
-        assert(cursor_byte_range_iter.len() == self.initial_byte_ranges.len);
 
         // update PendingEdit state
         self.first_cursor_current_byte += @intCast(chars.len);
@@ -165,53 +164,75 @@ const PendingEdit = struct {
 
         // call `rcr.insertChars()`
         const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
-        const num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor();
-        var total_number_of_shifted_bytes: i64 = 0;
-
-        for (self.initial_byte_ranges) |initial_byte_range| {
-            const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
-            const number_of_shifted_bytes = self.inserted_string.len + (initial_byte_range.end - delete_start_byte_offset);
-            defer total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
-
-            const byte_range = cursor_byte_range_iter.next() orelse unreachable;
-            const adjusted_byte_offset = @as(i64, @intCast(byte_range.start)) + total_number_of_shifted_bytes;
-            const line, const col = try rcr.getPositionFromByteOffset(self.getLatestRoot(), @intCast(adjusted_byte_offset));
-
-            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, .{ .line = line, .col = col });
+        var shifted_point_getter = ShiftedEditPointGetter{ .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor() };
+        for (self.initial_byte_ranges) |_| {
+            const edit_point = try shifted_point_getter.next(self, cursor_byte_range_iter);
+            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, edit_point);
             try self.roots.append(self.a, result.node);
         }
     }
 
-    fn deleteCharsAtTheEnd(self: *@This(), number_of_chars_to_delete: u32, cursor_edit_point_iter: anytype) !void {
-        assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
+    fn deleteChars(self: *@This(), number_of_chars_to_delete: u32, cursor_byte_range_iter: anytype) !void {
 
         // update PendingEdit state
         var number_of_bytes_to_delete: u32 = 0;
         var i: u32 = 0;
-        var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot(), self.first_cursor_current_byte);
+        var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot().value, self.first_cursor_current_byte);
         while (backwards_char_iter.prev()) |cp| {
             defer i += 1;
             if (i == number_of_chars_to_delete) break;
             number_of_bytes_to_delete += cp.len;
         }
 
-        assert(number_of_bytes_to_delete <= self.inserted_string.len);
         self.first_cursor_current_byte -= number_of_bytes_to_delete;
         self.first_cursor_lowest_byte = @min(self.first_cursor_lowest_byte, self.first_cursor_current_byte);
 
-        const new_str = try std.fmt.allocPrint(self.a, "{s}", .{self.inserted_string[0 .. self.inserted_string.len - number_of_bytes_to_delete]});
+        const new_str = try std.fmt.allocPrint(self.a, "{s}", .{
+            self.inserted_string[0 .. self.inserted_string.len - @min(self.inserted_string.len, number_of_bytes_to_delete)],
+        });
         self.a.free(self.inserted_string);
         self.inserted_string = new_str;
 
         // call `rcr.deleteChars()`
-        while (cursor_edit_point_iter.next()) |point| {
-
-            // TODO: deal with shifting byte offsets in multi cursor edits
-
-            const result = try rcr.deleteChars(self.getLatestRoot(), self.a, point, number_of_chars_to_delete);
-            try self.roots.append(self.a, result.node);
+        var shifted_point_getter = ShiftedEditPointGetter{
+            .kind = .delete,
+            .number_of_bytes_to_delete = number_of_bytes_to_delete,
+            .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor(),
+        };
+        for (self.initial_byte_ranges) |_| {
+            const edit_point = try shifted_point_getter.next(self, cursor_byte_range_iter);
+            const new_root = try rcr.deleteChars(self.getLatestRoot(), self.a, edit_point, number_of_chars_to_delete);
+            try self.roots.append(self.a, new_root);
         }
     }
+
+    const ShiftedEditPointGetter = struct {
+        kind: enum { insert, delete } = .insert,
+        num_of_bytes_deleted_from_start_anchor: u32,
+        total_number_of_shifted_bytes: i64 = 0,
+        number_of_bytes_to_delete: u32 = 0,
+        index: usize = 0,
+
+        fn next(self: *@This(), pe: *const PendingEdit, cursor_byte_range_iter: anytype) !rcr.EditPoint {
+            defer self.index += 1;
+            const initial_byte_range = pe.initial_byte_ranges[self.index];
+
+            const delete_start_byte_offset = initial_byte_range.start - self.num_of_bytes_deleted_from_start_anchor;
+            const number_of_shifted_bytes: i64 =
+                @as(i64, @intCast(pe.inserted_string.len)) +
+                (@as(i64, @intCast(delete_start_byte_offset)) -
+                    @as(i64, @intCast(initial_byte_range.end)));
+            defer self.total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
+
+            const byte_range = cursor_byte_range_iter.next() orelse unreachable;
+            var adjusted_byte_offset = @as(i64, @intCast(byte_range.start)) + self.total_number_of_shifted_bytes;
+            if (self.kind == .delete) adjusted_byte_offset -= self.number_of_bytes_to_delete;
+
+            const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(adjusted_byte_offset));
+
+            return rcr.EditPoint{ .line = line, .col = col };
+        }
+    };
 
     fn getLatestRoot(self: *const @This()) rcr.RcNode {
         return if (self.roots.items.len > 0) self.roots.getLast() else self.initial_root;
@@ -246,8 +267,11 @@ const PendingEdit = struct {
 
             const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
 
-            const number_of_shifted_bytes = self.inserted_string.len + (initial_byte_range.end - delete_start_byte_offset);
-            defer total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
+            const number_of_shifted_bytes: i64 =
+                @as(i64, @intCast(self.inserted_string.len)) +
+                (@as(i64, @intCast(delete_start_byte_offset)) -
+                    @as(i64, @intCast(initial_byte_range.end)));
+            defer total_number_of_shifted_bytes += number_of_shifted_bytes;
 
             const adjusted_delete_start_byte: i64 = @as(i64, @intCast(delete_start_byte_offset)) + total_number_of_shifted_bytes;
             const delete_start_line, const delete_start_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_start_byte));
@@ -312,11 +336,11 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("// ", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("// ", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -329,19 +353,19 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("/", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
-            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
+            try orchestrator.insertChars("/", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
-            try orchestrator.insertChars(" ", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
+            try orchestrator.insertChars(" ", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -352,11 +376,11 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-            try orchestrator.insertChars(",", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+            try orchestrator.insertChars(",", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -368,11 +392,11 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         {
-            var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-            try orchestrator.startInsertMode(buf, &byte_range_iter);
+            var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+            try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
             {
-                var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-                try orchestrator.insertChars(",", &edit_byte_offset_iter);
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+                try orchestrator.insertChars(",", &edit_byte_range_iter);
             }
             try orchestrator.exitInsertMode();
 
@@ -381,19 +405,19 @@ test insertChars {
         }
 
         {
-            var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.startInsertMode(buf, &byte_range_iter);
+            var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
             {
-                var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-                try orchestrator.insertChars("/", &edit_byte_offset_iter);
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+                try orchestrator.insertChars("/", &edit_byte_range_iter);
             }
             {
-                var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
-                try orchestrator.insertChars("/", &edit_byte_offset_iter);
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
+                try orchestrator.insertChars("/", &edit_byte_range_iter);
             }
             {
-                var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
-                try orchestrator.insertChars(" ", &edit_byte_offset_iter);
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
+                try orchestrator.insertChars(" ", &edit_byte_range_iter);
             }
             try orchestrator.exitInsertMode();
 
@@ -412,17 +436,17 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
             .{ .start = 0, .end = 0 },
             .{ .start = 5, .end = 5 },
         } };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 0, .end = 0 },
                 .{ .start = 5, .end = 5 },
             } };
-            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -438,24 +462,24 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         {
-            var byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 0, .end = 0 },
                 .{ .start = 5, .end = 5 },
             } };
-            try orchestrator.startInsertMode(buf, &byte_range_iter);
+            try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
             {
-                var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                     .{ .start = 0, .end = 0 },
                     .{ .start = 5, .end = 5 },
                 } };
-                try orchestrator.insertChars("(", &edit_byte_offset_iter);
+                try orchestrator.insertChars("(", &edit_byte_range_iter);
             }
             {
-                var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                     .{ .start = 1, .end = 1 },
                     .{ .start = 7, .end = 7 },
                 } };
-                try orchestrator.insertChars(")", &edit_byte_offset_iter);
+                try orchestrator.insertChars(")", &edit_byte_range_iter);
             }
             try orchestrator.exitInsertMode();
         }
@@ -473,15 +497,15 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("/", &edit_byte_range_iter);
         }
         { // nexus
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -496,23 +520,23 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("/", &edit_byte_range_iter);
         }
         { // nexus
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
-            try orchestrator.insertChars("x", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
+            try orchestrator.insertChars("x", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
-            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -527,27 +551,27 @@ test insertChars {
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
-        var byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &byte_range_iter);
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("/", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("/", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
-            try orchestrator.insertChars(" ", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
+            try orchestrator.insertChars(" ", &edit_byte_range_iter);
         }
         { // nexus
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
-            try orchestrator.insertChars("x", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
+            try orchestrator.insertChars("x", &edit_byte_range_iter);
         }
         {
-            var edit_byte_offset_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
-            try orchestrator.insertChars("|", &edit_byte_offset_iter);
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
         }
         try orchestrator.exitInsertMode();
 
@@ -556,6 +580,133 @@ test insertChars {
         try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
         try eq(0, buf.edits.items[1].parent_index);
         try eq(1, buf.edits.items[2].parent_index);
+    }
+}
+
+pub fn deleteChars(self: *@This(), number_of_chars_to_delete: u32, cursor_byte_range_iter: anytype) !void {
+    assert(self.pending != null);
+    try self.handlePotentialNewPendingEvent(cursor_byte_range_iter);
+    try self.pending.?.deleteChars(number_of_chars_to_delete, cursor_byte_range_iter);
+}
+
+test deleteChars {
+    var orchestrator = Orchestrator{ .a = std.testing.allocator };
+    defer orchestrator.deinit();
+
+    ///////////////////////////// Single Cursor
+
+    { // delete 1 single char, 1 time
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("hell world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+    }
+
+    { // delete 1 single char, 4 times
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 4, .end = 4 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 3, .end = 3 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("h world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+    }
+
+    ///////////////////////////// Multi Cursor
+
+    { // 2 cursors, each delete 1 char, 1 time
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 2, .end = 2 },
+            .{ .start = 8, .end = 8 },
+        } };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 2, .end = 2 },
+                .{ .start = 8, .end = 8 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("hllo wrld", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
+    }
+
+    { // 2 cursors, each delete 1 char, 3 times
+        const buf = try orchestrator.createBufferFromString("ABCDE FGHJK");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 3, .end = 3 },
+            .{ .start = 9, .end = 9 },
+        } };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 3, .end = 3 },
+                .{ .start = 9, .end = 9 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 2, .end = 2 },
+                .{ .start = 8, .end = 8 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 1, .end = 1 },
+                .{ .start = 7, .end = 7 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("DE JK", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
     }
 }
 
