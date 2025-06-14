@@ -1252,6 +1252,13 @@ test "deleteChars - it leaked somehow" {
     freeRcNodes(testing_allocator, &.{ e2, e1, original });
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Delete Range
+
+pub fn deleteRange(node: RcNode, a: Allocator, start: EditPoint, end: EditPoint) error{ OutOfMemory, Stop, NotFound }!RcNode {
+    const noc = getNocOfRange(node, start, end);
+    return try deleteChars(node, a, start, noc);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Noc Of Range
 
 const GetGetNocOfRangeCtx = struct {

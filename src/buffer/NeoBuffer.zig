@@ -99,27 +99,6 @@ pub fn insertChars(self: *@This(), a: Allocator, req: InsertCharsRequest) ![]con
     return result.allocated_str;
 }
 
-// test insertChars {
-//     const a = std.testing.allocator;
-//     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-//     defer arena.deinit();
-//
-//     var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
-//     defer buf.deinit(a);
-//
-//     _ = try buf.insertChars(a, arena.allocator(), InsertCharsRequest{
-//         .parent_index = buf.index,
-//         .edit_type = .registered,
-//         .chars = "// ",
-//         .start_byte = 0,
-//         .start_line = 0,
-//         .start_col = 0,
-//     });
-//
-//     try eq(2, buf.edits.items.len);
-//     try eqStr("// hello world", try buf.toString(idc_if_it_leaks, .lf));
-// }
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Delete
 
 const DeleteRangeRequest = struct {
@@ -135,16 +114,11 @@ const DeleteRangeRequest = struct {
 };
 
 pub fn deleteRange(self: *@This(), a: Allocator, req: DeleteRangeRequest) !void {
-    const noc = rcr.getNocOfRange(
-        self.getCurrentRoot(),
-        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
-        .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
-    );
-    const new_root = try rcr.deleteChars(
+    const new_root = try rcr.deleteRange(
         self.getCurrentRoot(),
         a,
-        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
-        noc,
+        .{ .line = req.start_line, .col = req.start_col },
+        .{ .line = req.end_line, .col = req.end_col },
     );
 
     try self.addEditToHistory(a, req.edit_type, req.parent_index, Edit{
@@ -155,30 +129,6 @@ pub fn deleteRange(self: *@This(), a: Allocator, req: DeleteRangeRequest) !void 
         .new_end_byte = req.start_byte,
     });
 }
-
-// test deleteRange {
-//     const a = std.testing.allocator;
-//     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-//     defer arena.deinit();
-//
-//     var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
-//     defer buf.deinit(a);
-//
-//     _ = try buf.deleteRange(a, DeleteRangeRequest{
-//         .parent_index = buf.index,
-//         .edit_type = .registered,
-//
-//         .start_byte = 5,
-//         .end_byte = 10,
-//         .start_line = 0,
-//         .start_col = 5,
-//         .end_line = 0,
-//         .end_col = 10,
-//     });
-//
-//     try eq(2, buf.edits.items.len);
-//     try eqStr("hellod", try buf.toString(idc_if_it_leaks, .lf));
-// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Replace
 
@@ -196,16 +146,11 @@ const ReplaceRangeRequest = struct {
 };
 
 pub fn replaceRange(self: *@This(), a: Allocator, content_allocator: Allocator, req: ReplaceRangeRequest) ![]const u8 {
-    const noc = rcr.getNocOfRange(
-        self.getCurrentRoot(),
-        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
-        .{ .line = @intCast(req.end_line), .col = @intCast(req.end_col) },
-    );
     const after_delete_root = try rcr.deleteChars(
         self.getCurrentRoot(),
         a,
-        .{ .line = @intCast(req.start_line), .col = @intCast(req.start_col) },
-        noc,
+        .{ .line = req.start_line, .col = req.start_col },
+        .{ .line = req.end_line, .col = req.end_col },
     );
     const balanced_after_delete_root = try balance(a, after_delete_root);
     defer rcr.freeRcNode(a, balanced_after_delete_root);
@@ -225,31 +170,6 @@ pub fn replaceRange(self: *@This(), a: Allocator, content_allocator: Allocator, 
 
     return insert_result.allocated_str;
 }
-
-// test replaceRange {
-//     const a = std.testing.allocator;
-//     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-//     defer arena.deinit();
-//
-//     var buf = try NeoBuffer.initFromString(a, arena.allocator(), "hello world");
-//     defer buf.deinit(a);
-//
-//     _ = try buf.replaceRange(a, arena.allocator(), ReplaceRangeRequest{
-//         .parent_index = buf.index,
-//         .edit_type = .registered,
-//
-//         .chars = "goo",
-//         .start_byte = 6,
-//         .end_byte = 10,
-//         .start_line = 0,
-//         .start_col = 6,
-//         .end_line = 0,
-//         .end_col = 10,
-//     });
-//
-//     try eq(2, buf.edits.items.len);
-//     try eqStr("hello good", try buf.toString(idc_if_it_leaks, .lf));
-// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Getters
 
