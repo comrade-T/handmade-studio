@@ -128,6 +128,24 @@ const PendingEdit = struct {
         self.roots.deinit(self.a);
     }
 
+    fn clear(self: *@This()) !void {
+
+        // TODO: deal with shifting byte offsets in multi cursor edits
+
+        for (self.initial_byte_ranges) |byte_range| {
+            const latest_root = self.getLatestRoot();
+            const start_line, const start_col = try rcr.getPositionFromByteOffset(latest_root, byte_range.start);
+            const end_line, const end_col = try rcr.getPositionFromByteOffset(latest_root, byte_range.end);
+            const new_root = try rcr.deleteRange(
+                latest_root,
+                self.a,
+                .{ .line = start_line, .col = start_col },
+                .{ .line = end_line, .col = end_col },
+            );
+            self.roots.append(self.a, new_root);
+        }
+    }
+
     fn insertChars(self: *@This(), chars: []const u8, cursor_edit_point_iter: anytype) !void {
         assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
         if (cursor_edit_point_iter.len != self.initial_byte_ranges.len) unreachable;
@@ -148,6 +166,8 @@ const PendingEdit = struct {
     }
 
     fn deleteCharsAtTheEnd(self: *@This(), number_of_chars_to_delete: u32, cursor_edit_point_iter: anytype) !void {
+        // TODO: deal with shifting byte offsets in multi cursor edits
+
         assert(cursor_edit_point_iter.len == self.initial_byte_ranges.len);
         if (cursor_edit_point_iter.len != self.initial_byte_ranges.len) unreachable;
 
@@ -171,7 +191,7 @@ const PendingEdit = struct {
         // call `rcr.deleteChars()`
         while (cursor_edit_point_iter.next()) |point| {
             const result = try rcr.deleteChars(self.getLatestRoot(), self.a, point, number_of_chars_to_delete);
-            try self.pending.roots.append(self.a, result.node);
+            try self.roots.append(self.a, result.node);
         }
     }
 
@@ -203,8 +223,14 @@ pub const ByteRange = struct {
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn startInsertMode(self: *@This(), buf: *Buffer, cursor_iter: anytype) !void {
-    self.pending = try PendingEdit.init(self.a, buf, cursor_iter);
+pub fn startInsertMode(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
+    assert(self.pending == null);
+    self.pending = try PendingEdit.init(self.a, buf, cursor_byte_range_iter);
+}
+
+pub fn clear(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
+    try self.startInsertMode(buf, cursor_byte_range_iter);
+    self.pending.?.clear();
 }
 
 pub fn exitInsertMode(self: *@This()) !void {

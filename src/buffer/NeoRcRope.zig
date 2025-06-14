@@ -2700,13 +2700,13 @@ fn _buildDebugStr(a: Allocator, node: RcNode, result: *std.ArrayList(u8), indent
 
 ////////////////////////////////////////////////////////////////////////////////////////////// getPositionFromByteOffset
 
-pub fn getPositionFromByteOffset(self: RcNode, byte_offset: usize) !struct { usize, usize } {
+pub fn getPositionFromByteOffset(self: RcNode, byte_offset: u32) !struct { u32, u32 } {
     const GetPositionCtx = struct {
-        target_byte_offset: usize,
-        current_byte_offset: usize = 0,
+        target_byte_offset: u32,
+        current_byte_offset: u32 = 0,
 
-        line: usize = 0,
-        col: usize = 0,
+        line: u32 = 0,
+        col: u32 = 0,
 
         fn walk(cx: *@This(), node: RcNode) WalkError!WalkResult {
             switch (node.value.*) {
