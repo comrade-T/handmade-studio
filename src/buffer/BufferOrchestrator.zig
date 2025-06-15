@@ -150,8 +150,8 @@ const PendingEdit = struct {
             .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor(),
             .newly_inserted_string_len = @intCast(chars.len),
         };
-        for (self.initial_byte_ranges) |_| {
-            const edit_point = try shifted_point_getter.next(self, cursor_byte_range_iter);
+        while (cursor_byte_range_iter.next()) |byte_range| {
+            const edit_point = try shifted_point_getter.next(self, byte_range, 0);
             const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, edit_point);
             try self.roots.append(self.a, result.node);
         }
@@ -160,54 +160,56 @@ const PendingEdit = struct {
     fn deleteChars(self: *@This(), number_of_chars_to_delete: u32, cursor_byte_range_iter: anytype) !void {
 
         // update PendingEdit state
-        var number_of_bytes_to_delete: u32 = 0;
-        var i: u32 = 0;
-        var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot().value, self.first_cursor_current_byte);
-        while (backwards_char_iter.prev()) |cp| {
-            defer i += 1;
-            if (i == number_of_chars_to_delete) break;
-            number_of_bytes_to_delete += cp.len;
+        {
+            var number_of_bytes_to_delete: u32 = 0;
+            var i: u32 = 0;
+            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot().value, self.first_cursor_current_byte);
+            while (backwards_char_iter.prev()) |cp| {
+                defer i += 1;
+                if (i == number_of_chars_to_delete) break;
+                number_of_bytes_to_delete += cp.len;
+            }
+
+            self.first_cursor_current_byte -= number_of_bytes_to_delete;
+            self.first_cursor_lowest_byte = @min(self.first_cursor_lowest_byte, self.first_cursor_current_byte);
+
+            const new_str = try std.fmt.allocPrint(self.a, "{s}", .{
+                self.inserted_string[0 .. self.inserted_string.len - @min(self.inserted_string.len, i)],
+            });
+            self.a.free(self.inserted_string);
+            self.inserted_string = new_str;
         }
 
-        self.first_cursor_current_byte -= number_of_bytes_to_delete;
-        self.first_cursor_lowest_byte = @min(self.first_cursor_lowest_byte, self.first_cursor_current_byte);
+        var shifted_point_getter = ShiftedEditPointGetter{ .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor() };
 
-        const new_str = try std.fmt.allocPrint(self.a, "{s}", .{
-            self.inserted_string[0 .. self.inserted_string.len - @min(self.inserted_string.len, number_of_bytes_to_delete)],
-        });
-        self.a.free(self.inserted_string);
-        self.inserted_string = new_str;
+        while (cursor_byte_range_iter.next()) |byte_range| {
+            var number_of_bytes_to_delete: u32 = 0;
+            var i: u32 = 0;
+            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot().value, byte_range.start);
+            while (backwards_char_iter.prev()) |cp| {
+                if (i == number_of_chars_to_delete) break;
+                number_of_bytes_to_delete += cp.len;
+                i += 1;
+            }
+            if (i == 0) continue;
 
-        // call `rcr.deleteChars()`
-        var shifted_point_getter = ShiftedEditPointGetter{
-            .kind = .delete,
-            .number_of_bytes_to_delete = number_of_bytes_to_delete,
-            .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor(),
-        };
-        for (self.initial_byte_ranges) |_| {
-            const edit_point = try shifted_point_getter.next(self, cursor_byte_range_iter);
-            const new_root = try rcr.deleteChars(self.getLatestRoot(), self.a, edit_point, number_of_chars_to_delete);
+            const edit_point = try shifted_point_getter.next(self, byte_range, number_of_bytes_to_delete);
+            const new_root = try rcr.deleteChars(self.getLatestRoot(), self.a, edit_point, i);
             try self.roots.append(self.a, new_root);
         }
     }
 
     const ShiftedEditPointGetter = struct {
-        kind: enum { insert, delete } = .insert,
         newly_inserted_string_len: u32 = 0,
         num_of_bytes_deleted_from_start_anchor: u32,
         total_number_of_shifted_bytes: i64 = 0,
-        number_of_bytes_to_delete: u32 = 0,
-        index: usize = 0,
 
-        fn next(self: *@This(), pe: *const PendingEdit, cursor_byte_range_iter: anytype) !rcr.EditPoint {
-            defer self.index += 1;
-
-            const number_of_shifted_bytes: i64 = @as(i64, @intCast(self.newly_inserted_string_len)) - self.number_of_bytes_to_delete;
+        fn next(self: *@This(), pe: *const PendingEdit, byte_range: ByteRange, number_of_bytes_to_delete: u32) !rcr.EditPoint {
+            const number_of_shifted_bytes: i64 = @as(i64, @intCast(self.newly_inserted_string_len)) - number_of_bytes_to_delete;
             defer self.total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
 
-            const byte_range = cursor_byte_range_iter.next() orelse unreachable;
             var adjusted_byte_offset: i64 = @as(i64, @intCast(byte_range.start)) + self.total_number_of_shifted_bytes;
-            if (self.kind == .delete) adjusted_byte_offset -= self.number_of_bytes_to_delete;
+            adjusted_byte_offset -= number_of_bytes_to_delete;
 
             const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(adjusted_byte_offset));
             return rcr.EditPoint{ .line = line, .col = col };
@@ -229,8 +231,6 @@ const PendingEdit = struct {
     }
 
     fn finalizeChangesToBuffer(self: *const @This(), orchestrator: *Orchestrator) !void {
-        if (self.initial_byte_ranges.len == 0) return;
-
         const allocated_str = if (self.inserted_string.len > 0) blk: {
             const str = try self.a.dupe(u8, self.inserted_string);
             var list = orchestrator.strmap.getPtr(self.buf) orelse unreachable;
@@ -259,7 +259,7 @@ const PendingEdit = struct {
             const adjusted_delete_end_byte: i64 = @as(i64, @intCast(initial_byte_range.end)) + total_number_of_shifted_bytes;
             const delete_end_line, const delete_end_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_end_byte));
 
-            const edit_request = Buffer.AddEditRequest{
+            const req = Buffer.AddEditRequest{
                 .parent_index = parent_index,
                 .chars = allocated_str,
 
@@ -274,7 +274,8 @@ const PendingEdit = struct {
                 .delete_end_col = delete_end_col,
             };
 
-            try self.buf.addEdit(self.a, edit_request);
+            if (req.old_start_byte == req.new_start_byte and req.old_end_byte == req.new_end_byte) continue;
+            try self.buf.addEdit(self.a, req);
         }
     }
 
@@ -784,6 +785,51 @@ test deleteChars {
         try eq(0, buf.edits.items[2].parent_index);
         try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[3].parent_index);
         try eq(2, buf.edits.items[4].parent_index);
+    }
+
+    ///////////////////////////// Cursor at line 0 and col 0
+
+    { // 1 cursor
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("hello world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(1, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+    }
+
+    { // 2 cursors
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 0, .end = 0 },
+            .{ .start = 5, .end = 5 },
+        } };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 0, .end = 0 },
+                .{ .start = 5, .end = 5 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hell world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("hell world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
     }
 }
 

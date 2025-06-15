@@ -152,7 +152,9 @@ fn mapSpawnBlankWindowKeymaps(sess: *Session) !void {
     try c.map(NORMAL, &.{ .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .none));
     try c.map(NORMAL, &.{ .left_shift, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .none));
     try c.map(NORMAL, &.{ .left_control, .space, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
-    try c.map(NORMAL, &.{ .space, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .none));
+    try c.map(NORMAL, &.{ .space, .left_control, .n }, try Cb.init(a, sess, .{ .direction = .right, .x_by = 200, .y_by = 0 }, .none));
+    try c.map(NORMAL, &.{ .left_control, .space, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .none));
+    try c.map(NORMAL, &.{ .space, .left_control, .left_shift, .n }, try Cb.init(a, sess, .{ .direction = .left, .x_by = -200, .y_by = 0 }, .none));
 
     try c.map(NORMAL, &.{ .left_control, .c, .n }, try Cb.init(a, sess, .{ .direction = .bottom, .x_by = 0, .y_by = 100 }, .{ .anchors = &.{ .S, .N } }));
     try c.map(NORMAL, &.{ .left_control, .left_shift, .c, .n }, try Cb.init(a, sess, .{ .direction = .top, .x_by = 0, .y_by = -100 }, .{ .anchors = &.{ .N, .S } }));
