@@ -95,6 +95,48 @@ const PendingEdit = struct {
     a: Allocator,
     buf: *Buffer,
 
+    inserted_string: InsertedString,
+
+    initial_root: rcr.RcNode,
+    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
+    strlist: std.ArrayListUnmanaged([]const u8) = .{},
+
+    fn deinit(self: *@This()) void {
+        rcr.freeRcNodes(self.a, self.roots.items);
+        self.roots.deinit(self.a);
+
+        for (self.strlist.items) |str| self.a.free(str);
+        self.strlist.deinit(self.a);
+
+        self.inserted_string.deinit(self.a);
+    }
+
+    const InsertedString = struct {
+        buf: []const u8 = "",
+
+        fn insertChars(self: *@This(), a: Allocator, chars: []const u8) !void {
+            const new_str = try std.fmt.allocPrint(a, "{s}{s}", .{ self.inserted_string, chars });
+            a.free(self.buf);
+            self.buf = new_str;
+        }
+
+        fn deleteChars(self: *@This(), a: Allocator, number_of_bytes_to_trim_off: u32) !void {
+            const end = self.inserted_string.len - @min(self.buf.len, number_of_bytes_to_trim_off);
+            const new_str = try std.fmt.allocPrint(a, "{s}", .{self.inserted_string[0..end]});
+            self.a.free(self.inserted_string);
+            self.inserted_string = new_str;
+        }
+
+        fn deinit(self: *@This(), a: Allocator) void {
+            if (self.buf.len > 0) a.free(self.buf);
+        }
+    };
+};
+
+const OldPendingEdit = struct {
+    a: Allocator,
+    buf: *Buffer,
+
     first_cursor_current_byte: u32 = undefined,
     first_cursor_lowest_byte: u32 = undefined,
     initial_byte_ranges: []const ByteRange = undefined,
