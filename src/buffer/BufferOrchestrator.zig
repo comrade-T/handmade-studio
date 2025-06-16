@@ -95,10 +95,11 @@ const PendingEdit = struct {
     a: Allocator,
     buf: *Buffer,
 
-    shifted_bytes_total: i64,
-    trackers: []Tracker,
+    shifted_bytes_total: i64 = 0,
+    trackers: []Tracker = undefined,
+    should_create_new_pending_edit: bool = false,
 
-    inserted_string: InsertedString,
+    inserted_string: InsertedString = .{},
 
     initial_root: rcr.RcNode,
     roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
@@ -132,14 +133,75 @@ const PendingEdit = struct {
         for (self.strlist.items) |str| self.a.free(str);
         self.strlist.deinit(self.a);
 
+        self.a.free(self.trackers);
+
         self.inserted_string.deinit(self.a);
     }
 
-    fn insertChars(self: *@This(), cursor_byte_range_iter: anytype, chars: []const u8) !void {
-        const allocated_str = self.allocateCharsIfNeeded(chars);
+    fn insertChars(self: *@This(), chars: []const u8, cursor_byte_range_iter: anytype) !void {
+        defer self.resetShiftedBytesTotal();
+        const allocated_str = try self.allocateCharsIfNeeded(chars);
+        try self.inserted_string.insertChars(self.a, allocated_str);
         for (self.trackers) |*tracker| {
             const byte_range = cursor_byte_range_iter.next() orelse unreachable;
             try tracker.insertChars(self, byte_range, allocated_str);
+        }
+    }
+
+    fn deleteChars(self: *@This(), number_of_chars_to_delete: u32, cursor_byte_range_iter: anytype) !void {
+        defer self.resetShiftedBytesTotal();
+        var number_of_bytes_to_trim_off: u32 = 0;
+        for (self.trackers, 0..) |*tracker, i| {
+            const byte_range = cursor_byte_range_iter.next() orelse unreachable;
+            const trimmed = try tracker.deleteChars(self, byte_range, number_of_chars_to_delete);
+            if (i == 0) number_of_bytes_to_trim_off = trimmed;
+        }
+        try self.inserted_string.deleteChars(self.a, number_of_bytes_to_trim_off);
+    }
+
+    fn finalizeChangesToBuffer(self: *@This(), orchestrator: *Orchestrator) !void {
+        assert(self.shifted_bytes_total == 0);
+
+        const allocated_str = if (self.inserted_string.buf.len > 0) blk: {
+            const str = try self.a.dupe(u8, self.inserted_string.buf);
+            var list = orchestrator.strmap.getPtr(self.buf) orelse unreachable;
+            try list.append(self.a, str);
+            break :blk str;
+        } else "";
+
+        const non_null_parent_index = self.buf.index;
+        for (self.trackers, 0..) |*tracker, i| {
+            const shifted_bytes: i64 =
+                @as(i64, @intCast(tracker.initial.end - tracker.initial.start)) -
+                @as(i64, @intCast(tracker.initial.end - tracker.lowest)) +
+                @as(i64, @intCast(allocated_str.len));
+            defer self.shifted_bytes_total += shifted_bytes;
+
+            const adjusted_delete_start_byte: i64 = @as(i64, @intCast(tracker.lowest)) + self.shifted_bytes_total;
+            const delete_start_line, const delete_start_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_start_byte));
+
+            const adjusted_delete_end_byte: i64 = @as(i64, @intCast(tracker.initial.end)) + self.shifted_bytes_total;
+            const delete_end_line, const delete_end_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_end_byte));
+
+            const req = Buffer.AddEditRequest{
+                .parent_index = if (i == self.trackers.len - 1) non_null_parent_index else Buffer.NULL_PARENT_INDEX,
+                .chars = allocated_str,
+
+                .old_start_byte = tracker.initial.start,
+                .old_end_byte = tracker.initial.end,
+
+                .new_start_byte = @intCast(tracker.lowest + self.shifted_bytes_total),
+                .new_end_byte = @intCast(tracker.current + self.shifted_bytes_total),
+
+                .delete_start_line = delete_start_line,
+                .delete_start_col = delete_start_col,
+                .delete_end_line = delete_end_line,
+                .delete_end_col = delete_end_col,
+            };
+
+            const has_no_changes = req.old_start_byte == req.new_start_byte and req.old_end_byte == req.new_end_byte;
+            if (has_no_changes) continue;
+            try self.buf.addEdit(self.a, req);
         }
     }
 
@@ -150,20 +212,20 @@ const PendingEdit = struct {
 
         fn insertChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, allocated_str: []const u8) !void {
             self.current += @intCast(allocated_str.len);
-            defer pe.shifted_bytes_total += allocated_str.len;
+            defer pe.shifted_bytes_total += @intCast(allocated_str.len);
 
             const adjusted_byte_offset: i64 = @as(i64, @intCast(current_cursor_byte_range.start)) + pe.shifted_bytes_total;
             const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(adjusted_byte_offset));
 
-            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, .{ .line = line, .col = col });
+            const result = try rcr.insertChars(pe.getLatestRoot(), pe.a, allocated_str, .{ .line = line, .col = col });
             try pe.roots.append(pe.a, result.node);
         }
 
-        fn deleteChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, chars_to_delete: u32) !void {
+        fn deleteChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, chars_to_delete: u32) !u32 {
             const shifted_start_byte = current_cursor_byte_range.start + pe.shifted_bytes_total;
             var bytes_can_delete: u32 = 0;
             var chars_can_delete: u32 = 0;
-            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(pe.getLatestRoot().value, shifted_start_byte);
+            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(pe.getLatestRoot().value, @intCast(shifted_start_byte));
             while (backwards_char_iter.prev()) |cp| {
                 if (chars_can_delete == chars_to_delete) break;
                 bytes_can_delete += cp.len;
@@ -174,10 +236,16 @@ const PendingEdit = struct {
             self.lowest = @min(self.lowest, self.current);
             defer pe.shifted_bytes_total -= bytes_can_delete;
 
+            if (chars_can_delete != chars_to_delete) pe.should_create_new_pending_edit = true;
+
+            if (chars_can_delete == 0) return bytes_can_delete;
+
             const delete_start = shifted_start_byte - bytes_can_delete;
             const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(delete_start));
-            const new_root = try rcr.deleteChars(self.getLatestRoot(), self.a, .{ .line = line, .col = col }, chars_can_delete);
-            try self.roots.append(self.a, new_root);
+            const new_root = try rcr.deleteChars(pe.getLatestRoot(), pe.a, .{ .line = line, .col = col }, chars_can_delete);
+            try pe.roots.append(pe.a, new_root);
+
+            return bytes_can_delete;
         }
     };
 
@@ -185,16 +253,16 @@ const PendingEdit = struct {
         buf: []const u8 = "",
 
         fn insertChars(self: *@This(), a: Allocator, chars: []const u8) !void {
-            const new_str = try std.fmt.allocPrint(a, "{s}{s}", .{ self.inserted_string, chars });
+            const new_str = try std.fmt.allocPrint(a, "{s}{s}", .{ self.buf, chars });
             a.free(self.buf);
             self.buf = new_str;
         }
 
         fn deleteChars(self: *@This(), a: Allocator, number_of_bytes_to_trim_off: u32) !void {
-            const end = self.inserted_string.len - @min(self.buf.len, number_of_bytes_to_trim_off);
-            const new_str = try std.fmt.allocPrint(a, "{s}", .{self.inserted_string[0..end]});
-            self.a.free(self.inserted_string);
-            self.inserted_string = new_str;
+            const end = self.buf.len - @min(self.buf.len, number_of_bytes_to_trim_off);
+            const new_str = try std.fmt.allocPrint(a, "{s}", .{self.buf[0..end]});
+            a.free(self.buf);
+            self.buf = new_str;
         }
 
         fn deinit(self: *@This(), a: Allocator) void {
@@ -206,7 +274,11 @@ const PendingEdit = struct {
         return self.roots.getLastOrNull() orelse self.initial_root;
     }
 
-    fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
+    fn resetShiftedBytesTotal(self: *@This()) void {
+        self.shifted_bytes_total = 0;
+    }
+
+    fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) ![]const u8 {
         return if (chars.len == 1)
             SINGLE_CHARS[chars[0]]
         else blk: {
@@ -214,204 +286,11 @@ const PendingEdit = struct {
             try self.strlist.append(self.a, str);
             break :blk str;
         };
-    }
-};
-
-const OldPendingEdit = struct {
-    a: Allocator,
-    buf: *Buffer,
-
-    first_cursor_current_byte: u32 = undefined,
-    first_cursor_lowest_byte: u32 = undefined,
-    initial_byte_ranges: []const ByteRange = undefined,
-    inserted_string: []const u8 = "",
-
-    initial_root: rcr.RcNode,
-    roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
-    strlist: std.ArrayListUnmanaged([]const u8) = .{},
-
-    fn init(a: Allocator, buf: *Buffer, cursor_byte_range_iter: anytype) !PendingEdit {
-        var ev = PendingEdit{
-            .a = a,
-            .buf = buf,
-            .initial_root = buf.getCurrentRoot(),
-        };
-        var initial_byte_ranges = try a.alloc(ByteRange, cursor_byte_range_iter.len());
-
-        var i: usize = 0;
-        while (cursor_byte_range_iter.next()) |byte_range| {
-            defer i += 1;
-            if (i == 0) {
-                ev.first_cursor_current_byte = byte_range.start;
-                ev.first_cursor_lowest_byte = byte_range.start;
-            }
-            initial_byte_ranges[i] = byte_range;
-        }
-
-        ev.initial_byte_ranges = initial_byte_ranges;
-        return ev;
-    }
-
-    fn deinit(self: *@This()) void {
-        self.a.free(self.initial_byte_ranges);
-        rcr.freeRcNodes(self.a, self.roots.items);
-        for (self.strlist.items) |str| self.a.free(str);
-        self.strlist.deinit(self.a);
-        self.roots.deinit(self.a);
-        if (self.inserted_string.len > 0) self.a.free(self.inserted_string);
-    }
-
-    fn insertChars(self: *@This(), chars: []const u8, cursor_byte_range_iter: anytype) !void {
-
-        // update PendingEdit state
-        self.first_cursor_current_byte += @intCast(chars.len);
-
-        const new_str = try std.fmt.allocPrint(self.a, "{s}{s}", .{ self.inserted_string, chars });
-        self.a.free(self.inserted_string);
-        self.inserted_string = new_str;
-
-        // call `rcr.insertChars()`
-        const allocated_str = try self.allocateCharsIfNeeded(chars) orelse return;
-        var shifted_point_getter = ShiftedEditPointGetter{
-            .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor(),
-            .newly_inserted_string_len = @intCast(chars.len),
-        };
-        while (cursor_byte_range_iter.next()) |byte_range| {
-            const edit_point = try shifted_point_getter.next(self, byte_range, 0);
-            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, edit_point);
-            try self.roots.append(self.a, result.node);
-        }
-    }
-
-    fn deleteChars(self: *@This(), number_of_chars_to_delete: u32, cursor_byte_range_iter: anytype) !void {
-
-        // update PendingEdit state
-        {
-            var number_of_bytes_to_delete: u32 = 0;
-            var i: u32 = 0;
-            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot().value, self.first_cursor_current_byte);
-            while (backwards_char_iter.prev()) |cp| {
-                defer i += 1;
-                if (i == number_of_chars_to_delete) break;
-                number_of_bytes_to_delete += cp.len;
-            }
-
-            self.first_cursor_current_byte -= number_of_bytes_to_delete;
-            self.first_cursor_lowest_byte = @min(self.first_cursor_lowest_byte, self.first_cursor_current_byte);
-
-            const new_str = try std.fmt.allocPrint(self.a, "{s}", .{
-                self.inserted_string[0 .. self.inserted_string.len - @min(self.inserted_string.len, i)],
-            });
-            self.a.free(self.inserted_string);
-            self.inserted_string = new_str;
-        }
-
-        var shifted_point_getter = ShiftedEditPointGetter{ .num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor() };
-
-        while (cursor_byte_range_iter.next()) |byte_range| {
-            var number_of_bytes_to_delete: u32 = 0;
-            var i: u32 = 0;
-            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(self.getLatestRoot().value, byte_range.start);
-            while (backwards_char_iter.prev()) |cp| {
-                if (i == number_of_chars_to_delete) break;
-                number_of_bytes_to_delete += cp.len;
-                i += 1;
-            }
-            if (i == 0) continue;
-
-            const edit_point = try shifted_point_getter.next(self, byte_range, number_of_bytes_to_delete);
-            const new_root = try rcr.deleteChars(self.getLatestRoot(), self.a, edit_point, i);
-            try self.roots.append(self.a, new_root);
-        }
-    }
-
-    const ShiftedEditPointGetter = struct {
-        newly_inserted_string_len: u32 = 0,
-        num_of_bytes_deleted_from_start_anchor: u32,
-        total_number_of_shifted_bytes: i64 = 0,
-
-        fn next(self: *@This(), pe: *const PendingEdit, byte_range: ByteRange, number_of_bytes_to_delete: u32) !rcr.EditPoint {
-            const number_of_shifted_bytes: i64 = @as(i64, @intCast(self.newly_inserted_string_len)) - number_of_bytes_to_delete;
-            defer self.total_number_of_shifted_bytes += @intCast(number_of_shifted_bytes);
-
-            var adjusted_byte_offset: i64 = @as(i64, @intCast(byte_range.start)) + self.total_number_of_shifted_bytes;
-            adjusted_byte_offset -= number_of_bytes_to_delete;
-
-            const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(adjusted_byte_offset));
-            return rcr.EditPoint{ .line = line, .col = col };
-        }
-    };
-
-    fn getLatestRoot(self: *const @This()) rcr.RcNode {
-        return if (self.roots.items.len > 0) self.roots.getLast() else self.initial_root;
-    }
-
-    fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
-        return if (chars.len == 1)
-            SINGLE_CHARS[chars[0]]
-        else blk: {
-            const str = try self.a.dupe(u8, chars);
-            try self.strlist.append(self.a, str);
-            break :blk str;
-        };
-    }
-
-    fn finalizeChangesToBuffer(self: *const @This(), orchestrator: *Orchestrator) !void {
-        const allocated_str = if (self.inserted_string.len > 0) blk: {
-            const str = try self.a.dupe(u8, self.inserted_string);
-            var list = orchestrator.strmap.getPtr(self.buf) orelse unreachable;
-            try list.append(self.a, str);
-            break :blk str;
-        } else "";
-
-        const official_parent_index = self.buf.index;
-        const num_of_bytes_deleted_from_start_anchor = self.getNumOfbytesDeletedFromStartAnchor();
-        var total_number_of_shifted_bytes: i64 = 0;
-
-        for (self.initial_byte_ranges, 0..) |initial_byte_range, i| {
-            const parent_index = if (i == self.initial_byte_ranges.len - 1) official_parent_index else Buffer.NULL_PARENT_INDEX;
-
-            const delete_start_byte_offset = initial_byte_range.start - num_of_bytes_deleted_from_start_anchor;
-
-            const number_of_shifted_bytes: i64 =
-                @as(i64, @intCast(self.inserted_string.len)) +
-                (@as(i64, @intCast(delete_start_byte_offset)) -
-                    @as(i64, @intCast(initial_byte_range.end)));
-            defer total_number_of_shifted_bytes += number_of_shifted_bytes;
-
-            const adjusted_delete_start_byte: i64 = @as(i64, @intCast(delete_start_byte_offset)) + total_number_of_shifted_bytes;
-            const delete_start_line, const delete_start_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_start_byte));
-
-            const adjusted_delete_end_byte: i64 = @as(i64, @intCast(initial_byte_range.end)) + total_number_of_shifted_bytes;
-            const delete_end_line, const delete_end_col = try rcr.getPositionFromByteOffset(self.buf.getCurrentRoot(), @intCast(adjusted_delete_end_byte));
-
-            const req = Buffer.AddEditRequest{
-                .parent_index = parent_index,
-                .chars = allocated_str,
-
-                .old_start_byte = initial_byte_range.start,
-                .old_end_byte = initial_byte_range.end,
-                .new_start_byte = @intCast(@as(i64, @intCast(delete_start_byte_offset)) + total_number_of_shifted_bytes),
-                .new_end_byte = @intCast(@as(i64, @intCast(delete_start_byte_offset + self.inserted_string.len)) + total_number_of_shifted_bytes),
-
-                .delete_start_line = delete_start_line,
-                .delete_start_col = delete_start_col,
-                .delete_end_line = delete_end_line,
-                .delete_end_col = delete_end_col,
-            };
-
-            if (req.old_start_byte == req.new_start_byte and req.old_end_byte == req.new_end_byte) continue;
-            try self.buf.addEdit(self.a, req);
-        }
-    }
-
-    fn getNumOfbytesDeletedFromStartAnchor(self: *const @This()) u32 {
-        return self.initial_byte_ranges[0].start - self.first_cursor_lowest_byte;
     }
 
     fn shouldCreateNewPendingEvent(self: *const @This(), cursor_byte_range_iter: anytype) bool {
-        if (cursor_byte_range_iter.len() != self.initial_byte_ranges.len) return true;
-        return cursor_byte_range_iter.first().start != self.first_cursor_current_byte;
+        if (cursor_byte_range_iter.len() != self.trackers.len) return true;
+        return cursor_byte_range_iter.first().start != self.trackers[0].current;
     }
 };
 
@@ -958,6 +837,9 @@ test deleteChars {
         try eq(0, buf.edits.items[1].parent_index);
     }
 }
+
+// TODO: add mixed insert & delete tests
+// TODO: add more complex test cases for insert & delete
 
 fn handlePotentialNewPendingEvent(self: *@This(), cursor_byte_range_iter: anytype) !void {
     assert(self.pending != null);
