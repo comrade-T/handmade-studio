@@ -95,11 +95,35 @@ const PendingEdit = struct {
     a: Allocator,
     buf: *Buffer,
 
+    shifted_bytes_total: i64,
+    trackers: []Tracker,
+
     inserted_string: InsertedString,
 
     initial_root: rcr.RcNode,
     roots: std.ArrayListUnmanaged(rcr.RcNode) = .{},
     strlist: std.ArrayListUnmanaged([]const u8) = .{},
+
+    fn init(a: Allocator, buf: *Buffer, cursor_byte_range_iter: anytype) !PendingEdit {
+        var ev = PendingEdit{
+            .a = a,
+            .buf = buf,
+            .initial_root = buf.getCurrentRoot(),
+        };
+        ev.trackers = try a.alloc(Tracker, cursor_byte_range_iter.len());
+
+        var i: usize = 0;
+        while (cursor_byte_range_iter.next()) |byte_range| {
+            defer i += 1;
+            ev.trackers[i] = Tracker{
+                .initial = byte_range,
+                .current = byte_range.start,
+                .lowest = byte_range.start,
+            };
+        }
+
+        return ev;
+    }
 
     fn deinit(self: *@This()) void {
         rcr.freeRcNodes(self.a, self.roots.items);
@@ -110,6 +134,52 @@ const PendingEdit = struct {
 
         self.inserted_string.deinit(self.a);
     }
+
+    fn insertChars(self: *@This(), cursor_byte_range_iter: anytype, chars: []const u8) !void {
+        const allocated_str = self.allocateCharsIfNeeded(chars);
+        for (self.trackers) |*tracker| {
+            const byte_range = cursor_byte_range_iter.next() orelse unreachable;
+            try tracker.insertChars(self, byte_range, allocated_str);
+        }
+    }
+
+    const Tracker = struct {
+        initial: ByteRange,
+        current: u32,
+        lowest: u32,
+
+        fn insertChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, allocated_str: []const u8) !void {
+            self.current += @intCast(allocated_str.len);
+            defer pe.shifted_bytes_total += allocated_str.len;
+
+            const adjusted_byte_offset: i64 = @as(i64, @intCast(current_cursor_byte_range.start)) + pe.shifted_bytes_total;
+            const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(adjusted_byte_offset));
+
+            const result = try rcr.insertChars(self.getLatestRoot(), self.a, allocated_str, .{ .line = line, .col = col });
+            try pe.roots.append(pe.a, result.node);
+        }
+
+        fn deleteChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, chars_to_delete: u32) !void {
+            const shifted_start_byte = current_cursor_byte_range.start + pe.shifted_bytes_total;
+            var bytes_can_delete: u32 = 0;
+            var chars_can_delete: u32 = 0;
+            var backwards_char_iter = try rcr.CharacterBackwardsIterator.init(pe.getLatestRoot().value, shifted_start_byte);
+            while (backwards_char_iter.prev()) |cp| {
+                if (chars_can_delete == chars_to_delete) break;
+                bytes_can_delete += cp.len;
+                chars_can_delete += 1;
+            }
+
+            self.current -= bytes_can_delete;
+            self.lowest = @min(self.lowest, self.current);
+            defer pe.shifted_bytes_total -= bytes_can_delete;
+
+            const delete_start = shifted_start_byte - bytes_can_delete;
+            const line, const col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), @intCast(delete_start));
+            const new_root = try rcr.deleteChars(self.getLatestRoot(), self.a, .{ .line = line, .col = col }, chars_can_delete);
+            try self.roots.append(self.a, new_root);
+        }
+    };
 
     const InsertedString = struct {
         buf: []const u8 = "",
@@ -131,6 +201,20 @@ const PendingEdit = struct {
             if (self.buf.len > 0) a.free(self.buf);
         }
     };
+
+    fn getLatestRoot(self: *const @This()) rcr.RcNode {
+        return self.roots.getLastOrNull() orelse self.initial_root;
+    }
+
+    fn allocateCharsIfNeeded(self: *@This(), chars: []const u8) !?[]const u8 {
+        return if (chars.len == 1)
+            SINGLE_CHARS[chars[0]]
+        else blk: {
+            const str = try self.a.dupe(u8, chars);
+            try self.strlist.append(self.a, str);
+            break :blk str;
+        };
+    }
 };
 
 const OldPendingEdit = struct {
