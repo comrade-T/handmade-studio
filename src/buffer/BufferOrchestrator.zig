@@ -139,6 +139,11 @@ const PendingEdit = struct {
         self.inserted_string.deinit(self.a);
     }
 
+    fn clear(self: *@This()) !void {
+        defer self.resetShiftedBytesTotal();
+        for (self.trackers) |*tracker| try tracker.clear(self);
+    }
+
     fn insertChars(self: *@This(), chars: []const u8, cursor_byte_range_iter: anytype) !void {
         defer self.resetShiftedBytesTotal();
         const allocated_str = try self.allocateCharsIfNeeded(chars);
@@ -211,6 +216,30 @@ const PendingEdit = struct {
         current: u32,
         lowest: u32,
         cursor: u32,
+
+        fn clear(self: *@This(), pe: *PendingEdit) !void {
+            const number_of_deleted_bytes = self.initial.end - self.initial.start;
+            defer pe.shifted_bytes_total -= number_of_deleted_bytes;
+
+            self.cursor = @intCast(@as(i64, @intCast(self.cursor)) + pe.shifted_bytes_total);
+            self.current = self.cursor;
+            self.lowest = self.cursor;
+            self.initial = ByteRange{
+                .start = self.cursor,
+                .end = self.cursor + number_of_deleted_bytes,
+            };
+
+            const start_line, const start_col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), self.initial.start);
+            const end_line, const end_col = try rcr.getPositionFromByteOffset(pe.getLatestRoot(), self.initial.end);
+
+            const new_root = try rcr.deleteRange(
+                pe.getLatestRoot(),
+                pe.a,
+                .{ .line = start_line, .col = start_col },
+                .{ .line = end_line, .col = end_col },
+            );
+            try pe.roots.append(pe.a, new_root);
+        }
 
         fn insertChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, allocated_str: []const u8) !void {
             self.current += @intCast(allocated_str.len);
@@ -1031,6 +1060,101 @@ test "PendingEdit's trackers are reliable enough to be used for updating CursorM
         try orchestrator.exitInsertMode();
 
         try eqStr("helro_supernovaXOXO helro_supernovaXOXO", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
+    }
+}
+
+pub fn clear(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
+    assert(self.pending == null);
+    self.pending = try PendingEdit.init(self.a, buf, cursor_byte_range_iter);
+    try self.pending.?.clear();
+}
+
+test clear {
+    var orchestrator = Orchestrator{ .a = std.testing.allocator };
+    defer orchestrator.deinit();
+
+    { // 1 cursor, clear only
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 6 }} };
+        try orchestrator.clear(buf, &initial_byte_range_iter);
+        try eqStr("world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        try orchestrator.exitInsertMode();
+
+        try eqStr("world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+    }
+
+    { // 1 cursor, clear then insert
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 5 }} };
+        try orchestrator.clear(buf, &initial_byte_range_iter);
+        try eqStr(" world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("welcome", &edit_byte_range_iter);
+            try eqStr("welcome world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("welcome world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+    }
+
+    { // 2 cursors, clear then insert
+        const buf = try orchestrator.createBufferFromString("_aaa_ _aaa_");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 1, .end = 4 },
+            .{ .start = 7, .end = 10 },
+        } };
+        try orchestrator.clear(buf, &initial_byte_range_iter);
+        try eqStr("__ __", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("b", &edit_byte_range_iter);
+            try eqStr("_b_ _b_", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("c", &edit_byte_range_iter);
+            try eqStr("_bc_ _bc_", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("XYZ", &edit_byte_range_iter);
+            try eqStr("_bcXYZ_ _bcXYZ_", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("|", &edit_byte_range_iter);
+            try eqStr("_bcXYZ|_ _bcXYZ|_", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.deleteChars(6, &edit_byte_range_iter);
+            try eqStr("__ __", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("x", &edit_byte_range_iter);
+            try eqStr("_x_ _x_", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("_x_ _x_", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
         try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
         try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
