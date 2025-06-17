@@ -339,7 +339,7 @@ pub const ByteRange = struct {
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn startInsertMode(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
+pub fn startEditing(self: *@This(), buf: *Buffer, cursor_byte_range_iter: anytype) !void {
     assert(self.pending == null);
     self.pending = try PendingEdit.init(self.a, buf, cursor_byte_range_iter);
 }
@@ -361,13 +361,13 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.insertChars("// ", &edit_byte_range_iter);
             try eqStr("// hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -379,7 +379,7 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.insertChars("/", &edit_byte_range_iter);
@@ -395,7 +395,7 @@ test insertChars {
             try orchestrator.insertChars(" ", &edit_byte_range_iter);
             try eqStr("// hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("// hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -405,13 +405,13 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
             try orchestrator.insertChars(",", &edit_byte_range_iter);
             try eqStr("hello, world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("hello, world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -422,13 +422,13 @@ test insertChars {
 
         {
             var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-            try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+            try orchestrator.startEditing(buf, &initial_byte_range_iter);
             {
                 var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
                 try orchestrator.insertChars(",", &edit_byte_range_iter);
                 try eqStr("hello, world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
             }
-            try orchestrator.exitInsertMode();
+            try orchestrator.stopEditing();
 
             try eqStr("hello, world", try buf.toString(std.heap.page_allocator, .lf));
             try eq(2, buf.edits.items.len);
@@ -436,7 +436,7 @@ test insertChars {
 
         {
             var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+            try orchestrator.startEditing(buf, &initial_byte_range_iter);
             {
                 var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
                 try orchestrator.insertChars("/", &edit_byte_range_iter);
@@ -452,7 +452,7 @@ test insertChars {
                 try orchestrator.insertChars(" ", &edit_byte_range_iter);
                 try eqStr("// hello, world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
             }
-            try orchestrator.exitInsertMode();
+            try orchestrator.stopEditing();
 
             try eqStr("// hello, world", try buf.toString(std.heap.page_allocator, .lf));
             try eq(3, buf.edits.items.len);
@@ -473,7 +473,7 @@ test insertChars {
             .{ .start = 0, .end = 0 },
             .{ .start = 5, .end = 5 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 0, .end = 0 },
@@ -482,7 +482,7 @@ test insertChars {
             try orchestrator.insertChars("|", &edit_byte_range_iter);
             try eqStr("|hello| world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("|hello| world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -491,7 +491,7 @@ test insertChars {
         try eq(0, buf.edits.items[2].parent_index);
     }
 
-    { // using 2 cursors, insert 1 single-byte string at the beginning and middle of the Buffer 2 times in 1 insert mode session
+    { // using 2 cursors, insert 1 single-byte string at the beginning and middle of the Buffer 2 times
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
@@ -500,7 +500,7 @@ test insertChars {
                 .{ .start = 0, .end = 0 },
                 .{ .start = 5, .end = 5 },
             } };
-            try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+            try orchestrator.startEditing(buf, &initial_byte_range_iter);
             {
                 var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                     .{ .start = 0, .end = 0 },
@@ -519,7 +519,7 @@ test insertChars {
                 try orchestrator.insertChars(")", &edit_byte_range_iter);
                 try eqStr("()hello() world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
             }
-            try orchestrator.exitInsertMode();
+            try orchestrator.stopEditing();
         }
 
         try eqStr("()hello() world", try buf.toString(std.heap.page_allocator, .lf));
@@ -536,7 +536,7 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.insertChars("/", &edit_byte_range_iter);
@@ -547,7 +547,7 @@ test insertChars {
             try orchestrator.insertChars("|", &edit_byte_range_iter);
             try eqStr("|/hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("|/hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -561,7 +561,7 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.insertChars("/", &edit_byte_range_iter);
@@ -582,7 +582,7 @@ test insertChars {
             try orchestrator.insertChars("|", &edit_byte_range_iter);
             try eqStr("|x|/hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("|x|/hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -596,7 +596,7 @@ test insertChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.insertChars("/", &edit_byte_range_iter);
@@ -622,7 +622,7 @@ test insertChars {
             try orchestrator.insertChars("|", &edit_byte_range_iter);
             try eqStr("|x|/ hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("|x|/ hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -649,13 +649,13 @@ test deleteChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("hell world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("hell world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -668,7 +668,7 @@ test deleteChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
@@ -689,7 +689,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("h world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("h world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -707,7 +707,7 @@ test deleteChars {
             .{ .start = 2, .end = 2 },
             .{ .start = 8, .end = 8 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 2, .end = 2 },
@@ -716,7 +716,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("hllo wrld", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("hllo wrld", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -733,7 +733,7 @@ test deleteChars {
             .{ .start = 3, .end = 3 },
             .{ .start = 9, .end = 9 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 3, .end = 3 },
@@ -758,7 +758,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("DE JK", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("DE JK", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -774,7 +774,7 @@ test deleteChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
@@ -785,7 +785,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("ell world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("ell world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -802,7 +802,7 @@ test deleteChars {
             .{ .start = 2, .end = 2 },
             .{ .start = 8, .end = 8 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         { // results in 'hllo wrld'
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 2, .end = 2 },
@@ -819,7 +819,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("ACE FHK", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("ACE FHK", try buf.toString(std.heap.page_allocator, .lf));
         try eq(5, buf.edits.items.len);
@@ -837,13 +837,13 @@ test deleteChars {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("hello world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("hello world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(1, buf.edits.items.len);
@@ -858,7 +858,7 @@ test deleteChars {
             .{ .start = 0, .end = 0 },
             .{ .start = 5, .end = 5 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 0, .end = 0 },
@@ -867,7 +867,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("hell world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("hell world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -883,7 +883,7 @@ test deleteChars {
             .{ .start = 0, .end = 0 },
             .{ .start = 5, .end = 5 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 0, .end = 0 },
@@ -900,7 +900,7 @@ test deleteChars {
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
             try eqStr("hel world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("hel world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -919,7 +919,7 @@ test "insertChars() & deleteChars()" {
         try eq(1, buf.edits.items.len);
 
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
@@ -940,7 +940,7 @@ test "insertChars() & deleteChars()" {
             try orchestrator.insertChars("o", &edit_byte_range_iter);
             try eqStr("helio world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("helio world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -956,7 +956,7 @@ test "insertChars() & deleteChars()" {
             .{ .start = 5, .end = 5 },
             .{ .start = 11, .end = 11 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
                 .{ .start = 5, .end = 5 },
@@ -989,7 +989,7 @@ test "insertChars() & deleteChars()" {
             try orchestrator.insertChars("o", &edit_byte_range_iter);
             try eqStr("helro helro", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("helro helro", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -1011,7 +1011,7 @@ test "PendingEdit's trackers are reliable enough to be used for updating CursorM
             .{ .start = 5, .end = 5 },
             .{ .start = 11, .end = 11 },
         } };
-        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        try orchestrator.startEditing(buf, &initial_byte_range_iter);
         {
             var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
             try orchestrator.deleteChars(1, &edit_byte_range_iter);
@@ -1057,7 +1057,7 @@ test "PendingEdit's trackers are reliable enough to be used for updating CursorM
             try orchestrator.insertChars("OXO", &edit_byte_range_iter);
             try eqStr("helro_supernovaXOXO helro_supernovaXOXO", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("helro_supernovaXOXO helro_supernovaXOXO", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -1084,7 +1084,7 @@ test clear {
         var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 6 }} };
         try orchestrator.clear(buf, &initial_byte_range_iter);
         try eqStr("world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -1104,7 +1104,7 @@ test clear {
             try orchestrator.insertChars("welcome", &edit_byte_range_iter);
             try eqStr("welcome world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("welcome world", try buf.toString(std.heap.page_allocator, .lf));
         try eq(2, buf.edits.items.len);
@@ -1152,7 +1152,7 @@ test clear {
             try orchestrator.insertChars("x", &edit_byte_range_iter);
             try eqStr("_x_ _x_", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
         }
-        try orchestrator.exitInsertMode();
+        try orchestrator.stopEditing();
 
         try eqStr("_x_ _x_", try buf.toString(std.heap.page_allocator, .lf));
         try eq(3, buf.edits.items.len);
@@ -1181,7 +1181,7 @@ fn handlePotentialNewPendingEvent(self: *@This(), cursor_byte_range_iter: anytyp
     cursor_byte_range_iter.reset(); // reset iterator index to 0 for subsequent `insertChars` or `deleteChars` calls.
 }
 
-pub fn exitInsertMode(self: *@This()) !void {
+pub fn stopEditing(self: *@This()) !void {
     assert(self.pending != null);
     try self.pending.?.finalizeChangesToBuffer(self);
     self.pending.?.deinit();
