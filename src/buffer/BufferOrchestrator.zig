@@ -120,6 +120,7 @@ const PendingEdit = struct {
                 .initial = byte_range,
                 .current = byte_range.start,
                 .lowest = byte_range.start,
+                .cursor = byte_range.start,
             };
         }
 
@@ -209,9 +210,13 @@ const PendingEdit = struct {
         initial: ByteRange,
         current: u32,
         lowest: u32,
+        cursor: u32,
 
         fn insertChars(self: *@This(), pe: *PendingEdit, current_cursor_byte_range: ByteRange, allocated_str: []const u8) !void {
             self.current += @intCast(allocated_str.len);
+
+            self.cursor = @intCast(@as(i64, @intCast(self.cursor)) + @as(i64, @intCast(allocated_str.len)) + pe.shifted_bytes_total);
+
             defer pe.shifted_bytes_total += @intCast(allocated_str.len);
 
             const adjusted_byte_offset: i64 = @as(i64, @intCast(current_cursor_byte_range.start)) + pe.shifted_bytes_total;
@@ -234,6 +239,9 @@ const PendingEdit = struct {
 
             self.current -= bytes_can_delete;
             self.lowest = @min(self.lowest, self.current);
+
+            self.cursor = @intCast(@as(i64, @intCast(self.cursor)) - @as(i64, @intCast(bytes_can_delete)) + pe.shifted_bytes_total);
+
             defer pe.shifted_bytes_total -= bytes_can_delete;
 
             if (chars_can_delete != chars_to_delete) pe.should_create_new_pending_edit = true;
@@ -289,6 +297,7 @@ const PendingEdit = struct {
     }
 
     fn shouldCreateNewPendingEvent(self: *const @This(), cursor_byte_range_iter: anytype) bool {
+        if (self.should_create_new_pending_edit) return true;
         if (cursor_byte_range_iter.len() != self.trackers.len) return true;
         return cursor_byte_range_iter.first().start != self.trackers[0].current;
     }
@@ -812,7 +821,7 @@ test deleteChars {
         try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
     }
 
-    { // 2 cursors
+    { // 2 cursors, deleting 1 char each
         const buf = try orchestrator.createBufferFromString("hello world");
         try eq(1, buf.edits.items.len);
 
@@ -836,10 +845,204 @@ test deleteChars {
         try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
         try eq(0, buf.edits.items[1].parent_index);
     }
+
+    { // 2 cursors, deleting multiple chars each, should create Nexus Events
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 0, .end = 0 },
+            .{ .start = 5, .end = 5 },
+        } };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 0, .end = 0 },
+                .{ .start = 5, .end = 5 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hell world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 0, .end = 0 },
+                .{ .start = 4, .end = 4 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hel world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("hel world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+        try eq(1, buf.edits.items[2].parent_index);
+    }
 }
 
-// TODO: add mixed insert & delete tests
-// TODO: add more complex test cases for insert & delete
+test "insertChars() & deleteChars()" {
+    var orchestrator = Orchestrator{ .a = std.testing.allocator };
+    defer orchestrator.deinit();
+
+    { // 1 cursor
+        const buf = try orchestrator.createBufferFromString("hello world");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 5, .end = 5 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hell world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 4, .end = 4 }} };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hel world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 3, .end = 3 }} };
+            try orchestrator.insertChars("i", &edit_byte_range_iter);
+            try eqStr("heli world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 4, .end = 4 }} };
+            try orchestrator.insertChars("o", &edit_byte_range_iter);
+            try eqStr("helio world", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("helio world", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(2, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(0, buf.edits.items[1].parent_index);
+    }
+
+    { // 2 cursors
+        const buf = try orchestrator.createBufferFromString("helio helio");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 5, .end = 5 },
+            .{ .start = 11, .end = 11 },
+        } };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 5, .end = 5 },
+                .{ .start = 11, .end = 11 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("heli heli", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 4, .end = 4 },
+                .{ .start = 9, .end = 9 },
+            } };
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hel hel", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 3, .end = 3 },
+                .{ .start = 7, .end = 7 },
+            } };
+            try orchestrator.insertChars("r", &edit_byte_range_iter);
+            try eqStr("helr helr", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+                .{ .start = 4, .end = 4 },
+                .{ .start = 9, .end = 9 },
+            } };
+            try orchestrator.insertChars("o", &edit_byte_range_iter);
+            try eqStr("helro helro", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("helro helro", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
+    }
+}
+
+test "PendingEdit's trackers are reliable enough to be used for updating CursorManager" {
+    var orchestrator = Orchestrator{ .a = std.testing.allocator };
+    defer orchestrator.deinit();
+
+    { // 2 cursors
+        const buf = try orchestrator.createBufferFromString("helio helio");
+        try eq(1, buf.edits.items.len);
+
+        var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{
+            .{ .start = 5, .end = 5 },
+            .{ .start = 11, .end = 11 },
+        } };
+        try orchestrator.startInsertMode(buf, &initial_byte_range_iter);
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("heli heli", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.deleteChars(1, &edit_byte_range_iter);
+            try eqStr("hel hel", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("r", &edit_byte_range_iter);
+            try eqStr("helr helr", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("o", &edit_byte_range_iter);
+            try eqStr("helro helro", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("_supernova", &edit_byte_range_iter);
+            try eqStr("helro_supernova helro_supernova", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("X", &edit_byte_range_iter);
+            try eqStr("helro_supernovaX helro_supernovaX", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("xyz", &edit_byte_range_iter);
+            try eqStr("helro_supernovaXxyz helro_supernovaXxyz", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.deleteChars(3, &edit_byte_range_iter);
+            try eqStr("helro_supernovaX helro_supernovaX", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        {
+            var edit_byte_range_iter = try produceMockByteRangeIteratorFromTrackers(&orchestrator);
+            try orchestrator.insertChars("OXO", &edit_byte_range_iter);
+            try eqStr("helro_supernovaXOXO helro_supernovaXOXO", try rcr.Node.toString(orchestrator.pending.?.getLatestRoot().value, idc_if_it_leaks, .lf));
+        }
+        try orchestrator.exitInsertMode();
+
+        try eqStr("helro_supernovaXOXO helro_supernovaXOXO", try buf.toString(std.heap.page_allocator, .lf));
+        try eq(3, buf.edits.items.len);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[0].parent_index);
+        try eq(Buffer.NULL_PARENT_INDEX, buf.edits.items[1].parent_index);
+        try eq(0, buf.edits.items[2].parent_index);
+    }
+}
+
+fn produceMockByteRangeIteratorFromTrackers(orchestrator: *const Orchestrator) !MockIterator(ByteRange) {
+    const items = try idc_if_it_leaks.alloc(ByteRange, orchestrator.pending.?.trackers.len);
+    for (orchestrator.pending.?.trackers, 0..) |*tracker, i| items[i] = ByteRange{ .start = tracker.cursor, .end = tracker.cursor };
+    return MockIterator(ByteRange){ .items = items };
+}
 
 fn handlePotentialNewPendingEvent(self: *@This(), cursor_byte_range_iter: anytype) !void {
     assert(self.pending != null);
