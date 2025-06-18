@@ -21,8 +21,7 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const eq = std.testing.expectEqual;
 
-const Orchestrator = @import("BufferOrchestrator");
-const Buffer = Orchestrator.Buffer;
+const Buffer = @import("BufferOrchestrator").Buffer;
 
 pub const ts = @import("bindings.zig");
 pub const NeoStoredQuery = @import("NeoStoredQuery.zig");
@@ -35,16 +34,16 @@ a: Allocator,
 langmap: std.AutoHashMapUnmanaged(*const ts.Language, NeoLangSuite) = .{},
 
 trees: std.AutoHashMapUnmanaged(*const Buffer, std.ArrayListUnmanaged(*ts.Tree)) = .{},
-captures: std.AutoHashMapUnmanaged(*const ts.Tree, CapturedLines) = .{},
+captures: std.AutoHashMapUnmanaged(*const ts.Tree, CaptureMap) = .{},
 
 pub fn init(a: Allocator) !NeoLangHub {
     return NeoLangHub{ .a = a };
 }
 
 pub fn deinit(self: *@This()) void {
-    var langmap_iter = self.langmap.valueIterator();
-    while (langmap_iter.next()) |ls| ls.deinit(self.a);
-    self.langmap.deinit(self.a);
+    var tree_to_capture_map_iter = self.captures.valueIterator();
+    while (tree_to_capture_map_iter.next()) |capture_map| self.freeCaptureMap(capture_map);
+    self.captures.deinit(self.a);
 
     var treemap_iter = self.trees.valueIterator();
     while (treemap_iter.next()) |list| {
@@ -52,6 +51,10 @@ pub fn deinit(self: *@This()) void {
         for (list.items) |tree| tree.destroy();
     }
     self.trees.deinit(self.a);
+
+    var langmap_iter = self.langmap.valueIterator();
+    while (langmap_iter.next()) |ls| ls.deinit(self.a);
+    self.langmap.deinit(self.a);
 }
 
 pub const LanguageID = union(enum) {
@@ -185,7 +188,42 @@ pub fn editMainTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) !voi
     tree.edit(edit);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////// Query ID Selector
+
+const DEFAULT_HIGHLIGHT_QUERIES: []const u8 = &.{0};
+
+pub fn getHightlightQueryIndexes(self: *const @This(), buf: *Buffer) []const u8 {
+    _ = self;
+    _ = buf;
+    return DEFAULT_HIGHLIGHT_QUERIES;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Captures
+
+pub fn initializeCapturesForMainTree(self: *@This(), buf: *Buffer, query_ids: []const u8) !void {
+    const buf_tree_list = self.trees.get(buf) orelse unreachable;
+    const tree = buf_tree_list.items[0];
+    if (self.captures.getPtr(tree)) |capture_map| self.freeCaptureMap(capture_map);
+
+    const captured_lines = try self.getCaptures(buf, tree, query_ids, 0, buf.getLineCount() - 1);
+    var capture_map = CaptureMap{};
+    try capture_map.put(self.a, query_ids.ptr, captured_lines);
+    try self.captures.put(self.a, tree, capture_map);
+}
+
+fn freeCaptureMap(self: *@This(), capture_map: *CaptureMap) void {
+    defer capture_map.deinit(self.a);
+    var capture_map_iter = capture_map.valueIterator();
+    while (capture_map_iter.next()) |list| {
+        for (list.items) |line| {
+            switch (line) {
+                .std => |slice| self.a.free(slice),
+                .long => |slice| self.a.free(slice),
+            }
+        }
+        list.deinit(self.a);
+    }
+}
 
 const CaptureID = u8;
 const QueryID = u8;
@@ -209,6 +247,8 @@ const Captures = union(enum) {
 };
 const CapturedLines = std.ArrayListUnmanaged(Captures);
 
+const CaptureMap = std.AutoHashMapUnmanaged([*]const u8, CapturedLines);
+
 const MAX_INT_U32 = std.math.maxInt(u32);
 const MAX_INT_U8 = std.math.maxInt(u8);
 
@@ -220,7 +260,7 @@ test {
     try eq(24, @sizeOf(Captures));
 }
 
-fn getCapturesInMainTree(self: *@This(), buf: *const Buffer, query_ids: []const u8, start_line: u32, end_line: u32) !CapturedLines {
+fn getCaptures(self: *@This(), buf: *const Buffer, tree: *ts.Tree, query_ids: []const u8, start_line: u32, end_line: u32) !CapturedLines {
     const num_of_lines_to_process = end_line - start_line + 1;
 
     ///////////////////////////// precompute code paths
@@ -234,9 +274,6 @@ fn getCapturesInMainTree(self: *@This(), buf: *const Buffer, query_ids: []const 
     }
 
     ///////////////////////////// set up containers
-
-    const tree_list_of_buffer = self.trees.get(buf) orelse unreachable;
-    const tree = tree_list_of_buffer.items[0];
 
     var std_lines_list = try std.ArrayListUnmanaged(std.ArrayListUnmanaged(StdCapture)).initCapacity(self.a, num_of_lines_to_process);
     defer std_lines_list.deinit(self.a);
@@ -277,8 +314,8 @@ fn getCapturesInMainTree(self: *@This(), buf: *const Buffer, query_ids: []const 
                             .end_col = if (linenr == end.row) @intCast(end.column) else MAX_INT_U8,
                         }),
                         .long => {
-                            if (!long_lines_map.contains(linenr)) try long_lines_map.put(self.a, linenr, std.ArrayListUnmanaged(LongCapture){});
-                            var list = long_lines_map.getPtr(linenr) orelse unreachable;
+                            if (!long_lines_map.contains(@intCast(linenr))) try long_lines_map.put(self.a, @intCast(linenr), std.ArrayListUnmanaged(LongCapture){});
+                            var list = long_lines_map.getPtr(@intCast(linenr)) orelse unreachable;
                             try list.append(self.a, LongCapture{
                                 .query_id = query_id,
                                 .capture_id = @intCast(cap.id),
@@ -298,13 +335,13 @@ fn getCapturesInMainTree(self: *@This(), buf: *const Buffer, query_ids: []const 
     for (start_line..end_line + 1, 0..) |linenr, i| {
         switch (code_paths[i]) {
             .std => {
-                std.mem.sort(StdCapture, std_lines_list.items[i].items, {}, captureLessThan);
-                captured_lines.append(self.a, .{ .std = try std_lines_list.items[i].toOwnedSlice() });
+                std.mem.sort(StdCapture, std_lines_list.items[i].items, {}, captureLessThanStd);
+                try captured_lines.append(self.a, .{ .std = try std_lines_list.items[i].toOwnedSlice(self.a) });
             },
             .long => {
-                var list = long_lines_map.getPtr(linenr) orelse unreachable;
-                std.mem.sort(StdCapture, list.items, {}, captureLessThan);
-                captured_lines.append(self.a, .{ .long = try list.toOwnedSlice(self.a) });
+                var list = long_lines_map.getPtr(@intCast(linenr)) orelse unreachable;
+                std.mem.sort(LongCapture, list.items, {}, captureLessThanLong);
+                try captured_lines.append(self.a, .{ .long = try list.toOwnedSlice(self.a) });
             },
         }
     }
@@ -312,7 +349,13 @@ fn getCapturesInMainTree(self: *@This(), buf: *const Buffer, query_ids: []const 
     return captured_lines;
 }
 
-fn captureLessThan(_: void, a: anytype, b: anytype) bool {
+fn captureLessThanStd(_: void, a: StdCapture, b: StdCapture) bool {
+    if (a.start_col < b.start_col) return true;
+    if (a.start_col == b.start_col) return a.end_col < b.end_col;
+    return false;
+}
+
+fn captureLessThanLong(_: void, a: LongCapture, b: LongCapture) bool {
     if (a.start_col < b.start_col) return true;
     if (a.start_col == b.start_col) return a.end_col < b.end_col;
     return false;

@@ -86,6 +86,10 @@ pub fn getNumOfCharsInLine(self: *const @This(), line: usize) usize {
     return rcr.getNumOfCharsInLine(self.getCurrentRoot(), line);
 }
 
+pub fn getLineCount(self: *const @This()) u32 {
+    return self.getCurrentRoot().value.weights().bols;
+}
+
 pub fn getCurrentRoot(self: *const @This()) rcr.RcNode {
     assert(self.edits.items.len > 0);
     assert(self.index < self.edits.items.len);

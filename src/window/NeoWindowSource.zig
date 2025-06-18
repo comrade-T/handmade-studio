@@ -48,6 +48,7 @@ pub fn initFromFile(a: Allocator, orchestrator: *BufferOrchestrator, may_lang_hu
     if (may_lang_hub) |lang_hub| {
         if (LangHub.getLangChoiceFromFilePath(path)) |lang_choice| {
             assert(try lang_hub.parseMainTree(buf, .{ .lang_choice = lang_choice }));
+            try lang_hub.initializeCapturesForMainTree(buf, lang_hub.getHightlightQueryIndexes(buf));
         }
     }
     return NeoWindowSource{

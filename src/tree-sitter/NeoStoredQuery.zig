@@ -20,7 +20,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const ts = @import("bindings.zig");
-const NeoBuffer = @import("NeoBuffer");
+const Buffer = @import("BufferOrchestrator").Buffer;
 
 const mvzr = @import("mvzr");
 const Regex = mvzr.Regex;
@@ -285,7 +285,7 @@ const NextMatchResult = struct {
     match: ?ts.Query.Match = null,
 };
 
-pub fn nextMatch(self: *@This(), query_cursor: *ts.Query.Cursor, buffer: *const NeoBuffer) ?NextMatchResult {
+pub fn nextMatch(self: *const @This(), query_cursor: *ts.Query.Cursor, buffer: *const Buffer) ?NextMatchResult {
     const match = query_cursor.nextMatch() orelse return null;
 
     const predicates_map = self.patterns[match.pattern_index];
