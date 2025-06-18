@@ -19,13 +19,13 @@ const NeoWindowSource = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Buffer = @import("NeoBuffer");
+const Orchestrator = @import("BufferOrchestrator");
+const LangHub = @import("NeoLangHub");
+const Buffer = Orchestrator.Buffer;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-buf: Buffer,
-
-// TODO: we need an iterator for NeoRcRope
+buf: *Buffer,
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 

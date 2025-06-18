@@ -105,6 +105,10 @@ const NeoLangSuite = struct {
     const ParseResult = struct {
         tree: *ts.Tree,
         changed_ranges: []const ts.Range = &.{},
+
+        fn freeChangedRanges(self: *const @This()) void {
+            std.c.free(@as(*anyopaque, @ptrCast(@constCast(self.changed_ranges.ptr))));
+        }
     };
 
     fn parse(self: *@This(), buf: *const Buffer, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) ParseResult {
@@ -149,22 +153,21 @@ const NeoLangSuite = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Parsing
 
-pub fn editTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) void {
-    assert(self.buftreemap.contains(buf));
-    const tree = self.buftreemap.get(buf) orelse return;
-    tree.edit(edit);
-}
-
-pub fn parseBuffer(self: *@This(), buf: *const Buffer, lang_id: LanguageID) ![]const ts.Range {
-    const may_old_tree = self.buftreemap.get(buf);
+pub fn parseMainTree(self: *@This(), buf: *const Buffer, lang_id: LanguageID) !void {
+    assert(!self.trees.contains(buf));
+    var list = std.ArrayListUnmanaged(*ts.Tree){};
     const langsuite = try self.getLangSuite(lang_id);
-    const parse_result = langsuite.parse(buf, may_old_tree, &.{});
-    try self.buftreemap.put(self.a, buf, parse_result.tree);
-    return parse_result.changed_ranges;
+    const parse_result = langsuite.parse(buf, null, &.{});
+    defer parse_result.freeChangedRanges();
+    try list.append(self.a, parse_result.tree);
+    try self.trees.put(self.a, buf, list);
 }
 
-pub fn freeTSRanges(ranges: []const ts.Range) void {
-    std.c.free(@as(*anyopaque, @ptrCast(@constCast(ranges.ptr))));
+pub fn editMainTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) !void {
+    assert(self.trees.contains(buf));
+    const list = self.trees.get(buf) orelse return;
+    const tree = list.items[0];
+    tree.edit(edit);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Injections

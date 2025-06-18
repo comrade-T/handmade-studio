@@ -112,11 +112,12 @@ pub fn build(b: *std.Build) void {
     }, zig_build_test_step);
     neo_langhub.module.linkLibrary(tree_sitter);
 
-    // const neo_window_source = addTestableModule(&bops, "src/window/NeoWindowSource.zig", &.{
-    //     .{ .name = "code_point", .module = zg.module("code_point") },
-    //     .{ .name = "NeoBuffer", .module = neo_buffer.module },
-    // }, zig_build_test_step);
-    // _ = neo_window_source;
+    const neo_window_source = addTestableModule(&bops, "src/window/NeoWindowSource.zig", &.{
+        .{ .name = "code_point", .module = zg.module("code_point") },
+        .{ .name = "BufferOrchestrator", .module = buffer_orchestrator.module },
+        .{ .name = "NeoLangHub", .module = neo_langhub.module },
+    }, zig_build_test_step);
+    _ = neo_window_source;
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },

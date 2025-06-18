@@ -23,7 +23,7 @@ const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 const idc_if_it_leaks = std.heap.page_allocator;
 
-const Buffer = @import("NeoBuffer.zig");
+pub const Buffer = @import("NeoBuffer.zig");
 const rcr = Buffer.rcr;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
