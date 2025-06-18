@@ -167,7 +167,7 @@ pub const Parser = opaque {
     }
 
     pub const SetIncludedRangesError = error{Unknown};
-    pub fn setIncludedRanges(parser: *Parser, ranges: []const Range) void {
+    pub fn setIncludedRanges(parser: *Parser, ranges: []const Range) !void {
         if (!externs.ts_parser_set_included_ranges(parser, ranges.ptr, @as(u32, @intCast(ranges.len))))
             return error.Unknown;
     }

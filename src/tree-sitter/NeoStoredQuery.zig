@@ -54,7 +54,7 @@ pub fn init(a: Allocator, ts_lang: *const ts.Language, pattern_string: []const u
 
                 if (name[name.len - 1] == '?') {
                     const cap_id, const predicate = Predicate.create(self.arena.allocator(), self.query, name, steps[start .. i + 1]) catch continue;
-                    if (predicates_map.getPtr(cap_id)) |list| try list.append(predicate) else {
+                    if (predicates_map.getPtr(cap_id)) |list| try list.append(a, predicate) else {
                         var list = std.ArrayListUnmanaged(Predicate){};
                         try list.append(self.arena.allocator(), predicate);
                         try predicates_map.put(cap_id, list);
@@ -67,7 +67,7 @@ pub fn init(a: Allocator, ts_lang: *const ts.Language, pattern_string: []const u
         try patterns.append(predicates_map);
     }
 
-    self.*.patterns = try patterns.toOwnedSlice();
+    self.patterns = try patterns.toOwnedSlice();
     return self;
 }
 

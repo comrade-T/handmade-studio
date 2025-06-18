@@ -18,9 +18,11 @@
 const NeoWindowSource = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const eq = std.testing.expectEqual;
+const eqStr = std.testing.expectEqualStrings;
 
-const Orchestrator = @import("BufferOrchestrator");
 const LangHub = @import("NeoLangHub");
+const Orchestrator = @import("BufferOrchestrator");
 const Buffer = Orchestrator.Buffer;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -30,5 +32,19 @@ buf: *Buffer,
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 test {
-    try std.testing.expectEqual(1, 1);
+    const a = std.testing.allocator;
+    var lang_hub = LangHub{ .a = a };
+    defer lang_hub.deinit();
+
+    var orchestrator = Orchestrator{ .a = a };
+    defer orchestrator.deinit();
+
+    {
+        const buf = try orchestrator.createBufferFromString("const Allocator = std.mem.Allocator");
+        try eq(true, try lang_hub.parseMainTree(buf, .{ .lang_choice = .zig }));
+
+        // TODO: what else do I want to test?
+        // - capturing stuffs
+        // - iterate through those captures
+    }
 }

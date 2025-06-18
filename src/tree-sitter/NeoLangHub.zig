@@ -21,7 +21,8 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const eq = std.testing.expectEqual;
 
-const Buffer = @import("NeoBuffer");
+const Orchestrator = @import("BufferOrchestrator");
+const Buffer = Orchestrator.Buffer;
 
 pub const ts = @import("bindings.zig");
 pub const NeoStoredQuery = @import("NeoStoredQuery.zig");
@@ -33,17 +34,24 @@ pub const SupportedLanguage = enum { zig };
 a: Allocator,
 langmap: std.AutoHashMapUnmanaged(*const ts.Language, NeoLangSuite) = .{},
 
-trees: std.AutoHashMapUnmanaged(*const Buffer, std.ArrayListUnmanaged(*ts.Tree)),
-captures: std.AutoHashMapUnmanaged(*const ts.Tree, CapturesOfTreeMap),
+trees: std.AutoHashMapUnmanaged(*const Buffer, std.ArrayListUnmanaged(*ts.Tree)) = .{},
+captures: std.AutoHashMapUnmanaged(*const ts.Tree, CapturedLines) = .{},
 
 pub fn init(a: Allocator) !NeoLangHub {
     return NeoLangHub{ .a = a };
 }
 
 pub fn deinit(self: *@This()) void {
-    var iter = self.langmap.valueIterator();
-    while (iter.next()) |ls| ls.deinit(self.a);
-    self.langmap.deinit();
+    var langmap_iter = self.langmap.valueIterator();
+    while (langmap_iter.next()) |ls| ls.deinit(self.a);
+    self.langmap.deinit(self.a);
+
+    var treemap_iter = self.trees.valueIterator();
+    while (treemap_iter.next()) |list| {
+        defer list.deinit(self.a);
+        for (list.items) |tree| tree.destroy();
+    }
+    self.trees.deinit(self.a);
 }
 
 pub const LanguageID = union(enum) {
@@ -59,11 +67,16 @@ pub fn getLangSuite(self: *@This(), lang_id: LanguageID) !*NeoLangSuite {
         },
     };
 
-    if (!self.map.contains(language)) {
-        var langsuite = try NeoLangSuite.init(language);
-        try langsuite.addDefaultHighlightQuery();
-        try self.langmap.put(self.a, language, langsuite);
-    }
+    if (!self.langmap.contains(language))
+        switch (lang_id) {
+            .language => unreachable,
+            .lang_choice => |lang_choice| {
+                var langsuite = try NeoLangSuite.init(language);
+                try langsuite.addDefaultHighlightQuery(self.a, lang_choice);
+                try self.langmap.put(self.a, language, langsuite);
+            },
+        };
+
     return self.langmap.getPtr(language) orelse unreachable;
 }
 
@@ -85,42 +98,43 @@ const NeoLangSuite = struct {
     }
 
     pub fn deinit(self: *@This(), a: Allocator) void {
-        for (self.queries.items) |sq| sq.deinit();
+        for (self.queries.items) |*sq| sq.deinit();
         self.queries.deinit(a);
     }
 
-    pub fn addDefaultHighlightQuery(self: *@This(), a: Allocator) !void {
-        const pattern_string = switch (self.lang_choice) {
+    pub fn addDefaultHighlightQuery(self: *@This(), a: Allocator, lang_choice: SupportedLanguage) !void {
+        const pattern_string = switch (lang_choice) {
             .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
         };
         try self.addQuery(a, pattern_string);
     }
 
     pub fn addQuery(self: *@This(), a: Allocator, pattern_string: []const u8) !void {
-        const language = try self.parser.getLanguage() orelse unreachable;
+        const language = self.parser.getLanguage() orelse unreachable;
         const sq = try NeoStoredQuery.init(a, language, pattern_string);
         try self.queries.append(a, sq);
     }
 
     const ParseResult = struct {
         tree: *ts.Tree,
-        changed_ranges: []const ts.Range = &.{},
+        changed_ranges: ?[]const ts.Range = null,
 
         fn freeChangedRanges(self: *const @This()) void {
-            std.c.free(@as(*anyopaque, @ptrCast(@constCast(self.changed_ranges.ptr))));
+            if (self.changed_ranges == null) return;
+            std.c.free(@as(*anyopaque, @ptrCast(@constCast(self.changed_ranges.?.ptr))));
         }
     };
 
-    fn parse(self: *@This(), buf: *const Buffer, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) ParseResult {
+    fn parse(self: *@This(), buf: *const Buffer, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) ?ParseResult {
         defer if (may_old_tree) |old_tree| old_tree.destroy();
 
         const parser = self.parser;
         defer parser.reset();
-        parser.setIncludedRanges(ranges);
+        parser.setIncludedRanges(ranges) catch return null;
 
         const PARSE_BUFFER_SIZE = 1024;
         const ParseCtx = struct {
-            buf: *Buffer,
+            buf: *const Buffer,
             parse_buf: [PARSE_BUFFER_SIZE]u8 = undefined,
         };
         var parse_ctx = ParseCtx{ .buf = buf };
@@ -142,25 +156,26 @@ const NeoLangSuite = struct {
             }.read,
             .encoding = .utf_8,
         };
-        const new_tree = try parser.parse(may_old_tree, input);
+        const new_tree = parser.parse(may_old_tree, input) catch return null;
 
         return ParseResult{
             .tree = new_tree,
-            .changed_ranges = if (may_old_tree) |old_tree| old_tree.getChangedRanges(new_tree) else &.{},
+            .changed_ranges = if (may_old_tree) |old_tree| old_tree.getChangedRanges(new_tree) else null,
         };
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Parsing
 
-pub fn parseMainTree(self: *@This(), buf: *const Buffer, lang_id: LanguageID) !void {
+pub fn parseMainTree(self: *@This(), buf: *const Buffer, lang_id: LanguageID) !bool {
     assert(!self.trees.contains(buf));
     var list = std.ArrayListUnmanaged(*ts.Tree){};
     const langsuite = try self.getLangSuite(lang_id);
-    const parse_result = langsuite.parse(buf, null, &.{});
+    const parse_result = langsuite.parse(buf, null, &.{}) orelse return false;
     defer parse_result.freeChangedRanges();
     try list.append(self.a, parse_result.tree);
     try self.trees.put(self.a, buf, list);
+    return true;
 }
 
 pub fn editMainTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) !void {
@@ -193,8 +208,6 @@ const Captures = union(enum) {
     long: []const LongCapture,
 };
 const CapturedLines = std.ArrayListUnmanaged(Captures);
-
-const CapturesOfTreeMap = std.AutoHashMapUnmanaged(*const ts.Tree, CapturedLines);
 
 const MAX_INT_U32 = std.math.maxInt(u32);
 const MAX_INT_U8 = std.math.maxInt(u8);
