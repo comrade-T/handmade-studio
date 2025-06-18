@@ -20,31 +20,66 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
+const assert = std.debug.assert;
 
 const LangHub = @import("NeoLangHub");
-const Orchestrator = @import("BufferOrchestrator");
-const Buffer = Orchestrator.Buffer;
+const BufferOrchestrator = @import("BufferOrchestrator");
+const Buffer = BufferOrchestrator.Buffer;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 buf: *Buffer,
+origin: Origin,
+
+pub const Origin = union(enum) {
+    string: i64,
+    file: []const u8,
+};
+
+pub fn initFromString(orchestrator: *BufferOrchestrator, str_id: i64, str_content: []const u8) !NeoWindowSource {
+    return NeoWindowSource{
+        .buf = try orchestrator.createBufferFromString(str_content),
+        .origin = .{ .string = str_id },
+    };
+}
+
+pub fn initFromFile(a: Allocator, orchestrator: *BufferOrchestrator, may_lang_hub: ?*LangHub, path: []const u8) !NeoWindowSource {
+    const buf = try orchestrator.createBufferFromFile(path);
+    if (may_lang_hub) |lang_hub| {
+        if (LangHub.getLangChoiceFromFilePath(path)) |lang_choice| {
+            assert(try lang_hub.parseMainTree(buf, .{ .lang_choice = lang_choice }));
+        }
+    }
+    return NeoWindowSource{
+        .buf = buf,
+        .origin = .{ .file = try a.dupe(u8, path) },
+    };
+}
+
+pub fn deinit(self: *@This(), a: Allocator, orchestrator: *BufferOrchestrator) void {
+    orchestrator.removeBuffer(self.buf);
+    switch (self.origin) {
+        .string => {},
+        .file => |path| a.free(path),
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-test {
+test initFromFile {
     const a = std.testing.allocator;
     var lang_hub = LangHub{ .a = a };
     defer lang_hub.deinit();
 
-    var orchestrator = Orchestrator{ .a = a };
+    var orchestrator = BufferOrchestrator{ .a = a };
     defer orchestrator.deinit();
 
     {
-        const buf = try orchestrator.createBufferFromString("const Allocator = std.mem.Allocator");
-        try eq(true, try lang_hub.parseMainTree(buf, .{ .lang_choice = .zig }));
+        var ws = try NeoWindowSource.initFromFile(a, &orchestrator, &lang_hub, "src/window/fixtures/dummy.zig");
+        defer ws.deinit(a, &orchestrator);
 
         // TODO: what else do I want to test?
-        // - capturing stuffs
+        // - capturing stuffs -> from NeoWindowSource.initFromFile() ==> I should map this out properly on canvas
         // - iterate through those captures
     }
 }

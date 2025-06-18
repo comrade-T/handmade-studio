@@ -76,17 +76,22 @@ test createBuffer {
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-pub fn addBuffer(self: *@This(), buf: *Buffer, allocated_str: []const u8) !void {
+fn addBuffer(self: *@This(), buf: *Buffer, allocated_str: []const u8) !void {
     try self.strmap.put(self.a, buf, try std.ArrayListUnmanaged([]const u8).initCapacity(self.a, 1));
     var list = self.strmap.getPtr(buf) orelse unreachable;
     try list.append(self.a, allocated_str);
 }
 
-pub fn removeBuffer(self: *@This(), buf: *Buffer) !void {
+pub fn removeBuffer(self: *@This(), buf: *Buffer) void {
     assert(self.strmap.contains(buf));
+    assert(self.pending == null);
+
     var list = self.strmap.get(buf) orelse return;
     defer list.deinit(self.a);
     for (list.items) |str| self.a.free(str);
+
+    assert(self.strmap.swapRemove(buf));
+    defer buf.destroy(self.a);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
