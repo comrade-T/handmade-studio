@@ -170,28 +170,6 @@ pub fn editMainTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) !voi
     tree.edit(edit);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////// Injections
-
-pub fn addInjection(self: *@This(), buf: *const Buffer, lang_id: LanguageID, ranges: []const ts.Range) !void {
-    const langsuite = try self.getLangSuite(lang_id);
-    const parse_result = langsuite.parse(buf, null, ranges);
-    assert(parse_result.changed_ranges.len == 0);
-
-    if (!self.injectmap.contains(buf)) {
-        try self.injectmap.put(self.a, buf, std.ArrayListUnmanaged(*ts.Tree));
-    }
-
-    const list = self.injectmap.getPtr(buf) orelse unreachable;
-    try list.append(self.a, parse_result.tree);
-}
-
-pub fn clearInjections(self: *@This(), buf: *const Buffer) void {
-    const list = self.injectmap.getPtr(buf) orelse return;
-    for (list.items) |tree| tree.destroy();
-    list.deinit(self.a);
-    _ = self.injectmap.remove(buf);
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////// Get Captures
 
 const CaptureID = u8;
@@ -229,8 +207,7 @@ test {
     try eq(24, @sizeOf(Captures));
 }
 
-fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree: *const ts.Tree, start_line: u32, end_line: u32) !CapturesOfTreeMap {
-    var result = CapturesOfTreeMap{};
+fn getCapturesInMainTree(self: *@This(), buf: *const Buffer, query_ids: []const u8, start_line: u32, end_line: u32) !CapturedLines {
     const num_of_lines_to_process = end_line - start_line + 1;
 
     ///////////////////////////// precompute code paths
@@ -245,6 +222,9 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree: *con
 
     ///////////////////////////// set up containers
 
+    const tree_list_of_buffer = self.trees.get(buf) orelse unreachable;
+    const tree = tree_list_of_buffer.items[0];
+
     var std_lines_list = try std.ArrayListUnmanaged(std.ArrayListUnmanaged(StdCapture)).initCapacity(self.a, num_of_lines_to_process);
     defer std_lines_list.deinit(self.a);
     for (start_line..end_line + 1) |_| try std_lines_list.append(self.a, std.ArrayListUnmanaged(StdCapture){});
@@ -255,7 +235,8 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree: *con
     ///////////////////////////// put things to containers
 
     const langsuite = try self.getLangSuite(.{ .language = tree.getLanguage() });
-    for (langsuite.queries.items, 0..) |sq, query_id| {
+    for (query_ids) |query_id| {
+        const sq = langsuite.queries.items[query_id];
         var cursor = try ts.Query.Cursor.create();
         defer cursor.destroy();
         cursor.execute(sq.query, tree.getRootNode());
@@ -314,9 +295,8 @@ fn getCapturesForAllQueriesInTree(self: *@This(), buf: *const Buffer, tree: *con
             },
         }
     }
-    try result.put(self.a, tree, captured_lines);
 
-    return result;
+    return captured_lines;
 }
 
 fn captureLessThan(_: void, a: anytype, b: anytype) bool {
