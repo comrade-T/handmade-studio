@@ -365,7 +365,7 @@ fn captureLessThanLong(_: void, a: LongCapture, b: LongCapture) bool {
 
 const MAX_CELL_OVERLAP_ASSUMPTION = 32;
 pub const CaptureIterator = struct {
-    result_ids_buf: [MAX_CELL_OVERLAP_ASSUMPTION]Capture = undefined,
+    capture_buf: [MAX_CELL_OVERLAP_ASSUMPTION]Capture = undefined,
     captures_start: u8 = 0,
     col: u32 = 0,
 
@@ -387,13 +387,13 @@ pub const CaptureIterator = struct {
         for (captures[self.captures_start..], 0..) |cap, i| {
             if (cap.start_col > self.col) break;
             if (cap.end_col <= self.col) {
-                self.captures_start = i + 1;
+                self.captures_start = @intCast(i + 1);
                 continue;
             }
-            self.ids_buf[ids_index] = Capture{ .capture_id = cap.capture_id, .query_id = cap.query_index };
+            self.capture_buf[ids_index] = Capture{ .capture_id = cap.capture_id, .query_id = cap.query_id };
             ids_index += 1;
         }
 
-        return self.ids_buf[0..ids_index];
+        return self.capture_buf[0..ids_index];
     }
 };

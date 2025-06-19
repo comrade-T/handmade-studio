@@ -45,7 +45,7 @@
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 const std = @import("std");
-const code_point = @import("code_point");
+pub const code_point = @import("code_point");
 
 const TrimmedRc = @import("CustomRc.zig").TrimmedRc;
 

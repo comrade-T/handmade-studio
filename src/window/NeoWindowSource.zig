@@ -21,6 +21,7 @@ const Allocator = std.mem.Allocator;
 const eq = std.testing.expectEqual;
 const eqStr = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
+const idc_if_it_leaks = std.heap.page_allocator;
 
 const LangHub = @import("NeoLangHub");
 const BufferOrchestrator = @import("BufferOrchestrator");
@@ -72,24 +73,21 @@ const LineIterator = struct {
     chariter: CharacterForwardIterator,
     capiter: LangHub.CaptureIterator = .{},
 
-    fn init(buf: *const Buffer, linenr: u32) !void {
+    fn init(buf: *const Buffer, linenr: u32) !LineIterator {
         const byte_offset = try buf.getByteOffsetOfPosition(linenr, 0);
-        return LineIterator{ .chariter = CharacterForwardIterator.init(buf.getCurrentRoot().value, byte_offset) };
+        return LineIterator{ .chariter = try CharacterForwardIterator.init(buf.getCurrentRoot().value, byte_offset) };
     }
 
     fn next(self: *@This(), captures: LangHub.Captures) ?Result {
         const may_chariter_result = self.chariter.next();
-        const may_capiter_result = self.capiter.next(captures);
+        const capiter_result = self.capiter.next(captures);
 
         if (may_chariter_result) |chariter_result| {
-            assert(may_capiter_result != null);
-            if (may_capiter_result) |capiter_result| {
-                return Result{
-                    .code_point = chariter_result.code,
-                    .code_point_len = chariter_result.len,
-                    .captures = capiter_result,
-                };
-            }
+            return Result{
+                .code_point = chariter_result.code,
+                .code_point_len = chariter_result.len,
+                .captures = capiter_result,
+            };
         }
 
         return null;
@@ -102,7 +100,7 @@ const LineIterator = struct {
     };
 };
 
-test initFromFile {
+test LineIterator {
     const a = std.testing.allocator;
     var lang_hub = LangHub{ .a = a };
     defer lang_hub.deinit();
@@ -111,11 +109,66 @@ test initFromFile {
     defer orchestrator.deinit();
 
     {
-        var ws = try NeoWindowSource.initFromFile(a, &orchestrator, &lang_hub, "src/window/fixtures/dummy.zig");
+        var ws = try NeoWindowSource.initFromFile(a, &orchestrator, &lang_hub, "src/window/fixtures/dummy_3_lines.zig");
         defer ws.deinit(a, &orchestrator);
+        try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.toString(idc_if_it_leaks, .lf));
 
-        // TODO: what else do I want to test?
-        // - capturing stuffs -> from NeoWindowSource.initFromFile() ==> I should map this out properly on canvas
-        // - iterate through those captures
+        try testLineIter(ws.buf, &lang_hub, 0, &.{
+            .{ "const", &.{"keyword"} },
+            .{ " ", &.{} },
+            .{ "a", &.{"variable"} },
+            .{ " ", &.{} },
+            .{ "=", &.{"operator"} },
+            .{ " ", &.{} },
+            .{ "10", &.{"number"} },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
+    }
+}
+
+const Expected = struct { []const u8, []const []const u8 };
+
+fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, exp: []const ?Expected) !void {
+    const buf_tree_list = lang_hub.trees.get(buf) orelse unreachable;
+    const main_tree = buf_tree_list.items[0];
+
+    const capture_map = lang_hub.captures.get(main_tree) orelse unreachable;
+    const captured_lines = capture_map.get(lang_hub.getHightlightQueryIndexes(buf).ptr) orelse unreachable;
+    const captures = captured_lines.items[linenr];
+
+    var line_iter = try LineIterator.init(buf, linenr);
+    for (exp, 0..) |may_e, clump_index| {
+        if (may_e == null) {
+            try eq(null, line_iter.next(captures));
+            return;
+        }
+        const expected = may_e.?;
+
+        errdefer std.debug.print("failed at line '{d}' | clump_index = '{d}'\n", .{ linenr, clump_index });
+
+        var cp_iter = Buffer.rcr.code_point.Iterator{ .bytes = expected[0] };
+        while (cp_iter.next()) |code_point| {
+            const line_iter_res = line_iter.next(captures);
+
+            errdefer {
+                for (line_iter_res.?.captures, 0..) |capture, i| {
+                    const langsuite = lang_hub.getLangSuite(.{ .language = main_tree.getLanguage() }) catch unreachable;
+                    const sq = langsuite.queries.items[capture.query_id];
+                    const capture_name = sq.query.getCaptureNameForId(capture.capture_id);
+                    std.debug.print("i = {d} | capture_name: '{s}'\n", .{ i, capture_name });
+                }
+            }
+
+            try eq(code_point.code, line_iter_res.?.code_point);
+            try eq(expected[1].len, line_iter_res.?.captures.len);
+
+            for (line_iter_res.?.captures, 0..) |capture, i| {
+                const langsuite = try lang_hub.getLangSuite(.{ .language = main_tree.getLanguage() });
+                const sq = langsuite.queries.items[capture.query_id];
+                const capture_name = sq.query.getCaptureNameForId(capture.capture_id);
+                try eqStr(expected[1][i], capture_name);
+            }
+        }
     }
 }
