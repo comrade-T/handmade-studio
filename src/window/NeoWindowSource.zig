@@ -79,18 +79,16 @@ const LineIterator = struct {
     }
 
     fn next(self: *@This(), captures: LangHub.Captures) ?Result {
-        const may_chariter_result = self.chariter.next();
+        const chariter_result = self.chariter.next() orelse return null;
         const capiter_result = self.capiter.next(captures);
 
-        if (may_chariter_result) |chariter_result| {
-            return Result{
-                .code_point = chariter_result.code,
-                .code_point_len = chariter_result.len,
-                .captures = capiter_result,
-            };
-        }
+        if (chariter_result.code == '\n') return null;
 
-        return null;
+        return Result{
+            .code_point = chariter_result.code,
+            .code_point_len = chariter_result.len,
+            .captures = capiter_result,
+        };
     }
 
     const Result = struct {
@@ -124,6 +122,32 @@ test LineIterator {
             .{ ";", &.{"punctuation.delimiter"} },
             null,
         });
+        try testLineIter(ws.buf, &lang_hub, 1, &.{
+            .{ "var", &.{"keyword"} },
+            .{ " ", &.{} },
+            .{ "not_false", &.{"variable"} },
+            .{ " ", &.{} },
+            .{ "=", &.{"operator"} },
+            .{ " ", &.{} },
+            .{ "true", &.{"boolean"} },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
+        try testLineIter(ws.buf, &lang_hub, 2, &.{
+            .{ "const", &.{"keyword"} },
+            .{ " ", &.{} },
+            .{ "Allocator", &.{ "type", "variable" } },
+            .{ " ", &.{} },
+            .{ "=", &.{"operator"} },
+            .{ " ", &.{} },
+            .{ "std", &.{"variable"} },
+            .{ ".", &.{"punctuation.delimiter"} },
+            .{ "mem", &.{ "variable.member", "variable" } },
+            .{ ".", &.{"punctuation.delimiter"} },
+            .{ "Allocator", &.{ "variable.member", "type", "variable" } },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
     }
 }
 
@@ -135,7 +159,7 @@ fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, exp: []const ?Exp
 
     const capture_map = lang_hub.captures.get(main_tree) orelse unreachable;
     const captured_lines = capture_map.get(lang_hub.getHightlightQueryIndexes(buf).ptr) orelse unreachable;
-    const captures = captured_lines.items[linenr];
+    const captures: LangHub.Captures = captured_lines.items[linenr];
 
     var line_iter = try LineIterator.init(buf, linenr);
     for (exp, 0..) |may_e, clump_index| {

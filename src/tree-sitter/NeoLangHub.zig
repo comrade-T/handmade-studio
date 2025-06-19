@@ -305,9 +305,10 @@ fn getCaptures(self: *@This(), buf: *const Buffer, tree: *ts.Tree, query_ids: []
                 const start = cap.node.getStartPoint();
                 const end = cap.node.getEndPoint();
 
-                for (start.row..end.row + 1, 0..) |linenr, i| {
-                    switch (code_paths[i]) {
-                        .std => try std_lines_list.items[i].append(self.a, StdCapture{
+                for (start.row..end.row + 1) |linenr| {
+                    const idx = linenr - start_line;
+                    switch (code_paths[idx]) {
+                        .std => try std_lines_list.items[idx].append(self.a, StdCapture{
                             .query_id = query_id,
                             .capture_id = @intCast(cap.id),
                             .start_col = if (linenr == start.row) @intCast(start.column) else 0,
