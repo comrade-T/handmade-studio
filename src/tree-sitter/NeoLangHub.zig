@@ -26,7 +26,7 @@ const Buffer = @import("BufferOrchestrator").Buffer;
 pub const ts = @import("bindings.zig");
 pub const NeoStoredQuery = @import("NeoStoredQuery.zig");
 
-pub const SupportedLanguage = enum { zig };
+pub const SupportedLanguage = enum { zig, markdown };
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -67,6 +67,7 @@ pub fn getLangSuite(self: *@This(), lang_id: LanguageID) !*NeoLangSuite {
         .language => |lang| lang,
         .lang_choice => |lang_choice| switch (lang_choice) {
             .zig => try ts.Language.get("zig"),
+            .markdown => try ts.Language.get("markdown"),
         },
     };
 
@@ -85,6 +86,7 @@ pub fn getLangSuite(self: *@This(), lang_id: LanguageID) !*NeoLangSuite {
 
 pub fn getLangChoiceFromFilePath(path: []const u8) ?SupportedLanguage {
     if (std.mem.endsWith(u8, path, ".zig")) return SupportedLanguage.zig;
+    if (std.mem.endsWith(u8, path, ".md")) return SupportedLanguage.markdown;
     return null;
 }
 
@@ -108,6 +110,7 @@ const NeoLangSuite = struct {
     pub fn addDefaultHighlightQuery(self: *@This(), a: Allocator, lang_choice: SupportedLanguage) !void {
         const pattern_string = switch (lang_choice) {
             .zig => @embedFile("submodules/tree-sitter-zig/queries/highlights.scm"),
+            .markdown => @embedFile("submodules/tree-sitter-markdown/tree-sitter-markdown/queries/highlights.scm"),
         };
         try self.addQuery(a, pattern_string);
     }
@@ -186,6 +189,11 @@ pub fn editMainTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) !voi
     const list = self.trees.get(buf) orelse return;
     const tree = list.items[0];
     tree.edit(edit);
+}
+
+pub fn getMainTree(self: *const @This(), buf: *const Buffer) *ts.Tree {
+    const buf_tree_list = self.trees.get(buf) orelse unreachable;
+    return buf_tree_list.items[0];
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Query ID Selector

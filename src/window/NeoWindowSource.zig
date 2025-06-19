@@ -107,6 +107,19 @@ test LineIterator {
     defer orchestrator.deinit();
 
     {
+        var ws = try NeoWindowSource.initFromFile(a, &orchestrator, &lang_hub, "src/window/fixtures/dummy.md");
+        defer ws.deinit(a, &orchestrator);
+        try eqStr("# Hello World\n\ncool `cooler`\n", try ws.buf.toString(idc_if_it_leaks, .lf));
+
+        try testLineIter(ws.buf, &lang_hub, 0, &.{
+            .{ "#", &.{"punctuation.special"} },
+            .{ " ", &.{} },
+            .{ "Hello World", &.{"text.title"} },
+            null,
+        });
+    }
+
+    {
         var ws = try NeoWindowSource.initFromFile(a, &orchestrator, &lang_hub, "src/window/fixtures/dummy_3_lines.zig");
         defer ws.deinit(a, &orchestrator);
         try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.toString(idc_if_it_leaks, .lf));
@@ -153,7 +166,7 @@ test LineIterator {
 
 const Expected = struct { []const u8, []const []const u8 };
 
-fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, exp: []const ?Expected) !void {
+fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, expecteds: []const ?Expected) !void {
     const buf_tree_list = lang_hub.trees.get(buf) orelse unreachable;
     const main_tree = buf_tree_list.items[0];
 
@@ -162,12 +175,12 @@ fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, exp: []const ?Exp
     const captures: LangHub.Captures = captured_lines.items[linenr];
 
     var line_iter = try LineIterator.init(buf, linenr);
-    for (exp, 0..) |may_e, clump_index| {
-        if (may_e == null) {
+    for (expecteds, 0..) |may_expected, clump_index| {
+        if (may_expected == null) {
             try eq(null, line_iter.next(captures));
             return;
         }
-        const expected = may_e.?;
+        const expected = may_expected.?;
 
         errdefer std.debug.print("failed at line '{d}' | clump_index = '{d}'\n", .{ linenr, clump_index });
 

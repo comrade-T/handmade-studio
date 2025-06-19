@@ -88,6 +88,8 @@ pub fn build(b: *std.Build) void {
     tree_sitter.addCSourceFiles(.{ .files = &.{"submodules/tree-sitter/lib/src/lib.c"}, .flags = &flags });
 
     addParser(b, tree_sitter, "zig", null);
+    addParser(b, tree_sitter, "markdown", "tree-sitter-markdown");
+    addParser(b, tree_sitter, "markdown", "tree-sitter-markdown-inline");
 
     b.installArtifact(tree_sitter);
     tree_sitter.installHeadersDirectory(b.path("submodules/tree-sitter/lib/include/tree_sitter"), "tree_sitter", .{});
@@ -109,6 +111,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "BufferOrchestrator", .module = buffer_orchestrator.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
+        ts_queryfile(b, "submodules/tree-sitter-markdown/tree-sitter-markdown/queries/highlights.scm"),
+        ts_queryfile(b, "submodules/tree-sitter-markdown/tree-sitter-markdown-inline/queries/highlights.scm"),
     }, zig_build_test_step);
     neo_langhub.module.linkLibrary(tree_sitter);
 
