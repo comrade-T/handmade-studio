@@ -25,6 +25,7 @@ const assert = std.debug.assert;
 const LangHub = @import("NeoLangHub");
 const BufferOrchestrator = @import("BufferOrchestrator");
 const Buffer = BufferOrchestrator.Buffer;
+const CharacterForwardIterator = Buffer.rcr.CharacterForwardIterator;
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -66,6 +67,40 @@ pub fn deinit(self: *@This(), a: Allocator, orchestrator: *BufferOrchestrator) v
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
+
+const LineIterator = struct {
+    chariter: CharacterForwardIterator,
+    capiter: LangHub.CaptureIterator = .{},
+
+    fn init(buf: *const Buffer, linenr: u32) !void {
+        const byte_offset = try buf.getByteOffsetOfPosition(linenr, 0);
+        return LineIterator{ .chariter = CharacterForwardIterator.init(buf.getCurrentRoot().value, byte_offset) };
+    }
+
+    fn next(self: *@This(), captures: LangHub.Captures) ?Result {
+        const may_chariter_result = self.chariter.next();
+        const may_capiter_result = self.capiter.next(captures);
+
+        if (may_chariter_result) |chariter_result| {
+            assert(may_capiter_result != null);
+            if (may_capiter_result) |capiter_result| {
+                return Result{
+                    .code_point = chariter_result.code,
+                    .code_point_len = chariter_result.len,
+                    .captures = capiter_result,
+                };
+            }
+        }
+
+        return null;
+    }
+
+    const Result = struct {
+        code_point: u21,
+        code_point_len: u3,
+        captures: []const LangHub.CaptureIterator.Capture,
+    };
+};
 
 test initFromFile {
     const a = std.testing.allocator;

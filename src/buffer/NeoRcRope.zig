@@ -2847,14 +2847,14 @@ test getPositionFromByteOffset {
 ////////////////////////////////////////////////////////////////////////////////////////////// getByteOffsetOfPosition
 
 const GetByteOffsetOfPositionError = error{ OutOfMemory, LineOutOfBounds, ColOutOfBounds };
-pub fn getByteOffsetOfPosition(self: RcNode, line: usize, col: usize) GetByteOffsetOfPositionError!usize {
+pub fn getByteOffsetOfPosition(self: RcNode, line: u32, col: u32) GetByteOffsetOfPositionError!u32 {
     const GetByteOffsetCtx = struct {
-        target_line: usize,
-        target_col: usize,
+        target_line: u32,
+        target_col: u32,
 
-        byte_offset: usize = 0,
-        current_line: usize = 0,
-        current_col: usize = 0,
+        byte_offset: u32 = 0,
+        current_line: u32 = 0,
+        current_col: u32 = 0,
         should_stop: bool = false,
         encountered_bol: bool = false,
 
@@ -2899,7 +2899,7 @@ pub fn getByteOffsetOfPosition(self: RcNode, line: usize, col: usize) GetByteOff
             const sum = cx.current_col + leaf.noc;
             if (sum <= cx.target_col) {
                 cx.current_col += leaf.noc;
-                cx.byte_offset += leaf.buf.len;
+                cx.byte_offset += @intCast(leaf.buf.len);
             }
             if (sum > cx.target_col) {
                 var iter = code_point.Iterator{ .bytes = leaf.buf };

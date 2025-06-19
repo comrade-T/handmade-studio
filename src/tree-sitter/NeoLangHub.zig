@@ -225,8 +225,8 @@ fn freeCaptureMap(self: *@This(), capture_map: *CaptureMap) void {
     }
 }
 
-const CaptureID = u8;
-const QueryID = u8;
+pub const CaptureID = u8;
+pub const QueryID = u8;
 
 const StdCapture = struct {
     start_col: u8,
@@ -241,7 +241,7 @@ const LongCapture = struct {
     capture_id: CaptureID,
 };
 
-const Captures = union(enum) {
+pub const Captures = union(enum) {
     std: []const StdCapture,
     long: []const LongCapture,
 };
@@ -364,17 +364,17 @@ fn captureLessThanLong(_: void, a: LongCapture, b: LongCapture) bool {
 ////////////////////////////////////////////////////////////////////////////////////////////// Captures Iterator
 
 const MAX_CELL_OVERLAP_ASSUMPTION = 32;
-const CaptureIterator = struct {
-    result_ids_buf: [MAX_CELL_OVERLAP_ASSUMPTION]Result = undefined,
+pub const CaptureIterator = struct {
+    result_ids_buf: [MAX_CELL_OVERLAP_ASSUMPTION]Capture = undefined,
     captures_start: u8 = 0,
     col: u32 = 0,
 
-    const Result = struct {
+    pub const Capture = struct {
         query_id: QueryID,
         capture_id: CaptureID,
     };
 
-    pub fn next(self: *@This(), captures: Captures) []Result {
+    pub fn next(self: *@This(), captures: Captures) []Capture {
         defer self.col += 1;
         return switch (captures) {
             .std => |std_captures| self.next_(std_captures),
@@ -382,7 +382,7 @@ const CaptureIterator = struct {
         };
     }
 
-    fn next_(self: *@This(), captures: anytype) []Result {
+    fn next_(self: *@This(), captures: anytype) []Capture {
         var ids_index: usize = 0;
         for (captures[self.captures_start..], 0..) |cap, i| {
             if (cap.start_col > self.col) break;
@@ -390,7 +390,7 @@ const CaptureIterator = struct {
                 self.captures_start = i + 1;
                 continue;
             }
-            self.ids_buf[ids_index] = Result{ .capture_id = cap.capture_id, .query_id = cap.query_index };
+            self.ids_buf[ids_index] = Capture{ .capture_id = cap.capture_id, .query_id = cap.query_index };
             ids_index += 1;
         }
 

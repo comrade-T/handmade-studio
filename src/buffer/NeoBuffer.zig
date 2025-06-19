@@ -86,6 +86,10 @@ pub fn getNumOfCharsInLine(self: *const @This(), line: usize) usize {
     return rcr.getNumOfCharsInLine(self.getCurrentRoot(), line);
 }
 
+pub fn getByteOffsetOfPosition(self: *const @This(), line: u32, col: u32) !u32 {
+    return rcr.getByteOffsetOfPosition(self.getCurrentRoot(), line, col);
+}
+
 pub fn getLineCount(self: *const @This()) u32 {
     return self.getCurrentRoot().value.weights().bols;
 }
