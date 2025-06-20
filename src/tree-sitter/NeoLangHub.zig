@@ -125,7 +125,7 @@ const NeoLangSuite = struct {
         tree: *ts.Tree,
         changed_ranges: ?[]const ts.Range = null,
 
-        fn freeChangedRanges(self: *const @This()) void {
+        pub fn freeChangedRanges(self: *const @This()) void {
             if (self.changed_ranges == null) return;
             std.c.free(@as(*anyopaque, @ptrCast(@constCast(self.changed_ranges.?.ptr))));
         }
@@ -173,7 +173,7 @@ const NeoLangSuite = struct {
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Parsing
 
-pub fn parseMainTree(self: *@This(), buf: *const Buffer, lang_id: LanguageID) !bool {
+pub fn parseMainTreeFirstTime(self: *@This(), buf: *const Buffer, lang_id: LanguageID) !bool {
     assert(!self.trees.contains(buf));
     var list = std.ArrayListUnmanaged(*ts.Tree){};
     const langsuite = try self.getLangSuite(lang_id);
@@ -184,11 +184,66 @@ pub fn parseMainTree(self: *@This(), buf: *const Buffer, lang_id: LanguageID) !b
     return true;
 }
 
-pub fn editMainTree(self: *@This(), buf: *const Buffer, edit: ts.InputEdit) !void {
+pub fn reparseMainTree(self: *@This(), buf: *const Buffer) !void {
+    assert(self.trees.contains(buf));
+
+    const buf_tree_list = self.trees.getPtr(buf) orelse unreachable;
+    const old_main_tree = buf_tree_list.items[0];
+    defer old_main_tree.destroy();
+
+    const langsuite = try self.getLangSuite(.{ .language = old_main_tree.getLanguage() });
+    const parse_result = langsuite.parse(buf, old_main_tree, &.{}) orelse unreachable;
+    defer parse_result.freeChangedRanges();
+
+    buf_tree_list.items[0] = parse_result.tree;
+
+    // change key of capture_map to newly parsed tree
+    const capture_map = self.captures.get(old_main_tree) orelse unreachable;
+    self.captures.put(self.a, parse_result.tree, capture_map);
+
+    try self.updateMainTreeDefaultHightlightCaptures(parse_result);
+}
+
+fn updateMainTreeDefaultHightlightCaptures(self: *NeoLangHub, parse_result: NeoLangSuite.ParseResult) !void {
+    const capture_map = self.captures.get(parse_result.tree) orelse unreachable;
+    const captured_lines = capture_map.get(self.getHightlightQueryIndexes(self.buf).ptr) orelse unreachable;
+
+    const changed_ranges = parse_result.changed_ranges orelse return;
+    var i: usize = changed_ranges.len;
+    while (i > 0) {
+        i -= 1;
+        const tree = self.getMainTree(self.buf);
+        const query_indexes = self.getHightlightQueryIndexes(self.buf);
+        const start_line = changed_ranges[i].start_point.row;
+        const end_line = changed_ranges[i].end_point.row;
+
+        const new_lines = self.getCaptures(self.buf, tree, query_indexes.ptr, start_line, end_line);
+        try captured_lines.replaceRange(self.a, start_line, end_line - start_line, new_lines);
+    }
+}
+
+const EditTreeRequest = struct {
+    start_byte: u32,
+    old_end_byte: u32,
+    new_end_byte: u32,
+};
+pub fn editMainTree(self: *@This(), buf: *const Buffer, req: EditTreeRequest) !void {
     assert(self.trees.contains(buf));
     const list = self.trees.get(buf) orelse return;
     const tree = list.items[0];
-    tree.edit(edit);
+    tree.edit(ts.InputEdit{
+        .start_byte = req.start_byte,
+        .old_end_byte = req.old_end_byte,
+        .new_end_byte = req.new_end_byte,
+        .start_point = try getTSPointFromByteOffset(buf, req.start_byte),
+        .old_end_point = try getTSPointFromByteOffset(buf, req.old_end_byte),
+        .new_end_point = try getTSPointFromByteOffset(buf, req.new_end_byte),
+    });
+}
+
+fn getTSPointFromByteOffset(buf: *const Buffer, byte_offset: u32) !ts.Point {
+    const line, const col = try Buffer.rcr.getPositionFromByteOffset(buf.getCurrentRoot(), byte_offset);
+    return ts.Point{ .row = line, .column = col };
 }
 
 pub fn getMainTree(self: *const @This(), buf: *const Buffer) *ts.Tree {
@@ -268,7 +323,7 @@ test {
     try eq(24, @sizeOf(Captures));
 }
 
-fn getCaptures(self: *@This(), buf: *const Buffer, tree: *ts.Tree, query_ids: []const u8, start_line: u32, end_line: u32) !CapturedLines {
+pub fn getCaptures(self: *@This(), buf: *const Buffer, tree: *ts.Tree, query_ids: []const u8, start_line: u32, end_line: u32) !CapturedLines {
     const num_of_lines_to_process = end_line - start_line + 1;
 
     ///////////////////////////// precompute code paths

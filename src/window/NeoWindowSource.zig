@@ -67,9 +67,30 @@ pub fn deinit(self: *@This(), a: Allocator, orchestrator: *BufferOrchestrator) v
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////// Insert & Delete
 
-const LineIterator = struct {
+pub fn insertChars(self: *@This(), orchestrator: *BufferOrchestrator, may_lang_hub: ?*LangHub, cursor_byte_range_iter: anytype, chars: []const u8) !void {
+    assert(orchestrator.pending != null);
+    assert(self.buf == orchestrator.pending.?.buf);
+    try orchestrator.insertChars(chars, cursor_byte_range_iter);
+
+    const lang_hub = may_lang_hub orelse return;
+    cursor_byte_range_iter.reset();
+
+    var i: usize = 0;
+    while (cursor_byte_range_iter.next()) |old_byte_range| {
+        defer i += 1;
+        try lang_hub.editMainTree(self.buf, .{
+            .start_byte = old_byte_range.start,
+            .old_end_byte = old_byte_range.end,
+            .new_end_byte = orchestrator.pending.?.trackers[i].cursor,
+        });
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////// LineIterator
+
+pub const LineIterator = struct {
     chariter: CharacterForwardIterator,
     capiter: LangHub.CaptureIterator = .{},
 
