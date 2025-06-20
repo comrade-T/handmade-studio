@@ -312,7 +312,7 @@ const PendingEdit = struct {
         }
     };
 
-    fn getLatestRoot(self: *const @This()) rcr.RcNode {
+    pub fn getLatestRoot(self: *const @This()) rcr.RcNode {
         return self.roots.getLastOrNull() orelse self.initial_root;
     }
 
@@ -1195,26 +1195,26 @@ pub fn stopEditing(self: *@This()) !void {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-fn MockIterator(T: type) type {
+pub fn MockIterator(T: type) type {
     return struct {
         items: []const T,
         index: usize = 0,
 
-        fn next(self: *@This()) ?T {
+        pub fn next(self: *@This()) ?T {
             defer self.index += 1;
             if (self.index >= self.items.len) return null;
             return self.items[self.index];
         }
 
-        fn len(self: *const @This()) usize {
+        pub fn len(self: *const @This()) usize {
             return self.items.len;
         }
 
-        fn first(self: *const @This()) T {
+        pub fn first(self: *const @This()) T {
             return self.items[0];
         }
 
-        fn reset(self: *@This()) void {
+        pub fn reset(self: *@This()) void {
             self.index = 0;
         }
     };

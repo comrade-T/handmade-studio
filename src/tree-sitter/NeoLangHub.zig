@@ -21,7 +21,8 @@ const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 const eq = std.testing.expectEqual;
 
-const Buffer = @import("BufferOrchestrator").Buffer;
+const BufferOrchestrator = @import("BufferOrchestrator");
+const Buffer = BufferOrchestrator.Buffer;
 
 pub const ts = @import("bindings.zig");
 pub const NeoStoredQuery = @import("NeoStoredQuery.zig");
@@ -131,26 +132,25 @@ const NeoLangSuite = struct {
         }
     };
 
-    fn parse(self: *@This(), buf: *const Buffer, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) ?ParseResult {
-        defer if (may_old_tree) |old_tree| old_tree.destroy();
-
+    fn parse(self: *@This(), root: Buffer.rcr.RcNode, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) ?ParseResult {
         const parser = self.parser;
         defer parser.reset();
         parser.setIncludedRanges(ranges) catch return null;
 
         const PARSE_BUFFER_SIZE = 1024;
         const ParseCtx = struct {
-            buf: *const Buffer,
+            root: Buffer.rcr.RcNode,
             parse_buf: [PARSE_BUFFER_SIZE]u8 = undefined,
         };
-        var parse_ctx = ParseCtx{ .buf = buf };
+        var parse_ctx = ParseCtx{ .root = root };
 
         const input: ts.Input = .{
             .payload = &parse_ctx,
             .read = struct {
                 fn read(payload: ?*anyopaque, _: u32, ts_point: ts.Point, bytes_read: *u32) callconv(.C) [*:0]const u8 {
                     const ctx: *ParseCtx = @ptrCast(@alignCast(payload orelse return ""));
-                    const result = ctx.buf.getRange(
+                    const result = Buffer.rcr.getRange(
+                        ctx.root,
                         .{ .line = @intCast(ts_point.row), .col = @intCast(ts_point.column) },
                         null,
                         &ctx.parse_buf,
@@ -177,14 +177,14 @@ pub fn parseMainTreeFirstTime(self: *@This(), buf: *const Buffer, lang_id: Langu
     assert(!self.trees.contains(buf));
     var list = std.ArrayListUnmanaged(*ts.Tree){};
     const langsuite = try self.getLangSuite(lang_id);
-    const parse_result = langsuite.parse(buf, null, &.{}) orelse return false;
+    const parse_result = langsuite.parse(buf.getCurrentRoot(), null, &.{}) orelse return false;
     defer parse_result.freeChangedRanges();
     try list.append(self.a, parse_result.tree);
     try self.trees.put(self.a, buf, list);
     return true;
 }
 
-pub fn reparseMainTree(self: *@This(), buf: *const Buffer) !void {
+pub fn reparseMainTree(self: *@This(), orchestrator: *BufferOrchestrator, buf: *Buffer) !void {
     assert(self.trees.contains(buf));
 
     const buf_tree_list = self.trees.getPtr(buf) orelse unreachable;
@@ -192,33 +192,45 @@ pub fn reparseMainTree(self: *@This(), buf: *const Buffer) !void {
     defer old_main_tree.destroy();
 
     const langsuite = try self.getLangSuite(.{ .language = old_main_tree.getLanguage() });
-    const parse_result = langsuite.parse(buf, old_main_tree, &.{}) orelse unreachable;
+    const root = if (orchestrator.pending) |*pending| pending.getLatestRoot() else buf.getCurrentRoot();
+    const parse_result = langsuite.parse(root, old_main_tree, &.{}) orelse unreachable;
     defer parse_result.freeChangedRanges();
 
     buf_tree_list.items[0] = parse_result.tree;
 
     // change key of capture_map to newly parsed tree
     const capture_map = self.captures.get(old_main_tree) orelse unreachable;
-    self.captures.put(self.a, parse_result.tree, capture_map);
+    assert(self.captures.remove(old_main_tree));
+    try self.captures.put(self.a, parse_result.tree, capture_map);
 
-    try self.updateMainTreeDefaultHightlightCaptures(parse_result);
+    try self.updateMainTreeDefaultHightlightCaptures(buf, parse_result);
 }
 
-fn updateMainTreeDefaultHightlightCaptures(self: *NeoLangHub, parse_result: NeoLangSuite.ParseResult) !void {
+fn updateMainTreeDefaultHightlightCaptures(self: *@This(), buf: *Buffer, parse_result: NeoLangSuite.ParseResult) !void {
     const capture_map = self.captures.get(parse_result.tree) orelse unreachable;
-    const captured_lines = capture_map.get(self.getHightlightQueryIndexes(self.buf).ptr) orelse unreachable;
+    var captured_lines = capture_map.getPtr(self.getHightlightQueryIndexes(buf).ptr) orelse unreachable;
 
     const changed_ranges = parse_result.changed_ranges orelse return;
     var i: usize = changed_ranges.len;
     while (i > 0) {
         i -= 1;
-        const tree = self.getMainTree(self.buf);
-        const query_indexes = self.getHightlightQueryIndexes(self.buf);
+        const tree = self.getMainTree(buf);
+        const query_indexes = self.getHightlightQueryIndexes(buf);
         const start_line = changed_ranges[i].start_point.row;
         const end_line = changed_ranges[i].end_point.row;
 
-        const new_lines = self.getCaptures(self.buf, tree, query_indexes.ptr, start_line, end_line);
-        try captured_lines.replaceRange(self.a, start_line, end_line - start_line, new_lines);
+        for (start_line..end_line + 1) |linenr| {
+            switch (captured_lines.items[linenr]) {
+                .std => |slice| self.a.free(slice),
+                .long => |slice| self.a.free(slice),
+            }
+        }
+
+        var new_lines = try self.getCaptures(buf, tree, query_indexes, start_line, end_line);
+        defer new_lines.deinit(self.a);
+        const replace_len = end_line - start_line + 1;
+        assert(replace_len == new_lines.items.len);
+        try captured_lines.replaceRange(self.a, start_line, replace_len, new_lines.items);
     }
 }
 
@@ -231,7 +243,7 @@ pub fn editMainTree(self: *@This(), buf: *const Buffer, req: EditTreeRequest) !v
     assert(self.trees.contains(buf));
     const list = self.trees.get(buf) orelse return;
     const tree = list.items[0];
-    tree.edit(ts.InputEdit{
+    tree.edit(&ts.InputEdit{
         .start_byte = req.start_byte,
         .old_end_byte = req.old_end_byte,
         .new_end_byte = req.new_end_byte,

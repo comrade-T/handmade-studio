@@ -28,6 +28,9 @@ const BufferOrchestrator = @import("BufferOrchestrator");
 const Buffer = BufferOrchestrator.Buffer;
 const CharacterForwardIterator = Buffer.rcr.CharacterForwardIterator;
 
+const MockIterator = BufferOrchestrator.MockIterator;
+const ByteRange = BufferOrchestrator.ByteRange;
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 buf: *Buffer,
@@ -49,7 +52,7 @@ pub fn initFromFile(a: Allocator, orchestrator: *BufferOrchestrator, may_lang_hu
     const buf = try orchestrator.createBufferFromFile(path);
     if (may_lang_hub) |lang_hub| {
         if (LangHub.getLangChoiceFromFilePath(path)) |lang_choice| {
-            assert(try lang_hub.parseMainTree(buf, .{ .lang_choice = lang_choice }));
+            assert(try lang_hub.parseMainTreeFirstTime(buf, .{ .lang_choice = lang_choice }));
             try lang_hub.initializeCapturesForMainTree(buf, lang_hub.getHightlightQueryIndexes(buf));
         }
     }
@@ -85,6 +88,45 @@ pub fn insertChars(self: *@This(), orchestrator: *BufferOrchestrator, may_lang_h
             .old_end_byte = old_byte_range.end,
             .new_end_byte = orchestrator.pending.?.trackers[i].cursor,
         });
+    }
+
+    try lang_hub.reparseMainTree(orchestrator, self.buf);
+}
+
+test insertChars {
+    const a = std.testing.allocator;
+    var lang_hub = LangHub{ .a = a };
+    defer lang_hub.deinit();
+
+    var orchestrator = BufferOrchestrator{ .a = a };
+    defer orchestrator.deinit();
+
+    {
+        var ws = try NeoWindowSource.initFromFile(a, &orchestrator, &lang_hub, "src/window/fixtures/dummy_3_lines.zig");
+        defer ws.deinit(a, &orchestrator);
+        try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.toString(idc_if_it_leaks, .lf));
+
+        try testLineIter(ws.buf, &lang_hub, 0, &.{
+            .{ "const", &.{"keyword"} },
+            .{ " ", &.{} },
+            .{ "a", &.{"variable"} },
+            .{ " ", &.{} },
+            .{ "=", &.{"operator"} },
+            .{ " ", &.{} },
+            .{ "10", &.{"number"} },
+            .{ ";", &.{"punctuation.delimiter"} },
+            null,
+        });
+
+        {
+            var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try orchestrator.startEditing(ws.buf, &initial_byte_range_iter);
+
+            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+            try ws.insertChars(&orchestrator, &lang_hub, &edit_byte_range_iter, "/");
+
+            try orchestrator.stopEditing();
+        }
     }
 }
 
