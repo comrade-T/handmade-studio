@@ -96,15 +96,15 @@ pub fn build(b: *std.Build) void {
 
     ////////////////////////////////////////////////////////////////////////////// Local Modules
 
-    const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, zig_build_test_step);
+    const input_processor = addTestableModule(&bops, "src/keyboard/input_processor.zig", &.{}, &.{}, zig_build_test_step);
 
     _ = addTestableModule(&bops, "src/buffer/NeoRcRope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const buffer_orchestrator = addTestableModule(&bops, "src/buffer/BufferOrchestrator.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const neo_langhub = addTestableModule(&bops, "src/tree-sitter/NeoLangHub.zig", &.{
         .{ .name = "mvzr", .module = mvzr },
@@ -113,26 +113,26 @@ pub fn build(b: *std.Build) void {
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
         ts_queryfile(b, "submodules/tree-sitter-markdown/tree-sitter-markdown/queries/highlights.scm"),
         ts_queryfile(b, "submodules/tree-sitter-markdown/tree-sitter-markdown-inline/queries/highlights.scm"),
-    }, zig_build_test_step);
+    }, &.{tree_sitter}, zig_build_test_step);
     neo_langhub.module.linkLibrary(tree_sitter);
 
     const neo_window_source = addTestableModule(&bops, "src/window/NeoWindowSource.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "BufferOrchestrator", .module = buffer_orchestrator.module },
         .{ .name = "NeoLangHub", .module = neo_langhub.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
     _ = neo_window_source;
 
     const ropeman = addTestableModule(&bops, "src/buffer/RopeMan.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const query_filter = addTestableModule(&bops, "src/tree-sitter/QueryFilter.zig", &.{
         .{ .name = "mvzr", .module = mvzr },
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "RopeMan", .module = ropeman.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
     query_filter.compile.linkLibrary(tree_sitter);
 
     const langsuite = addTestableModule(&bops, "src/tree-sitter/LangSuite.zig", &.{
@@ -140,32 +140,32 @@ pub fn build(b: *std.Build) void {
         .{ .name = "ztracy", .module = ztracy.module("root") },
         .{ .name = "RopeMan", .module = ropeman.module },
         ts_queryfile(b, "submodules/tree-sitter-zig/queries/highlights.scm"),
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
     langsuite.module.linkLibrary(tree_sitter);
 
     const rc_rope = addTestableModule(&bops, "src/buffer/RcRope.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
     _ = rc_rope;
 
     const buffer = addTestableModule(&bops, "src/buffer/Buffer.zig", &.{
         .{ .name = "RopeMan", .module = ropeman.module },
         .{ .name = "LangSuite", .module = langsuite.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
-    const linked_list = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, zig_build_test_step);
+    const linked_list = addTestableModule(&bops, "src/window/LinkedList.zig", &.{}, &.{}, zig_build_test_step);
     _ = linked_list;
 
     const lsp_client_manager = addTestableModule(&bops, "src/LSP/LSPClientManager.zig", &.{
         .{ .name = "lsp_codegen", .module = lsp_codegen.module("lsp") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const cursor_manager = addTestableModule(&bops, "src/window/CursorManager.zig", &.{
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "RopeMan", .module = ropeman.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const window_source = addTestableModule(&bops, "src/window/WindowSource.zig", &.{
         .{ .name = "Buffer", .module = buffer.module },
@@ -173,19 +173,19 @@ pub fn build(b: *std.Build) void {
         .{ .name = "code_point", .module = zg.module("code_point") },
         .{ .name = "CursorManager", .module = cursor_manager.module },
         .{ .name = "ztracy", .module = ztracy.module("root") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
-    const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, zig_build_test_step);
-    const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, zig_build_test_step);
+    const colorscheme_store = addTestableModule(&bops, "src/window/ColorschemeStore.zig", &.{}, &.{}, zig_build_test_step);
+    const font_store = addTestableModule(&bops, "src/window/FontStore.zig", &.{}, &.{}, zig_build_test_step);
     const render_mall = addTestableModule(&bops, "src/window/RenderMall.zig", &.{
         .{ .name = "FontStore", .module = font_store.module },
         .{ .name = "ColorschemeStore", .module = colorscheme_store.module },
         .{ .name = "code_point", .module = zg.module("code_point") },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const quad_tree = addTestableModule(&bops, "src/window/WindowManager/QuadTree.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const window = addTestableModule(&bops, "src/window/Window.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },
@@ -195,16 +195,16 @@ pub fn build(b: *std.Build) void {
         .{ .name = "CursorManager", .module = cursor_manager.module },
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "QuadTree", .module = quad_tree.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const anchor_picker = addTestableModule(&bops, "src/components/AnchorPicker.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "input_processor", .module = input_processor.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const notification_line = addTestableModule(&bops, "src/components/NotificationLine.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const window_manager = addTestableModule(&bops, "src/window/WindowManager.zig", &.{
         .{ .name = "ztracy", .module = ztracy.module("root") },
@@ -214,14 +214,14 @@ pub fn build(b: *std.Build) void {
         .{ .name = "Window", .module = window.module },
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "QuadTree", .module = quad_tree.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const department_of_inputs = addTestableModule(&bops, "src/components/DepartmentOfInputs.zig", &.{
         .{ .name = "RenderMall", .module = render_mall.module },
         .{ .name = "WindowSource", .module = window_source.module },
         .{ .name = "Window", .module = window.module },
         .{ .name = "input_processor", .module = input_processor.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     ///////////////////////////// Fuzzy Finder
 
@@ -230,13 +230,13 @@ pub fn build(b: *std.Build) void {
         .{ .name = "RopeMan", .module = ropeman.module },
         .{ .name = "CursorManager", .module = cursor_manager.module },
         .{ .name = "RenderMall", .module = render_mall.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
     _ = text_box;
 
     const confirmation_prompt = addTestableModule(&bops, "src/components/ConfirmationPrompt.zig", &.{
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "RenderMall", .module = render_mall.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     ///////////////////////////// SessionManager
 
@@ -247,7 +247,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "input_processor", .module = input_processor.module },
         .{ .name = "ConfirmationPrompt", .module = confirmation_prompt.module },
         .{ .name = "LSPClientManager", .module = lsp_client_manager.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     const fuzzy_finders = addTestableModule(&bops, "src/components/FuzzyFinder/fuzzy_finders.zig", &.{
         .{ .name = "fuzzig", .module = fuzzig },
@@ -262,7 +262,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "NotificationLine", .module = notification_line.module },
         .{ .name = "Buffer", .module = buffer.module },
         .{ .name = "Session", .module = session.module },
-    }, zig_build_test_step);
+    }, &.{}, zig_build_test_step);
 
     ////////////////////////////////////////////////////////////////////////////// Executables
 
@@ -397,19 +397,26 @@ const TestableModule = struct {
     run: *std.Build.Step.Run,
 };
 
-fn addTestableModule(bops: *const BuildOpts, path: []const u8, imports: []const std.Build.Module.Import, test_step: *std.Build.Step) TestableModule {
+fn addTestableModule(
+    bops: *const BuildOpts,
+    path: []const u8,
+    imports: []const std.Build.Module.Import,
+    libraries: []const *std.Build.Step.Compile,
+    test_step: *std.Build.Step,
+) TestableModule {
     const module = bops.b.createModule(.{
         .root_source_file = bops.b.path(path),
         .imports = imports,
     });
+
     const compile = bops.b.addTest(.{
         .root_source_file = bops.b.path(path),
         .target = bops.target,
         .optimize = bops.optimize,
     });
-    for (imports) |imp| {
-        compile.root_module.addImport(imp.name, imp.module);
-    }
+    for (imports) |imp| compile.root_module.addImport(imp.name, imp.module);
+    for (libraries) |lib| compile.root_module.linkLibrary(lib);
+
     const run = bops.b.addRunArtifact(compile);
 
     var buf: [255]u8 = undefined;

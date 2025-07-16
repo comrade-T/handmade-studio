@@ -80,6 +80,9 @@ pub fn insertChars(self: *@This(), orchestrator: *BufferOrchestrator, may_lang_h
     const lang_hub = may_lang_hub orelse return;
     cursor_byte_range_iter.reset();
 
+    // TODO: it's better to create another abstraction to deal with this
+    // it'll be able to store then process all the edit information required
+
     var i: usize = 0;
     while (cursor_byte_range_iter.next()) |old_byte_range| {
         defer i += 1;
@@ -106,7 +109,7 @@ test insertChars {
         defer ws.deinit(a, &orchestrator);
         try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.toString(idc_if_it_leaks, .lf));
 
-        try testLineIter(ws.buf, &lang_hub, 0, &.{
+        try testLineIter(ws.buf, &orchestrator, &lang_hub, 0, &.{
             .{ "const", &.{"keyword"} },
             .{ " ", &.{} },
             .{ "a", &.{"variable"} },
@@ -122,8 +125,40 @@ test insertChars {
             var initial_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
             try orchestrator.startEditing(ws.buf, &initial_byte_range_iter);
 
-            var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
-            try ws.insertChars(&orchestrator, &lang_hub, &edit_byte_range_iter, "/");
+            {
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 0, .end = 0 }} };
+                try ws.insertChars(&orchestrator, &lang_hub, &edit_byte_range_iter, "/");
+                try testLineIter(ws.buf, &orchestrator, &lang_hub, 0, &.{
+                    .{ "/", &.{"operator"} },
+                    .{ "const", &.{"keyword"} },
+                    .{ " ", &.{} },
+                    .{ "a", &.{"variable"} },
+                    .{ " ", &.{} },
+                    .{ "=", &.{"operator"} },
+                    .{ " ", &.{} },
+                    .{ "10", &.{"number"} },
+                    .{ ";", &.{"punctuation.delimiter"} },
+                    null,
+                });
+            }
+            {
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 1, .end = 1 }} };
+                try ws.insertChars(&orchestrator, &lang_hub, &edit_byte_range_iter, "/");
+                try testLineIter(ws.buf, &orchestrator, &lang_hub, 0, &.{
+                    .{ "//const a = 10;", &.{ "comment", "spell" } },
+                    null,
+                });
+            }
+            {
+                std.debug.print("===========================\n", .{});
+                var edit_byte_range_iter = MockIterator(ByteRange){ .items = &.{.{ .start = 2, .end = 2 }} };
+                try ws.insertChars(&orchestrator, &lang_hub, &edit_byte_range_iter, " ");
+                try testLineIter(ws.buf, &orchestrator, &lang_hub, 0, &.{
+                    .{ "// const a = 10;", &.{ "comment", "spell" } },
+                    null,
+                });
+                std.debug.print("===========================\n", .{});
+            }
 
             try orchestrator.stopEditing();
         }
@@ -136,9 +171,9 @@ pub const LineIterator = struct {
     chariter: CharacterForwardIterator,
     capiter: LangHub.CaptureIterator = .{},
 
-    fn init(buf: *const Buffer, linenr: u32) !LineIterator {
-        const byte_offset = try buf.getByteOffsetOfPosition(linenr, 0);
-        return LineIterator{ .chariter = try CharacterForwardIterator.init(buf.getCurrentRoot().value, byte_offset) };
+    fn init(root: Buffer.rcr.RcNode, linenr: u32) !LineIterator {
+        const byte_offset = try Buffer.rcr.getByteOffsetOfPosition(root, linenr, 0);
+        return LineIterator{ .chariter = try CharacterForwardIterator.init(root.value, byte_offset) };
     }
 
     fn next(self: *@This(), captures: LangHub.Captures) ?Result {
@@ -174,7 +209,7 @@ test LineIterator {
         defer ws.deinit(a, &orchestrator);
         try eqStr("# Hello World\n\ncool `cooler`\n", try ws.buf.toString(idc_if_it_leaks, .lf));
 
-        try testLineIter(ws.buf, &lang_hub, 0, &.{
+        try testLineIter(ws.buf, &orchestrator, &lang_hub, 0, &.{
             .{ "#", &.{"punctuation.special"} },
             .{ " ", &.{} },
             .{ "Hello World", &.{"text.title"} },
@@ -187,7 +222,7 @@ test LineIterator {
         defer ws.deinit(a, &orchestrator);
         try eqStr("const a = 10;\nvar not_false = true;\nconst Allocator = std.mem.Allocator;\n", try ws.buf.toString(idc_if_it_leaks, .lf));
 
-        try testLineIter(ws.buf, &lang_hub, 0, &.{
+        try testLineIter(ws.buf, &orchestrator, &lang_hub, 0, &.{
             .{ "const", &.{"keyword"} },
             .{ " ", &.{} },
             .{ "a", &.{"variable"} },
@@ -198,7 +233,7 @@ test LineIterator {
             .{ ";", &.{"punctuation.delimiter"} },
             null,
         });
-        try testLineIter(ws.buf, &lang_hub, 1, &.{
+        try testLineIter(ws.buf, &orchestrator, &lang_hub, 1, &.{
             .{ "var", &.{"keyword"} },
             .{ " ", &.{} },
             .{ "not_false", &.{"variable"} },
@@ -209,7 +244,7 @@ test LineIterator {
             .{ ";", &.{"punctuation.delimiter"} },
             null,
         });
-        try testLineIter(ws.buf, &lang_hub, 2, &.{
+        try testLineIter(ws.buf, &orchestrator, &lang_hub, 2, &.{
             .{ "const", &.{"keyword"} },
             .{ " ", &.{} },
             .{ "Allocator", &.{ "type", "variable" } },
@@ -229,7 +264,7 @@ test LineIterator {
 
 const Expected = struct { []const u8, []const []const u8 };
 
-fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, expecteds: []const ?Expected) !void {
+fn testLineIter(buf: *Buffer, orchestrator: *BufferOrchestrator, lang_hub: *LangHub, linenr: u32, expecteds: []const ?Expected) !void {
     const buf_tree_list = lang_hub.trees.get(buf) orelse unreachable;
     const main_tree = buf_tree_list.items[0];
 
@@ -237,7 +272,12 @@ fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, expecteds: []cons
     const captured_lines = capture_map.get(lang_hub.getHightlightQueryIndexes(buf).ptr) orelse unreachable;
     const captures: LangHub.Captures = captured_lines.items[linenr];
 
-    var line_iter = try LineIterator.init(buf, linenr);
+    // switch (captures) {
+    //     .std => |caps| std.debug.print("{any}\n", .{caps}),
+    //     .long => |caps| std.debug.print("{any}\n", .{caps}),
+    // }
+
+    var line_iter = try LineIterator.init(orchestrator.getRoot(buf), linenr);
     for (expecteds, 0..) |may_expected, clump_index| {
         if (may_expected == null) {
             try eq(null, line_iter.next(captures));
@@ -247,11 +287,14 @@ fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, expecteds: []cons
 
         errdefer std.debug.print("failed at line '{d}' | clump_index = '{d}'\n", .{ linenr, clump_index });
 
+        var x: usize = 0;
         var cp_iter = Buffer.rcr.code_point.Iterator{ .bytes = expected[0] };
         while (cp_iter.next()) |code_point| {
+            defer x += 1;
             const line_iter_res = line_iter.next(captures);
 
             errdefer {
+                std.debug.print("failed at char #{d}\n", .{x});
                 for (line_iter_res.?.captures, 0..) |capture, i| {
                     const langsuite = lang_hub.getLangSuite(.{ .language = main_tree.getLanguage() }) catch unreachable;
                     const sq = langsuite.queries.items[capture.query_id];
@@ -261,6 +304,12 @@ fn testLineIter(buf: *Buffer, lang_hub: *LangHub, linenr: u32, expecteds: []cons
             }
 
             try eq(code_point.code, line_iter_res.?.code_point);
+            // std.debug.print("#{d} | char: '{s}' | expected[1].len: {d} | captures.len {d}\n", .{
+            //     x,
+            //     expected[0][code_point.offset .. code_point.offset + code_point.len],
+            //     expected[1].len,
+            //     line_iter_res.?.captures.len,
+            // });
             try eq(expected[1].len, line_iter_res.?.captures.len);
 
             for (line_iter_res.?.captures, 0..) |capture, i| {

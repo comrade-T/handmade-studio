@@ -123,19 +123,79 @@ const NeoLangSuite = struct {
     }
 
     const ParseResult = struct {
+        a: Allocator,
         tree: *ts.Tree,
-        changed_ranges: ?[]const ts.Range = null,
+        changed_ranges: []const Range,
 
-        pub fn freeChangedRanges(self: *const @This()) void {
-            if (self.changed_ranges == null) return;
-            std.c.free(@as(*anyopaque, @ptrCast(@constCast(self.changed_ranges.?.ptr))));
+        const Range = struct {
+            start_line: u32,
+            end_line: u32,
+        };
+
+        fn produce(a: Allocator, may_old_tree: ?*ts.Tree, new_tree: *ts.Tree, initial_ranges: []const ts.Range) !ParseResult {
+            var map = std.AutoArrayHashMapUnmanaged(u32, void){};
+            defer map.deinit(a);
+
+            if (may_old_tree) |old_tree| {
+                const ts_ranges = old_tree.getChangedRanges(new_tree);
+                defer std.c.free(@as(*anyopaque, @ptrCast(@constCast(ts_ranges.ptr))));
+
+                for (ts_ranges) |range| {
+                    for (range.start_point.row..range.end_point.row + 1) |linenr| {
+                        try map.put(a, @intCast(linenr), {});
+                    }
+                }
+            }
+
+            for (initial_ranges) |range| {
+                for (range.start_point.row..range.end_point.row + 1) |linenr| {
+                    try map.put(a, @intCast(linenr), {});
+                }
+            }
+
+            const duped_line_numbers = try a.dupe(u32, map.keys());
+            defer a.free(duped_line_numbers);
+            std.mem.sort(u32, duped_line_numbers, {}, std.sort.asc(u32));
+
+            /////////////////////////////
+
+            var range_list = std.ArrayListUnmanaged(Range){};
+
+            if (duped_line_numbers.len == 1) {
+                try range_list.append(a, Range{ .start_line = duped_line_numbers[0], .end_line = duped_line_numbers[0] });
+            }
+
+            var may_start_line: ?u32 = null;
+            for (duped_line_numbers, 0..) |linenr, i| {
+                if (may_start_line) |start_line| {
+                    if (i == duped_line_numbers.len - 1) {
+                        try range_list.append(a, Range{ .start_line = start_line, .end_line = linenr });
+                    }
+
+                    if (linenr - start_line == 1) continue;
+                    try range_list.append(a, Range{ .start_line = start_line, .end_line = linenr });
+                    may_start_line = null;
+                }
+
+                may_start_line = linenr;
+            }
+
+            return ParseResult{
+                .a = a,
+                .tree = new_tree,
+                .changed_ranges = try range_list.toOwnedSlice(a),
+            };
+        }
+
+        pub fn free(self: *@This()) void {
+            self.a.free(self.changed_ranges);
         }
     };
 
-    fn parse(self: *@This(), root: Buffer.rcr.RcNode, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) ?ParseResult {
+    fn parse(self: *@This(), a: Allocator, root: Buffer.rcr.RcNode, may_old_tree: ?*ts.Tree, ranges: []const ts.Range) !ParseResult {
         const parser = self.parser;
         defer parser.reset();
-        parser.setIncludedRanges(ranges) catch return null;
+        try parser.setIncludedRanges(ranges);
 
         const PARSE_BUFFER_SIZE = 1024;
         const ParseCtx = struct {
@@ -162,14 +222,19 @@ const NeoLangSuite = struct {
             }.read,
             .encoding = .utf_8,
         };
-        const new_tree = parser.parse(may_old_tree, input) catch return null;
+        const new_tree = try parser.parse(may_old_tree, input);
 
-        return ParseResult{
-            .tree = new_tree,
-            .changed_ranges = if (may_old_tree) |old_tree| old_tree.getChangedRanges(new_tree) else null,
-        };
+        return try ParseResult.produce(a, may_old_tree, new_tree, ranges);
     }
 };
+
+test "NeoLangSuite.init()" {
+    const a = std.testing.allocator;
+    var hub = try NeoLangHub.init(a);
+    defer hub.deinit();
+
+    _ = try hub.getLangSuite(.{ .lang_choice = .zig });
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////// Parsing
 
@@ -177,8 +242,8 @@ pub fn parseMainTreeFirstTime(self: *@This(), buf: *const Buffer, lang_id: Langu
     assert(!self.trees.contains(buf));
     var list = std.ArrayListUnmanaged(*ts.Tree){};
     const langsuite = try self.getLangSuite(lang_id);
-    const parse_result = langsuite.parse(buf.getCurrentRoot(), null, &.{}) orelse return false;
-    defer parse_result.freeChangedRanges();
+    var parse_result = try langsuite.parse(self.a, buf.getCurrentRoot(), null, &.{});
+    defer parse_result.free();
     try list.append(self.a, parse_result.tree);
     try self.trees.put(self.a, buf, list);
     return true;
@@ -193,8 +258,8 @@ pub fn reparseMainTree(self: *@This(), orchestrator: *BufferOrchestrator, buf: *
 
     const langsuite = try self.getLangSuite(.{ .language = old_main_tree.getLanguage() });
     const root = if (orchestrator.pending) |*pending| pending.getLatestRoot() else buf.getCurrentRoot();
-    const parse_result = langsuite.parse(root, old_main_tree, &.{}) orelse unreachable;
-    defer parse_result.freeChangedRanges();
+    var parse_result = try langsuite.parse(self.a, root, old_main_tree, &.{});
+    defer parse_result.free();
 
     buf_tree_list.items[0] = parse_result.tree;
 
@@ -210,14 +275,14 @@ fn updateMainTreeDefaultHightlightCaptures(self: *@This(), buf: *Buffer, parse_r
     const capture_map = self.captures.get(parse_result.tree) orelse unreachable;
     var captured_lines = capture_map.getPtr(self.getHightlightQueryIndexes(buf).ptr) orelse unreachable;
 
-    const changed_ranges = parse_result.changed_ranges orelse return;
+    const changed_ranges = parse_result.changed_ranges;
     var i: usize = changed_ranges.len;
     while (i > 0) {
         i -= 1;
         const tree = self.getMainTree(buf);
         const query_indexes = self.getHightlightQueryIndexes(buf);
-        const start_line = changed_ranges[i].start_point.row;
-        const end_line = changed_ranges[i].end_point.row;
+        const start_line = changed_ranges[i].start_line;
+        const end_line = changed_ranges[i].end_line;
 
         for (start_line..end_line + 1) |linenr| {
             switch (captured_lines.items[linenr]) {
@@ -233,6 +298,8 @@ fn updateMainTreeDefaultHightlightCaptures(self: *@This(), buf: *Buffer, parse_r
         try captured_lines.replaceRange(self.a, start_line, replace_len, new_lines.items);
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////// Edit
 
 const EditTreeRequest = struct {
     start_byte: u32,
@@ -473,3 +540,5 @@ pub const CaptureIterator = struct {
         return self.capture_buf[0..ids_index];
     }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////

@@ -47,6 +47,11 @@ pub fn deinit(self: *@This()) void {
     if (self.pending) |*pending| pending.deinit();
 }
 
+pub fn getRoot(self: *@This(), buf: *Buffer) rcr.RcNode {
+    if (self.pending) |pending| return pending.getLatestRoot();
+    return buf.getCurrentRoot();
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 pub fn createBufferFromFile(self: *@This(), path: []const u8) !*Buffer {
