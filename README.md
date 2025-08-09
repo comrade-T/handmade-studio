@@ -2,6 +2,8 @@
 
 Demo Version
 
+[Functionality Demo](https://www.youtube.com/watch?v=IIJP-Y-p3vw)
+
 https://github.com/user-attachments/assets/61e6200f-adee-4286-a54a-822f03c27004
 
 # Disclosure
@@ -16,7 +18,6 @@ Having Zig 0.13 installed.
 
 # Communication
 
-- [Discord Server](https://discord.gg/VqTMRsaJ)
 - Please feel free to open Github issues & discussions.
 
 ---
