@@ -2,7 +2,7 @@
 
 Demo Version
 
-[Functionality Demo](https://www.youtube.com/watch?v=IIJP-Y-p3vw)
+### [Detailed Functionality Demo - ~5min YouTube video](https://www.youtube.com/watch?v=IIJP-Y-p3vw)
 
 https://github.com/user-attachments/assets/61e6200f-adee-4286-a54a-822f03c27004
 
