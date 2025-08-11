@@ -10,12 +10,12 @@
             .hash = "zg-0.13.5-oGqU3I6Z7QLV3PcngiIPop2sAiHj740sK36VsXmYUMAp",
         },
         .fuzzig = .{
-            .url = "https://github.com/fjebaker/fuzzig/archive/main.tar.gz",
-            .hash = "fuzzig-0.1.1-Ji0xitlIAQBNtK3ptAGmK5QMfog1dBL3Hqzrolq81l94",
+            .url = "git+https://github.com/fjebaker/fuzzig?ref=main#4251fe4230d38e721514394a485db62ee1667ff3",
+            .hash = "fuzzig-0.1.1-Ji0xivxIAQBD0g8O_NV_0foqoPf3elsg9Sc3pNfdVH4D",
         },
         .raylib_zig = .{
-            .url = "https://github.com/comrade-T/raylib-zig/archive/devel.tar.gz",
-            .hash = "raylib_zig-5.6.0-dev-KE8REAsxBQDVav1TfNd2kdJcuK5w4AqI_fq2ggBl8IWP",
+            .url = "git+https://github.com/comrade-T/raylib-zig?ref=devel#70a5d48fe59fa94ba043fc119cb6ddd9fdfbecb4",
+            .hash = "raylib_zig-5.6.0-dev-KE8REKYuBQBpHNDN6kxJ84rKIcJfI9uodD3apoUC7NbB",
         },
         .mvzr = .{
             .url = "https://github.com/mnemnion/mvzr/archive/refs/tags/v0.3.3.tar.gz",
